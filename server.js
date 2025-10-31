@@ -18,6 +18,55 @@ const pool = new Pool({
 });
 pool.on('connect', () => console.log('✅ Connected to PostgreSQL database'));
 
+// Initialize database schema on startup
+async function initializeDatabase() {
+  try {
+    // Create bookings table if not exists
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS bookings (
+        id TEXT PRIMARY KEY,
+        platform TEXT NOT NULL,
+        customer_name TEXT NOT NULL,
+        customer_phone TEXT NOT NULL,
+        customer_email TEXT,
+        boat_type TEXT NOT NULL,
+        booking_date TEXT NOT NULL,
+        start_time TEXT,
+        duration_hours INTEGER,
+        total_amount INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        assigned_captain_id TEXT,
+        assigned_captain_name TEXT,
+        assigned_captain_phone TEXT,
+        notes TEXT,
+        internal_notes TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+    
+    // Create captains table if not exists
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS captains (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        phone TEXT NOT NULL,
+        email TEXT NOT NULL,
+        status TEXT NOT NULL,
+        specialties JSONB NOT NULL,
+        photo TEXT
+      )
+    `);
+    
+    console.log('✅ Database schema initialized successfully');
+  } catch (error) {
+    console.error('❌ Error initializing database schema:', error);
+    throw error;
+  }
+}
+
+// Initialize database before starting server
+initializeDatabase().catch(console.error);
+
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -213,12 +262,15 @@ async function updateBookingWithCaptain(bookingId, captain) {
 // 📱 SISTEMA DE NOTIFICACIONES MEJORADO
 async function sendNotifications(captain, booking) {
   // Skip notifications if Twilio is not configured (test/dev mode)
-  if (!process.env.TWILIO_SID || !process.env.TWILIO_AUTH_TOKEN) {
+  const twilioSid = process.env.TWILIO_SID || '';
+  const twilioToken = process.env.TWILIO_AUTH_TOKEN || '';
+  
+  if (!twilioSid || !twilioToken || !twilioSid.startsWith('AC')) {
     console.log(`📧 [SKIPPED] Notificaciones para reserva ${booking.id} (Twilio not configured)`);
     return;
   }
   
-  const client = twilio(process.env.TWILIO_SID, process.env.TWILIO_AUTH_TOKEN);
+  const client = twilio(twilioSid, twilioToken);
   
   // WhatsApp al capitán
   const captainMessage = `
