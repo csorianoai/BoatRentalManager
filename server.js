@@ -74,6 +74,11 @@ app.use(express.json());
 // Servir archivos estáticos del dashboard
 app.use(express.static('public'));
 
+// 🏠 RUTA RAÍZ - Redirigir al Dashboard
+app.get('/', (req, res) => {
+  res.redirect('/dashboard.html');
+});
+
 // Configuración para tu dominio WordPress
 const WORDPRESS_DOMAIN = 'https://www.nadakiexcursions.com';
 
