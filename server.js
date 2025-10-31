@@ -1122,6 +1122,262 @@ app.get('/api/captain/:captainId/trip-logs', async (req, res) => {
   }
 });
 
+// ========================================
+// FASE 4: COMMISSION ENDPOINTS
+// ========================================
+
+// Get all commission rules
+app.get('/api/commissions/rules', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT * FROM commission_rules 
+      WHERE is_active = 1
+      ORDER BY platform
+    `);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error getting commission rules:', error);
+    res.status(500).json({ error: 'Failed to get commission rules' });
+  }
+});
+
+// Create or update commission rule
+app.post('/api/commissions/rules', async (req, res) => {
+  try {
+    const { platform, commissionPercentage, fixedFee } = req.body;
+    
+    if (!platform || commissionPercentage === undefined) {
+      return res.status(400).json({ error: 'Platform and commission percentage required' });
+    }
+    
+    const ruleId = `rule_${platform}`;
+    const result = await pool.query(`
+      INSERT INTO commission_rules (id, platform, commission_percentage, fixed_fee, is_active)
+      VALUES ($1, $2, $3, $4, 1)
+      ON CONFLICT (id) DO UPDATE SET
+        commission_percentage = $3,
+        fixed_fee = $4
+      RETURNING *
+    `, [ruleId, platform, commissionPercentage, fixedFee || 0]);
+    
+    console.log('✅ Commission rule updated:', result.rows[0]);
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating commission rule:', error);
+    res.status(500).json({ error: 'Failed to update commission rule' });
+  }
+});
+
+// Calculate commissions for completed bookings
+app.post('/api/commissions/calculate', async (req, res) => {
+  try {
+    console.log('🧮 Calculating commissions for completed bookings...');
+    
+    // Get all completed bookings that don't have commission payments yet
+    const bookingsResult = await pool.query(`
+      SELECT b.* 
+      FROM bookings b
+      LEFT JOIN commission_payments cp ON b.id = cp.booking_id
+      WHERE b.status = 'completed' 
+        AND cp.id IS NULL
+        AND b.assigned_captain_id IS NOT NULL
+    `);
+    
+    const bookings = bookingsResult.rows;
+    const newPayments = [];
+    
+    for (const booking of bookings) {
+      // Get commission rule for this platform
+      const ruleResult = await pool.query(`
+        SELECT * FROM commission_rules 
+        WHERE platform = $1 AND is_active = 1
+      `, [booking.platform]);
+      
+      if (ruleResult.rows.length === 0) {
+        console.log(`⚠️ No commission rule for platform: ${booking.platform}`);
+        continue;
+      }
+      
+      const rule = ruleResult.rows[0];
+      const grossAmount = booking.total_amount;
+      const commissionAmount = Math.floor((grossAmount * rule.commission_percentage / 100)) + rule.fixed_fee;
+      const netAmount = grossAmount - commissionAmount;
+      
+      // Create commission payment record
+      const paymentId = `payment_${Date.now()}_${booking.id}`;
+      const paymentResult = await pool.query(`
+        INSERT INTO commission_payments (
+          id, booking_id, captain_id, gross_amount, 
+          commission_amount, net_amount, payment_status
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, 'pending')
+        RETURNING *
+      `, [paymentId, booking.id, booking.assigned_captain_id, grossAmount, commissionAmount, netAmount]);
+      
+      newPayments.push(paymentResult.rows[0]);
+    }
+    
+    console.log(`✅ Created ${newPayments.length} commission payment records`);
+    res.json({ 
+      message: `Calculated commissions for ${newPayments.length} bookings`,
+      payments: newPayments 
+    });
+  } catch (error) {
+    console.error('Error calculating commissions:', error);
+    res.status(500).json({ error: 'Failed to calculate commissions' });
+  }
+});
+
+// Get commission payments with filters
+app.get('/api/commissions/payments', async (req, res) => {
+  try {
+    const { status, captainId, startDate, endDate } = req.query;
+    
+    let query = `
+      SELECT 
+        cp.*,
+        b.platform,
+        b.customer_name,
+        b.booking_date,
+        c.name as captain_name
+      FROM commission_payments cp
+      JOIN bookings b ON cp.booking_id = b.id
+      JOIN captains c ON cp.captain_id = c.id
+      WHERE 1=1
+    `;
+    
+    const params = [];
+    let paramCount = 1;
+    
+    if (status) {
+      query += ` AND cp.payment_status = $${paramCount}`;
+      params.push(status);
+      paramCount++;
+    }
+    
+    if (captainId) {
+      query += ` AND cp.captain_id = $${paramCount}`;
+      params.push(captainId);
+      paramCount++;
+    }
+    
+    if (startDate) {
+      query += ` AND b.booking_date >= $${paramCount}`;
+      params.push(startDate);
+      paramCount++;
+    }
+    
+    if (endDate) {
+      query += ` AND b.booking_date <= $${paramCount}`;
+      params.push(endDate);
+      paramCount++;
+    }
+    
+    query += ' ORDER BY cp.created_at DESC';
+    
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error getting commission payments:', error);
+    res.status(500).json({ error: 'Failed to get commission payments' });
+  }
+});
+
+// Mark payment as paid
+app.post('/api/commissions/mark-paid', async (req, res) => {
+  try {
+    const { paymentId } = req.body;
+    
+    if (!paymentId) {
+      return res.status(400).json({ error: 'Payment ID required' });
+    }
+    
+    const result = await pool.query(`
+      UPDATE commission_payments 
+      SET payment_status = 'paid', paid_at = CURRENT_TIMESTAMP
+      WHERE id = $1
+      RETURNING *
+    `, [paymentId]);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Payment not found' });
+    }
+    
+    console.log('✅ Payment marked as paid:', result.rows[0]);
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error marking payment as paid:', error);
+    res.status(500).json({ error: 'Failed to mark payment as paid' });
+  }
+});
+
+// Get financial reports
+app.get('/api/commissions/reports', async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    
+    // Summary stats
+    const summaryResult = await pool.query(`
+      SELECT 
+        COUNT(*) as total_payments,
+        SUM(gross_amount) as total_gross,
+        SUM(commission_amount) as total_commission,
+        SUM(net_amount) as total_net,
+        SUM(CASE WHEN payment_status = 'paid' THEN net_amount ELSE 0 END) as total_paid,
+        SUM(CASE WHEN payment_status = 'pending' THEN net_amount ELSE 0 END) as total_pending
+      FROM commission_payments cp
+      JOIN bookings b ON cp.booking_id = b.id
+      ${startDate ? `WHERE b.booking_date >= '${startDate}'` : ''}
+      ${endDate ? (startDate ? 'AND' : 'WHERE') + ` b.booking_date <= '${endDate}'` : ''}
+    `);
+    
+    // By platform
+    const platformResult = await pool.query(`
+      SELECT 
+        b.platform,
+        COUNT(*) as booking_count,
+        SUM(cp.gross_amount) as total_gross,
+        SUM(cp.commission_amount) as total_commission,
+        SUM(cp.net_amount) as total_net
+      FROM commission_payments cp
+      JOIN bookings b ON cp.booking_id = b.id
+      ${startDate ? `WHERE b.booking_date >= '${startDate}'` : ''}
+      ${endDate ? (startDate ? 'AND' : 'WHERE') + ` b.booking_date <= '${endDate}'` : ''}
+      GROUP BY b.platform
+      ORDER BY total_gross DESC
+    `);
+    
+    // By captain
+    const captainResult = await pool.query(`
+      SELECT 
+        c.name as captain_name,
+        c.id as captain_id,
+        COUNT(*) as booking_count,
+        SUM(cp.gross_amount) as total_gross,
+        SUM(cp.commission_amount) as total_commission,
+        SUM(cp.net_amount) as total_net,
+        SUM(CASE WHEN cp.payment_status = 'paid' THEN cp.net_amount ELSE 0 END) as total_paid,
+        SUM(CASE WHEN cp.payment_status = 'pending' THEN cp.net_amount ELSE 0 END) as total_pending
+      FROM commission_payments cp
+      JOIN bookings b ON cp.booking_id = b.id
+      JOIN captains c ON cp.captain_id = c.id
+      ${startDate ? `WHERE b.booking_date >= '${startDate}'` : ''}
+      ${endDate ? (startDate ? 'AND' : 'WHERE') + ` b.booking_date <= '${endDate}'` : ''}
+      GROUP BY c.id, c.name
+      ORDER BY total_gross DESC
+    `);
+    
+    res.json({
+      summary: summaryResult.rows[0],
+      byPlatform: platformResult.rows,
+      byCaptain: captainResult.rows
+    });
+  } catch (error) {
+    console.error('Error getting commission reports:', error);
+    res.status(500).json({ error: 'Failed to get commission reports' });
+  }
+});
+
 // ⏰ AUTOMATIC SYNC SCHEDULER
 // Sync all platforms every 15 minutes
 console.log('⏰ Scheduling automatic sync every 15 minutes...');
