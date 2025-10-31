@@ -5,7 +5,18 @@ const axios = require('axios');
 const cors = require('cors');
 const cron = require('node-cron');
 const moment = require('moment');
+const { Pool, neonConfig } = require('@neondatabase/serverless');
+const ws = require('ws');
 require('dotenv').config();
+
+// Configure WebSocket for Neon
+neonConfig.webSocketConstructor = ws;
+
+// Initialize database connection
+const pool = new Pool({ 
+  connectionString: process.env.DATABASE_URL
+});
+pool.on('connect', () => console.log('✅ Connected to PostgreSQL database'));
 
 const app = express();
 app.use(cors());
@@ -17,36 +28,12 @@ app.use(express.static('public'));
 // Configuración para tu dominio WordPress
 const WORDPRESS_DOMAIN = 'https://www.nadakiexcursions.com';
 
-// Base de datos mejorada
-let database = {
-  bookings: [],
-  captains: [
-    {
-      id: 'captain1',
-      name: 'John Doe',
-      phone: '+15551112222',
-      status: 'available',
-      specialties: ['sailboat', 'yacht', 'fishing'],
-      email: 'john@nadakiexcursions.com',
-      photo: 'https://example.com/captain1.jpg'
-    },
-    {
-      id: 'captain2',
-      name: 'Sarah Smith',
-      phone: '+15553334444',
-      status: 'available',
-      specialties: ['speedboat', 'sailboat'],
-      email: 'sarah@nadakiexcursions.com',
-      photo: 'https://example.com/captain2.jpg'
-    }
-  ],
-  customers: [],
-  platforms: [
-    'Boat Setter', 'Airbnb', 'Sailo', 'Website', 'Get My Boat', 
-    'Viator', 'Click and Boat', 'Odisea Rental', 'Sail.net', 
-    'Samboat', 'BoatLink', 'Borrow a boat', 'Nautical Monkey'
-  ]
-};
+// Platform list (constant)
+const PLATFORMS = [
+  'Boat Setter', 'Airbnb', 'Sailo', 'Website', 'Get My Boat', 
+  'Viator', 'Click and Boat', 'Odisea Rental', 'Sail.net', 
+  'Samboat', 'BoatLink', 'Borrow a boat', 'Nautical Monkey'
+];
 
 // 🎯 WEBHOOK UNIVERSAL para todas las plataformas
 app.post('/webhook/booking/:platform', async (req, res) => {
@@ -60,16 +47,37 @@ app.post('/webhook/booking/:platform', async (req, res) => {
     const normalizedBooking = normalizeBookingData(platform, bookingData);
     
     // Crear registro
+    const bookingId = `${platform.toLowerCase().replace(/ /g, '_')}_${Date.now()}`;
     const bookingRecord = {
-      id: `${platform.toLowerCase().replace(/ /g, '_')}_${Date.now()}`,
-      ...normalizedBooking,
+      id: bookingId,
       platform: platform,
+      customer_name: normalizedBooking.customer_name,
+      customer_phone: normalizedBooking.customer_phone,
+      customer_email: normalizedBooking.customer_email,
+      boat_type: normalizedBooking.boat_type,
+      booking_date: normalizedBooking.booking_date,
+      start_time: normalizedBooking.start_time,
+      duration_hours: normalizedBooking.duration_hours,
+      total_amount: normalizedBooking.total_amount,
       status: 'confirmed',
-      created_at: new Date().toISOString(),
+      notes: normalizedBooking.special_requests || '',
       internal_notes: `From ${platform} API`
     };
     
-    database.bookings.push(bookingRecord);
+    // Save to database
+    await pool.query(`
+      INSERT INTO bookings (
+        id, platform, customer_name, customer_phone, customer_email,
+        boat_type, booking_date, start_time, duration_hours, total_amount,
+        status, notes, internal_notes
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+    `, [
+      bookingRecord.id, bookingRecord.platform, bookingRecord.customer_name,
+      bookingRecord.customer_phone, bookingRecord.customer_email, bookingRecord.boat_type,
+      bookingRecord.booking_date, bookingRecord.start_time, bookingRecord.duration_hours,
+      bookingRecord.total_amount, bookingRecord.status, bookingRecord.notes,
+      bookingRecord.internal_notes
+    ]);
 
     // Asignar capitán y enviar notificaciones
     const assignedCaptain = await assignCaptain(normalizedBooking.boat_type);
@@ -156,31 +164,35 @@ function calculateDuration(startDate, endDate) {
 
 // 👨‍✈️ SISTEMA INTELIGENTE DE ASIGNACIÓN
 async function assignCaptain(boatType) {
-  const availableCaptains = database.captains.filter(
-    captain => captain.status === 'available'
+  const captainsResult = await pool.query(
+    "SELECT * FROM captains WHERE status = 'available'"
   );
+  const availableCaptains = captainsResult.rows;
   
   if (availableCaptains.length === 0) return null;
   
+  const today = moment().format('YYYY-MM-DD');
+  
   // Priorizar capitanes con especialidades que coincidan
-  const scoredCaptains = availableCaptains.map(captain => {
-    let score = captain.rating || 4.0;
+  const scoredCaptains = await Promise.all(availableCaptains.map(async captain => {
+    let score = 4.0;
     
     // Bonus por especialidad
-    if (captain.specialties.some(spec => 
+    if (captain.specialties && captain.specialties.some(spec => 
       boatType.toLowerCase().includes(spec.toLowerCase()))) {
       score += 1.0;
     }
     
     // Bonus por menos reservas hoy
-    const todayBookings = database.bookings.filter(
-      b => b.assigned_captain_id === captain.id && 
-      b.booking_date === moment().format('YYYY-MM-DD')
-    ).length;
+    const todayBookingsResult = await pool.query(
+      'SELECT COUNT(*) FROM bookings WHERE assigned_captain_id = $1 AND booking_date = $2',
+      [captain.id, today]
+    );
+    const todayBookings = parseInt(todayBookingsResult.rows[0].count);
     score -= (todayBookings * 0.1);
     
     return { captain, score };
-  });
+  }));
   
   scoredCaptains.sort((a, b) => b.score - a.score);
   return scoredCaptains[0]?.captain || availableCaptains[0];
@@ -188,17 +200,24 @@ async function assignCaptain(boatType) {
 
 // 📝 ACTUALIZAR RESERVA CON CAPITÁN
 async function updateBookingWithCaptain(bookingId, captain) {
-  const booking = database.bookings.find(b => b.id === bookingId);
-  if (booking) {
-    booking.assigned_captain_id = captain.id;
-    booking.assigned_captain_name = captain.name;
-    booking.assigned_captain_phone = captain.phone;
-    booking.status = 'assigned';
-  }
+  await pool.query(`
+    UPDATE bookings 
+    SET assigned_captain_id = $1, 
+        assigned_captain_name = $2, 
+        assigned_captain_phone = $3,
+        status = 'assigned'
+    WHERE id = $4
+  `, [captain.id, captain.name, captain.phone, bookingId]);
 }
 
 // 📱 SISTEMA DE NOTIFICACIONES MEJORADO
 async function sendNotifications(captain, booking) {
+  // Skip notifications if Twilio is not configured (test/dev mode)
+  if (!process.env.TWILIO_SID || !process.env.TWILIO_AUTH_TOKEN) {
+    console.log(`📧 [SKIPPED] Notificaciones para reserva ${booking.id} (Twilio not configured)`);
+    return;
+  }
+  
   const client = twilio(process.env.TWILIO_SID, process.env.TWILIO_AUTH_TOKEN);
   
   // WhatsApp al capitán
@@ -247,102 +266,158 @@ Te enviaremos los detalles de tu capitán en breve.
 }
 
 // 🌐 ENDPOINTS PARA TU WORDPRESS Y BOOKBOARD
-app.get('/api/dashboard-data', (req, res) => {
-  const today = moment().format('YYYY-MM-DD');
-  
-  const todayBookings = database.bookings.filter(b => b.booking_date === today);
-  const weekBookings = database.bookings.filter(b => 
-    moment(b.booking_date).isBetween(moment().startOf('week'), moment().endOf('week'))
-  );
-  
-  const dashboardData = {
-    // Métricas principales
-    today_bookings: todayBookings.length,
-    week_bookings: weekBookings.length,
-    active_captains: database.captains.filter(c => c.status === 'available').length,
-    total_captains: database.captains.length,
+app.get('/api/dashboard-data', async (req, res) => {
+  try {
+    const today = moment().format('YYYY-MM-DD');
+    const weekStart = moment().startOf('week').format('YYYY-MM-DD');
+    const weekEnd = moment().endOf('week').format('YYYY-MM-DD');
     
-    // Revenue
-    today_revenue: todayBookings.reduce((sum, b) => sum + (b.total_amount || 0), 0),
-    week_revenue: weekBookings.reduce((sum, b) => sum + (b.total_amount || 0), 0),
-    total_revenue: database.bookings.reduce((sum, b) => sum + (b.total_amount || 0), 0),
+    // Get today's bookings
+    const todayResult = await pool.query(
+      'SELECT * FROM bookings WHERE booking_date = $1',
+      [today]
+    );
     
-    // Datos para gráficos
-    bookings_by_platform: getBookingsByPlatform(),
-    revenue_by_platform: getRevenueByPlatform(),
+    // Get week's bookings
+    const weekResult = await pool.query(
+      'SELECT * FROM bookings WHERE booking_date >= $1 AND booking_date <= $2',
+      [weekStart, weekEnd]
+    );
     
-    // Reservas recientes
-    recent_bookings: database.bookings.slice(-10).reverse(),
+    // Get all bookings for totals
+    const allBookings = await pool.query('SELECT * FROM bookings');
     
-    // Capitanes activos
-    active_captains_list: database.captains.filter(c => c.status === 'available')
-  };
-  
-  res.json(dashboardData);
+    // Get captains
+    const captainsResult = await pool.query('SELECT * FROM captains');
+    const captains = captainsResult.rows;
+    
+    // Calculate metrics
+    const todayBookings = todayResult.rows;
+    const weekBookings = weekResult.rows;
+    const totalBookings = allBookings.rows;
+    
+    // Group bookings by platform
+    const bookingsByPlatform = {};
+    const revenueByPlatform = {};
+    totalBookings.forEach(booking => {
+      bookingsByPlatform[booking.platform] = (bookingsByPlatform[booking.platform] || 0) + 1;
+      revenueByPlatform[booking.platform] = (revenueByPlatform[booking.platform] || 0) + (booking.total_amount || 0);
+    });
+    
+    const dashboardData = {
+      // Métricas principales
+      today_bookings: todayBookings.length,
+      week_bookings: weekBookings.length,
+      active_captains: captains.filter(c => c.status === 'available').length,
+      total_captains: captains.length,
+      
+      // Revenue
+      today_revenue: todayBookings.reduce((sum, b) => sum + (b.total_amount || 0), 0),
+      week_revenue: weekBookings.reduce((sum, b) => sum + (b.total_amount || 0), 0),
+      total_revenue: totalBookings.reduce((sum, b) => sum + (b.total_amount || 0), 0),
+      
+      // Datos para gráficos
+      bookings_by_platform: bookingsByPlatform,
+      revenue_by_platform: revenueByPlatform,
+      
+      // Reservas recientes (últimas 10)
+      recent_bookings: totalBookings.slice(-10).reverse(),
+      
+      // Capitanes activos
+      active_captains_list: captains.filter(c => c.status === 'available')
+    };
+    
+    res.json(dashboardData);
+  } catch (error) {
+    console.error('Error fetching dashboard data:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
-// 📊 DATOS PARA GRÁFICOS
-function getBookingsByPlatform() {
-  const platformCounts = {};
-  database.bookings.forEach(booking => {
-    platformCounts[booking.platform] = (platformCounts[booking.platform] || 0) + 1;
-  });
-  return platformCounts;
-}
-
-function getRevenueByPlatform() {
-  const platformRevenue = {};
-  database.bookings.forEach(booking => {
-    platformRevenue[booking.platform] = (platformRevenue[booking.platform] || 0) + (booking.total_amount || 0);
-  });
-  return platformRevenue;
-}
-
 // 🎯 ENDPOINTS ESPECÍFICOS
-app.get('/api/bookings', (req, res) => {
-  const { platform, status, date } = req.query;
-  
-  let filteredBookings = database.bookings;
-  
-  if (platform) filteredBookings = filteredBookings.filter(b => b.platform === platform);
-  if (status) filteredBookings = filteredBookings.filter(b => b.status === status);
-  if (date) filteredBookings = filteredBookings.filter(b => b.booking_date === date);
-  
-  res.json(filteredBookings);
+app.get('/api/bookings', async (req, res) => {
+  try {
+    const { platform, status, date } = req.query;
+    
+    let query = 'SELECT * FROM bookings WHERE 1=1';
+    const params = [];
+    let paramIndex = 1;
+    
+    if (platform) {
+      query += ` AND platform = $${paramIndex}`;
+      params.push(platform);
+      paramIndex++;
+    }
+    if (status) {
+      query += ` AND status = $${paramIndex}`;
+      params.push(status);
+      paramIndex++;
+    }
+    if (date) {
+      query += ` AND booking_date = $${paramIndex}`;
+      params.push(date);
+      paramIndex++;
+    }
+    
+    query += ' ORDER BY created_at DESC';
+    
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching bookings:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 app.get('/api/platforms', (req, res) => {
-  res.json(database.platforms);
+  res.json(PLATFORMS);
 });
 
-app.get('/api/captains', (req, res) => {
-  res.json(database.captains);
+app.get('/api/captains', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM captains');
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching captains:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // 📍 WEBHOOK PARA RESPUESTAS DE CAPITANES
 app.post('/webhook/captain-response', async (req, res) => {
-  const { captain_phone, booking_id, response } = req.body;
-  
-  const booking = database.bookings.find(b => b.id === booking_id);
-  const captain = database.captains.find(c => c.phone === captain_phone);
-  
-  if (response.toLowerCase().includes('sí') || response.toLowerCase().includes('si')) {
-    booking.status = 'captain_confirmed';
-    console.log(`✅ Capitán ${captain.name} confirmó reserva ${booking_id}`);
-  } else {
-    booking.status = 'needs_reassignment';
-    console.log(`❌ Capitán ${captain.name} rechazó reserva ${booking_id}`);
-    // Lógica para reasignar
+  try {
+    const { captain_phone, booking_id, response } = req.body;
+    
+    const bookingResult = await pool.query('SELECT * FROM bookings WHERE id = $1', [booking_id]);
+    const captainResult = await pool.query('SELECT * FROM captains WHERE phone = $1', [captain_phone]);
+    
+    if (bookingResult.rows.length === 0 || captainResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Booking or captain not found' });
+    }
+    
+    const captain = captainResult.rows[0];
+    
+    if (response.toLowerCase().includes('sí') || response.toLowerCase().includes('si')) {
+      await pool.query("UPDATE bookings SET status = 'captain_confirmed' WHERE id = $1", [booking_id]);
+      console.log(`✅ Capitán ${captain.name} confirmó reserva ${booking_id}`);
+    } else {
+      await pool.query("UPDATE bookings SET status = 'needs_reassignment' WHERE id = $1", [booking_id]);
+      console.log(`❌ Capitán ${captain.name} rechazó reserva ${booking_id}`);
+      // Lógica para reasignar
+    }
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error processing captain response:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
-  
-  res.json({ success: true });
 });
 
 // 🚀 INICIAR SERVIDOR
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Nadaki Excursions Backend running on port ${PORT}`);
   console.log(`🌐 WordPress: ${WORDPRESS_DOMAIN}`);
-  console.log(`📧 Webhooks disponibles para ${database.platforms.length} plataformas`);
+  console.log(`📧 Webhooks disponibles para ${PLATFORMS.length} plataformas`);
   console.log(`🔗 Dashboard: http://localhost:${PORT}/api/dashboard-data`);
 });

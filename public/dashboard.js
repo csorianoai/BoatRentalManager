@@ -136,7 +136,10 @@ async function loadDashboardData() {
         updateBookingsTable(dashboardData.recent_bookings);
         
         // Update timestamp
-        document.getElementById('lastUpdate').textContent = new Date().toLocaleString(currentLang === 'es' ? 'es-ES' : 'en-US');
+        const lastUpdate = document.getElementById('lastUpdate');
+        if (lastUpdate) {
+            lastUpdate.textContent = new Date().toLocaleString(currentLang === 'es' ? 'es-ES' : 'en-US');
+        }
         
         hideLoadingState();
     } catch (error) {
@@ -148,6 +151,8 @@ async function loadDashboardData() {
 
 function updatePlatformFilter(platforms) {
     const select = document.getElementById('platformFilter');
+    if (!select) return;
+    
     const currentValue = select.value;
     
     // Keep "All" option and add platforms
@@ -163,20 +168,28 @@ function updatePlatformFilter(platforms) {
 }
 
 function updateKPIs(data) {
-    document.getElementById('todayBookings').textContent = data.today_bookings || 0;
-    document.getElementById('todayRevenue').textContent = `$${(data.today_revenue || 0).toLocaleString()}`;
-    document.getElementById('activeCaptains').textContent = data.active_captains || 0;
-    document.getElementById('totalCaptains').textContent = translate('of-total').replace('{count}', data.total_captains || 0);
+    const todayBookings = document.getElementById('todayBookings');
+    const todayRevenue = document.getElementById('todayRevenue');
+    const activeCaptains = document.getElementById('activeCaptains');
+    const totalCaptains = document.getElementById('totalCaptains');
+    const bookingChange = document.getElementById('bookingChange');
+    const revenueChange = document.getElementById('revenueChange');
+    const totalRevenueBadge = document.getElementById('totalRevenueBadge');
+    
+    if (todayBookings) todayBookings.textContent = data.today_bookings || 0;
+    if (todayRevenue) todayRevenue.textContent = `$${(data.today_revenue || 0).toLocaleString()}`;
+    if (activeCaptains) activeCaptains.textContent = data.active_captains || 0;
+    if (totalCaptains) totalCaptains.textContent = translate('of-total').replace('{count}', data.total_captains || 0);
     
     // Calculate changes (simulated for now)
-    const bookingChange = data.today_bookings > 0 ? '+15%' : '0%';
-    const revenueChange = data.today_revenue > 0 ? '+23%' : '0%';
+    const bookingChangeText = data.today_bookings > 0 ? '+15%' : '0%';
+    const revenueChangeText = data.today_revenue > 0 ? '+23%' : '0%';
     
-    document.getElementById('bookingChange').textContent = bookingChange;
-    document.getElementById('revenueChange').textContent = revenueChange;
+    if (bookingChange) bookingChange.textContent = bookingChangeText;
+    if (revenueChange) revenueChange.textContent = revenueChangeText;
     
     // Total revenue badge
-    document.getElementById('totalRevenueBadge').textContent = `$${(data.total_revenue || 0).toLocaleString()}`;
+    if (totalRevenueBadge) totalRevenueBadge.textContent = `$${(data.total_revenue || 0).toLocaleString()}`;
 }
 
 function updateCharts(data) {
