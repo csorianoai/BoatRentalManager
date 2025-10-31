@@ -13,6 +13,17 @@ let gpsWatchId = null;
 // ========================================
 
 document.addEventListener('DOMContentLoaded', () => {
+    // Register Service Worker for PWA
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js')
+            .then(registration => {
+                console.log('✅ Service Worker registered:', registration);
+            })
+            .catch(error => {
+                console.error('❌ Service Worker registration failed:', error);
+            });
+    }
+    
     // Check if captain is already logged in
     const storedCaptain = localStorage.getItem('captain');
     if (storedCaptain) {
