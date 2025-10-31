@@ -11,6 +11,9 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Servir archivos estáticos del dashboard
+app.use(express.static('public'));
+
 // Configuración para tu dominio WordPress
 const WORDPRESS_DOMAIN = 'https://www.nadakiexcursions.com';
 
