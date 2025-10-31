@@ -172,7 +172,33 @@ async function initializeDatabase() {
       )
     `);
     
-    console.log('✅ Database schema initialized successfully (all 5 phases)');
+    // AUTHENTICATION: Create sessions table (required for Replit Auth)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS sessions (
+        sid VARCHAR PRIMARY KEY,
+        sess JSONB NOT NULL,
+        expire TIMESTAMP NOT NULL
+      )
+    `);
+    
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS IDX_session_expire ON sessions (expire)
+    `);
+    
+    // AUTHENTICATION: Create users table (required for Replit Auth)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        email VARCHAR UNIQUE,
+        first_name VARCHAR,
+        last_name VARCHAR,
+        profile_image_url VARCHAR,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    
+    console.log('✅ Database schema initialized successfully (all 5 phases + authentication)');
   } catch (error) {
     console.error('❌ Error initializing database schema:', error);
     throw error;
