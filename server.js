@@ -146,6 +146,47 @@ async function initializeDatabase() {
 // Initialize database before starting server
 initializeDatabase().catch(console.error);
 
+// ========================================
+// RATE LIMITING & SECURITY
+// ========================================
+
+// Rate limiting setup (simple in-memory)
+const rateLimitMap = new Map();
+const RATE_LIMIT_WINDOW = 60000; // 1 minute  
+const MAX_REQUESTS_PER_WINDOW = 20; // 20 requests per minute
+
+function rateLimit(req, res, next) {
+    const ip = req.ip || req.connection.remoteAddress;
+    const now = Date.now();
+    
+    if (!rateLimitMap.has(ip)) {
+        rateLimitMap.set(ip, []);
+    }
+    
+    const requests = rateLimitMap.get(ip).filter(timestamp => now - timestamp < RATE_LIMIT_WINDOW);
+    
+    if (requests.length >= MAX_REQUESTS_PER_WINDOW) {
+        return res.status(429).json({ error: 'Too many requests. Please wait a moment.' });
+    }
+    
+    requests.push(now);
+    rateLimitMap.set(ip, requests);
+    next();
+}
+
+// Clean up rate limit map periodically
+setInterval(() => {
+    const now = Date.now();
+    for (const [ip, requests] of rateLimitMap.entries()) {
+        const validRequests = requests.filter(timestamp => now - timestamp < RATE_LIMIT_WINDOW);
+        if (validRequests.length === 0) {
+            rateLimitMap.delete(ip);
+        } else {
+            rateLimitMap.set(ip, validRequests);
+        }
+    }
+}, RATE_LIMIT_WINDOW);
+
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -561,25 +602,69 @@ INFORMACIÓN IMPORTANTE:
 
 INSTRUCCIONES:
 1. Sé amigable, profesional y entusiasta sobre los tours
-2. Haz preguntas para entender: fecha, número de personas, tipo de tour, ocasión especial
-3. Sugiere opciones basadas en las necesidades del cliente
-4. Cuando tengas toda la información necesaria, crea la reserva
-5. Si no estás seguro de algo, pregunta al cliente
+2. Haz preguntas para entender las necesidades del cliente
+3. Sugiere opciones basadas en sus preferencias
+4. IMPORTANTE: Captura TODOS los datos requeridos antes de crear una reserva
+5. Si falta algún dato, pregúntalo específicamente
 
-PARA CREAR UNA RESERVA necesitas:
-- Nombre del cliente
-- Teléfono
-- Email
-- Fecha del tour
-- Número de personas
-- Tipo de barco/tour preferido
-- Hora de inicio
+DATOS REQUERIDOS PARA CREAR UNA RESERVA (TODOS SON OBLIGATORIOS):
+1. Nombre completo del cliente
+2. Número de teléfono (formato +1XXXXXXXXXX)
+3. Email del cliente (debe ser válido)
+4. Fecha del tour (formato YYYY-MM-DD)
+5. Número de personas
+6. Tipo de tour (medio día o día completo)
+7. Hora de inicio (9:00 AM, 12:00 PM o 3:00 PM)
 
-Cuando tengas toda esta información, responde con: "CREAR_RESERVA: {datos en JSON}"`;
+IMPORTANTE SOBRE CREAR RESERVAS:
+- NUNCA crees una reserva si falta alguno de los 7 datos obligatorios
+- Pregunta uno por uno los datos que falten
+- Confirma todos los detalles con el cliente antes de crear la reserva
+- Solo cuando tengas TODOS los datos, usa el formato: "CREAR_RESERVA: {JSON con los datos}"
 
-app.post('/api/chat/send', async (req, res) => {
+Formato JSON para crear reserva:
+{
+  "customerName": "Nombre Completo",
+  "customerPhone": "+1XXXXXXXXXX", 
+  "customerEmail": "email@ejemplo.com",
+  "date": "YYYY-MM-DD",
+  "numberOfPeople": 6,
+  "boatType": "Tour de medio día" o "Tour de día completo",
+  "startTime": "09:00" o "12:00" o "15:00",
+  "durationHours": 4 o 8,
+  "amount": 1000,
+  "notes": "Cualquier nota especial del cliente"
+}`;
+
+app.post('/api/chat/send', rateLimit, async (req, res) => {
   try {
     const { sessionId, message, customerName, customerPhone, customerEmail } = req.body;
+    
+    // Validation
+    if (!sessionId || typeof sessionId !== 'string' || sessionId.length > 200) {
+      return res.status(400).json({ error: 'Valid sessionId is required (max 200 chars)' });
+    }
+    
+    if (!message || typeof message !== 'string' || message.trim().length === 0) {
+      return res.status(400).json({ error: 'Message is required' });
+    }
+    
+    if (message.length > 2000) {
+      return res.status(400).json({ error: 'Message is too long (max 2000 chars)' });
+    }
+    
+    // Validate customer data if provided
+    if (customerName && typeof customerName !== 'string') {
+      return res.status(400).json({ error: 'Customer name must be a string' });
+    }
+    
+    if (customerPhone && typeof customerPhone !== 'string') {
+      return res.status(400).json({ error: 'Customer phone must be a string' });
+    }
+    
+    if (customerEmail && (typeof customerEmail !== 'string' || (customerEmail && !customerEmail.includes('@')))) {
+      return res.status(400).json({ error: 'Invalid customer email format' });
+    }
     
     // Get or create conversation
     let conversation = await pool.query(

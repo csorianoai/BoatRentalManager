@@ -189,6 +189,45 @@
         <p>© 2025 Nadaki Excursions - <span data-i18n="auto-refresh">Actualización automática cada 30s</span></p>
     </footer>
 
+    <!-- AI Chat Widget -->
+    <button class="chat-widget-trigger" id="chatTrigger" data-testid="button-chat-trigger">
+        💬
+    </button>
+
+    <div class="chat-widget-container" id="chatWidget">
+        <!-- Header -->
+        <div class="chat-widget-header">
+            <div class="chat-widget-header-left">
+                <div class="chat-avatar">⚓</div>
+                <div>
+                    <div class="chat-widget-title">Nadaki Assistant</div>
+                    <div class="chat-status">
+                        <span class="status-dot"></span>
+                        <span>Online</span>
+                    </div>
+                </div>
+            </div>
+            <button class="chat-close-btn" id="chatClose" data-testid="button-chat-close">✕</button>
+        </div>
+
+        <!-- Messages -->
+        <div class="chat-messages-container" id="chatMessages"></div>
+
+        <!-- Input -->
+        <div class="chat-input-area">
+            <textarea 
+                class="chat-input" 
+                id="chatInput" 
+                placeholder="Escribe tu mensaje..."
+                rows="1"
+                data-testid="input-chat-message"
+            ></textarea>
+            <button class="chat-send-btn" id="chatSend" data-testid="button-chat-send">
+                ➤
+            </button>
+        </div>
+    </div>
+
     <script src="dashboard.js"></script>
 </body>
 </html>

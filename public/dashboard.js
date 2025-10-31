@@ -681,3 +681,260 @@ function showError(message) {
 window.addEventListener('beforeunload', () => {
     stopAutoRefresh();
 });
+
+// ==========================================
+// 🤖 AI CHATBOT FUNCTIONALITY
+// ==========================================
+
+let chatSessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+let chatMessages = [];
+let isTyping = false;
+
+// Initialize chat widget
+function initChatWidget() {
+    const trigger = document.getElementById('chatTrigger');
+    const widget = document.getElementById('chatWidget');
+    const closeBtn = document.getElementById('chatClose');
+    const sendBtn = document.getElementById('chatSend');
+    const input = document.getElementById('chatInput');
+
+    if (!trigger || !widget) return;
+
+    // Toggle widget
+    trigger.addEventListener('click', async () => {
+        widget.classList.toggle('active');
+        if (widget.classList.contains('active') && chatMessages.length === 0) {
+            // Load conversation history
+            await loadConversationHistory();
+            
+            // If no history, send welcome message
+            if (chatMessages.length === 0) {
+                addAIMessage('¡Hola! 👋 Soy el asistente virtual de Nadaki Excursions. ¿En qué puedo ayudarte hoy? Puedo ayudarte a reservar un tour, responder preguntas sobre nuestros servicios, o consultar disponibilidad.');
+            }
+        }
+        if (widget.classList.contains('active')) {
+            input.focus();
+        }
+    });
+
+    // Close widget
+    closeBtn.addEventListener('click', () => {
+        widget.classList.remove('active');
+    });
+
+    // Send message on button click
+    sendBtn.addEventListener('click', sendChatMessage);
+
+    // Send message on Enter key
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendChatMessage();
+        }
+    });
+
+    // Auto-resize textarea
+    input.addEventListener('input', () => {
+        input.style.height = 'auto';
+        input.style.height = input.scrollHeight + 'px';
+    });
+}
+
+async function sendChatMessage() {
+    const input = document.getElementById('chatInput');
+    const message = input.value.trim();
+
+    if (!message || isTyping) return;
+
+    // Add user message to UI
+    addUserMessage(message);
+    input.value = '';
+    input.style.height = 'auto';
+
+    // Show typing indicator
+    showTyping();
+
+    try {
+        const response = await fetch(`${API_BASE}/api/chat/send`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                sessionId: chatSessionId,
+                message: message,
+                customerName: '',
+                customerPhone: '',
+                customerEmail: ''
+            })
+        });
+
+        const data = await response.json();
+        
+        // Remove typing indicator
+        hideTyping();
+
+        // Add AI response
+        let aiMessage = data.response;
+        
+        // Remove the CREAR_RESERVA: part from the message if it exists
+        if (aiMessage.includes('CREAR_RESERVA:')) {
+            aiMessage = aiMessage.split('CREAR_RESERVA:')[0].trim() || '✅ ¡Perfecto! He creado tu reserva. Recibirás una confirmación pronto.';
+        }
+        
+        addAIMessage(aiMessage);
+
+        // If a booking was created, show success notification
+        if (data.bookingId) {
+            setTimeout(() => {
+                addAIMessage(`✅ Reserva creada exitosamente! ID: ${data.bookingId}\n\nUno de nuestros agentes se pondrá en contacto contigo pronto para confirmar los detalles.`);
+            }, 500);
+        }
+
+    } catch (error) {
+        hideTyping();
+        addAIMessage('❌ Lo siento, hubo un error al procesar tu mensaje. Por favor intenta de nuevo.');
+        console.error('Chat error:', error);
+    }
+}
+
+function addUserMessage(text) {
+    const messagesContainer = document.getElementById('chatMessages');
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'chat-message user';
+    
+    const time = new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    
+    messageDiv.innerHTML = `
+        <div class="message-bubble">${escapeHtml(text)}</div>
+        <div class="message-timestamp">${time}</div>
+    `;
+    
+    messagesContainer.appendChild(messageDiv);
+    scrollToBottom();
+    chatMessages.push({ role: 'user', content: text, timestamp: new Date().toISOString() });
+}
+
+function addAIMessage(text) {
+    const messagesContainer = document.getElementById('chatMessages');
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'chat-message ai';
+    
+    const time = new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    
+    messageDiv.innerHTML = `
+        <div class="message-bubble">${escapeHtml(text)}</div>
+        <div class="message-timestamp">${time}</div>
+    `;
+    
+    messagesContainer.appendChild(messageDiv);
+    scrollToBottom();
+    chatMessages.push({ role: 'assistant', content: text, timestamp: new Date().toISOString() });
+}
+
+function showTyping() {
+    isTyping = true;
+    const messagesContainer = document.getElementById('chatMessages');
+    const typingDiv = document.createElement('div');
+    typingDiv.id = 'typingIndicator';
+    typingDiv.className = 'chat-message ai';
+    typingDiv.innerHTML = `
+        <div class="typing-indicator">
+            <div class="typing-dot"></div>
+            <div class="typing-dot"></div>
+            <div class="typing-dot"></div>
+        </div>
+    `;
+    messagesContainer.appendChild(typingDiv);
+    scrollToBottom();
+}
+
+function hideTyping() {
+    isTyping = false;
+    const typingIndicator = document.getElementById('typingIndicator');
+    if (typingIndicator) {
+        typingIndicator.remove();
+    }
+}
+
+function scrollToBottom() {
+    const messagesContainer = document.getElementById('chatMessages');
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+async function loadConversationHistory() {
+    try {
+        const response = await fetch(`${API_BASE}/api/chat/conversations/${chatSessionId}`);
+        
+        if (response.ok) {
+            const data = await response.json();
+            
+            if (data.messages && data.messages.length > 0) {
+                chatMessages = data.messages;
+                
+                // Clear messages container
+                const messagesContainer = document.getElementById('chatMessages');
+                messagesContainer.innerHTML = '';
+                
+                // Render all messages
+                data.messages.forEach(msg => {
+                    if (msg.role === 'user') {
+                        renderUserMessage(msg.content, msg.timestamp);
+                    } else if (msg.role === 'assistant') {
+                        renderAIMessage(msg.content, msg.timestamp);
+                    }
+                });
+                
+                scrollToBottom();
+            }
+        }
+    } catch (error) {
+        console.error('Error loading conversation history:', error);
+        // Continue with fresh conversation if loading fails
+    }
+}
+
+function renderUserMessage(text, timestamp) {
+    const messagesContainer = document.getElementById('chatMessages');
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'chat-message user';
+    
+    const time = timestamp 
+        ? new Date(timestamp).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+        : new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    
+    messageDiv.innerHTML = `
+        <div class="message-bubble">${escapeHtml(text)}</div>
+        <div class="message-timestamp">${time}</div>
+    `;
+    
+    messagesContainer.appendChild(messageDiv);
+}
+
+function renderAIMessage(text, timestamp) {
+    const messagesContainer = document.getElementById('chatMessages');
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'chat-message ai';
+    
+    const time = timestamp 
+        ? new Date(timestamp).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+        : new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    
+    messageDiv.innerHTML = `
+        <div class="message-bubble">${escapeHtml(text)}</div>
+        <div class="message-timestamp">${time}</div>
+    `;
+    
+    messagesContainer.appendChild(messageDiv);
+}
+
+// Initialize chat widget when DOM loads
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initChatWidget);
+} else {
+    initChatWidget();
+}
