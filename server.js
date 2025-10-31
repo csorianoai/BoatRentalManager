@@ -585,7 +585,7 @@ Te enviaremos los detalles de tu capitán en breve.
 }
 
 // 🌐 ENDPOINTS PARA TU WORDPRESS Y BOOKBOARD
-app.get('/api/dashboard-data', async (req, res) => {
+app.get('/api/dashboard-data', isAuthenticated, async (req, res) => {
   try {
     const today = moment().format('YYYY-MM-DD');
     const weekStart = moment().startOf('week').format('YYYY-MM-DD');
@@ -654,7 +654,7 @@ app.get('/api/dashboard-data', async (req, res) => {
 });
 
 // 🎯 ENDPOINTS ESPECÍFICOS
-app.get('/api/bookings', async (req, res) => {
+app.get('/api/bookings', isAuthenticated, async (req, res) => {
   try {
     const { platform, status, date } = req.query;
     
@@ -688,11 +688,11 @@ app.get('/api/bookings', async (req, res) => {
   }
 });
 
-app.get('/api/platforms', (req, res) => {
+app.get('/api/platforms', isAuthenticated, (req, res) => {
   res.json(PLATFORMS);
 });
 
-app.get('/api/captains', async (req, res) => {
+app.get('/api/captains', isAuthenticated, async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM captains');
     res.json(result.rows);
@@ -919,7 +919,7 @@ app.post('/api/chat/send', rateLimit, async (req, res) => {
 });
 
 // Get conversation history
-app.get('/api/chat/conversations/:sessionId', async (req, res) => {
+app.get('/api/chat/conversations/:sessionId', isAuthenticated, async (req, res) => {
   try {
     const result = await pool.query(
       'SELECT * FROM chat_conversations WHERE session_id = $1',
@@ -933,7 +933,7 @@ app.get('/api/chat/conversations/:sessionId', async (req, res) => {
 });
 
 // List all conversations
-app.get('/api/chat/conversations', async (req, res) => {
+app.get('/api/chat/conversations', isAuthenticated, async (req, res) => {
   try {
     const result = await pool.query(
       'SELECT * FROM chat_conversations ORDER BY updated_at DESC LIMIT 50'
@@ -949,7 +949,7 @@ app.get('/api/chat/conversations', async (req, res) => {
 const syncService = require('./server/syncService');
 
 // Trigger sync for specific platform
-app.post('/api/sync/trigger/:platform', async (req, res) => {
+app.post('/api/sync/trigger/:platform', isAuthenticated, async (req, res) => {
   try {
     const { platform } = req.params;
     
@@ -966,7 +966,7 @@ app.post('/api/sync/trigger/:platform', async (req, res) => {
 });
 
 // Trigger sync for all platforms
-app.post('/api/sync/trigger-all', async (req, res) => {
+app.post('/api/sync/trigger-all', isAuthenticated, async (req, res) => {
   try {
     const result = await syncService.syncAllPlatforms();
     res.json(result);
@@ -977,7 +977,7 @@ app.post('/api/sync/trigger-all', async (req, res) => {
 });
 
 // Get sync status for all platforms
-app.get('/api/sync/status', async (req, res) => {
+app.get('/api/sync/status', isAuthenticated, async (req, res) => {
   try {
     const status = await syncService.getSyncStatus();
     res.json(status);
@@ -988,7 +988,7 @@ app.get('/api/sync/status', async (req, res) => {
 });
 
 // Get detected conflicts
-app.get('/api/sync/conflicts', async (req, res) => {
+app.get('/api/sync/conflicts', isAuthenticated, async (req, res) => {
   try {
     const conflicts = await syncService.getConflicts();
     res.json(conflicts);
@@ -999,7 +999,7 @@ app.get('/api/sync/conflicts', async (req, res) => {
 });
 
 // Resolve a conflict (cancel one of the bookings)
-app.post('/api/sync/resolve-conflict', async (req, res) => {
+app.post('/api/sync/resolve-conflict', isAuthenticated, async (req, res) => {
   try {
     const { bookingIdToCancel, reason } = req.body;
     
@@ -1233,7 +1233,7 @@ app.get('/api/captain/:captainId/trip-logs', async (req, res) => {
 // ========================================
 
 // Get all commission rules
-app.get('/api/commissions/rules', async (req, res) => {
+app.get('/api/commissions/rules', isAuthenticated, async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT * FROM commission_rules 
@@ -1248,7 +1248,7 @@ app.get('/api/commissions/rules', async (req, res) => {
 });
 
 // Create or update commission rule
-app.post('/api/commissions/rules', async (req, res) => {
+app.post('/api/commissions/rules', isAuthenticated, async (req, res) => {
   try {
     const { platform, commissionPercentage, fixedFee } = req.body;
     
@@ -1275,7 +1275,7 @@ app.post('/api/commissions/rules', async (req, res) => {
 });
 
 // Calculate commissions for completed bookings
-app.post('/api/commissions/calculate', async (req, res) => {
+app.post('/api/commissions/calculate', isAuthenticated, async (req, res) => {
   try {
     console.log('🧮 Calculating commissions for completed bookings...');
     
@@ -1335,7 +1335,7 @@ app.post('/api/commissions/calculate', async (req, res) => {
 });
 
 // Get commission payments with filters
-app.get('/api/commissions/payments', async (req, res) => {
+app.get('/api/commissions/payments', isAuthenticated, async (req, res) => {
   try {
     const { status, captainId, startDate, endDate } = req.query;
     
@@ -1390,7 +1390,7 @@ app.get('/api/commissions/payments', async (req, res) => {
 });
 
 // Mark payment as paid
-app.post('/api/commissions/mark-paid', async (req, res) => {
+app.post('/api/commissions/mark-paid', isAuthenticated, async (req, res) => {
   try {
     const { paymentId } = req.body;
     
@@ -1418,7 +1418,7 @@ app.post('/api/commissions/mark-paid', async (req, res) => {
 });
 
 // Get financial reports
-app.get('/api/commissions/reports', async (req, res) => {
+app.get('/api/commissions/reports', isAuthenticated, async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
     
@@ -1489,7 +1489,7 @@ app.get('/api/commissions/reports', async (req, res) => {
 // =======================
 
 // Get captain availability (by captain or date range)
-app.get('/api/availability', async (req, res) => {
+app.get('/api/availability', isAuthenticated, async (req, res) => {
   try {
     const { captainId, startDate, endDate } = req.query;
     
@@ -1522,7 +1522,7 @@ app.get('/api/availability', async (req, res) => {
 });
 
 // Create availability block (mark unavailable)
-app.post('/api/availability', async (req, res) => {
+app.post('/api/availability', isAuthenticated, async (req, res) => {
   try {
     const { captainId, date, startTime, endTime, isAvailable, reason } = req.body;
     
@@ -1556,7 +1556,7 @@ app.post('/api/availability', async (req, res) => {
 });
 
 // Update availability
-app.put('/api/availability/:id', async (req, res) => {
+app.put('/api/availability/:id', isAuthenticated, async (req, res) => {
   try {
     const { id } = req.params;
     // Accept both camelCase and snake_case field names
@@ -1595,7 +1595,7 @@ app.put('/api/availability/:id', async (req, res) => {
 });
 
 // Delete availability block
-app.delete('/api/availability/:id', async (req, res) => {
+app.delete('/api/availability/:id', isAuthenticated, async (req, res) => {
   try {
     const { id } = req.params;
     
@@ -1618,7 +1618,7 @@ app.delete('/api/availability/:id', async (req, res) => {
 });
 
 // Get captain schedule (assignments + availability for date range)
-app.get('/api/schedule/:captainId', async (req, res) => {
+app.get('/api/schedule/:captainId', isAuthenticated, async (req, res) => {
   try {
     const { captainId } = req.params;
     const { startDate, endDate } = req.query;
@@ -1674,7 +1674,7 @@ app.get('/api/schedule/:captainId', async (req, res) => {
 });
 
 // Check for booking conflicts
-app.post('/api/availability/check-conflict', async (req, res) => {
+app.post('/api/availability/check-conflict', isAuthenticated, async (req, res) => {
   try {
     const { captainId, date, startTime, durationHours } = req.body;
     
