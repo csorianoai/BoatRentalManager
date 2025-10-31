@@ -926,6 +926,202 @@ app.post('/api/sync/resolve-conflict', async (req, res) => {
   }
 });
 
+// ========================================
+// FASE 3: CAPTAIN APP ENDPOINTS
+// ========================================
+
+// Get captain's assignments (bookings assigned to them)
+app.get('/api/captain/:captainId/assignments', async (req, res) => {
+  try {
+    const { captainId } = req.params;
+    const { status } = req.query; // Optional filter by status
+    
+    let query = `
+      SELECT 
+        b.*,
+        tl.id as trip_log_id,
+        tl.check_in_time,
+        tl.check_out_time,
+        tl.status as trip_status
+      FROM bookings b
+      LEFT JOIN trip_logs tl ON b.id = tl.booking_id
+      WHERE b.assigned_captain_id = $1
+    `;
+    
+    const params = [captainId];
+    
+    if (status) {
+      query += ` AND b.status = $2`;
+      params.push(status);
+    }
+    
+    query += ` ORDER BY b.booking_date DESC, b.start_time DESC`;
+    
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error getting captain assignments:', error);
+    res.status(500).json({ error: 'Failed to get assignments' });
+  }
+});
+
+// Captain check-in
+app.post('/api/captain/check-in', async (req, res) => {
+  try {
+    const { bookingId, captainId, latitude, longitude } = req.body;
+    
+    if (!bookingId || !captainId) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    
+    // Check if trip log already exists
+    const existingLog = await pool.query(
+      'SELECT id FROM trip_logs WHERE booking_id = $1',
+      [bookingId]
+    );
+    
+    if (existingLog.rows.length > 0) {
+      // Update existing log
+      const result = await pool.query(`
+        UPDATE trip_logs 
+        SET check_in_time = CURRENT_TIMESTAMP,
+            check_in_lat = $1,
+            check_in_lon = $2,
+            status = 'in_progress'
+        WHERE booking_id = $3
+        RETURNING *
+      `, [latitude, longitude, bookingId]);
+      
+      console.log('✅ Captain checked in (updated):', result.rows[0]);
+      res.json(result.rows[0]);
+    } else {
+      // Create new trip log
+      const tripLogId = `trip_${Date.now()}`;
+      const result = await pool.query(`
+        INSERT INTO trip_logs (
+          id, booking_id, captain_id, check_in_time, 
+          check_in_lat, check_in_lon, status
+        )
+        VALUES ($1, $2, $3, CURRENT_TIMESTAMP, $4, $5, 'in_progress')
+        RETURNING *
+      `, [tripLogId, bookingId, captainId, latitude, longitude]);
+      
+      console.log('✅ Captain checked in (new):', result.rows[0]);
+      res.json(result.rows[0]);
+    }
+  } catch (error) {
+    console.error('Error during check-in:', error);
+    res.status(500).json({ error: 'Failed to check in' });
+  }
+});
+
+// Captain check-out
+app.post('/api/captain/check-out', async (req, res) => {
+  try {
+    const { bookingId, latitude, longitude } = req.body;
+    
+    if (!bookingId) {
+      return res.status(400).json({ error: 'Missing booking ID' });
+    }
+    
+    const result = await pool.query(`
+      UPDATE trip_logs 
+      SET check_out_time = CURRENT_TIMESTAMP,
+          check_out_lat = $1,
+          check_out_lon = $2,
+          status = 'completed'
+      WHERE booking_id = $3
+      RETURNING *
+    `, [latitude, longitude, bookingId]);
+    
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Trip log not found. Please check in first.' });
+    }
+    
+    console.log('✅ Captain checked out:', result.rows[0]);
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error during check-out:', error);
+    res.status(500).json({ error: 'Failed to check out' });
+  }
+});
+
+// Submit trip report
+app.post('/api/captain/trip-report', async (req, res) => {
+  try {
+    const {
+      bookingId,
+      captainId,
+      tripLogId,
+      weatherConditions,
+      seaConditions,
+      fuelUsed,
+      passengersActual,
+      issuesReported,
+      customerSatisfaction,
+      photos,
+      notes
+    } = req.body;
+    
+    if (!bookingId || !captainId || !tripLogId) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    
+    const reportId = `report_${Date.now()}`;
+    const result = await pool.query(`
+      INSERT INTO trip_reports (
+        id, booking_id, captain_id, trip_log_id,
+        weather_conditions, sea_conditions, fuel_used,
+        passengers_actual, issues_reported, customer_satisfaction,
+        photos, notes
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      RETURNING *
+    `, [
+      reportId, bookingId, captainId, tripLogId,
+      weatherConditions, seaConditions, fuelUsed,
+      passengersActual, issuesReported, customerSatisfaction,
+      JSON.stringify(photos || []), notes
+    ]);
+    
+    console.log('✅ Trip report created:', result.rows[0]);
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error creating trip report:', error);
+    res.status(500).json({ error: 'Failed to create trip report' });
+  }
+});
+
+// Get captain's trip history
+app.get('/api/captain/:captainId/trip-logs', async (req, res) => {
+  try {
+    const { captainId } = req.params;
+    const { limit = 50 } = req.query;
+    
+    const result = await pool.query(`
+      SELECT 
+        tl.*,
+        b.customer_name,
+        b.booking_date,
+        b.start_time,
+        b.boat_type,
+        tr.customer_satisfaction,
+        tr.notes as report_notes
+      FROM trip_logs tl
+      JOIN bookings b ON tl.booking_id = b.id
+      LEFT JOIN trip_reports tr ON tl.id = tr.trip_log_id
+      WHERE tl.captain_id = $1
+      ORDER BY tl.check_in_time DESC
+      LIMIT $2
+    `, [captainId, limit]);
+    
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error getting trip logs:', error);
+    res.status(500).json({ error: 'Failed to get trip logs' });
+  }
+});
+
 // ⏰ AUTOMATIC SYNC SCHEDULER
 // Sync all platforms every 15 minutes
 console.log('⏰ Scheduling automatic sync every 15 minutes...');
