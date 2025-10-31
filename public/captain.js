@@ -84,15 +84,22 @@ async function handleLogin(e) {
     
     try {
         // Fetch captain info from server
+        console.log('🔍 Fetching captains from API...');
         const response = await fetch(`${API_BASE}/api/captains`);
         const captains = await response.json();
+        console.log('📋 Captains loaded:', captains.length, 'captains');
+        console.log('🔎 Looking for captain ID:', captainId);
+        
         const captain = captains.find(c => c.id === captainId);
         
         if (!captain) {
-            alert('Captain ID no encontrado');
+            console.error('❌ Captain not found. Available IDs:', captains.map(c => c.id));
+            alert('Captain ID no encontrado. IDs disponibles: ' + captains.map(c => c.id).join(', '));
             showLoading(false);
             return;
         }
+        
+        console.log('✅ Captain found:', captain.name);
         
         currentCaptain = captain;
         localStorage.setItem('captain', JSON.stringify(captain));
