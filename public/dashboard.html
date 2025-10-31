@@ -156,6 +156,30 @@
             </div>
         </div>
 
+        <!-- FASE 2: Platform Synchronization Status -->
+        <div class="chart-card full-width">
+            <div class="card-header">
+                <h2>⚡ Estado de Sincronización</h2>
+                <button class="btn-primary" id="syncAllPlatforms" data-testid="button-sync-all">
+                    🔄 Sincronizar Todas
+                </button>
+            </div>
+            <div class="sync-status-grid" id="syncStatusGrid">
+                <!-- Dynamic sync status cards will be inserted here -->
+            </div>
+        </div>
+
+        <!-- FASE 2: Conflicts Alert -->
+        <div class="chart-card full-width" id="conflictsSection" style="display: none;">
+            <div class="card-header">
+                <h2>⚠️ Conflictos Detectados</h2>
+                <span class="badge badge-danger" id="conflictCount">0</span>
+            </div>
+            <div class="conflicts-list" id="conflictsList">
+                <!-- Dynamic conflicts will be inserted here -->
+            </div>
+        </div>
+
         <!-- Recent Bookings Table -->
         <div class="chart-card full-width">
             <div class="card-header">

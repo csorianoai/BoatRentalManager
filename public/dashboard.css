@@ -855,6 +855,203 @@ body {
     }
 }
 
+/* ⚡ FASE 2: Platform Synchronization Styles */
+.sync-status-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.sync-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 1.25rem;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.sync-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 16px var(--shadow);
+}
+
+.sync-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+}
+
+.platform-name {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.sync-status-badge {
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.sync-status-badge.success {
+    background: var(--success);
+    color: white;
+}
+
+.sync-status-badge.error {
+    background: var(--danger);
+    color: white;
+}
+
+.sync-status-badge.in_progress {
+    background: var(--warning);
+    color: white;
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+.sync-card-details {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 1rem;
+}
+
+.sync-detail-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.9rem;
+}
+
+.sync-detail-label {
+    color: var(--text-secondary);
+}
+
+.sync-detail-value {
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+.sync-actions {
+    margin-top: 1rem;
+    display: flex;
+    gap: 0.5rem;
+}
+
+.btn-sync {
+    flex: 1;
+    padding: 0.5rem;
+    border: none;
+    border-radius: 6px;
+    background: var(--ocean-blue);
+    color: white;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-sync:hover {
+    background: var(--deep-blue);
+    transform: translateY(-1px);
+}
+
+.btn-sync:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Conflicts Section */
+.conflicts-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.conflict-card {
+    background: #FFF3CD;
+    border-left: 4px solid var(--warning);
+    padding: 1rem;
+    border-radius: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.dark-mode .conflict-card {
+    background: rgba(255, 184, 0, 0.15);
+}
+
+.conflict-info {
+    flex: 1;
+}
+
+.conflict-title {
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+}
+
+.conflict-details {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.conflict-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.btn-resolve {
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 6px;
+    background: var(--danger);
+    color: white;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-resolve:hover {
+    background: #C23B5A;
+    transform: scale(1.05);
+}
+
+/* Badge Styles */
+.badge {
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    display: inline-block;
+}
+
+.badge-danger {
+    background: var(--danger);
+    color: white;
+}
+
+.badge-warning {
+    background: var(--warning);
+    color: white;
+}
+
+.badge-success {
+    background: var(--success);
+    color: white;
+}
+
 /* Responsive Design */
 @media (max-width: 1200px) {
     .dashboard-grid {
@@ -864,6 +1061,10 @@ body {
     .chart-card.medium,
     .chart-card.compact {
         grid-column: span 1;
+    }
+    
+    .sync-status-grid {
+        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
     }
 }
 

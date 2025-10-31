@@ -938,3 +938,251 @@ if (document.readyState === 'loading') {
 } else {
     initChatWidget();
 }
+
+// ==========================================
+// ⚡ FASE 2: PLATFORM SYNCHRONIZATION
+// ==========================================
+
+async function loadSyncStatus() {
+    try {
+        const response = await fetch(`${API_BASE}/api/sync/status`);
+        const status = await response.json();
+        renderSyncStatus(status);
+    } catch (error) {
+        console.error('Error loading sync status:', error);
+    }
+}
+
+function renderSyncStatus(platforms) {
+    const grid = document.getElementById('syncStatusGrid');
+    if (!grid) return;
+    
+    grid.innerHTML = '';
+    
+    // All platforms that should be shown
+    const allPlatforms = [
+        'Airbnb', 'GetMyBoat', 'BoatSetter', 'Viator', 'Expedia', 
+        'TripAdvisor', 'Groupon', 'Booking.com', 'FareHarbor', 
+        'Bokun', 'Rezdy', 'Peek', 'Xola'
+    ];
+    
+    allPlatforms.forEach(platformName => {
+        const platform = platforms.find(p => p.platform === platformName) || {
+            platform: platformName,
+            sync_status: 'never',
+            last_sync_at: null,
+            bookings_synced: 0,
+            conflicts_detected: 0
+        };
+        
+        const card = document.createElement('div');
+        card.className = 'sync-card';
+        card.dataset.testid = `sync-card-${platformName.toLowerCase().replace(/\./g, '-')}`;
+        
+        const statusClass = platform.sync_status || 'never';
+        const statusText = statusClass === 'never' ? 'No sincronizado' : 
+                          statusClass === 'success' ? 'Exitoso' :
+                          statusClass === 'error' ? 'Error' : 'En proceso';
+        
+        const lastSync = platform.last_sync_at 
+            ? new Date(platform.last_sync_at).toLocaleString('es-ES')
+            : 'Nunca';
+        
+        card.innerHTML = `
+            <div class="sync-card-header">
+                <div class="platform-name">${platform.platform}</div>
+                <span class="sync-status-badge ${statusClass}">${statusText}</span>
+            </div>
+            <div class="sync-card-details">
+                <div class="sync-detail-row">
+                    <span class="sync-detail-label">Última sincronización:</span>
+                    <span class="sync-detail-value">${lastSync}</span>
+                </div>
+                <div class="sync-detail-row">
+                    <span class="sync-detail-label">Reservas sincronizadas:</span>
+                    <span class="sync-detail-value">${platform.bookings_synced || 0}</span>
+                </div>
+                <div class="sync-detail-row">
+                    <span class="sync-detail-label">Conflictos:</span>
+                    <span class="sync-detail-value">${platform.conflicts_detected || 0}</span>
+                </div>
+            </div>
+            <div class="sync-actions">
+                <button class="btn-sync" onclick="syncSinglePlatform('${platform.platform}')" data-testid="button-sync-${platformName.toLowerCase().replace(/\./g, '-')}">
+                    🔄 Sincronizar
+                </button>
+            </div>
+        `;
+        
+        grid.appendChild(card);
+    });
+}
+
+async function syncSinglePlatform(platform) {
+    try {
+        const button = event.target;
+        button.disabled = true;
+        button.textContent = '⏳ Sincronizando...';
+        
+        const response = await fetch(`${API_BASE}/api/sync/trigger/${platform}`, {
+            method: 'POST'
+        });
+        const result = await response.json();
+        
+        console.log('Sync result for', platform, result);
+        
+        // Reload sync status
+        await loadSyncStatus();
+        await loadConflicts();
+        await loadDashboardData();
+        
+        button.disabled = false;
+        button.textContent = '🔄 Sincronizar';
+    } catch (error) {
+        console.error('Error syncing platform:', error);
+        alert(`Error al sincronizar ${platform}`);
+        event.target.disabled = false;
+        event.target.textContent = '🔄 Sincronizar';
+    }
+}
+
+async function syncAllPlatforms() {
+    const button = document.getElementById('syncAllPlatforms');
+    if (!button) return;
+    
+    try {
+        button.disabled = true;
+        button.textContent = '⏳ Sincronizando...';
+        
+        const response = await fetch(`${API_BASE}/api/sync/trigger-all`, {
+            method: 'POST'
+        });
+        const result = await response.json();
+        
+        console.log('Sync all result:', result);
+        
+        // Reload everything
+        await loadSyncStatus();
+        await loadConflicts();
+        await loadDashboardData();
+        
+        button.disabled = false;
+        button.textContent = '🔄 Sincronizar Todas';
+        
+        alert(`Sincronización completada: ${result.summary.totalImported} reservas importadas, ${result.summary.totalConflicts} conflictos detectados`);
+    } catch (error) {
+        console.error('Error syncing all platforms:', error);
+        alert('Error al sincronizar plataformas');
+        button.disabled = false;
+        button.textContent = '🔄 Sincronizar Todas';
+    }
+}
+
+async function loadConflicts() {
+    try {
+        const response = await fetch(`${API_BASE}/api/sync/conflicts`);
+        const conflicts = await response.json();
+        renderConflicts(conflicts);
+    } catch (error) {
+        console.error('Error loading conflicts:', error);
+    }
+}
+
+function renderConflicts(conflicts) {
+    const section = document.getElementById('conflictsSection');
+    const list = document.getElementById('conflictsList');
+    const count = document.getElementById('conflictCount');
+    
+    if (!section || !list || !count) return;
+    
+    if (conflicts.length === 0) {
+        section.style.display = 'none';
+        return;
+    }
+    
+    section.style.display = 'block';
+    count.textContent = conflicts.length;
+    list.innerHTML = '';
+    
+    conflicts.forEach((conflict, index) => {
+        const card = document.createElement('div');
+        card.className = 'conflict-card';
+        card.dataset.testid = `conflict-card-${index}`;
+        
+        card.innerHTML = `
+            <div class="conflict-info">
+                <div class="conflict-title">${conflict.message}</div>
+                <div class="conflict-details">
+                    Fecha: ${conflict.date} a las ${conflict.time}<br>
+                    Reserva 1: ${conflict.bookings[0].platform} - ${conflict.bookings[0].customer}<br>
+                    Reserva 2: ${conflict.bookings[1].platform} - ${conflict.bookings[1].customer}
+                </div>
+            </div>
+            <div class="conflict-actions">
+                <button class="btn-resolve" onclick="resolveConflict('${conflict.bookings[0].id}')" data-testid="button-resolve-${index}-0">
+                    Cancelar #1
+                </button>
+                <button class="btn-resolve" onclick="resolveConflict('${conflict.bookings[1].id}')" data-testid="button-resolve-${index}-1">
+                    Cancelar #2
+                </button>
+            </div>
+        `;
+        
+        list.appendChild(card);
+    });
+}
+
+async function resolveConflict(bookingIdToCancel) {
+    if (!confirm('¿Estás seguro de que deseas cancelar esta reserva?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE}/api/sync/resolve-conflict`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                bookingIdToCancel,
+                reason: 'Conflicto de sincronización resuelto manualmente'
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert('Conflicto resuelto exitosamente');
+            await loadConflicts();
+            await loadDashboardData();
+        } else {
+            alert('Error al resolver conflicto');
+        }
+    } catch (error) {
+        console.error('Error resolving conflict:', error);
+        alert('Error al resolver conflicto');
+    }
+}
+
+// Initialize sync panel
+function initSyncPanel() {
+    loadSyncStatus();
+    loadConflicts();
+    
+    // Setup sync all button
+    const syncAllBtn = document.getElementById('syncAllPlatforms');
+    if (syncAllBtn) {
+        syncAllBtn.addEventListener('click', syncAllPlatforms);
+    }
+    
+    // Refresh sync status every 30 seconds
+    setInterval(() => {
+        loadSyncStatus();
+        loadConflicts();
+    }, 30000);
+}
+
+// Initialize when DOM loads
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initSyncPanel);
+} else {
+    initSyncPanel();
+}

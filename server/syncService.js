@@ -12,7 +12,11 @@
  * - Estado persistente en PostgreSQL
  */
 
-const { Pool } = require('pg');
+const { Pool, neonConfig } = require('@neondatabase/serverless');
+const ws = require('ws');
+
+// Configure WebSocket for Neon
+neonConfig.webSocketConstructor = ws;
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
