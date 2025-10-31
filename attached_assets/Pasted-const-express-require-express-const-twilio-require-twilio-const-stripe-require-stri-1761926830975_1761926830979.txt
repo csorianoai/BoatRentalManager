@@ -1,0 +1,345 @@
+const express = require('express');
+const twilio = require('twilio');
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const axios = require('axios');
+const cors = require('cors');
+const cron = require('node-cron');
+const moment = require('moment');
+require('dotenv').config();
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+// Configuración para tu dominio WordPress
+const WORDPRESS_DOMAIN = 'https://www.nadakiexcursions.com';
+
+// Base de datos mejorada
+let database = {
+  bookings: [],
+  captains: [
+    {
+      id: 'captain1',
+      name: 'John Doe',
+      phone: '+15551112222',
+      status: 'available',
+      specialties: ['sailboat', 'yacht', 'fishing'],
+      email: 'john@nadakiexcursions.com',
+      photo: 'https://example.com/captain1.jpg'
+    },
+    {
+      id: 'captain2',
+      name: 'Sarah Smith',
+      phone: '+15553334444',
+      status: 'available',
+      specialties: ['speedboat', 'sailboat'],
+      email: 'sarah@nadakiexcursions.com',
+      photo: 'https://example.com/captain2.jpg'
+    }
+  ],
+  customers: [],
+  platforms: [
+    'Boat Setter', 'Airbnb', 'Sailo', 'Website', 'Get My Boat', 
+    'Viator', 'Click and Boat', 'Odisea Rental', 'Sail.net', 
+    'Samboat', 'BoatLink', 'Borrow a boat', 'Nautical Monkey'
+  ]
+};
+
+// 🎯 WEBHOOK UNIVERSAL para todas las plataformas
+app.post('/webhook/booking/:platform', async (req, res) => {
+  try {
+    const platform = req.params.platform;
+    const bookingData = req.body;
+    
+    console.log(`📦 Nueva reserva de ${platform}:`, bookingData);
+
+    // Normalizar datos de diferentes plataformas
+    const normalizedBooking = normalizeBookingData(platform, bookingData);
+    
+    // Crear registro
+    const bookingRecord = {
+      id: `${platform.toLowerCase().replace(/ /g, '_')}_${Date.now()}`,
+      ...normalizedBooking,
+      platform: platform,
+      status: 'confirmed',
+      created_at: new Date().toISOString(),
+      internal_notes: `From ${platform} API`
+    };
+    
+    database.bookings.push(bookingRecord);
+
+    // Asignar capitán y enviar notificaciones
+    const assignedCaptain = await assignCaptain(normalizedBooking.boat_type);
+    
+    if (assignedCaptain) {
+      await updateBookingWithCaptain(bookingRecord.id, assignedCaptain);
+      await sendNotifications(assignedCaptain, bookingRecord);
+    }
+
+    res.json({ 
+      success: true, 
+      booking_id: bookingRecord.id,
+      captain: assignedCaptain?.name,
+      platform: platform
+    });
+
+  } catch (error) {
+    console.error(`Error con plataforma ${req.params.platform}:`, error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// 🔄 NORMALIZAR DATOS DE DIFERENTES PLATAFORMAS
+function normalizeBookingData(platform, rawData) {
+  const normalizers = {
+    'Airbnb': (data) => ({
+      customer_name: data.guest_name || data.guest?.name || 'Cliente Airbnb',
+      customer_phone: data.guest_phone || data.guest?.phone || '+15550000000',
+      customer_email: data.guest_email || data.guest?.email || '',
+      boat_type: data.listing_title || 'Barco Airbnb',
+      booking_date: data.start_date || moment().format('YYYY-MM-DD'),
+      start_time: data.check_in_time || '14:00',
+      duration_hours: calculateDuration(data.start_date, data.end_date) || 4,
+      total_amount: data.total_price || data.amount || 0,
+      special_requests: data.guest_notes || ''
+    }),
+    
+    'Get My Boat': (data) => ({
+      customer_name: data.customer_name || 'Cliente GetMyBoat',
+      customer_phone: data.customer_phone || '+15550000000',
+      customer_email: data.customer_email || '',
+      boat_type: data.boat_name || 'Barco GetMyBoat',
+      booking_date: data.booking_date || moment().format('YYYY-MM-DD'),
+      start_time: data.start_time || '10:00',
+      duration_hours: data.duration || 4,
+      total_amount: data.total_cost || 0,
+      special_requests: data.special_requests || ''
+    }),
+    
+    'Website': (data) => ({
+      customer_name: data.name || 'Cliente Web',
+      customer_phone: data.phone || '+15550000000',
+      customer_email: data.email || '',
+      boat_type: data.boat_selection || 'Barco Web',
+      booking_date: data.selected_date || moment().format('YYYY-MM-DD'),
+      start_time: data.selected_time || '12:00',
+      duration_hours: data.duration || 3,
+      total_amount: data.total_amount || 0,
+      special_requests: data.notes || ''
+    })
+  };
+
+  const normalizer = normalizers[platform] || ((data) => ({
+    customer_name: data.customer_name || data.name || `Cliente ${platform}`,
+    customer_phone: data.customer_phone || data.phone || '+15550000000',
+    customer_email: data.customer_email || data.email || '',
+    boat_type: data.boat_type || data.boat_name || `Barco ${platform}`,
+    booking_date: data.booking_date || data.start_date || moment().format('YYYY-MM-DD'),
+    start_time: data.start_time || '14:00',
+    duration_hours: data.duration_hours || data.duration || 4,
+    total_amount: data.total_amount || data.total_cost || data.amount || 0,
+    special_requests: data.special_requests || data.notes || ''
+  }));
+
+  return normalizer(rawData);
+}
+
+function calculateDuration(startDate, endDate) {
+  if (!startDate || !endDate) return 4;
+  const start = moment(startDate);
+  const end = moment(endDate);
+  return end.diff(start, 'hours');
+}
+
+// 👨‍✈️ SISTEMA INTELIGENTE DE ASIGNACIÓN
+async function assignCaptain(boatType) {
+  const availableCaptains = database.captains.filter(
+    captain => captain.status === 'available'
+  );
+  
+  if (availableCaptains.length === 0) return null;
+  
+  // Priorizar capitanes con especialidades que coincidan
+  const scoredCaptains = availableCaptains.map(captain => {
+    let score = captain.rating || 4.0;
+    
+    // Bonus por especialidad
+    if (captain.specialties.some(spec => 
+      boatType.toLowerCase().includes(spec.toLowerCase()))) {
+      score += 1.0;
+    }
+    
+    // Bonus por menos reservas hoy
+    const todayBookings = database.bookings.filter(
+      b => b.assigned_captain_id === captain.id && 
+      b.booking_date === moment().format('YYYY-MM-DD')
+    ).length;
+    score -= (todayBookings * 0.1);
+    
+    return { captain, score };
+  });
+  
+  scoredCaptains.sort((a, b) => b.score - a.score);
+  return scoredCaptains[0]?.captain || availableCaptains[0];
+}
+
+// 📝 ACTUALIZAR RESERVA CON CAPITÁN
+async function updateBookingWithCaptain(bookingId, captain) {
+  const booking = database.bookings.find(b => b.id === bookingId);
+  if (booking) {
+    booking.assigned_captain_id = captain.id;
+    booking.assigned_captain_name = captain.name;
+    booking.assigned_captain_phone = captain.phone;
+    booking.status = 'assigned';
+  }
+}
+
+// 📱 SISTEMA DE NOTIFICACIONES MEJORADO
+async function sendNotifications(captain, booking) {
+  const client = twilio(process.env.TWILIO_SID, process.env.TWILIO_AUTH_TOKEN);
+  
+  // WhatsApp al capitán
+  const captainMessage = `
+🎯 *NUEVA RESERVA - Nadaki Excursions*
+Plataforma: ${booking.platform}
+Cliente: ${booking.customer_name}
+Barco: ${booking.boat_type}
+Fecha: ${booking.booking_date}
+Hora: ${booking.start_time}
+Duración: ${booking.duration_hours}h
+Monto: $${booking.total_amount}
+
+Confirmar: ✅ SÍ / ❌ NO
+  `;
+
+  // WhatsApp al cliente
+  const customerMessage = `
+✅ *RESERVA CONFIRMADA - Nadaki Excursions*
+Hola ${booking.customer_name}, tu aventura está confirmada!
+
+📅 ${booking.booking_date} a las ${booking.start_time}
+🚤 ${booking.boat_type}
+📍 Pier 39, Slip B-12
+
+Te enviaremos los detalles de tu capitán en breve.
+  `;
+
+  try {
+    await client.messages.create({
+      body: captainMessage,
+      from: 'whatsapp:+14155238886',
+      to: `whatsapp:${captain.phone}`
+    });
+    
+    await client.messages.create({
+      body: customerMessage,
+      from: 'whatsapp:+14155238886',
+      to: `whatsapp:${booking.customer_phone}`
+    });
+    
+    console.log(`📤 Notificaciones enviadas para reserva ${booking.id}`);
+  } catch (error) {
+    console.error('Error enviando WhatsApp:', error);
+  }
+}
+
+// 🌐 ENDPOINTS PARA TU WORDPRESS Y BOOKBOARD
+app.get('/api/dashboard-data', (req, res) => {
+  const today = moment().format('YYYY-MM-DD');
+  
+  const todayBookings = database.bookings.filter(b => b.booking_date === today);
+  const weekBookings = database.bookings.filter(b => 
+    moment(b.booking_date).isBetween(moment().startOf('week'), moment().endOf('week'))
+  );
+  
+  const dashboardData = {
+    // Métricas principales
+    today_bookings: todayBookings.length,
+    week_bookings: weekBookings.length,
+    active_captains: database.captains.filter(c => c.status === 'available').length,
+    total_captains: database.captains.length,
+    
+    // Revenue
+    today_revenue: todayBookings.reduce((sum, b) => sum + (b.total_amount || 0), 0),
+    week_revenue: weekBookings.reduce((sum, b) => sum + (b.total_amount || 0), 0),
+    total_revenue: database.bookings.reduce((sum, b) => sum + (b.total_amount || 0), 0),
+    
+    // Datos para gráficos
+    bookings_by_platform: getBookingsByPlatform(),
+    revenue_by_platform: getRevenueByPlatform(),
+    
+    // Reservas recientes
+    recent_bookings: database.bookings.slice(-10).reverse(),
+    
+    // Capitanes activos
+    active_captains_list: database.captains.filter(c => c.status === 'available')
+  };
+  
+  res.json(dashboardData);
+});
+
+// 📊 DATOS PARA GRÁFICOS
+function getBookingsByPlatform() {
+  const platformCounts = {};
+  database.bookings.forEach(booking => {
+    platformCounts[booking.platform] = (platformCounts[booking.platform] || 0) + 1;
+  });
+  return platformCounts;
+}
+
+function getRevenueByPlatform() {
+  const platformRevenue = {};
+  database.bookings.forEach(booking => {
+    platformRevenue[booking.platform] = (platformRevenue[booking.platform] || 0) + (booking.total_amount || 0);
+  });
+  return platformRevenue;
+}
+
+// 🎯 ENDPOINTS ESPECÍFICOS
+app.get('/api/bookings', (req, res) => {
+  const { platform, status, date } = req.query;
+  
+  let filteredBookings = database.bookings;
+  
+  if (platform) filteredBookings = filteredBookings.filter(b => b.platform === platform);
+  if (status) filteredBookings = filteredBookings.filter(b => b.status === status);
+  if (date) filteredBookings = filteredBookings.filter(b => b.booking_date === date);
+  
+  res.json(filteredBookings);
+});
+
+app.get('/api/platforms', (req, res) => {
+  res.json(database.platforms);
+});
+
+app.get('/api/captains', (req, res) => {
+  res.json(database.captains);
+});
+
+// 📍 WEBHOOK PARA RESPUESTAS DE CAPITANES
+app.post('/webhook/captain-response', async (req, res) => {
+  const { captain_phone, booking_id, response } = req.body;
+  
+  const booking = database.bookings.find(b => b.id === booking_id);
+  const captain = database.captains.find(c => c.phone === captain_phone);
+  
+  if (response.toLowerCase().includes('sí') || response.toLowerCase().includes('si')) {
+    booking.status = 'captain_confirmed';
+    console.log(`✅ Capitán ${captain.name} confirmó reserva ${booking_id}`);
+  } else {
+    booking.status = 'needs_reassignment';
+    console.log(`❌ Capitán ${captain.name} rechazó reserva ${booking_id}`);
+    // Lógica para reasignar
+  }
+  
+  res.json({ success: true });
+});
+
+// 🚀 INICIAR SERVIDOR
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`🚀 Nadaki Excursions Backend running on port ${PORT}`);
+  console.log(`🌐 WordPress: ${WORDPRESS_DOMAIN}`);
+  console.log(`📧 Webhooks disponibles para ${database.platforms.length} plataformas`);
+  console.log(`🔗 Dashboard: http://localhost:${PORT}/api/dashboard-data`);
+});
