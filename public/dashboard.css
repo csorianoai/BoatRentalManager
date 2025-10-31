@@ -495,14 +495,51 @@ body {
 
 /* Print Styles */
 @media print {
-    .header-controls,
-    .filters-panel,
-    .dashboard-footer {
-        display: none;
+    body {
+        background: white;
+        color: black;
     }
     
+    .header-controls,
+    .filters-panel,
+    .dashboard-footer,
+    .btn-icon,
+    .btn-primary,
+    .btn-secondary {
+        display: none !important;
+    }
+    
+    .dashboard-header {
+        background: white;
+        border-bottom: 2px solid #003D5C;
+        color: #003D5C;
+    }
+    
+    .logo-section h1,
+    .subtitle {
+        color: #003D5C !important;
+    }
+    
+    .dashboard-grid {
+        background: white;
+    }
+    
+    .kpi-card,
     .chart-card {
         page-break-inside: avoid;
+        background: white;
+        border: 1px solid #ddd;
+        box-shadow: none;
+        margin-bottom: 1rem;
+    }
+    
+    .kpi-value,
+    .card-header h2 {
+        color: #003D5C;
+    }
+    
+    canvas {
+        max-height: 300px;
     }
 }
 

@@ -89,6 +89,8 @@ const API_BASE = window.location.origin;
 
 // Initialize Dashboard
 document.addEventListener('DOMContentLoaded', () => {
+    console.log('Dashboard initializing...');
+    console.log('Chart.js available:', typeof Chart !== 'undefined');
     initializeEventListeners();
     loadDashboardData();
     startAutoRefresh();
@@ -193,14 +195,26 @@ function updateKPIs(data) {
 }
 
 function updateCharts(data) {
+    console.log('Updating charts with data:', data);
+    console.log('Chart.js status:', typeof Chart);
     updateRevenueByPlatformChart(data);
     updateMonthlyTrendsChart(data);
     updateBookingDistributionChart(data);
 }
 
 function updateRevenueByPlatformChart(data) {
-    const ctx = document.getElementById('revenueByPlatform').getContext('2d');
+    console.log('Creating revenue by platform chart...');
+    const canvas = document.getElementById('revenueByPlatform');
+    if (!canvas) {
+        console.error('Canvas element revenueByPlatform not found!');
+        return;
+    }
+    if (typeof Chart === 'undefined') {
+        console.error('Chart.js is not loaded!');
+        return;
+    }
     
+    const ctx = canvas.getContext('2d');
     const platforms = Object.keys(data.revenue_by_platform || {});
     const revenues = Object.values(data.revenue_by_platform || {});
     
@@ -494,8 +508,86 @@ function translate(key) {
 
 // Export Functions
 function exportToPDF() {
-    alert('Exportando a PDF...\n(Funcionalidad próximamente)');
-    // Implementation would use jsPDF library
+    if (!dashboardData) return;
+    
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    
+    // Header
+    doc.setFontSize(20);
+    doc.setTextColor(0, 51, 102);
+    doc.text('Nadaki Excursions', 20, 20);
+    doc.setFontSize(12);
+    doc.setTextColor(100);
+    doc.text('Business Intelligence Dashboard', 20, 28);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 20, 35);
+    
+    // KPIs Section
+    doc.setFontSize(14);
+    doc.setTextColor(0);
+    doc.text('Key Metrics', 20, 50);
+    
+    doc.setFontSize(10);
+    const kpis = [
+        ['Today Bookings:', dashboardData.today_bookings],
+        ['Today Revenue:', `$${dashboardData.today_revenue.toLocaleString()}`],
+        ['Week Bookings:', dashboardData.week_bookings],
+        ['Week Revenue:', `$${dashboardData.week_revenue.toLocaleString()}`],
+        ['Active Captains:', `${dashboardData.active_captains}/${dashboardData.total_captains}`]
+    ];
+    
+    let yPos = 60;
+    kpis.forEach(([label, value]) => {
+        doc.text(label, 25, yPos);
+        doc.setFont(undefined, 'bold');
+        doc.text(String(value), 80, yPos);
+        doc.setFont(undefined, 'normal');
+        yPos += 7;
+    });
+    
+    // Revenue by Platform
+    doc.setFontSize(14);
+    yPos += 10;
+    doc.text('Revenue by Platform', 20, yPos);
+    yPos += 10;
+    
+    doc.setFontSize(10);
+    Object.entries(dashboardData.revenue_by_platform || {}).forEach(([platform, revenue]) => {
+        const bookings = dashboardData.bookings_by_platform[platform] || 0;
+        doc.text(`${platform}:`, 25, yPos);
+        doc.setFont(undefined, 'bold');
+        doc.text(`$${revenue.toLocaleString()} (${bookings} bookings)`, 80, yPos);
+        doc.setFont(undefined, 'normal');
+        yPos += 7;
+    });
+    
+    // Recent Bookings
+    if (dashboardData.recent_bookings && dashboardData.recent_bookings.length > 0) {
+        doc.addPage();
+        doc.setFontSize(14);
+        doc.text('Recent Bookings', 20, 20);
+        
+        yPos = 30;
+        doc.setFontSize(9);
+        dashboardData.recent_bookings.slice(0, 15).forEach(booking => {
+            doc.text(`${booking.customer_name} - ${booking.platform}`, 20, yPos);
+            doc.text(`${booking.boat_type} | ${booking.booking_date}`, 20, yPos + 5);
+            doc.setFont(undefined, 'bold');
+            doc.text(`$${booking.total_amount}`, 150, yPos);
+            doc.setFont(undefined, 'normal');
+            doc.setTextColor(150);
+            doc.text(booking.status, 150, yPos + 5);
+            doc.setTextColor(0);
+            yPos += 15;
+            
+            if (yPos > 270) {
+                doc.addPage();
+                yPos = 20;
+            }
+        });
+    }
+    
+    doc.save(`Nadaki_Dashboard_${new Date().toISOString().split('T')[0]}.pdf`);
 }
 
 function exportToExcel() {
