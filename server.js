@@ -8,6 +8,7 @@ const moment = require('moment');
 const { Pool, neonConfig } = require('@neondatabase/serverless');
 const ws = require('ws');
 const OpenAI = require('openai');
+const { setupAuth, isAuthenticated } = require('./replitAuth');
 require('dotenv').config();
 
 // Initialize OpenAI with Replit AI Integrations
@@ -255,6 +256,16 @@ app.use(express.json());
 
 // Servir archivos estáticos del dashboard
 app.use(express.static('public'));
+
+// Configure authentication (async setup)
+(async () => {
+  try {
+    await setupAuth(app);
+    console.log('✅ Authentication configured successfully');
+  } catch (error) {
+    console.error('❌ Error setting up authentication:', error);
+  }
+})();
 
 // 🏠 RUTA RAÍZ - Redirigir al Dashboard
 app.get('/', (req, res) => {
