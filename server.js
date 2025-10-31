@@ -7,7 +7,14 @@ const cron = require('node-cron');
 const moment = require('moment');
 const { Pool, neonConfig } = require('@neondatabase/serverless');
 const ws = require('ws');
+const OpenAI = require('openai');
 require('dotenv').config();
+
+// Initialize OpenAI with Replit AI Integrations
+const openai = new OpenAI({
+  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL
+});
 
 // Configure WebSocket for Neon
 neonConfig.webSocketConstructor = ws;
@@ -57,7 +64,79 @@ async function initializeDatabase() {
       )
     `);
     
-    console.log('✅ Database schema initialized successfully');
+    // FASE 1: Create chat_conversations table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS chat_conversations (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        customer_name TEXT,
+        customer_phone TEXT,
+        customer_email TEXT,
+        messages JSONB NOT NULL,
+        status TEXT NOT NULL,
+        booking_id TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+    
+    // FASE 2: Create platform_sync_status table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS platform_sync_status (
+        id TEXT PRIMARY KEY,
+        platform TEXT NOT NULL,
+        last_sync_at TIMESTAMP,
+        sync_status TEXT NOT NULL,
+        sync_errors JSONB,
+        bookings_synced INTEGER DEFAULT 0,
+        conflicts_detected INTEGER DEFAULT 0,
+        next_sync_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+    
+    // FASE 4: Create commission_rules table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS commission_rules (
+        id TEXT PRIMARY KEY,
+        platform TEXT NOT NULL,
+        commission_percentage INTEGER NOT NULL,
+        fixed_fee INTEGER DEFAULT 0,
+        is_active INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+    
+    // FASE 4: Create commission_payments table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS commission_payments (
+        id TEXT PRIMARY KEY,
+        booking_id TEXT NOT NULL,
+        captain_id TEXT NOT NULL,
+        gross_amount INTEGER NOT NULL,
+        commission_amount INTEGER NOT NULL,
+        net_amount INTEGER NOT NULL,
+        payment_status TEXT NOT NULL,
+        paid_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+    
+    // FASE 5: Create captain_availability table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS captain_availability (
+        id TEXT PRIMARY KEY,
+        captain_id TEXT NOT NULL,
+        date TEXT NOT NULL,
+        start_time TEXT NOT NULL,
+        end_time TEXT NOT NULL,
+        is_available INTEGER DEFAULT 1,
+        reason TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+    
+    console.log('✅ Database schema initialized successfully (all 5 phases)');
   } catch (error) {
     console.error('❌ Error initializing database schema:', error);
     throw error;
@@ -467,6 +546,175 @@ app.post('/webhook/captain-response', async (req, res) => {
   } catch (error) {
     console.error('Error processing captain response:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// 🤖 FASE 1: AI CHATBOT ENDPOINTS
+const AI_SYSTEM_PROMPT = `Eres un asistente virtual para Nadaki Excursions, una empresa de tours en barco en Puerto Rico. Tu objetivo es ayudar a los clientes a reservar tours.
+
+INFORMACIÓN IMPORTANTE:
+- Ofrecemos tours de medio día (4 horas) y día completo (8 horas)
+- Precios: Medio día $800-1200, Día completo $1500-2000
+- Capacidad: 6-12 personas dependiendo del barco
+- Horarios disponibles: 9:00 AM, 12:00 PM, 3:00 PM
+- Servicios incluidos: Capitán certificado, equipo de snorkel, bebidas, lunch (en tours completos)
+
+INSTRUCCIONES:
+1. Sé amigable, profesional y entusiasta sobre los tours
+2. Haz preguntas para entender: fecha, número de personas, tipo de tour, ocasión especial
+3. Sugiere opciones basadas en las necesidades del cliente
+4. Cuando tengas toda la información necesaria, crea la reserva
+5. Si no estás seguro de algo, pregunta al cliente
+
+PARA CREAR UNA RESERVA necesitas:
+- Nombre del cliente
+- Teléfono
+- Email
+- Fecha del tour
+- Número de personas
+- Tipo de barco/tour preferido
+- Hora de inicio
+
+Cuando tengas toda esta información, responde con: "CREAR_RESERVA: {datos en JSON}"`;
+
+app.post('/api/chat/send', async (req, res) => {
+  try {
+    const { sessionId, message, customerName, customerPhone, customerEmail } = req.body;
+    
+    // Get or create conversation
+    let conversation = await pool.query(
+      'SELECT * FROM chat_conversations WHERE session_id = $1',
+      [sessionId]
+    );
+    
+    let messages = [];
+    let conversationId = `chat_${Date.now()}`;
+    
+    if (conversation.rows.length > 0) {
+      messages = conversation.rows[0].messages || [];
+      conversationId = conversation.rows[0].id;
+    }
+    
+    // Add user message
+    messages.push({
+      role: 'user',
+      content: message,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Call OpenAI
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: AI_SYSTEM_PROMPT },
+        ...messages.map(m => ({ role: m.role, content: m.content }))
+      ],
+      temperature: 0.7,
+      max_tokens: 500
+    });
+    
+    const aiResponse = completion.choices[0].message.content;
+    
+    // Add AI response
+    messages.push({
+      role: 'assistant',
+      content: aiResponse,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Check if AI wants to create a booking
+    let bookingId = null;
+    if (aiResponse.includes('CREAR_RESERVA:')) {
+      try {
+        const jsonMatch = aiResponse.match(/CREAR_RESERVA:\s*(\{.*\})/);
+        if (jsonMatch) {
+          const bookingData = JSON.parse(jsonMatch[1]);
+          bookingId = `ai_booking_${Date.now()}`;
+          
+          await pool.query(`
+            INSERT INTO bookings (
+              id, platform, customer_name, customer_phone, customer_email,
+              boat_type, booking_date, start_time, duration_hours, 
+              total_amount, status, notes, internal_notes
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+          `, [
+            bookingId,
+            'AI Assistant',
+            bookingData.customerName || customerName,
+            bookingData.customerPhone || customerPhone,
+            bookingData.customerEmail || customerEmail,
+            bookingData.boatType || 'Standard Tour',
+            bookingData.date,
+            bookingData.startTime,
+            bookingData.durationHours || 4,
+            bookingData.amount || 1000,
+            'ai_pending_confirmation',
+            bookingData.notes || '',
+            'Created by AI chatbot'
+          ]);
+          
+          console.log(`🤖 AI created booking: ${bookingId}`);
+        }
+      } catch (error) {
+        console.error('Error creating booking from AI:', error);
+      }
+    }
+    
+    // Save or update conversation
+    if (conversation.rows.length > 0) {
+      await pool.query(`
+        UPDATE chat_conversations 
+        SET messages = $1, updated_at = CURRENT_TIMESTAMP, booking_id = $2, status = $3
+        WHERE session_id = $4
+      `, [JSON.stringify(messages), bookingId, bookingId ? 'booking_created' : 'active', sessionId]);
+    } else {
+      await pool.query(`
+        INSERT INTO chat_conversations (
+          id, session_id, customer_name, customer_phone, customer_email,
+          messages, status, booking_id
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `, [
+        conversationId, sessionId, customerName, customerPhone, customerEmail,
+        JSON.stringify(messages), bookingId ? 'booking_created' : 'active', bookingId
+      ]);
+    }
+    
+    res.json({ 
+      response: aiResponse, 
+      bookingId,
+      conversationId 
+    });
+    
+  } catch (error) {
+    console.error('Error in chatbot:', error);
+    res.status(500).json({ error: 'Error processing message' });
+  }
+});
+
+// Get conversation history
+app.get('/api/chat/conversations/:sessionId', async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM chat_conversations WHERE session_id = $1',
+      [req.params.sessionId]
+    );
+    res.json(result.rows[0] || null);
+  } catch (error) {
+    console.error('Error fetching conversation:', error);
+    res.status(500).json({ error: 'Error fetching conversation' });
+  }
+});
+
+// List all conversations
+app.get('/api/chat/conversations', async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM chat_conversations ORDER BY updated_at DESC LIMIT 50'
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching conversations:', error);
+    res.status(500).json({ error: 'Error fetching conversations' });
   }
 });
 
