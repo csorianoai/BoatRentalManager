@@ -289,8 +289,13 @@ app.post('/webhook/booking/:platform', async (req, res) => {
       bookingRecord.internal_notes
     ]);
 
-    // Asignar capitán y enviar notificaciones
-    const assignedCaptain = await assignCaptain(normalizedBooking.boat_type);
+    // Asignar capitán y enviar notificaciones (FASE 5: algoritmo mejorado)
+    const assignedCaptain = await assignCaptain(
+      normalizedBooking.boat_type,
+      normalizedBooking.booking_date,
+      normalizedBooking.start_time,
+      normalizedBooking.duration_hours
+    );
     
     if (assignedCaptain) {
       await updateBookingWithCaptain(bookingRecord.id, assignedCaptain);
@@ -372,8 +377,8 @@ function calculateDuration(startDate, endDate) {
   return end.diff(start, 'hours');
 }
 
-// 👨‍✈️ SISTEMA INTELIGENTE DE ASIGNACIÓN
-async function assignCaptain(boatType) {
+// 👨‍✈️ SISTEMA INTELIGENTE DE ASIGNACIÓN MEJORADO (FASE 5)
+async function assignCaptain(boatType, bookingDate, startTime, durationHours) {
   const captainsResult = await pool.query(
     "SELECT * FROM captains WHERE status = 'available'"
   );
@@ -381,31 +386,95 @@ async function assignCaptain(boatType) {
   
   if (availableCaptains.length === 0) return null;
   
-  const today = moment().format('YYYY-MM-DD');
+  // Calcular hora de finalización de la reserva
+  const endTime = moment(`${bookingDate} ${startTime}`, 'YYYY-MM-DD HH:mm')
+    .add(durationHours || 4, 'hours')
+    .format('HH:mm');
   
-  // Priorizar capitanes con especialidades que coincidan
-  const scoredCaptains = await Promise.all(availableCaptains.map(async captain => {
-    let score = 4.0;
+  // Filtrar capitanes por disponibilidad y sin conflictos
+  const validCaptains = await Promise.all(availableCaptains.map(async captain => {
+    // 1. Verificar disponibilidad explícita (solo bloquear si hay superposición de horas)
+    const availabilityResult = await pool.query(`
+      SELECT * FROM captain_availability 
+      WHERE captain_id = $1 
+        AND date = $2 
+        AND is_available = 0
+        AND (
+          (start_time <= $3 AND end_time > $3)
+          OR
+          (start_time < $4 AND end_time >= $4)
+          OR
+          (start_time >= $3 AND end_time <= $4)
+        )
+    `, [captain.id, bookingDate, startTime, endTime]);
     
-    // Bonus por especialidad
-    if (captain.specialties && captain.specialties.some(spec => 
-      boatType.toLowerCase().includes(spec.toLowerCase()))) {
-      score += 1.0;
+    if (availabilityResult.rows.length > 0) {
+      return null; // Capitán tiene bloqueo de disponibilidad que se superpone con este horario
     }
     
-    // Bonus por menos reservas hoy
-    const todayBookingsResult = await pool.query(
+    // 2. Verificar conflictos de horario (doble-reserva)
+    const conflictResult = await pool.query(`
+      SELECT * FROM bookings 
+      WHERE assigned_captain_id = $1 
+        AND booking_date = $2 
+        AND status IN ('pending', 'confirmed', 'assigned', 'in_progress')
+        AND (
+          (start_time <= $3 AND 
+           (CAST(split_part(start_time, ':', 1) AS INTEGER) * 60 + 
+            CAST(split_part(start_time, ':', 2) AS INTEGER) + 
+            COALESCE(duration_hours, 4) * 60) > 
+           (CAST(split_part($3, ':', 1) AS INTEGER) * 60 + 
+            CAST(split_part($3, ':', 2) AS INTEGER)))
+          OR
+          (start_time >= $3 AND start_time < $4)
+        )
+    `, [captain.id, bookingDate, startTime, endTime]);
+    
+    if (conflictResult.rows.length > 0) {
+      return null; // Capitán tiene conflicto de horario
+    }
+    
+    return captain;
+  }));
+  
+  // Filtrar nulls (capitanes no disponibles o con conflictos)
+  const trulyAvailableCaptains = validCaptains.filter(c => c !== null);
+  
+  if (trulyAvailableCaptains.length === 0) return null;
+  
+  // Asignar scores a capitanes disponibles
+  const scoredCaptains = await Promise.all(trulyAvailableCaptains.map(async captain => {
+    let score = 5.0;
+    
+    // Bonus por especialidad (peso: 2.0)
+    if (captain.specialties && captain.specialties.some(spec => 
+      boatType.toLowerCase().includes(spec.toLowerCase()))) {
+      score += 2.0;
+    }
+    
+    // Bonus por menos reservas en la fecha (peso: hasta -1.0)
+    const dayBookingsResult = await pool.query(
       'SELECT COUNT(*) FROM bookings WHERE assigned_captain_id = $1 AND booking_date = $2',
-      [captain.id, today]
+      [captain.id, bookingDate]
     );
-    const todayBookings = parseInt(todayBookingsResult.rows[0].count);
-    score -= (todayBookings * 0.1);
+    const dayBookings = parseInt(dayBookingsResult.rows[0].count);
+    score -= (dayBookings * 0.2);
+    
+    // Bonus por disponibilidad explícita positiva
+    const positiveAvailability = await pool.query(`
+      SELECT * FROM captain_availability 
+      WHERE captain_id = $1 AND date = $2 AND is_available = 1
+    `, [captain.id, bookingDate]);
+    
+    if (positiveAvailability.rows.length > 0) {
+      score += 0.5;
+    }
     
     return { captain, score };
   }));
   
   scoredCaptains.sort((a, b) => b.score - a.score);
-  return scoredCaptains[0]?.captain || availableCaptains[0];
+  return scoredCaptains[0]?.captain || trulyAvailableCaptains[0];
 }
 
 // 📝 ACTUALIZAR RESERVA CON CAPITÁN
@@ -1375,6 +1444,265 @@ app.get('/api/commissions/reports', async (req, res) => {
   } catch (error) {
     console.error('Error getting commission reports:', error);
     res.status(500).json({ error: 'Failed to get commission reports' });
+  }
+});
+
+// =======================
+// 📅 FASE 5: SCHEDULE OPTIMIZER - AVAILABILITY MANAGEMENT
+// =======================
+
+// Get captain availability (by captain or date range)
+app.get('/api/availability', async (req, res) => {
+  try {
+    const { captainId, startDate, endDate } = req.query;
+    
+    let query = 'SELECT * FROM captain_availability WHERE 1=1';
+    const params = [];
+    
+    if (captainId) {
+      params.push(captainId);
+      query += ` AND captain_id = $${params.length}`;
+    }
+    
+    if (startDate) {
+      params.push(startDate);
+      query += ` AND date >= $${params.length}`;
+    }
+    
+    if (endDate) {
+      params.push(endDate);
+      query += ` AND date <= $${params.length}`;
+    }
+    
+    query += ' ORDER BY date ASC, start_time ASC';
+    
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error getting availability:', error);
+    res.status(500).json({ error: 'Failed to get availability' });
+  }
+});
+
+// Create availability block (mark unavailable)
+app.post('/api/availability', async (req, res) => {
+  try {
+    const { captainId, date, startTime, endTime, isAvailable, reason } = req.body;
+    
+    if (!captainId || !date) {
+      return res.status(400).json({ error: 'Captain ID and date required' });
+    }
+    
+    const id = `avail_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    const result = await pool.query(`
+      INSERT INTO captain_availability 
+        (id, captain_id, date, start_time, end_time, is_available, reason)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING *
+    `, [
+      id, 
+      captainId, 
+      date, 
+      startTime || '00:00', 
+      endTime || '23:59',
+      isAvailable !== undefined ? isAvailable : 0,
+      reason || null
+    ]);
+    
+    console.log('✅ Availability created:', result.rows[0]);
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error creating availability:', error);
+    res.status(500).json({ error: 'Failed to create availability' });
+  }
+});
+
+// Update availability
+app.put('/api/availability/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    // Accept both camelCase and snake_case field names
+    const { 
+      startTime, start_time,
+      endTime, end_time,
+      isAvailable, is_available,
+      reason 
+    } = req.body;
+    
+    const newStartTime = startTime || start_time;
+    const newEndTime = endTime || end_time;
+    const newIsAvailable = isAvailable !== undefined ? isAvailable : is_available;
+    
+    const result = await pool.query(`
+      UPDATE captain_availability 
+      SET 
+        start_time = COALESCE($1, start_time),
+        end_time = COALESCE($2, end_time),
+        is_available = COALESCE($3, is_available),
+        reason = COALESCE($4, reason)
+      WHERE id = $5
+      RETURNING *
+    `, [newStartTime, newEndTime, newIsAvailable, reason, id]);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Availability not found' });
+    }
+    
+    console.log('✅ Availability updated:', result.rows[0]);
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating availability:', error);
+    res.status(500).json({ error: 'Failed to update availability' });
+  }
+});
+
+// Delete availability block
+app.delete('/api/availability/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const result = await pool.query(`
+      DELETE FROM captain_availability 
+      WHERE id = $1
+      RETURNING *
+    `, [id]);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Availability not found' });
+    }
+    
+    console.log('✅ Availability deleted:', result.rows[0]);
+    res.json({ success: true, deleted: result.rows[0] });
+  } catch (error) {
+    console.error('Error deleting availability:', error);
+    res.status(500).json({ error: 'Failed to delete availability' });
+  }
+});
+
+// Get captain schedule (assignments + availability for date range)
+app.get('/api/schedule/:captainId', async (req, res) => {
+  try {
+    const { captainId } = req.params;
+    const { startDate, endDate } = req.query;
+    
+    // Get bookings
+    let bookingsQuery = `
+      SELECT * FROM bookings 
+      WHERE assigned_captain_id = $1
+        AND status IN ('pending', 'confirmed', 'assigned', 'in_progress')
+    `;
+    const params = [captainId];
+    
+    if (startDate) {
+      params.push(startDate);
+      bookingsQuery += ` AND booking_date >= $${params.length}`;
+    }
+    
+    if (endDate) {
+      params.push(endDate);
+      bookingsQuery += ` AND booking_date <= $${params.length}`;
+    }
+    
+    bookingsQuery += ' ORDER BY booking_date ASC, start_time ASC';
+    
+    const bookingsResult = await pool.query(bookingsQuery, params);
+    
+    // Get availability blocks
+    const availParams = [captainId];
+    let availQuery = 'SELECT * FROM captain_availability WHERE captain_id = $1';
+    
+    if (startDate) {
+      availParams.push(startDate);
+      availQuery += ` AND date >= $${availParams.length}`;
+    }
+    
+    if (endDate) {
+      availParams.push(endDate);
+      availQuery += ` AND date <= $${availParams.length}`;
+    }
+    
+    availQuery += ' ORDER BY date ASC';
+    
+    const availabilityResult = await pool.query(availQuery, availParams);
+    
+    res.json({
+      bookings: bookingsResult.rows,
+      availability: availabilityResult.rows
+    });
+  } catch (error) {
+    console.error('Error getting captain schedule:', error);
+    res.status(500).json({ error: 'Failed to get captain schedule' });
+  }
+});
+
+// Check for booking conflicts
+app.post('/api/availability/check-conflict', async (req, res) => {
+  try {
+    const { captainId, date, startTime, durationHours } = req.body;
+    
+    if (!captainId || !date || !startTime) {
+      return res.status(400).json({ error: 'Captain ID, date, and start time required' });
+    }
+    
+    // Calculate end time
+    const endTime = moment(`${date} ${startTime}`, 'YYYY-MM-DD HH:mm')
+      .add(durationHours || 4, 'hours')
+      .format('HH:mm');
+    
+    // Check availability blocks (only if time overlaps)
+    const availResult = await pool.query(`
+      SELECT * FROM captain_availability 
+      WHERE captain_id = $1 
+        AND date = $2 
+        AND is_available = 0
+        AND (
+          (start_time <= $3 AND end_time > $3)
+          OR
+          (start_time < $4 AND end_time >= $4)
+          OR
+          (start_time >= $3 AND end_time <= $4)
+        )
+    `, [captainId, date, startTime, endTime]);
+    
+    if (availResult.rows.length > 0) {
+      return res.json({ 
+        hasConflict: true, 
+        reason: 'unavailable',
+        details: availResult.rows[0]
+      });
+    }
+    
+    // Check booking conflicts
+    const conflictResult = await pool.query(`
+      SELECT * FROM bookings 
+      WHERE assigned_captain_id = $1 
+        AND booking_date = $2 
+        AND status IN ('pending', 'confirmed', 'assigned', 'in_progress')
+        AND (
+          (start_time <= $3 AND 
+           (CAST(split_part(start_time, ':', 1) AS INTEGER) * 60 + 
+            CAST(split_part(start_time, ':', 2) AS INTEGER) + 
+            COALESCE(duration_hours, 4) * 60) > 
+           (CAST(split_part($3, ':', 1) AS INTEGER) * 60 + 
+            CAST(split_part($3, ':', 2) AS INTEGER)))
+          OR
+          (start_time >= $3 AND start_time < $4)
+        )
+    `, [captainId, date, startTime, endTime]);
+    
+    if (conflictResult.rows.length > 0) {
+      return res.json({ 
+        hasConflict: true, 
+        reason: 'booking_conflict',
+        conflictingBooking: conflictResult.rows[0]
+      });
+    }
+    
+    res.json({ hasConflict: false });
+  } catch (error) {
+    console.error('Error checking conflicts:', error);
+    res.status(500).json({ error: 'Failed to check conflicts' });
   }
 });
 
