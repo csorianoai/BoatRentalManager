@@ -122,6 +122,42 @@ async function initializeDatabase() {
       )
     `);
     
+    // FASE 3: Create trip_logs table (check-ins/check-outs)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS trip_logs (
+        id TEXT PRIMARY KEY,
+        booking_id TEXT NOT NULL,
+        captain_id TEXT NOT NULL,
+        check_in_time TIMESTAMP,
+        check_in_lat TEXT,
+        check_in_lon TEXT,
+        check_out_time TIMESTAMP,
+        check_out_lat TEXT,
+        check_out_lon TEXT,
+        status TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+    
+    // FASE 3: Create trip_reports table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS trip_reports (
+        id TEXT PRIMARY KEY,
+        booking_id TEXT NOT NULL,
+        captain_id TEXT NOT NULL,
+        trip_log_id TEXT NOT NULL,
+        weather_conditions TEXT,
+        sea_conditions TEXT,
+        fuel_used INTEGER,
+        passengers_actual INTEGER,
+        issues_reported TEXT,
+        customer_satisfaction INTEGER,
+        photos JSONB,
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+    
     // FASE 5: Create captain_availability table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS captain_availability (

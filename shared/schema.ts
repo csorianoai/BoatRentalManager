@@ -122,3 +122,43 @@ export const captainAvailability = pgTable("captain_availability", {
 export type CaptainAvailability = typeof captainAvailability.$inferSelect;
 export type InsertCaptainAvailability = typeof captainAvailability.$inferInsert;
 export const insertCaptainAvailabilitySchema = createInsertSchema(captainAvailability);
+
+// FASE 3: Trip logs (check-ins/check-outs)
+export const tripLogs = pgTable("trip_logs", {
+  id: text("id").primaryKey(),
+  bookingId: text("booking_id").notNull(),
+  captainId: text("captain_id").notNull(),
+  checkInTime: timestamp("check_in_time"),
+  checkInLat: text("check_in_lat"),
+  checkInLon: text("check_in_lon"),
+  checkOutTime: timestamp("check_out_time"),
+  checkOutLat: text("check_out_lat"),
+  checkOutLon: text("check_out_lon"),
+  status: text("status").notNull(), // pending, in_progress, completed
+  createdAt: timestamp("created_at").defaultNow().notNull()
+});
+
+export type TripLog = typeof tripLogs.$inferSelect;
+export type InsertTripLog = typeof tripLogs.$inferInsert;
+export const insertTripLogSchema = createInsertSchema(tripLogs);
+
+// FASE 3: Trip reports (informes de viaje)
+export const tripReports = pgTable("trip_reports", {
+  id: text("id").primaryKey(),
+  bookingId: text("booking_id").notNull(),
+  captainId: text("captain_id").notNull(),
+  tripLogId: text("trip_log_id").notNull(),
+  weatherConditions: text("weather_conditions"),
+  seaConditions: text("sea_conditions"),
+  fuelUsed: integer("fuel_used"), // in liters
+  passengersActual: integer("passengers_actual"),
+  issuesReported: text("issues_reported"),
+  customerSatisfaction: integer("customer_satisfaction"), // 1-5 rating
+  photos: json("photos").$type<string[]>(),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull()
+});
+
+export type TripReport = typeof tripReports.$inferSelect;
+export type InsertTripReport = typeof tripReports.$inferInsert;
+export const insertTripReportSchema = createInsertSchema(tripReports);
