@@ -803,6 +803,105 @@ app.get('/api/chat/conversations', async (req, res) => {
   }
 });
 
+// ⚡ FASE 2: PLATFORM SYNCHRONIZATION ENDPOINTS
+const syncService = require('./server/syncService');
+
+// Trigger sync for specific platform
+app.post('/api/sync/trigger/:platform', async (req, res) => {
+  try {
+    const { platform } = req.params;
+    
+    if (!syncService.PLATFORMS.includes(platform)) {
+      return res.status(400).json({ error: 'Invalid platform' });
+    }
+    
+    const result = await syncService.syncPlatform(platform);
+    res.json(result);
+  } catch (error) {
+    console.error('Error triggering sync:', error);
+    res.status(500).json({ error: 'Failed to trigger sync' });
+  }
+});
+
+// Trigger sync for all platforms
+app.post('/api/sync/trigger-all', async (req, res) => {
+  try {
+    const result = await syncService.syncAllPlatforms();
+    res.json(result);
+  } catch (error) {
+    console.error('Error triggering sync all:', error);
+    res.status(500).json({ error: 'Failed to trigger sync' });
+  }
+});
+
+// Get sync status for all platforms
+app.get('/api/sync/status', async (req, res) => {
+  try {
+    const status = await syncService.getSyncStatus();
+    res.json(status);
+  } catch (error) {
+    console.error('Error getting sync status:', error);
+    res.status(500).json({ error: 'Failed to get sync status' });
+  }
+});
+
+// Get detected conflicts
+app.get('/api/sync/conflicts', async (req, res) => {
+  try {
+    const conflicts = await syncService.getConflicts();
+    res.json(conflicts);
+  } catch (error) {
+    console.error('Error getting conflicts:', error);
+    res.status(500).json({ error: 'Failed to get conflicts' });
+  }
+});
+
+// Resolve a conflict (cancel one of the bookings)
+app.post('/api/sync/resolve-conflict', async (req, res) => {
+  try {
+    const { bookingIdToCancel, reason } = req.body;
+    
+    if (!bookingIdToCancel) {
+      return res.status(400).json({ error: 'Missing bookingIdToCancel' });
+    }
+    
+    // Update booking status to cancelled
+    await pool.query(`
+      UPDATE bookings 
+      SET status = 'cancelled',
+          internal_notes = CONCAT(internal_notes, ' | Cancelado por conflicto: ', $1)
+      WHERE id = $2
+    `, [reason || 'Conflicto de sincronización', bookingIdToCancel]);
+    
+    res.json({ success: true, message: 'Conflict resolved' });
+  } catch (error) {
+    console.error('Error resolving conflict:', error);
+    res.status(500).json({ error: 'Failed to resolve conflict' });
+  }
+});
+
+// ⏰ AUTOMATIC SYNC SCHEDULER
+// Sync all platforms every 15 minutes
+console.log('⏰ Scheduling automatic sync every 15 minutes...');
+cron.schedule('*/15 * * * *', async () => {
+  console.log('🔄 Running scheduled sync for all platforms...');
+  try {
+    await syncService.syncAllPlatforms();
+  } catch (error) {
+    console.error('Error in scheduled sync:', error);
+  }
+});
+
+// Initial sync on server start (after 30 seconds)
+setTimeout(async () => {
+  console.log('🚀 Running initial sync...');
+  try {
+    await syncService.syncAllPlatforms();
+  } catch (error) {
+    console.error('Error in initial sync:', error);
+  }
+}, 30000);
+
 // 🚀 INICIAR SERVIDOR
 const PORT = process.env.PORT || 5000;
 const HOST = '0.0.0.0'; // Required for deployment
