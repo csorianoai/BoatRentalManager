@@ -861,21 +861,31 @@ app.post('/api/sync/resolve-conflict', async (req, res) => {
   try {
     const { bookingIdToCancel, reason } = req.body;
     
+    console.log('📌 Resolving conflict - canceling booking:', bookingIdToCancel);
+    
     if (!bookingIdToCancel) {
       return res.status(400).json({ error: 'Missing bookingIdToCancel' });
     }
     
-    // Update booking status to cancelled
-    await pool.query(`
+    // Update booking status to cancelled (using PostgreSQL syntax)
+    const reasonText = reason || 'Conflicto de sincronización';
+    const result = await pool.query(`
       UPDATE bookings 
       SET status = 'cancelled',
-          internal_notes = CONCAT(internal_notes, ' | Cancelado por conflicto: ', $1)
-      WHERE id = $2
-    `, [reason || 'Conflicto de sincronización', bookingIdToCancel]);
+          internal_notes = COALESCE(internal_notes, '') || ' | Cancelado por conflicto: ' || $1::text
+      WHERE id = $2::text
+      RETURNING id, status, customer_name
+    `, [reasonText, bookingIdToCancel]);
     
-    res.json({ success: true, message: 'Conflict resolved' });
+    if (result.rowCount === 0) {
+      console.log('⚠️ No booking found with id:', bookingIdToCancel);
+      return res.status(404).json({ error: 'Booking not found' });
+    }
+    
+    console.log('✅ Booking cancelled successfully:', result.rows[0]);
+    res.json({ success: true, message: 'Conflict resolved', booking: result.rows[0] });
   } catch (error) {
-    console.error('Error resolving conflict:', error);
+    console.error('❌ Error resolving conflict:', error);
     res.status(500).json({ error: 'Failed to resolve conflict' });
   }
 });

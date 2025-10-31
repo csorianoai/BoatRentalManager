@@ -1138,6 +1138,8 @@ async function resolveConflict(bookingIdToCancel) {
     }
     
     try {
+        console.log('🔄 Resolving conflict - canceling booking:', bookingIdToCancel);
+        
         const response = await fetch(`${API_BASE}/api/sync/resolve-conflict`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1147,18 +1149,31 @@ async function resolveConflict(bookingIdToCancel) {
             })
         });
         
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
         const result = await response.json();
+        console.log('✅ Conflict resolution result:', result);
         
         if (result.success) {
             alert('Conflicto resuelto exitosamente');
+            
+            // Small delay to ensure DB is updated before reloading
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // Reload conflicts and dashboard data
             await loadConflicts();
             await loadDashboardData();
+            
+            console.log('🔄 UI updated after conflict resolution');
         } else {
-            alert('Error al resolver conflicto');
+            console.error('❌ Failed to resolve conflict:', result);
+            alert('Error al resolver conflicto: ' + (result.error || 'Unknown error'));
         }
     } catch (error) {
-        console.error('Error resolving conflict:', error);
-        alert('Error al resolver conflicto');
+        console.error('❌ Error resolving conflict:', error);
+        alert('Error al resolver conflicto: ' + error.message);
     }
 }
 
