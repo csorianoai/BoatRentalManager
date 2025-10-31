@@ -467,8 +467,10 @@ app.post('/webhook/captain-response', async (req, res) => {
 
 // 🚀 INICIAR SERVIDOR
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`🚀 Nadaki Excursions Backend running on port ${PORT}`);
+const HOST = '0.0.0.0'; // Required for deployment
+
+app.listen(PORT, HOST, () => {
+  console.log(`🚀 Nadaki Excursions Backend running on ${HOST}:${PORT}`);
   console.log(`🌐 WordPress: ${WORDPRESS_DOMAIN}`);
   console.log(`📧 Webhooks disponibles para ${PLATFORMS.length} plataformas`);
   console.log(`🔗 Dashboard: http://localhost:${PORT}/api/dashboard-data`);
