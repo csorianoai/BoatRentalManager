@@ -102,7 +102,7 @@
         </div>
 
         <!-- Revenue by Platform Chart -->
-        <div class="chart-card">
+        <div class="chart-card medium">
             <div class="card-header">
                 <h2 data-i18n="revenue-by-platform">Ingresos por Plataforma</h2>
                 <span class="card-badge" id="totalRevenueBadge">$0</span>
@@ -110,8 +110,26 @@
             <canvas id="revenueByPlatform"></canvas>
         </div>
 
+        <!-- Booking Distribution Pie Chart -->
+        <div class="chart-card compact">
+            <div class="card-header">
+                <h2 data-i18n="booking-distribution">Distribución de Reservas</h2>
+            </div>
+            <canvas id="bookingDistribution"></canvas>
+        </div>
+
+        <!-- Platform Leaderboard -->
+        <div class="chart-card compact leaderboard-card">
+            <div class="card-header">
+                <h2 data-i18n="platform-leaderboard">🏆 Ranking</h2>
+            </div>
+            <div class="leaderboard" id="platformLeaderboard">
+                <!-- Dynamic content -->
+            </div>
+        </div>
+
         <!-- Monthly Trends Chart -->
-        <div class="chart-card">
+        <div class="chart-card medium">
             <div class="card-header">
                 <h2 data-i18n="monthly-trends">Tendencias Mensuales</h2>
                 <div class="trend-legend">
@@ -128,26 +146,8 @@
             <canvas id="monthlyTrends"></canvas>
         </div>
 
-        <!-- Booking Distribution Pie Chart -->
-        <div class="chart-card">
-            <div class="card-header">
-                <h2 data-i18n="booking-distribution">Distribución de Reservas</h2>
-            </div>
-            <canvas id="bookingDistribution"></canvas>
-        </div>
-
-        <!-- Platform Leaderboard -->
-        <div class="chart-card leaderboard-card">
-            <div class="card-header">
-                <h2 data-i18n="platform-leaderboard">🏆 Ranking de Plataformas</h2>
-            </div>
-            <div class="leaderboard" id="platformLeaderboard">
-                <!-- Dynamic content -->
-            </div>
-        </div>
-
         <!-- Captain Performance -->
-        <div class="chart-card">
+        <div class="chart-card medium">
             <div class="card-header">
                 <h2 data-i18n="captain-performance">Rendimiento de Capitanes</h2>
             </div>
