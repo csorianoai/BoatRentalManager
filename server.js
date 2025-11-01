@@ -217,6 +217,103 @@ async function initializeDatabase() {
       )
     `);
     
+    // FASE 7: Create boats table (inventario de barcos)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS boats (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        capacity INTEGER NOT NULL,
+        boat_type TEXT NOT NULL,
+        status TEXT NOT NULL,
+        description TEXT,
+        features JSONB,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+    
+    // FASE 7: Create platform_pricing_policies table (precios base por plataforma)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS platform_pricing_policies (
+        id TEXT PRIMARY KEY,
+        platform TEXT NOT NULL,
+        boat_id TEXT NOT NULL,
+        base_price_half_day INTEGER NOT NULL,
+        base_price_full_day INTEGER NOT NULL,
+        currency TEXT DEFAULT 'USD',
+        is_active INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+    
+    // FASE 7: Create pricing_adjustments table (descuentos/aumentos centralizados)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS pricing_adjustments (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        adjustment_type TEXT NOT NULL,
+        adjustment_value INTEGER NOT NULL,
+        scope TEXT NOT NULL,
+        target_platforms JSONB,
+        target_boats JSONB,
+        valid_from TIMESTAMP,
+        valid_until TIMESTAMP,
+        priority INTEGER DEFAULT 0,
+        is_active INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+    
+    // FASE 7: Create availability_blocks table (prevención de double-booking)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS availability_blocks (
+        id TEXT PRIMARY KEY,
+        boat_id TEXT NOT NULL,
+        block_date TEXT NOT NULL,
+        start_time TEXT NOT NULL,
+        end_time TEXT NOT NULL,
+        block_type TEXT NOT NULL,
+        booking_id TEXT,
+        reason TEXT,
+        status TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        released_at TIMESTAMP
+      )
+    `);
+    
+    // Create index for fast availability lookups
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_availability_blocks_lookup 
+      ON availability_blocks(boat_id, block_date, status)
+    `);
+    
+    // FASE 7: Create sync_jobs table (cola de sincronización bidireccional)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS sync_jobs (
+        id TEXT PRIMARY KEY,
+        job_type TEXT NOT NULL,
+        target_platform TEXT NOT NULL,
+        payload JSONB NOT NULL,
+        status TEXT NOT NULL,
+        attempts INTEGER DEFAULT 0,
+        max_attempts INTEGER DEFAULT 3,
+        last_attempt_at TIMESTAMP,
+        error_message TEXT,
+        completed_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+    
+    // Create index for job queue processing
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_sync_jobs_queue 
+      ON sync_jobs(status, created_at)
+    `);
+    
+    console.log('✅ FASE 7 tables created (boats, pricing, availability, sync_jobs)');
+    
     // AUTHENTICATION: Create sessions table (required for Replit Auth)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS sessions (
