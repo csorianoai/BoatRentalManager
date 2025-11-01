@@ -125,20 +125,38 @@ async function setupAuth(app) {
 
   // Login route
   app.get('/api/login', (req, res, next) => {
-    ensureStrategy(req.hostname);
-    passport.authenticate(`replitauth:${req.hostname}`, {
-      prompt: 'login consent',
-      scope: ['openid', 'email', 'profile', 'offline_access'],
-    })(req, res, next);
+    try {
+      const hostname = req.hostname || req.get('host') || 'localhost';
+      console.log(`🔐 Login attempt - hostname: ${hostname}, headers:`, {
+        host: req.get('host'),
+        'x-forwarded-host': req.get('x-forwarded-host'),
+        'x-replit-user-name': req.get('x-replit-user-name')
+      });
+      ensureStrategy(hostname);
+      passport.authenticate(`replitauth:${hostname}`, {
+        prompt: 'login consent',
+        scope: ['openid', 'email', 'profile', 'offline_access'],
+      })(req, res, next);
+    } catch (error) {
+      console.error('❌ Login error:', error);
+      res.status(500).send('Error during login: ' + error.message);
+    }
   });
 
   // OAuth callback route
   app.get('/api/callback', (req, res, next) => {
-    ensureStrategy(req.hostname);
-    passport.authenticate(`replitauth:${req.hostname}`, {
-      successReturnToOrRedirect: '/',
-      failureRedirect: '/api/login',
-    })(req, res, next);
+    try {
+      const hostname = req.hostname || req.get('host') || 'localhost';
+      console.log(`🔙 Callback - hostname: ${hostname}, query:`, req.query);
+      ensureStrategy(hostname);
+      passport.authenticate(`replitauth:${hostname}`, {
+        successReturnToOrRedirect: '/',
+        failureRedirect: '/api/login',
+      })(req, res, next);
+    } catch (error) {
+      console.error('❌ Callback error:', error);
+      res.status(500).send('Error during callback: ' + error.message);
+    }
   });
 
   // Logout route
