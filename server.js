@@ -311,6 +311,269 @@ async function initializeDatabase() {
     
     console.log('✅ FASE 7 tables created (boats, pricing, availability, sync_jobs)');
     
+    // FASE 8: Create chart_of_accounts table (accounting categories)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS chart_of_accounts (
+        id TEXT PRIMARY KEY,
+        account_code TEXT NOT NULL UNIQUE,
+        account_name TEXT NOT NULL,
+        account_type TEXT NOT NULL CHECK (account_type IN ('asset', 'liability', 'equity', 'revenue', 'expense')),
+        parent_account_id TEXT REFERENCES chart_of_accounts(id),
+        description TEXT,
+        is_active INTEGER DEFAULT 1 CHECK (is_active IN (0, 1)),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+    
+    // FASE 8: Create reconciliation_sessions table (must be before transactions due to FK)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS reconciliation_sessions (
+        id TEXT PRIMARY KEY,
+        period_start DATE NOT NULL,
+        period_end DATE NOT NULL,
+        opening_balance NUMERIC(12,2) NOT NULL,
+        closing_balance NUMERIC(12,2) NOT NULL,
+        total_credits NUMERIC(12,2) DEFAULT 0,
+        total_debits NUMERIC(12,2) DEFAULT 0,
+        variance NUMERIC(12,2) DEFAULT 0,
+        status TEXT NOT NULL CHECK (status IN ('in_progress', 'completed', 'cancelled')),
+        reconciled_by TEXT,
+        reconciled_at TIMESTAMP,
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+    
+    // FASE 8: Create transactions table (all income/expenses)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS transactions (
+        id TEXT PRIMARY KEY,
+        transaction_date DATE NOT NULL,
+        transaction_type TEXT NOT NULL CHECK (transaction_type IN ('income', 'expense', 'transfer', 'adjustment')),
+        account_id TEXT NOT NULL REFERENCES chart_of_accounts(id),
+        amount NUMERIC(12,2) NOT NULL,
+        currency TEXT DEFAULT 'USD',
+        description TEXT,
+        reference_id TEXT,
+        reference_type TEXT CHECK (reference_type IN ('booking', 'commission', 'fuel', 'maintenance', 'manual', 'bank_transfer', 'other')),
+        boat_id TEXT,
+        captain_id TEXT,
+        platform TEXT,
+        reconciled INTEGER DEFAULT 0 CHECK (reconciled IN (0, 1)),
+        reconciliation_id TEXT REFERENCES reconciliation_sessions(id),
+        notes TEXT,
+        created_by TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+    
+    // Create indices for fast transaction queries and auto-matching
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_transactions_date 
+      ON transactions(transaction_date DESC)
+    `);
+    
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_transactions_boat 
+      ON transactions(boat_id, transaction_date)
+    `);
+    
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_transactions_reconciled 
+      ON transactions(reconciled, transaction_date)
+    `);
+    
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_transactions_account 
+      ON transactions(account_id)
+    `);
+    
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_transactions_reference 
+      ON transactions(reference_type, reference_id)
+    `);
+    
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_transactions_amount_date 
+      ON transactions(amount, transaction_date)
+    `);
+    
+    // FASE 8: Create bank_statements table (imported bank data)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS bank_statements (
+        id TEXT PRIMARY KEY,
+        statement_date DATE NOT NULL,
+        description TEXT NOT NULL,
+        amount NUMERIC(12,2) NOT NULL,
+        transaction_type TEXT NOT NULL CHECK (transaction_type IN ('credit', 'debit')),
+        balance NUMERIC(12,2),
+        reference_number TEXT,
+        matched_transaction_id TEXT REFERENCES transactions(id),
+        reconciliation_status TEXT NOT NULL CHECK (reconciliation_status IN ('unmatched', 'suggested', 'matched', 'ignored')),
+        import_batch_id TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+    
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_bank_statements_date 
+      ON bank_statements(statement_date DESC)
+    `);
+    
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_bank_statements_reconciliation 
+      ON bank_statements(reconciliation_status)
+    `);
+    
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_bank_statements_amount_date 
+      ON bank_statements(amount, statement_date)
+    `);
+    
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_bank_statements_reference 
+      ON bank_statements(reference_number)
+    `);
+    
+    // FASE 8: Create tax_configs table (tax rules)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS tax_configs (
+        id TEXT PRIMARY KEY,
+        jurisdiction TEXT NOT NULL,
+        tax_type TEXT NOT NULL CHECK (tax_type IN ('sales_tax', 'income_tax', 'payroll_tax', 'property_tax', 'other')),
+        tax_rate NUMERIC(5,2) NOT NULL,
+        effective_from DATE NOT NULL,
+        effective_until DATE,
+        applies_to_income INTEGER DEFAULT 1 CHECK (applies_to_income IN (0, 1)),
+        account_id TEXT REFERENCES chart_of_accounts(id),
+        is_active INTEGER DEFAULT 1 CHECK (is_active IN (0, 1)),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+    
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_tax_configs_active 
+      ON tax_configs(is_active, jurisdiction)
+    `);
+    
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_tax_configs_effective 
+      ON tax_configs(effective_from, effective_until)
+    `);
+    
+    // FASE 8: Create financial_periods table (accounting periods)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS financial_periods (
+        id TEXT PRIMARY KEY,
+        period_name TEXT NOT NULL,
+        period_start DATE NOT NULL,
+        period_end DATE NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('open', 'closed', 'locked')),
+        closed_by TEXT,
+        closed_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+    
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_financial_periods_status 
+      ON financial_periods(status)
+    `);
+    
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_financial_periods_dates 
+      ON financial_periods(period_start, period_end)
+    `);
+    
+    console.log('✅ FASE 8 tables created (accounting, transactions, reconciliation)');
+    
+    // Seed chart of accounts if empty
+    const accountsCheck = await pool.query('SELECT COUNT(*) FROM chart_of_accounts');
+    if (parseInt(accountsCheck.rows[0].count) === 0) {
+      const { nanoid } = await import('nanoid');
+      
+      // Create parent accounts first, then child accounts
+      const assetParent = nanoid();
+      const liabilityParent = nanoid();
+      const equityParent = nanoid();
+      const revenueParent = nanoid();
+      const expenseParent = nanoid();
+      
+      // Parent Accounts (Top-level categories)
+      await pool.query(`
+        INSERT INTO chart_of_accounts (id, account_code, account_name, account_type, description) VALUES
+        ('${assetParent}', '1000', 'Assets', 'asset', 'Total Assets'),
+        ('${liabilityParent}', '2000', 'Liabilities', 'liability', 'Total Liabilities'),
+        ('${equityParent}', '3000', 'Equity', 'equity', 'Owner Equity'),
+        ('${revenueParent}', '4000', 'Revenue', 'revenue', 'Total Revenue'),
+        ('${expenseParent}', '5000', 'Expenses', 'expense', 'Total Expenses')
+      `);
+      
+      // Asset Sub-Accounts
+      await pool.query(`
+        INSERT INTO chart_of_accounts (id, account_code, account_name, account_type, parent_account_id, description) VALUES
+        ('${nanoid()}', '1010', 'Cash - Operating Account', 'asset', '${assetParent}', 'Main operating bank account'),
+        ('${nanoid()}', '1020', 'Cash - Savings', 'asset', '${assetParent}', 'Savings account'),
+        ('${nanoid()}', '1100', 'Accounts Receivable', 'asset', '${assetParent}', 'Money owed by customers'),
+        ('${nanoid()}', '1200', 'Prepaid Expenses', 'asset', '${assetParent}', 'Prepaid insurance, fuel, etc'),
+        ('${nanoid()}', '1300', 'Fuel Inventory', 'asset', '${assetParent}', 'Fuel on hand'),
+        ('${nanoid()}', '1500', 'Boats - Fleet', 'asset', '${assetParent}', 'Boat fleet at cost'),
+        ('${nanoid()}', '1510', 'Accumulated Depreciation - Boats', 'asset', '${assetParent}', 'Depreciation on boat fleet'),
+        ('${nanoid()}', '1600', 'Equipment', 'asset', '${assetParent}', 'Marine equipment and tools'),
+        ('${nanoid()}', '1610', 'Accumulated Depreciation - Equipment', 'asset', '${assetParent}', 'Depreciation on equipment')
+      `);
+      
+      // Liability Sub-Accounts
+      await pool.query(`
+        INSERT INTO chart_of_accounts (id, account_code, account_name, account_type, parent_account_id, description) VALUES
+        ('${nanoid()}', '2010', 'Accounts Payable', 'liability', '${liabilityParent}', 'Money owed to vendors'),
+        ('${nanoid()}', '2100', 'Sales Tax Payable', 'liability', '${liabilityParent}', 'Sales tax collected from customers'),
+        ('${nanoid()}', '2110', 'Income Tax Payable', 'liability', '${liabilityParent}', 'Estimated income tax payable'),
+        ('${nanoid()}', '2200', 'Wages Payable', 'liability', '${liabilityParent}', 'Unpaid captain wages'),
+        ('${nanoid()}', '2300', 'Loan - Boat Purchase', 'liability', '${liabilityParent}', 'Boat financing loans'),
+        ('${nanoid()}', '2400', 'Credit Cards Payable', 'liability', '${liabilityParent}', 'Business credit card balances')
+      `);
+      
+      // Equity Sub-Accounts
+      await pool.query(`
+        INSERT INTO chart_of_accounts (id, account_code, account_name, account_type, parent_account_id, description) VALUES
+        ('${nanoid()}', '3010', 'Owner Capital', 'equity', '${equityParent}', 'Owner investment'),
+        ('${nanoid()}', '3020', 'Owner Draws', 'equity', '${equityParent}', 'Owner withdrawals'),
+        ('${nanoid()}', '3100', 'Retained Earnings', 'equity', '${equityParent}', 'Accumulated profits')
+      `);
+      
+      // Revenue Sub-Accounts
+      await pool.query(`
+        INSERT INTO chart_of_accounts (id, account_code, account_name, account_type, parent_account_id, description) VALUES
+        ('${nanoid()}', '4010', 'Revenue - Tours', 'revenue', '${revenueParent}', 'Income from boat tours'),
+        ('${nanoid()}', '4020', 'Revenue - Rentals', 'revenue', '${revenueParent}', 'Income from boat rentals'),
+        ('${nanoid()}', '4030', 'Revenue - Fishing Charters', 'revenue', '${revenueParent}', 'Income from fishing charters'),
+        ('${nanoid()}', '4040', 'Revenue - Special Events', 'revenue', '${revenueParent}', 'Income from special events'),
+        ('${nanoid()}', '4900', 'Revenue - Other', 'revenue', '${revenueParent}', 'Other miscellaneous revenue')
+      `);
+      
+      // Expense Sub-Accounts
+      await pool.query(`
+        INSERT INTO chart_of_accounts (id, account_code, account_name, account_type, parent_account_id, description) VALUES
+        ('${nanoid()}', '5010', 'Fuel Expense', 'expense', '${expenseParent}', 'Fuel costs for boats'),
+        ('${nanoid()}', '5100', 'Maintenance & Repairs', 'expense', '${expenseParent}', 'Boat maintenance and repairs'),
+        ('${nanoid()}', '5200', 'Marina Fees', 'expense', '${expenseParent}', 'Dockage and marina fees'),
+        ('${nanoid()}', '5300', 'Insurance Expense', 'expense', '${expenseParent}', 'Boat and liability insurance'),
+        ('${nanoid()}', '5400', 'Captain Wages', 'expense', '${expenseParent}', 'Captain salaries and wages'),
+        ('${nanoid()}', '5500', 'Platform Commissions', 'expense', '${expenseParent}', 'Booking platform commission fees'),
+        ('${nanoid()}', '5600', 'Marketing & Advertising', 'expense', '${expenseParent}', 'Marketing and advertising costs'),
+        ('${nanoid()}', '5700', 'Supplies', 'expense', '${expenseParent}', 'Safety equipment and supplies'),
+        ('${nanoid()}', '5800', 'Licenses & Permits', 'expense', '${expenseParent}', 'Business licenses and permits'),
+        ('${nanoid()}', '5810', 'Depreciation Expense', 'expense', '${expenseParent}', 'Depreciation of boats and equipment'),
+        ('${nanoid()}', '5900', 'Administrative Expenses', 'expense', '${expenseParent}', 'Office and administrative expenses'),
+        ('${nanoid()}', '5910', 'Interest Expense', 'expense', '${expenseParent}', 'Interest on loans and credit cards'),
+        ('${nanoid()}', '5920', 'Bank Fees', 'expense', '${expenseParent}', 'Bank service charges')
+      `);
+      
+      console.log('✅ Chart of accounts initialized with hierarchical marine business accounts');
+    }
+    
     // AUTHENTICATION: Create sessions table (required for Replit Auth)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS sessions (
@@ -337,7 +600,7 @@ async function initializeDatabase() {
       )
     `);
     
-    console.log('✅ Database schema initialized successfully (all 5 phases + authentication)');
+    console.log('✅ Database schema initialized successfully (all 8 phases + authentication)');
   } catch (error) {
     console.error('❌ Error initializing database schema:', error);
     throw error;
