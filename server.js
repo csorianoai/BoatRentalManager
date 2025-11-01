@@ -8,6 +8,9 @@ const moment = require('moment');
 const { Pool, neonConfig } = require('@neondatabase/serverless');
 const ws = require('ws');
 const OpenAI = require('openai');
+const multer = require('multer');
+const { parse } = require('csv-parse/sync');
+const ofx = require('ofx-js');
 // AUTHENTICATION DISABLED - No validation required
 // const { setupAuth, isAuthenticated: replitAuthMiddleware } = require('./replitAuth');
 
@@ -657,6 +660,12 @@ app.use(express.json());
 
 // Servir archivos estáticos del dashboard
 app.use(express.static('public'));
+
+// Configure multer for file uploads (in-memory storage)
+const upload = multer({ 
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
+});
 
 // AUTHENTICATION DISABLED
 // (async () => {
@@ -3545,7 +3554,124 @@ app.get('/api/accounting/bank-statements/unmatched', isAuthenticated, async (req
   }
 });
 
-// Import bank statements (CSV)
+// Upload and parse bank statement file (CSV/OFX)
+app.post('/api/accounting/bank-statements/upload', isAuthenticated, upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const { nanoid } = await import('nanoid');
+    const fileBuffer = req.file.buffer;
+    const fileName = req.file.originalname;
+    const fileType = fileName.toLowerCase();
+    
+    let statements = [];
+
+    // Parse CSV files
+    if (fileType.endsWith('.csv')) {
+      const fileContent = fileBuffer.toString('utf-8');
+      const records = parse(fileContent, {
+        columns: true,
+        skip_empty_lines: true,
+        trim: true
+      });
+
+      // Map CSV columns to statement format
+      // Support common bank CSV formats
+      statements = records.map(record => {
+        // Try different common column names
+        const date = record.Date || record.date || record.TransactionDate || record['Transaction Date'] || record.Posted;
+        const description = record.Description || record.description || record.Details || record.Memo || record.Payee;
+        
+        // Handle amount - support both single Amount column and separate Debit/Credit columns
+        let amount = 0;
+        if (record.Amount || record.amount) {
+          amount = parseFloat((record.Amount || record.amount).toString().replace(/[,$]/g, ''));
+        } else if (record.Debit || record.debit || record.Credit || record.credit) {
+          // Debit = negative (money out), Credit = positive (money in)
+          const debit = record.Debit || record.debit;
+          const credit = record.Credit || record.credit;
+          if (debit && debit.toString().trim() !== '') {
+            amount = -Math.abs(parseFloat(debit.toString().replace(/[,$]/g, '')));
+          } else if (credit && credit.toString().trim() !== '') {
+            amount = Math.abs(parseFloat(credit.toString().replace(/[,$]/g, '')));
+          }
+        }
+        
+        // Handle balance - fix lowercase column bug
+        const balanceRaw = record.Balance || record.balance;
+        const balance = balanceRaw ? parseFloat(balanceRaw.toString().replace(/[,$]/g, '')) : null;
+        
+        const reference = record.Reference || record.CheckNumber || record['Check Number'] || null;
+
+        return {
+          statement_date: date,
+          description: description || 'Unknown',
+          amount: amount,
+          balance: balance,
+          reference_number: reference
+        };
+      });
+    } 
+    // Parse OFX/QFX files
+    else if (fileType.endsWith('.ofx') || fileType.endsWith('.qfx')) {
+      const fileContent = fileBuffer.toString('utf-8');
+      const ofxData = ofx.parse(fileContent);
+      
+      // Extract transactions from OFX structure
+      if (ofxData && ofxData.OFX && ofxData.OFX.BANKMSGSRSV1) {
+        const stmtrs = ofxData.OFX.BANKMSGSRSV1.STMTTRNRS.STMTRS;
+        const transactions = stmtrs.BANKTRANLIST.STMTTRN;
+        
+        statements = (Array.isArray(transactions) ? transactions : [transactions]).map(trn => ({
+          statement_date: trn.DTPOSTED ? trn.DTPOSTED.substring(0, 8) : null,
+          description: trn.NAME || trn.MEMO || 'Unknown',
+          amount: parseFloat(trn.TRNAMT || 0),
+          balance: null,
+          reference_number: trn.FITID || trn.CHECKNUM || null
+        }));
+      }
+    } else {
+      return res.status(400).json({ error: 'Unsupported file format. Please upload CSV, OFX, or QFX files.' });
+    }
+
+    if (statements.length === 0) {
+      return res.status(400).json({ error: 'No valid transactions found in file' });
+    }
+
+    // Import parsed statements into database
+    const imported = [];
+    for (const stmt of statements) {
+      // Skip invalid entries
+      if (!stmt.statement_date || stmt.amount === undefined) continue;
+
+      const id = nanoid();
+      const result = await pool.query(
+        `INSERT INTO bank_statements 
+         (id, statement_date, description, amount, balance, reference_number, category) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7) 
+         RETURNING *`,
+        [id, stmt.statement_date, stmt.description, stmt.amount, stmt.balance,
+         stmt.reference_number, stmt.category || null]
+      );
+      imported.push(result.rows[0]);
+    }
+
+    console.log(`✅ Imported ${imported.length} bank statements from ${fileName}`);
+    res.json({ 
+      success: true, 
+      imported: imported.length, 
+      statements: imported,
+      fileName: fileName
+    });
+  } catch (error) {
+    console.error('Error uploading bank statement:', error);
+    res.status(500).json({ error: 'Failed to upload and parse bank statement: ' + error.message });
+  }
+});
+
+// Import bank statements (JSON API)
 app.post('/api/accounting/bank-statements/import', isAuthenticated, async (req, res) => {
   try {
     const { nanoid } = await import('nanoid');
@@ -3641,6 +3767,86 @@ app.get('/api/accounting/bank-statements/:id/suggest-matches', isAuthenticated, 
   } catch (error) {
     console.error('Error suggesting matches:', error);
     res.status(500).json({ error: 'Failed to suggest matches' });
+  }
+});
+
+// Smart batch auto-match - automatically match bank statements to transactions
+app.post('/api/accounting/bank-statements/smart-auto-match', isAuthenticated, async (req, res) => {
+  try {
+    // Get all unmatched bank statements
+    const unmatchedResult = await pool.query(
+      'SELECT * FROM bank_statements WHERE matched_transaction_id IS NULL ORDER BY statement_date DESC'
+    );
+    
+    const matched = [];
+    const suggested = [];
+    const unmatched = [];
+    
+    for (const statement of unmatchedResult.rows) {
+      // Find potential transaction matches
+      const potentialMatches = await pool.query(
+        `SELECT t.*, a.account_name, a.account_code,
+                ABS(EXTRACT(EPOCH FROM (t.transaction_date - DATE($2)))) / 86400 as days_diff
+         FROM transactions t
+         LEFT JOIN chart_of_accounts a ON t.account_id = a.id
+         WHERE ABS(t.amount - $1) < 0.01
+         AND t.transaction_date >= DATE($2) - INTERVAL '7 days'
+         AND t.transaction_date <= DATE($2) + INTERVAL '7 days'
+         AND t.reconciliation_id IS NULL
+         ORDER BY ABS(EXTRACT(EPOCH FROM (t.transaction_date - DATE($2))))
+         LIMIT 5`,
+        [Math.abs(statement.amount), statement.statement_date]
+      );
+      
+      if (potentialMatches.rows.length > 0) {
+        const bestMatch = potentialMatches.rows[0];
+        const daysDiff = parseFloat(bestMatch.days_diff);
+        
+        // Calculate confidence score
+        const amountMatch = Math.abs(bestMatch.amount - Math.abs(statement.amount)) < 0.01;
+        const sameDayMatch = daysDiff < 1;
+        const within3Days = daysDiff <= 3;
+        
+        // Auto-match with high confidence (exact amount + same/next day)
+        if (amountMatch && within3Days && potentialMatches.rows.length === 1) {
+          await pool.query(
+            'UPDATE bank_statements SET matched_transaction_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+            [bestMatch.id, statement.id]
+          );
+          matched.push({
+            statement,
+            transaction: bestMatch,
+            confidence: 'high',
+            reason: `Exact amount match ($${statement.amount}) within ${Math.ceil(daysDiff)} day(s)`
+          });
+        } 
+        // Suggest manual review for medium confidence
+        else {
+          suggested.push({
+            statement,
+            possible_matches: potentialMatches.rows.map(m => ({
+              ...m,
+              days_difference: Math.ceil(parseFloat(m.days_diff))
+            })),
+            confidence: within3Days ? 'medium' : 'low'
+          });
+        }
+      } else {
+        unmatched.push(statement);
+      }
+    }
+    
+    console.log(`✅ Auto-matched ${matched.length} statements, ${suggested.length} need review, ${unmatched.length} no matches`);
+    res.json({
+      success: true,
+      matched: matched.length,
+      suggested: suggested.length,
+      unmatched: unmatched.length,
+      details: { matched, suggested, unmatched }
+    });
+  } catch (error) {
+    console.error('Error in smart auto-match:', error);
+    res.status(500).json({ error: 'Failed to auto-match statements' });
   }
 });
 
