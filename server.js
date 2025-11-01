@@ -10,12 +10,8 @@ const ws = require('ws');
 const OpenAI = require('openai');
 const { setupAuth, isAuthenticated: replitAuthMiddleware } = require('./replitAuth');
 
-// 🚨 TEMPORARY: Autenticación deshabilitada para acceso inmediato
-// TODO: Habilitar autenticación cuando Replit Auth esté funcionando
-const isAuthenticated = (req, res, next) => {
-  console.log('⚠️  Authentication bypassed (temporary)');
-  next(); // Permitir acceso sin autenticación
-};
+// Use real Replit Auth middleware for all protected endpoints
+const isAuthenticated = replitAuthMiddleware;
 const aiOrchestrator = require('./ai-orchestrator');
 require('dotenv').config();
 
