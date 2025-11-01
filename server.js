@@ -3485,7 +3485,8 @@ app.post('/api/accounting/transactions', isAuthenticated, async (req, res) => {
     const { nanoid } = await import('nanoid');
     const {
       transaction_date, account_id, amount, transaction_type, description,
-      reference_number, booking_id, reconciliation_id, payment_method, status
+      reference_id, reference_type, boat_id, captain_id, platform,
+      reconciled, reconciliation_id, notes, currency, created_by
     } = req.body;
     
     // Validation
@@ -3493,29 +3494,31 @@ app.post('/api/accounting/transactions', isAuthenticated, async (req, res) => {
       return res.status(400).json({ error: 'transaction_date, account_id, amount, and transaction_type are required' });
     }
     
-    if (!['debit', 'credit'].includes(transaction_type)) {
-      return res.status(400).json({ error: 'Invalid transaction_type (must be debit or credit)' });
+    if (!['income', 'expense', 'transfer', 'adjustment'].includes(transaction_type)) {
+      return res.status(400).json({ error: 'Invalid transaction_type (must be income, expense, transfer, or adjustment)' });
     }
     
     if (typeof amount !== 'number' || amount < 0) {
       return res.status(400).json({ error: 'amount must be a positive number' });
     }
     
-    const validStatuses = ['draft', 'posted', 'void', 'pending'];
-    if (status && !validStatuses.includes(status)) {
-      return res.status(400).json({ error: 'Invalid status' });
+    const validReferenceTypes = ['booking', 'commission', 'fuel', 'maintenance', 'manual', 'bank_transfer', 'other'];
+    if (reference_type && !validReferenceTypes.includes(reference_type)) {
+      return res.status(400).json({ error: 'Invalid reference_type' });
     }
     
     const id = nanoid();
     const result = await pool.query(
       `INSERT INTO transactions 
        (id, transaction_date, account_id, amount, transaction_type, description, 
-        reference_number, booking_id, reconciliation_id, payment_method, status) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) 
+        reference_id, reference_type, boat_id, captain_id, platform,
+        reconciled, reconciliation_id, notes, currency, created_by) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) 
        RETURNING *`,
       [id, transaction_date, account_id, amount, transaction_type, description,
-       reference_number || null, booking_id || null, reconciliation_id || null,
-       payment_method || null, status || 'posted']
+       reference_id || null, reference_type || 'manual', boat_id || null, captain_id || null, 
+       platform || null, reconciled || 0, reconciliation_id || null, notes || null,
+       currency || 'USD', created_by || null]
     );
     
     res.json(result.rows[0]);
@@ -3531,7 +3534,8 @@ app.put('/api/accounting/transactions/:id', isAuthenticated, async (req, res) =>
     const { id } = req.params;
     const {
       transaction_date, account_id, amount, transaction_type, description,
-      reference_number, payment_method, status
+      reference_id, reference_type, boat_id, captain_id, platform,
+      reconciled, reconciliation_id, notes, currency
     } = req.body;
     
     // Validation
@@ -3539,27 +3543,29 @@ app.put('/api/accounting/transactions/:id', isAuthenticated, async (req, res) =>
       return res.status(400).json({ error: 'transaction_date, account_id, amount, and transaction_type are required' });
     }
     
-    if (!['debit', 'credit'].includes(transaction_type)) {
-      return res.status(400).json({ error: 'Invalid transaction_type (must be debit or credit)' });
+    if (!['income', 'expense', 'transfer', 'adjustment'].includes(transaction_type)) {
+      return res.status(400).json({ error: 'Invalid transaction_type (must be income, expense, transfer, or adjustment)' });
     }
     
     if (typeof amount !== 'number' || amount < 0) {
       return res.status(400).json({ error: 'amount must be a positive number' });
     }
     
-    const validStatuses = ['draft', 'posted', 'void', 'pending'];
-    if (status && !validStatuses.includes(status)) {
-      return res.status(400).json({ error: 'Invalid status' });
+    const validReferenceTypes = ['booking', 'commission', 'fuel', 'maintenance', 'manual', 'bank_transfer', 'other'];
+    if (reference_type && !validReferenceTypes.includes(reference_type)) {
+      return res.status(400).json({ error: 'Invalid reference_type' });
     }
     
     const result = await pool.query(
       `UPDATE transactions 
        SET transaction_date = $1, account_id = $2, amount = $3, transaction_type = $4,
-           description = $5, reference_number = $6, payment_method = $7, status = $8,
-           updated_at = CURRENT_TIMESTAMP
-       WHERE id = $9 RETURNING *`,
+           description = $5, reference_id = $6, reference_type = $7, boat_id = $8,
+           captain_id = $9, platform = $10, reconciled = $11, reconciliation_id = $12,
+           notes = $13, currency = $14, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $15 RETURNING *`,
       [transaction_date, account_id, amount, transaction_type, description,
-       reference_number, payment_method, status, id]
+       reference_id, reference_type, boat_id, captain_id, platform,
+       reconciled, reconciliation_id, notes, currency, id]
     );
     
     if (result.rows.length === 0) {
@@ -4287,7 +4293,7 @@ app.get('/api/accounting/reconciliations/:id/variance-analysis', isAuthenticated
 // ===== FINANCIAL REPORTS =====
 
 // Profit & Loss Report
-app.get('/api/accounting/reports/profit-loss', isAuthenticated, async (req, res) => {
+app.get('/api/accounting/profit-loss', isAuthenticated, async (req, res) => {
   try {
     const { start_date, end_date } = req.query;
     
@@ -4341,7 +4347,7 @@ app.get('/api/accounting/reports/profit-loss', isAuthenticated, async (req, res)
 });
 
 // Balance Sheet Report
-app.get('/api/accounting/reports/balance-sheet', isAuthenticated, async (req, res) => {
+app.get('/api/accounting/balance-sheet', isAuthenticated, async (req, res) => {
   try {
     const { as_of_date } = req.query;
     const date = as_of_date || new Date().toISOString().split('T')[0];
@@ -4405,7 +4411,7 @@ app.get('/api/accounting/reports/balance-sheet', isAuthenticated, async (req, re
 });
 
 // Cash Flow Report
-app.get('/api/accounting/reports/cash-flow', isAuthenticated, async (req, res) => {
+app.get('/api/accounting/cash-flow', isAuthenticated, async (req, res) => {
   try {
     const { start_date, end_date } = req.query;
     
@@ -4447,7 +4453,7 @@ app.get('/api/accounting/reports/cash-flow', isAuthenticated, async (req, res) =
 });
 
 // ROI Analysis (by boat if boat_id provided in transactions)
-app.get('/api/accounting/reports/roi', isAuthenticated, async (req, res) => {
+app.get('/api/accounting/roi', isAuthenticated, async (req, res) => {
   try {
     const { start_date, end_date, boat_id } = req.query;
     

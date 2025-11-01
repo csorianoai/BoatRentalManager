@@ -598,7 +598,7 @@ async function generatePLReport() {
     }
     
     try {
-        const response = await fetch(`/api/accounting/reports/profit-loss?start_date=${startDate}&end_date=${endDate}`);
+        const response = await fetch(`/api/accounting/profit-loss?start_date=${startDate}&end_date=${endDate}`);
         const data = await response.json();
         
         displayReport('📊 Reporte P&L', `
@@ -619,7 +619,7 @@ async function generateBalanceSheet() {
     const asOfDate = document.getElementById('reportEndDate').value || new Date().toISOString().split('T')[0];
     
     try {
-        const response = await fetch(`/api/accounting/reports/balance-sheet?as_of_date=${asOfDate}`);
+        const response = await fetch(`/api/accounting/balance-sheet?as_of_date=${asOfDate}`);
         const data = await response.json();
         
         displayReport('📋 Balance Sheet', `
@@ -646,7 +646,7 @@ async function generateCashFlow() {
     }
     
     try {
-        const response = await fetch(`/api/accounting/reports/cash-flow?start_date=${startDate}&end_date=${endDate}`);
+        const response = await fetch(`/api/accounting/cash-flow?start_date=${startDate}&end_date=${endDate}`);
         const data = await response.json();
         
         displayReport('💵 Cash Flow', `
@@ -672,7 +672,7 @@ async function generateROI() {
     }
     
     try {
-        const response = await fetch(`/api/accounting/reports/roi?start_date=${startDate}&end_date=${endDate}`);
+        const response = await fetch(`/api/accounting/roi?start_date=${startDate}&end_date=${endDate}`);
         const data = await response.json();
         
         displayReport('💰 ROI Analysis', `
