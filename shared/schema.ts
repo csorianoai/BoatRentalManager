@@ -82,7 +82,10 @@ export const chatAiContext = pgTable("chat_ai_context", {
   lastInteractionAt: timestamp("last_interaction_at").defaultNow(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull()
-});
+}, (table) => ({
+  lastInteractionIdx: index("idx_chat_ai_context_last_interaction").on(table.lastInteractionAt),
+  intentIdx: index("idx_chat_ai_context_intent").on(table.detectedIntent)
+}));
 
 export type ChatAiContext = typeof chatAiContext.$inferSelect;
 export type InsertChatAiContext = typeof chatAiContext.$inferInsert;
@@ -259,7 +262,9 @@ export const availabilityBlocks = pgTable("availability_blocks", {
   status: text("status").notNull(), // blocked, released
   createdAt: timestamp("created_at").defaultNow().notNull(),
   releasedAt: timestamp("released_at")
-});
+}, (table) => ({
+  lookupIdx: index("idx_availability_blocks_lookup").on(table.boatId, table.blockDate, table.status)
+}));
 
 export type AvailabilityBlock = typeof availabilityBlocks.$inferSelect;
 export type InsertAvailabilityBlock = typeof availabilityBlocks.$inferInsert;
@@ -286,7 +291,9 @@ export const syncJobs = pgTable("sync_jobs", {
   errorMessage: text("error_message"),
   completedAt: timestamp("completed_at"),
   createdAt: timestamp("created_at").defaultNow().notNull()
-});
+}, (table) => ({
+  queueIdx: index("idx_sync_jobs_queue").on(table.status, table.createdAt)
+}));
 
 export type SyncJob = typeof syncJobs.$inferSelect;
 export type InsertSyncJob = typeof syncJobs.$inferInsert;

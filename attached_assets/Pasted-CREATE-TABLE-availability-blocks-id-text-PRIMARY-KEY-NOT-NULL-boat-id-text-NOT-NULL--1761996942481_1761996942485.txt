@@ -1,0 +1,71 @@
+CREATE TABLE "availability_blocks" (
+	"id" text PRIMARY KEY NOT NULL,
+	"boat_id" text NOT NULL,
+	"block_date" text NOT NULL,
+	"start_time" text NOT NULL,
+	"end_time" text NOT NULL,
+	"block_type" text NOT NULL,
+	"booking_id" text,
+	"reason" text,
+	"status" text NOT NULL,
+	"created_at" timestamp DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	"released_at" timestamp
+);
+CREATE TABLE "boats" (
+	"id" text PRIMARY KEY NOT NULL,
+	"name" text NOT NULL,
+	"capacity" integer NOT NULL,
+	"boat_type" text NOT NULL,
+	"status" text NOT NULL,
+	"description" text,
+	"features" jsonb,
+	"created_at" timestamp DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+CREATE TABLE "sync_jobs" (
+	"id" text PRIMARY KEY NOT NULL,
+	"job_type" text NOT NULL,
+	"target_platform" text NOT NULL,
+	"payload" jsonb NOT NULL,
+	"status" text NOT NULL,
+	"attempts" integer DEFAULT 0,
+	"max_attempts" integer DEFAULT 3,
+	"last_attempt_at" timestamp,
+	"error_message" text,
+	"completed_at" timestamp,
+	"created_at" timestamp DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+CREATE TABLE "platform_pricing_policies" (
+	"id" text PRIMARY KEY NOT NULL,
+	"platform" text NOT NULL,
+	"boat_id" text NOT NULL,
+	"base_price_half_day" integer NOT NULL,
+	"base_price_full_day" integer NOT NULL,
+	"currency" text DEFAULT 'USD',
+	"is_active" integer DEFAULT 1,
+	"created_at" timestamp DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	"updated_at" timestamp DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+CREATE TABLE "pricing_adjustments" (
+	"id" text PRIMARY KEY NOT NULL,
+	"name" text NOT NULL,
+	"description" text,
+	"adjustment_type" text NOT NULL,
+	"adjustment_value" integer NOT NULL,
+	"scope" text NOT NULL,
+	"target_platforms" jsonb,
+	"target_boats" jsonb,
+	"valid_from" timestamp,
+	"valid_until" timestamp,
+	"priority" integer DEFAULT 0,
+	"is_active" integer DEFAULT 1,
+	"created_at" timestamp DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	"updated_at" timestamp DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+DROP INDEX "idx_chat_ai_context_last_interaction";
+CREATE INDEX "idx_availability_blocks_lookup" ON "availability_blocks" USING btree ("boat_id","block_date","status");
+CREATE INDEX "idx_sync_jobs_queue" ON "sync_jobs" USING btree ("status","created_at");
+CREATE INDEX "idx_chat_ai_context_last_interaction" ON "chat_ai_context" USING btree ("last_interaction_at");
+You may notice a temporary downtime of your deployment. What's happening?
+
+Failed to validate database migrations
+
