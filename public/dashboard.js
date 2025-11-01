@@ -1218,10 +1218,29 @@ async function resolveConflict(bookingIdToCancel) {
     }
 }
 
+// Load unread messages count for notifications badge
+async function loadUnreadCount() {
+    try {
+        const response = await fetch('/api/messages/unread-count');
+        const data = await response.json();
+        const badge = document.getElementById('unread-badge');
+        
+        if (badge && data.count > 0) {
+            badge.textContent = data.count;
+            badge.style.display = 'inline';
+        } else if (badge) {
+            badge.style.display = 'none';
+        }
+    } catch (error) {
+        console.error('Error loading unread count:', error);
+    }
+}
+
 // Initialize sync panel
 function initSyncPanel() {
     loadSyncStatus();
     loadConflicts();
+    loadUnreadCount(); // Load unread messages count
     
     // Setup sync all button
     const syncAllBtn = document.getElementById('syncAllPlatforms');
@@ -1229,10 +1248,11 @@ function initSyncPanel() {
         syncAllBtn.addEventListener('click', syncAllPlatforms);
     }
     
-    // Refresh sync status every 30 seconds
+    // Refresh sync status and unread count every 30 seconds
     setInterval(() => {
         loadSyncStatus();
         loadConflicts();
+        loadUnreadCount();
     }, 30000);
 }
 

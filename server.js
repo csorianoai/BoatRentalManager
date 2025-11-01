@@ -5924,6 +5924,113 @@ app.patch('/api/messages/:messageId/status', async (req, res) => {
   }
 });
 
+// Webhook for WhatsApp messages (auto-ingestion)
+app.post('/api/webhooks/whatsapp', async (req, res) => {
+  try {
+    const { nanoid } = await import('nanoid');
+    const { from, body, timestamp } = req.body;
+    
+    if (!from || !body) {
+      return res.status(400).json({ error: 'Missing required fields: from, body' });
+    }
+    
+    // Find or create thread
+    let thread = await pool.query(
+      'SELECT * FROM message_threads WHERE customer_phone = $1 AND platform = $2',
+      [from, 'WhatsApp']
+    );
+    
+    if (thread.rows.length === 0) {
+      const threadId = nanoid();
+      thread = await pool.query(
+        `INSERT INTO message_threads (id, customer_name, customer_phone, platform, status, last_message_at)
+         VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP) RETURNING *`,
+        [threadId, from, from, 'WhatsApp', 'pending']
+      );
+    } else {
+      await pool.query(
+        'UPDATE message_threads SET last_message_at = CURRENT_TIMESTAMP WHERE id = $1',
+        [thread.rows[0].id]
+      );
+    }
+    
+    // Create message
+    const messageId = nanoid();
+    await pool.query(
+      `INSERT INTO platform_messages (id, thread_id, platform, sender_name, message_content, direction, status, received_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [messageId, thread.rows[0].id, 'WhatsApp', from, body, 'inbound', 'new', timestamp || new Date()]
+    );
+    
+    res.status(200).json({ success: true, messageId });
+  } catch (error) {
+    console.error('Error processing WhatsApp webhook:', error);
+    res.status(500).json({ error: 'Failed to process webhook' });
+  }
+});
+
+// Webhook for Email messages (auto-ingestion)
+app.post('/api/webhooks/email', async (req, res) => {
+  try {
+    const { nanoid } = await import('nanoid');
+    const { from, subject, body, timestamp } = req.body;
+    
+    if (!from || !body) {
+      return res.status(400).json({ error: 'Missing required fields: from, body' });
+    }
+    
+    // Find or create thread
+    let thread = await pool.query(
+      'SELECT * FROM message_threads WHERE customer_email = $1 AND platform = $2',
+      [from, 'Email']
+    );
+    
+    if (thread.rows.length === 0) {
+      const threadId = nanoid();
+      thread = await pool.query(
+        `INSERT INTO message_threads (id, customer_name, customer_email, platform, status, last_message_at)
+         VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP) RETURNING *`,
+        [threadId, from, from, 'Email', 'pending']
+      );
+    } else {
+      await pool.query(
+        'UPDATE message_threads SET last_message_at = CURRENT_TIMESTAMP WHERE id = $1',
+        [thread.rows[0].id]
+      );
+    }
+    
+    // Create message
+    const messageId = nanoid();
+    const content = subject ? `Subject: ${subject}\n\n${body}` : body;
+    await pool.query(
+      `INSERT INTO platform_messages (id, thread_id, platform, sender_name, message_content, direction, status, received_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [messageId, thread.rows[0].id, 'Email', from, content, 'inbound', 'new', timestamp || new Date()]
+    );
+    
+    res.status(200).json({ success: true, messageId });
+  } catch (error) {
+    console.error('Error processing Email webhook:', error);
+    res.status(500).json({ error: 'Failed to process webhook' });
+  }
+});
+
+// Get unread messages count (for notifications badge)
+app.get('/api/messages/unread-count', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT COUNT(*) as count 
+       FROM platform_messages 
+       WHERE status = 'new' AND direction = 'inbound'`
+    );
+    
+    res.json({ count: parseInt(result.rows[0].count) || 0 });
+  } catch (error) {
+    console.error('Error fetching unread count:', error);
+    res.status(500).json({ error: 'Failed to fetch unread count' });
+  }
+});
+
 // ============================================================================
 // 🚀 INICIAR SERVIDOR
 // ============================================================================
