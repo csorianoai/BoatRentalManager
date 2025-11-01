@@ -519,7 +519,53 @@ async function initializeDatabase() {
       ON categorization_rules(match_field)
     `);
     
-    console.log('✅ FASE 8 tables created (accounting, transactions, reconciliation, categorization)');
+    // FASE 8: Create accounting_alerts table for alert system
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS accounting_alerts (
+        id TEXT PRIMARY KEY,
+        alert_type TEXT NOT NULL CHECK (alert_type IN ('low_balance', 'unusual_spending', 'profit_margin', 'tax_reminder')),
+        severity TEXT NOT NULL CHECK (severity IN ('low', 'medium', 'high', 'critical')),
+        title TEXT NOT NULL,
+        message TEXT NOT NULL,
+        threshold_value NUMERIC(12,2),
+        actual_value NUMERIC(12,2),
+        account_id TEXT REFERENCES chart_of_accounts(id),
+        is_resolved INTEGER DEFAULT 0 CHECK (is_resolved IN (0, 1)),
+        is_dismissed INTEGER DEFAULT 0 CHECK (is_dismissed IN (0, 1)),
+        notification_sent INTEGER DEFAULT 0 CHECK (notification_sent IN (0, 1)),
+        resolved_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+    
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_accounting_alerts_type_resolved 
+      ON accounting_alerts(alert_type, is_resolved)
+    `);
+    
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_accounting_alerts_severity 
+      ON accounting_alerts(severity, is_resolved)
+    `);
+    
+    // FASE 8: Create alert_configurations table for customizable thresholds
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS alert_configurations (
+        id TEXT PRIMARY KEY,
+        alert_type TEXT NOT NULL UNIQUE CHECK (alert_type IN ('low_balance', 'unusual_spending', 'profit_margin', 'tax_reminder')),
+        is_enabled INTEGER DEFAULT 1 CHECK (is_enabled IN (0, 1)),
+        threshold_value NUMERIC(12,2),
+        threshold_percentage NUMERIC(5,2),
+        comparison_operator TEXT CHECK (comparison_operator IN ('less_than', 'greater_than', 'equals', 'between')),
+        account_id TEXT REFERENCES chart_of_accounts(id),
+        notification_method TEXT DEFAULT 'in_app' CHECK (notification_method IN ('in_app', 'whatsapp', 'both')),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+    
+    console.log('✅ FASE 8 tables created (accounting, transactions, reconciliation, categorization, alerts)');
     
     // Seed chart of accounts if empty
     const accountsCheck = await pool.query('SELECT COUNT(*) FROM chart_of_accounts');
@@ -2750,6 +2796,26 @@ Thanks for choosing us! 🚤
   }
 });
 
+// ⏰ ACCOUNTING ALERTS SCHEDULER (FASE 8)
+// Runs daily at 8:00 AM to check for alert conditions
+console.log('🚨 Scheduling daily accounting alerts check...');
+cron.schedule('0 8 * * *', async () => {
+  console.log('🚨 Running accounting alerts check...');
+  try {
+    const alerts = await checkAlertConditions();
+    console.log(`✅ Alerts check complete. Created ${alerts.length} new alerts.`);
+    
+    // Log alert details
+    if (alerts.length > 0) {
+      alerts.forEach(alert => {
+        console.log(`  - ${alert.type}: ${alert.account || 'General'}`);
+      });
+    }
+  } catch (error) {
+    console.error('Error in accounting alerts check:', error);
+  }
+});
+
 // ========================================
 // ⚡ FASE 7: PRICING MANAGEMENT ENDPOINTS
 // ========================================
@@ -4830,6 +4896,375 @@ function checkRuleMatch(rule, transaction) {
              fieldValue <= parseFloat(match_value_max);
     default:
       return false;
+  }
+}
+
+// ===== ALERTS SYSTEM =====
+
+// Get all alerts
+app.get('/api/accounting/alerts', async (req, res) => {
+  try {
+    const { alert_type, severity, is_resolved, is_dismissed } = req.query;
+    
+    let query = 'SELECT a.*, coa.account_name, coa.account_code FROM accounting_alerts a LEFT JOIN chart_of_accounts coa ON a.account_id = coa.id WHERE 1=1';
+    const params = [];
+    let paramIndex = 1;
+    
+    if (alert_type) {
+      query += ` AND a.alert_type = $${paramIndex++}`;
+      params.push(alert_type);
+    }
+    if (severity) {
+      query += ` AND a.severity = $${paramIndex++}`;
+      params.push(severity);
+    }
+    if (is_resolved !== undefined) {
+      query += ` AND a.is_resolved = $${paramIndex++}`;
+      params.push(is_resolved === 'true' ? 1 : 0);
+    }
+    if (is_dismissed !== undefined) {
+      query += ` AND a.is_dismissed = $${paramIndex++}`;
+      params.push(is_dismissed === 'true' ? 1 : 0);
+    }
+    
+    query += ' ORDER BY a.severity DESC, a.created_at DESC';
+    
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching alerts:', error);
+    res.status(500).json({ error: 'Failed to fetch alerts' });
+  }
+});
+
+// Resolve an alert
+app.post('/api/accounting/alerts/:id/resolve', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const result = await pool.query(
+      `UPDATE accounting_alerts 
+       SET is_resolved = 1, resolved_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP 
+       WHERE id = $1 
+       RETURNING *`,
+      [id]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Alert not found' });
+    }
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error resolving alert:', error);
+    res.status(500).json({ error: 'Failed to resolve alert' });
+  }
+});
+
+// Dismiss an alert
+app.post('/api/accounting/alerts/:id/dismiss', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const result = await pool.query(
+      `UPDATE accounting_alerts 
+       SET is_dismissed = 1, updated_at = CURRENT_TIMESTAMP 
+       WHERE id = $1 
+       RETURNING *`,
+      [id]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Alert not found' });
+    }
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error dismissing alert:', error);
+    res.status(500).json({ error: 'Failed to dismiss alert' });
+  }
+});
+
+// Get alert configurations
+app.get('/api/accounting/alert-configs', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT ac.*, coa.account_name, coa.account_code 
+       FROM alert_configurations ac 
+       LEFT JOIN chart_of_accounts coa ON ac.account_id = coa.id 
+       ORDER BY ac.alert_type`
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching alert configurations:', error);
+    res.status(500).json({ error: 'Failed to fetch alert configurations' });
+  }
+});
+
+// Update alert configuration
+app.put('/api/accounting/alert-configs/:type', async (req, res) => {
+  try {
+    const { type } = req.params;
+    const { is_enabled, threshold_value, threshold_percentage, comparison_operator, account_id, notification_method } = req.body;
+    const { nanoid } = await import('nanoid');
+    
+    // Check if configuration exists
+    const existingConfig = await pool.query(
+      'SELECT * FROM alert_configurations WHERE alert_type = $1',
+      [type]
+    );
+    
+    if (existingConfig.rows.length === 0) {
+      // Create new configuration
+      const result = await pool.query(
+        `INSERT INTO alert_configurations (id, alert_type, is_enabled, threshold_value, threshold_percentage, comparison_operator, account_id, notification_method) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
+         RETURNING *`,
+        [nanoid(), type, is_enabled ?? 1, threshold_value, threshold_percentage, comparison_operator, account_id, notification_method || 'in_app']
+      );
+      return res.json(result.rows[0]);
+    }
+    
+    // Update existing configuration
+    const result = await pool.query(
+      `UPDATE alert_configurations 
+       SET is_enabled = $1, threshold_value = $2, threshold_percentage = $3, comparison_operator = $4, account_id = $5, notification_method = $6, updated_at = CURRENT_TIMESTAMP 
+       WHERE alert_type = $7 
+       RETURNING *`,
+      [is_enabled ?? 1, threshold_value, threshold_percentage, comparison_operator, account_id, notification_method || 'in_app', type]
+    );
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating alert configuration:', error);
+    res.status(500).json({ error: 'Failed to update alert configuration' });
+  }
+});
+
+// Check alert conditions manually
+app.post('/api/accounting/alerts/check-conditions', async (req, res) => {
+  try {
+    const alerts = await checkAlertConditions();
+    res.json({
+      checked: true,
+      alerts_created: alerts.length,
+      alerts
+    });
+  } catch (error) {
+    console.error('Error checking alert conditions:', error);
+    res.status(500).json({ error: 'Failed to check alert conditions' });
+  }
+});
+
+// Helper function to check alert conditions
+async function checkAlertConditions() {
+  const { nanoid } = await import('nanoid');
+  const alerts = [];
+  
+  try {
+    // Get alert configurations
+    const configsResult = await pool.query('SELECT * FROM alert_configurations WHERE is_enabled = 1');
+    const configs = configsResult.rows;
+    
+    for (const config of configs) {
+      const { alert_type, threshold_value, threshold_percentage, comparison_operator, account_id } = config;
+      
+      if (alert_type === 'low_balance') {
+        // Check for low balances in cash accounts
+        const balancesResult = await pool.query(
+          `SELECT a.id, a.account_name, a.account_code, 
+                  COALESCE(SUM(CASE WHEN t.transaction_type = 'income' THEN t.amount ELSE -t.amount END), 0) as balance
+           FROM chart_of_accounts a
+           LEFT JOIN transactions t ON a.id = t.account_id
+           WHERE a.account_type = 'asset' AND a.account_code LIKE '10%'
+           GROUP BY a.id, a.account_name, a.account_code`
+        );
+        
+        for (const account of balancesResult.rows) {
+          const balance = parseFloat(account.balance);
+          if (balance < (threshold_value || 1000)) {
+            // Check if alert already exists and is not resolved
+            const existingAlert = await pool.query(
+              `SELECT * FROM accounting_alerts 
+               WHERE alert_type = 'low_balance' AND account_id = $1 AND is_resolved = 0 
+               ORDER BY created_at DESC LIMIT 1`,
+              [account.id]
+            );
+            
+            if (existingAlert.rows.length === 0) {
+              const alertId = nanoid();
+              await pool.query(
+                `INSERT INTO accounting_alerts (id, alert_type, severity, title, message, threshold_value, actual_value, account_id) 
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                [
+                  alertId,
+                  'low_balance',
+                  balance < (threshold_value || 1000) * 0.5 ? 'critical' : 'high',
+                  'Saldo Bajo Detectado',
+                  `La cuenta ${account.account_name} tiene un saldo de $${balance.toFixed(2)}, por debajo del umbral de $${(threshold_value || 1000).toFixed(2)}`,
+                  threshold_value || 1000,
+                  balance,
+                  account.id
+                ]
+              );
+              alerts.push({ id: alertId, type: 'low_balance', account: account.account_name });
+            }
+          }
+        }
+      }
+      
+      if (alert_type === 'unusual_spending') {
+        // Calculate average monthly expenses for the last 3 months
+        const threeMonthsAgo = new Date();
+        threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+        
+        const avgExpensesResult = await pool.query(
+          `SELECT AVG(monthly_expenses) as avg_monthly_expenses
+           FROM (
+             SELECT DATE_TRUNC('month', transaction_date) as month, SUM(amount) as monthly_expenses
+             FROM transactions
+             WHERE transaction_type = 'expense' AND transaction_date >= $1
+             GROUP BY DATE_TRUNC('month', transaction_date)
+           ) monthly`,
+          [threeMonthsAgo.toISOString().split('T')[0]]
+        );
+        
+        const avgExpenses = parseFloat(avgExpensesResult.rows[0]?.avg_monthly_expenses || 0);
+        
+        // Get current month expenses
+        const currentMonthStart = new Date();
+        currentMonthStart.setDate(1);
+        
+        const currentExpensesResult = await pool.query(
+          `SELECT SUM(amount) as current_expenses
+           FROM transactions
+           WHERE transaction_type = 'expense' AND transaction_date >= $1`,
+          [currentMonthStart.toISOString().split('T')[0]]
+        );
+        
+        const currentExpenses = parseFloat(currentExpensesResult.rows[0]?.current_expenses || 0);
+        
+        // Check if current month is significantly higher than average
+        const percentageIncrease = avgExpenses > 0 ? ((currentExpenses - avgExpenses) / avgExpenses) * 100 : 0;
+        if (percentageIncrease > (threshold_percentage || 50)) {
+          const existingAlert = await pool.query(
+            `SELECT * FROM accounting_alerts 
+             WHERE alert_type = 'unusual_spending' AND is_resolved = 0 
+             AND created_at >= $1
+             ORDER BY created_at DESC LIMIT 1`,
+            [currentMonthStart.toISOString()]
+          );
+          
+          if (existingAlert.rows.length === 0) {
+            const alertId = nanoid();
+            await pool.query(
+              `INSERT INTO accounting_alerts (id, alert_type, severity, title, message, threshold_value, actual_value) 
+               VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+              [
+                alertId,
+                'unusual_spending',
+                percentageIncrease > (threshold_percentage || 50) * 2 ? 'high' : 'medium',
+                'Gastos Inusuales Detectados',
+                `Los gastos de este mes ($${currentExpenses.toFixed(2)}) son ${percentageIncrease.toFixed(1)}% más altos que el promedio ($${avgExpenses.toFixed(2)})`,
+                avgExpenses,
+                currentExpenses
+              ]
+            );
+            alerts.push({ id: alertId, type: 'unusual_spending' });
+          }
+        }
+      }
+      
+      if (alert_type === 'profit_margin') {
+        // Calculate profit margin for current month
+        const currentMonthStart = new Date();
+        currentMonthStart.setDate(1);
+        
+        const profitResult = await pool.query(
+          `SELECT 
+             SUM(CASE WHEN transaction_type = 'income' THEN amount ELSE 0 END) as revenue,
+             SUM(CASE WHEN transaction_type = 'expense' THEN amount ELSE 0 END) as expenses
+           FROM transactions
+           WHERE transaction_date >= $1`,
+          [currentMonthStart.toISOString().split('T')[0]]
+        );
+        
+        const revenue = parseFloat(profitResult.rows[0]?.revenue || 0);
+        const expenses = parseFloat(profitResult.rows[0]?.expenses || 0);
+        const profitMargin = revenue > 0 ? ((revenue - expenses) / revenue) * 100 : 0;
+        
+        if (profitMargin < (threshold_percentage || 30)) {
+          const existingAlert = await pool.query(
+            `SELECT * FROM accounting_alerts 
+             WHERE alert_type = 'profit_margin' AND is_resolved = 0 
+             AND created_at >= $1
+             ORDER BY created_at DESC LIMIT 1`,
+            [currentMonthStart.toISOString()]
+          );
+          
+          if (existingAlert.rows.length === 0) {
+            const alertId = nanoid();
+            await pool.query(
+              `INSERT INTO accounting_alerts (id, alert_type, severity, title, message, threshold_value, actual_value) 
+               VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+              [
+                alertId,
+                'profit_margin',
+                profitMargin < (threshold_percentage || 30) * 0.5 ? 'critical' : 'high',
+                'Margen de Ganancia Bajo',
+                `El margen de ganancia actual (${profitMargin.toFixed(1)}%) está por debajo del objetivo (${(threshold_percentage || 30).toFixed(1)}%)`,
+                threshold_percentage || 30,
+                profitMargin
+              ]
+            );
+            alerts.push({ id: alertId, type: 'profit_margin' });
+          }
+        }
+      }
+      
+      if (alert_type === 'tax_reminder') {
+        // Check for upcoming tax deadlines (quarterly: March 31, June 30, Sept 30, Dec 31)
+        const today = new Date();
+        const currentMonth = today.getMonth();
+        const currentDate = today.getDate();
+        
+        const taxMonths = [2, 5, 8, 11]; // March, June, Sept, Dec (0-indexed)
+        const warningDays = 14; // Warn 14 days before deadline
+        
+        if (taxMonths.includes(currentMonth) && currentDate >= (31 - warningDays)) {
+          const existingAlert = await pool.query(
+            `SELECT * FROM accounting_alerts 
+             WHERE alert_type = 'tax_reminder' AND is_resolved = 0 
+             AND created_at >= CURRENT_DATE - INTERVAL '30 days'
+             ORDER BY created_at DESC LIMIT 1`
+          );
+          
+          if (existingAlert.rows.length === 0) {
+            const alertId = nanoid();
+            const quarterEnd = new Date(today.getFullYear(), currentMonth + 1, 0);
+            const daysRemaining = Math.ceil((quarterEnd - today) / (1000 * 60 * 60 * 24));
+            
+            await pool.query(
+              `INSERT INTO accounting_alerts (id, alert_type, severity, title, message) 
+               VALUES ($1, $2, $3, $4, $5)`,
+              [
+                alertId,
+                'tax_reminder',
+                daysRemaining <= 7 ? 'high' : 'medium',
+                'Recordatorio de Impuestos',
+                `El fin de trimestre fiscal se acerca (${daysRemaining} días restantes). Asegúrese de revisar y preparar sus declaraciones de impuestos.`
+              ]
+            );
+            alerts.push({ id: alertId, type: 'tax_reminder', days_remaining: daysRemaining });
+          }
+        }
+      }
+    }
+    
+    return alerts;
+  } catch (error) {
+    console.error('Error in checkAlertConditions:', error);
+    return [];
   }
 }
 
