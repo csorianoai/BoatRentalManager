@@ -103,16 +103,37 @@ async function setupAuth(app) {
 
   // Get the production domain (Replit app domain or fallback)
   const getProductionDomain = (req) => {
-    // Check if we're on a *.replit.app domain
+    // Priority 1: Use PRODUCTION_DOMAIN env var if set (for deployed apps)
+    if (process.env.PRODUCTION_DOMAIN) {
+      console.log(`📍 Using PRODUCTION_DOMAIN: ${process.env.PRODUCTION_DOMAIN}`);
+      return process.env.PRODUCTION_DOMAIN;
+    }
+    
+    // Priority 2: If deployed (REPLIT_DEPLOYMENT=1), construct domain from owner and slug
+    // This handles published Replit apps (e.g., sfrentals.replit.app)
+    if (process.env.REPLIT_DEPLOYMENT === '1' && process.env.REPL_OWNER && process.env.REPL_SLUG) {
+      // For published apps, the domain is typically owner-slug.replit.app or just slug.replit.app
+      // Check the actual host first
+      const host = req.get('host');
+      if (host && host.endsWith('.replit.app')) {
+        console.log(`📍 Using deployment host: ${host}`);
+        return host;
+      }
+    }
+    
+    // Priority 3: Check if we're on a *.replit.app domain (from host header)
     const host = req.get('host') || req.hostname;
     if (host && host.includes('.replit.app')) {
       // Extract the app name (e.g., sfrentals from sfrentals.replit.app)
       const match = host.match(/^([^.]+)\.replit\.app/);
       if (match) {
+        console.log(`📍 Using extracted domain: ${match[1]}.replit.app`);
         return `${match[1]}.replit.app`;
       }
     }
-    // Fallback to the host header
+    
+    // Fallback to the host header (for development)
+    console.log(`📍 Using fallback domain: ${host}`);
     return host || 'localhost';
   };
 
