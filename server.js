@@ -3527,6 +3527,82 @@ async function createFuelExpenseFromTripReport(tripReportId, fuelUsed, estimated
   }
 }
 
+// FASE 10: Auto-create accounting transaction from boat expense
+async function syncBoatExpenseToAccounting(boatExpenseId, category, amount, expenseDate, description, boatName) {
+  try {
+    if (!amount || amount <= 0) {
+      return null;
+    }
+    
+    // Map boat expense categories to chart of accounts
+    const categoryToAccountCode = {
+      'fuel': '5010',
+      'maintenance_parts': '5020',
+      'labor': '5030',
+      'cleaning': '5040',
+      'marina_fees': '5050',
+      'insurance': '5060',
+      'emergency_repairs': '5070',
+      'operational': '5080'
+    };
+    
+    const accountCode = categoryToAccountCode[category];
+    
+    // Find the appropriate expense account
+    let accountResult;
+    if (accountCode) {
+      accountResult = await pool.query(
+        `SELECT id FROM chart_of_accounts 
+         WHERE account_code = $1 
+         ORDER BY account_code LIMIT 1`,
+        [accountCode]
+      );
+    }
+    
+    // Fallback to general boat operating expense
+    if (!accountResult || accountResult.rows.length === 0) {
+      accountResult = await pool.query(
+        `SELECT id FROM chart_of_accounts 
+         WHERE account_type = 'expense' AND (account_name LIKE '%Boat%' OR account_name LIKE '%Operating%')
+         ORDER BY account_code LIMIT 1`
+      );
+    }
+    
+    if (accountResult.rows.length === 0) {
+      console.error('❌ No expense account found for boat expense category:', category);
+      return null;
+    }
+    
+    const accountId = accountResult.rows[0].id;
+    const { nanoid } = await import('nanoid');
+    const transactionId = nanoid();
+    
+    await pool.query(
+      `INSERT INTO transactions 
+       (id, transaction_date, account_id, amount, transaction_type, description, 
+        reference_number, status) 
+       VALUES ($1, $2, $3, $4, 'expense', $5, $6, 'posted')`,
+      [transactionId, expenseDate, accountId, amount,
+       `${description} - ${boatName}`,
+       `BOAT-EXP-${boatExpenseId}`]
+    );
+    
+    // Update boat_expense to mark as synced
+    await pool.query(
+      `UPDATE boat_expenses 
+       SET synced_to_accounting = 1, accounting_transaction_id = $1 
+       WHERE id = $2`,
+      [transactionId, boatExpenseId]
+    );
+    
+    console.log(`✅ Synced boat expense ${boatExpenseId} to accounting transaction ${transactionId}: $${amount}`);
+    return transactionId;
+  } catch (error) {
+    console.error('❌ Error syncing boat expense to accounting:', error);
+    return null;
+  }
+}
+
 // Auto-create captain wage expense
 async function createCaptainWageExpense(captainId, captainName, amount, paymentDate, bookingId) {
   try {
@@ -6313,6 +6389,10 @@ app.post('/api/boat-expenses', async (req, res) => {
       return res.status(400).json({ error: 'Missing required fields' });
     }
     
+    // Get boat name for accounting sync
+    const boatResult = await pool.query('SELECT name FROM boats WHERE id = $1', [boat_id]);
+    const boatName = boatResult.rows.length > 0 ? boatResult.rows[0].name : 'Unknown Boat';
+    
     const id = nanoid();
     const result = await pool.query(`
       INSERT INTO boat_expenses 
@@ -6325,6 +6405,16 @@ app.post('/api/boat-expenses', async (req, res) => {
       mechanic_id || null, fuel_gallons || null, fuel_station || null,
       invoice_number || null, is_tax_deductible !== undefined ? is_tax_deductible : 1
     ]);
+    
+    // Auto-sync to accounting system (FASE 8 integration)
+    const transactionId = await syncBoatExpenseToAccounting(
+      id, category, amount, expense_date, description, boatName
+    );
+    
+    if (transactionId) {
+      result.rows[0].accounting_transaction_id = transactionId;
+      result.rows[0].synced_to_accounting = 1;
+    }
     
     res.status(201).json(result.rows[0]);
   } catch (error) {
