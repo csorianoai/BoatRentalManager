@@ -32,7 +32,12 @@ neonConfig.webSocketConstructor = ws;
 const pool = new Pool({ 
   connectionString: process.env.DATABASE_URL
 });
-pool.on('connect', () => console.log('✅ Connected to PostgreSQL database'));
+// Log once on successful initialization
+pool.query('SELECT NOW()').then(() => {
+  console.log('✅ Database connection pool initialized');
+}).catch(err => {
+  console.error('❌ Database connection failed:', err);
+});
 
 // Initialize AI Orchestrator with shared pool and openai client
 aiOrchestrator.initialize(pool, openai);

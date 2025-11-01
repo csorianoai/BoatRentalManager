@@ -251,6 +251,7 @@ async function syncPlatform(platform) {
     let imported = 0;
     let conflicts = 0;
     const errors = [];
+    const conflictNotes = [];
     
     // Importar cada reserva
     for (const booking of externalBookings) {
@@ -260,13 +261,13 @@ async function syncPlatform(platform) {
         imported++;
       } else if (result.status === 'conflict') {
         conflicts++;
-        errors.push(`Conflicto en reserva ${booking.externalId}`);
+        conflictNotes.push(`Conflicto en reserva ${booking.externalId}`);
       } else if (result.status === 'error') {
         errors.push(`Error: ${result.error}`);
       }
     }
     
-    // Actualizar estado final
+    // Actualizar estado final - solo marcar error si hay errores reales
     const status = errors.length > 0 ? 'error' : 'success';
     await updateSyncStatus(platform, status, errors, imported, conflicts);
     
