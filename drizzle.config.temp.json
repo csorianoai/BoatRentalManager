@@ -1,0 +1,9 @@
+{
+  "out": "./migrations",
+  "schema": "./shared/schema.ts",
+  "dialect": "postgresql",
+  "dbCredentials": {
+    "url": "postgresql://neondb_owner:npg_md5lR7vfLsbj@ep-misty-meadow-a639s1fr.us-west-2.aws.neon.tech/neondb?sslmode=require?sslmode=require",
+    "ssl": true
+  }
+}
