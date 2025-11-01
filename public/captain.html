@@ -12,6 +12,22 @@
     <link rel="apple-touch-icon" href="/icon-192.png">
 </head>
 <body>
+    <!-- Authentication Check -->
+    <script>
+        // Check if user is authenticated before loading page
+        fetch('/api/auth/user')
+            .then(response => {
+                if (!response.ok) {
+                    // Not authenticated, redirect to login
+                    window.location.href = '/api/login';
+                }
+            })
+            .catch(() => {
+                // Error checking auth, redirect to login
+                window.location.href = '/api/login';
+            });
+    </script>
+    
     <div id="app" class="app">
         <!-- Login Screen -->
         <div id="loginScreen" class="screen active">

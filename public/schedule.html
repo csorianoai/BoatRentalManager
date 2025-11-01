@@ -8,6 +8,22 @@
   <link rel="stylesheet" href="dashboard.css">
 </head>
 <body>
+  <!-- Authentication Check -->
+  <script>
+    // Check if user is authenticated before loading page
+    fetch('/api/auth/user')
+      .then(response => {
+        if (!response.ok) {
+          // Not authenticated, redirect to login
+          window.location.href = '/api/login';
+        }
+      })
+      .catch(() => {
+        // Error checking auth, redirect to login
+        window.location.href = '/api/login';
+      });
+  </script>
+  
   <div class="container">
     <header>
       <div class="header-left">
