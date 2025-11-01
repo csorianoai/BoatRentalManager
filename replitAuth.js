@@ -125,14 +125,11 @@ async function setupAuth(app) {
   passport.serializeUser((user, cb) => cb(null, user));
   passport.deserializeUser((user, cb) => cb(null, user));
 
-  // Login route
+  // Login route - following official blueprint pattern
   app.get('/api/login', (req, res, next) => {
     try {
-      // Use x-forwarded-host header or fallback to req.hostname
-      const domain = req.get('x-forwarded-host') || req.get('host') || req.hostname;
-      console.log(`🔐 Login attempt - domain: ${domain}`);
-      
-      const strategyName = getStrategy(domain);
+      console.log(`🔐 Login attempt - hostname: ${req.hostname}`);
+      const strategyName = getStrategy(req.hostname);
       passport.authenticate(strategyName, {
         prompt: 'login consent',
         scope: ['openid', 'email', 'profile', 'offline_access'],
@@ -143,48 +140,18 @@ async function setupAuth(app) {
     }
   });
 
-  // OAuth callback route
+  // OAuth callback route - following official blueprint pattern
   app.get('/api/callback', (req, res, next) => {
     try {
-      // Use x-forwarded-host header or fallback to req.hostname
-      const domain = req.get('x-forwarded-host') || req.get('host') || req.hostname;
+      console.log(`🔙 Callback - hostname: ${req.hostname}, code: ${req.query.code ? 'present' : 'missing'}`);
+      const strategyName = getStrategy(req.hostname);
       
-      console.log(`🔙 Callback received`, {
-        domain,
-        'x-forwarded-host': req.get('x-forwarded-host'),
-        host: req.get('host'),
-        hostname: req.hostname,
-        code: req.query.code ? 'present' : 'missing',
-        iss: req.query.iss
-      });
-      
-      const strategyName = getStrategy(domain);
-      
-      passport.authenticate(strategyName, (err, user, info) => {
-        if (err) {
-          console.error('❌ Passport authentication error:', err);
-          console.error('Error details:', { message: err.message, stack: err.stack });
-          return res.status(500).send(`Authentication error: ${err.message}`);
-        }
-        
-        if (!user) {
-          console.error('❌ Authentication failed - no user returned. Info:', info);
-          return res.redirect('/api/login');
-        }
-        
-        req.logIn(user, (loginErr) => {
-          if (loginErr) {
-            console.error('❌ Session login error:', loginErr);
-            return res.status(500).send(`Session error: ${loginErr.message}`);
-          }
-          
-          console.log('✅ Authentication successful, redirecting to /');
-          res.redirect('/');
-        });
+      passport.authenticate(strategyName, {
+        successReturnToOrRedirect: '/',
+        failureRedirect: '/api/login',
       })(req, res, next);
     } catch (error) {
       console.error('❌ Callback error:', error);
-      console.error('Error stack:', error.stack);
       res.status(500).send('Error during callback: ' + error.message);
     }
   });
