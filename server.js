@@ -489,7 +489,37 @@ async function initializeDatabase() {
       ON financial_periods(period_start, period_end)
     `);
     
-    console.log('✅ FASE 8 tables created (accounting, transactions, reconciliation)');
+    // FASE 8: Create categorization_rules table (auto-categorization)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS categorization_rules (
+        id TEXT PRIMARY KEY,
+        rule_name TEXT NOT NULL,
+        priority INTEGER NOT NULL DEFAULT 100,
+        match_field TEXT NOT NULL CHECK (match_field IN ('description', 'amount', 'reference_type', 'platform', 'combined')),
+        match_operator TEXT NOT NULL CHECK (match_operator IN ('contains', 'equals', 'starts_with', 'ends_with', 'greater_than', 'less_than', 'between')),
+        match_value TEXT NOT NULL,
+        match_value_max TEXT,
+        target_account_id TEXT NOT NULL REFERENCES chart_of_accounts(id),
+        transaction_type TEXT CHECK (transaction_type IN ('income', 'expense', 'transfer', 'adjustment')),
+        is_active INTEGER DEFAULT 1 CHECK (is_active IN (0, 1)),
+        apply_count INTEGER DEFAULT 0,
+        last_applied_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+    
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_categorization_rules_active 
+      ON categorization_rules(is_active, priority DESC)
+    `);
+    
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_categorization_rules_field 
+      ON categorization_rules(match_field)
+    `);
+    
+    console.log('✅ FASE 8 tables created (accounting, transactions, reconciliation, categorization)');
     
     // Seed chart of accounts if empty
     const accountsCheck = await pool.query('SELECT COUNT(*) FROM chart_of_accounts');
@@ -4408,6 +4438,400 @@ app.get('/api/accounting/reports/roi', isAuthenticated, async (req, res) => {
     res.status(500).json({ error: 'Failed to generate ROI report' });
   }
 });
+
+// ===== CATEGORIZATION RULES =====
+
+// Get all categorization rules
+app.get('/api/accounting/categorization-rules', async (req, res) => {
+  try {
+    const { is_active } = req.query;
+    
+    let query = `
+      SELECT cr.*, coa.account_name, coa.account_code 
+      FROM categorization_rules cr
+      LEFT JOIN chart_of_accounts coa ON cr.target_account_id = coa.id
+      WHERE 1=1
+    `;
+    const params = [];
+    
+    if (is_active !== undefined) {
+      query += ' AND cr.is_active = $1';
+      params.push(parseInt(is_active));
+    }
+    
+    query += ' ORDER BY cr.priority DESC, cr.created_at DESC';
+    
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching categorization rules:', error);
+    res.status(500).json({ error: 'Failed to fetch categorization rules' });
+  }
+});
+
+// Get single categorization rule
+app.get('/api/accounting/categorization-rules/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const result = await pool.query(
+      `SELECT cr.*, coa.account_name, coa.account_code 
+       FROM categorization_rules cr
+       LEFT JOIN chart_of_accounts coa ON cr.target_account_id = coa.id
+       WHERE cr.id = $1`,
+      [id]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Categorization rule not found' });
+    }
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error fetching categorization rule:', error);
+    res.status(500).json({ error: 'Failed to fetch categorization rule' });
+  }
+});
+
+// Create categorization rule
+app.post('/api/accounting/categorization-rules', async (req, res) => {
+  try {
+    const { nanoid } = await import('nanoid');
+    const {
+      rule_name,
+      priority,
+      match_field,
+      match_operator,
+      match_value,
+      match_value_max,
+      target_account_id,
+      transaction_type,
+      is_active
+    } = req.body;
+    
+    // Validation
+    if (!rule_name || !match_field || !match_operator || !match_value || !target_account_id) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    
+    const id = nanoid();
+    const result = await pool.query(
+      `INSERT INTO categorization_rules (
+        id, rule_name, priority, match_field, match_operator, match_value, 
+        match_value_max, target_account_id, transaction_type, is_active
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) 
+      RETURNING *`,
+      [
+        id,
+        rule_name,
+        priority || 100,
+        match_field,
+        match_operator,
+        match_value,
+        match_value_max || null,
+        target_account_id,
+        transaction_type || null,
+        is_active !== undefined ? is_active : 1
+      ]
+    );
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error creating categorization rule:', error);
+    res.status(500).json({ error: 'Failed to create categorization rule' });
+  }
+});
+
+// Update categorization rule
+app.patch('/api/accounting/categorization-rules/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      rule_name,
+      priority,
+      match_field,
+      match_operator,
+      match_value,
+      match_value_max,
+      target_account_id,
+      transaction_type,
+      is_active
+    } = req.body;
+    
+    const updates = [];
+    const values = [];
+    let paramCount = 1;
+    
+    if (rule_name !== undefined) {
+      updates.push(`rule_name = $${paramCount}`);
+      values.push(rule_name);
+      paramCount++;
+    }
+    if (priority !== undefined) {
+      updates.push(`priority = $${paramCount}`);
+      values.push(priority);
+      paramCount++;
+    }
+    if (match_field !== undefined) {
+      updates.push(`match_field = $${paramCount}`);
+      values.push(match_field);
+      paramCount++;
+    }
+    if (match_operator !== undefined) {
+      updates.push(`match_operator = $${paramCount}`);
+      values.push(match_operator);
+      paramCount++;
+    }
+    if (match_value !== undefined) {
+      updates.push(`match_value = $${paramCount}`);
+      values.push(match_value);
+      paramCount++;
+    }
+    if (match_value_max !== undefined) {
+      updates.push(`match_value_max = $${paramCount}`);
+      values.push(match_value_max);
+      paramCount++;
+    }
+    if (target_account_id !== undefined) {
+      updates.push(`target_account_id = $${paramCount}`);
+      values.push(target_account_id);
+      paramCount++;
+    }
+    if (transaction_type !== undefined) {
+      updates.push(`transaction_type = $${paramCount}`);
+      values.push(transaction_type);
+      paramCount++;
+    }
+    if (is_active !== undefined) {
+      updates.push(`is_active = $${paramCount}`);
+      values.push(is_active);
+      paramCount++;
+    }
+    
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No fields to update' });
+    }
+    
+    updates.push(`updated_at = CURRENT_TIMESTAMP`);
+    values.push(id);
+    
+    const result = await pool.query(
+      `UPDATE categorization_rules 
+       SET ${updates.join(', ')} 
+       WHERE id = $${paramCount} 
+       RETURNING *`,
+      values
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Categorization rule not found' });
+    }
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating categorization rule:', error);
+    res.status(500).json({ error: 'Failed to update categorization rule' });
+  }
+});
+
+// Delete categorization rule
+app.delete('/api/accounting/categorization-rules/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const result = await pool.query(
+      'DELETE FROM categorization_rules WHERE id = $1 RETURNING *',
+      [id]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Categorization rule not found' });
+    }
+    
+    res.json({ message: 'Categorization rule deleted successfully', rule: result.rows[0] });
+  } catch (error) {
+    console.error('Error deleting categorization rule:', error);
+    res.status(500).json({ error: 'Failed to delete categorization rule' });
+  }
+});
+
+// Test categorization rule against a sample transaction
+app.post('/api/accounting/categorization-rules/test', async (req, res) => {
+  try {
+    const { rule_id, sample_transaction } = req.body;
+    
+    if (!rule_id || !sample_transaction) {
+      return res.status(400).json({ error: 'rule_id and sample_transaction are required' });
+    }
+    
+    // Get the rule
+    const ruleResult = await pool.query(
+      'SELECT * FROM categorization_rules WHERE id = $1',
+      [rule_id]
+    );
+    
+    if (ruleResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Rule not found' });
+    }
+    
+    const rule = ruleResult.rows[0];
+    const matches = checkRuleMatch(rule, sample_transaction);
+    
+    res.json({
+      rule_name: rule.rule_name,
+      matches,
+      would_categorize_to: matches ? rule.target_account_id : null,
+      sample_transaction
+    });
+  } catch (error) {
+    console.error('Error testing categorization rule:', error);
+    res.status(500).json({ error: 'Failed to test categorization rule' });
+  }
+});
+
+// Apply categorization rules to uncategorized transactions
+app.post('/api/accounting/categorization-rules/apply', async (req, res) => {
+  try {
+    const { transaction_ids, rule_id } = req.body;
+    
+    // Get active rules
+    let rulesQuery = 'SELECT * FROM categorization_rules WHERE is_active = 1';
+    const params = [];
+    
+    if (rule_id) {
+      rulesQuery += ' AND id = $1';
+      params.push(rule_id);
+    }
+    
+    rulesQuery += ' ORDER BY priority DESC';
+    
+    const rulesResult = await pool.query(rulesQuery, params);
+    const rules = rulesResult.rows;
+    
+    if (rules.length === 0) {
+      return res.status(400).json({ error: 'No active rules found' });
+    }
+    
+    // Get transactions to categorize
+    let transactionsQuery = 'SELECT * FROM transactions WHERE 1=1';
+    const transactionParams = [];
+    
+    if (transaction_ids && transaction_ids.length > 0) {
+      transactionsQuery += ` AND id = ANY($1)`;
+      transactionParams.push(transaction_ids);
+    }
+    
+    const transactionsResult = await pool.query(transactionsQuery, transactionParams);
+    const transactions = transactionsResult.rows;
+    
+    const categorized = [];
+    const skipped = [];
+    
+    for (const transaction of transactions) {
+      let matchedRule = null;
+      
+      // Find first matching rule (highest priority)
+      for (const rule of rules) {
+        if (checkRuleMatch(rule, transaction)) {
+          matchedRule = rule;
+          break;
+        }
+      }
+      
+      if (matchedRule) {
+        // Update transaction with categorization
+        await pool.query(
+          `UPDATE transactions 
+           SET account_id = $1, updated_at = CURRENT_TIMESTAMP 
+           WHERE id = $2`,
+          [matchedRule.target_account_id, transaction.id]
+        );
+        
+        // Update rule statistics
+        await pool.query(
+          `UPDATE categorization_rules 
+           SET apply_count = apply_count + 1, last_applied_at = CURRENT_TIMESTAMP 
+           WHERE id = $1`,
+          [matchedRule.id]
+        );
+        
+        categorized.push({
+          transaction_id: transaction.id,
+          rule_id: matchedRule.id,
+          rule_name: matchedRule.rule_name,
+          account_id: matchedRule.target_account_id
+        });
+      } else {
+        skipped.push({
+          transaction_id: transaction.id,
+          reason: 'No matching rule found'
+        });
+      }
+    }
+    
+    res.json({
+      total_transactions: transactions.length,
+      categorized: categorized.length,
+      skipped: skipped.length,
+      details: { categorized, skipped }
+    });
+  } catch (error) {
+    console.error('Error applying categorization rules:', error);
+    res.status(500).json({ error: 'Failed to apply categorization rules' });
+  }
+});
+
+// Helper function to check if a transaction matches a rule
+function checkRuleMatch(rule, transaction) {
+  const { match_field, match_operator, match_value, match_value_max } = rule;
+  
+  let fieldValue;
+  switch (match_field) {
+    case 'description':
+      fieldValue = (transaction.description || '').toLowerCase();
+      break;
+    case 'amount':
+      fieldValue = parseFloat(transaction.amount);
+      break;
+    case 'reference_type':
+      fieldValue = transaction.reference_type || '';
+      break;
+    case 'platform':
+      fieldValue = transaction.platform || '';
+      break;
+    case 'combined':
+      fieldValue = `${transaction.description || ''} ${transaction.reference_type || ''} ${transaction.platform || ''}`.toLowerCase();
+      break;
+    default:
+      return false;
+  }
+  
+  const matchValueLower = (match_value || '').toLowerCase();
+  
+  switch (match_operator) {
+    case 'contains':
+      return typeof fieldValue === 'string' && fieldValue.includes(matchValueLower);
+    case 'equals':
+      if (typeof fieldValue === 'number') {
+        return fieldValue === parseFloat(match_value);
+      }
+      return fieldValue.toLowerCase() === matchValueLower;
+    case 'starts_with':
+      return typeof fieldValue === 'string' && fieldValue.startsWith(matchValueLower);
+    case 'ends_with':
+      return typeof fieldValue === 'string' && fieldValue.endsWith(matchValueLower);
+    case 'greater_than':
+      return typeof fieldValue === 'number' && fieldValue > parseFloat(match_value);
+    case 'less_than':
+      return typeof fieldValue === 'number' && fieldValue < parseFloat(match_value);
+    case 'between':
+      return typeof fieldValue === 'number' && 
+             fieldValue >= parseFloat(match_value) && 
+             fieldValue <= parseFloat(match_value_max);
+    default:
+      return false;
+  }
+}
 
 // ===== TAX & PERIODS =====
 
