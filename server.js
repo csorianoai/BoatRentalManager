@@ -2882,6 +2882,1022 @@ app.post('/api/sync/jobs/process', isAuthenticated, async (req, res) => {
   }
 });
 
+// ========================================
+// 💰 FASE 8: ACCOUNTING & RECONCILIATION ENDPOINTS
+// ========================================
+
+// ===== CHART OF ACCOUNTS =====
+
+// Get all accounts (with optional hierarchy filter)
+app.get('/api/accounting/accounts', isAuthenticated, async (req, res) => {
+  try {
+    const { parent_id, type, active_only } = req.query;
+    
+    let query = 'SELECT * FROM chart_of_accounts WHERE 1=1';
+    const params = [];
+    let paramCount = 1;
+    
+    if (parent_id !== undefined) {
+      if (parent_id === 'null' || parent_id === '') {
+        query += ' AND parent_account_id IS NULL';
+      } else {
+        query += ` AND parent_account_id = $${paramCount}`;
+        params.push(parent_id);
+        paramCount++;
+      }
+    }
+    
+    if (type) {
+      query += ` AND account_type = $${paramCount}`;
+      params.push(type);
+      paramCount++;
+    }
+    
+    if (active_only === 'true') {
+      query += ' AND is_active = 1';
+    }
+    
+    query += ' ORDER BY account_code';
+    
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching accounts:', error);
+    res.status(500).json({ error: 'Failed to fetch accounts' });
+  }
+});
+
+// Get single account
+app.get('/api/accounting/accounts/:id', isAuthenticated, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(
+      'SELECT * FROM chart_of_accounts WHERE id = $1',
+      [id]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Account not found' });
+    }
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error fetching account:', error);
+    res.status(500).json({ error: 'Failed to fetch account' });
+  }
+});
+
+// Create account
+app.post('/api/accounting/accounts', isAuthenticated, async (req, res) => {
+  try {
+    const { nanoid } = await import('nanoid');
+    const { account_code, account_name, account_type, parent_account_id, description } = req.body;
+    
+    // Validation
+    if (!account_code || !account_name || !account_type) {
+      return res.status(400).json({ error: 'account_code, account_name, and account_type are required' });
+    }
+    
+    if (!['asset', 'liability', 'equity', 'revenue', 'expense'].includes(account_type)) {
+      return res.status(400).json({ error: 'Invalid account_type' });
+    }
+    
+    const id = nanoid();
+    const result = await pool.query(
+      `INSERT INTO chart_of_accounts (id, account_code, account_name, account_type, parent_account_id, description) 
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [id, account_code, account_name, account_type, parent_account_id || null, description || null]
+    );
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error creating account:', error);
+    if (error.message.includes('duplicate key')) {
+      res.status(400).json({ error: 'Account code already exists' });
+    } else {
+      res.status(500).json({ error: 'Failed to create account' });
+    }
+  }
+});
+
+// Update account
+app.put('/api/accounting/accounts/:id', isAuthenticated, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { account_code, account_name, account_type, parent_account_id, description, is_active } = req.body;
+    
+    // Validation
+    if (!account_code || !account_name || !account_type) {
+      return res.status(400).json({ error: 'account_code, account_name, and account_type are required' });
+    }
+    
+    if (!['asset', 'liability', 'equity', 'revenue', 'expense'].includes(account_type)) {
+      return res.status(400).json({ error: 'Invalid account_type' });
+    }
+    
+    if (is_active !== undefined && ![0, 1].includes(is_active)) {
+      return res.status(400).json({ error: 'is_active must be 0 or 1' });
+    }
+    
+    // Build dynamic query to preserve is_active if not provided
+    let query = `UPDATE chart_of_accounts 
+       SET account_code = $1, account_name = $2, account_type = $3, 
+           parent_account_id = $4, description = $5`;
+    const params = [account_code, account_name, account_type, parent_account_id || null, description];
+    
+    if (is_active !== undefined) {
+      query += `, is_active = $6 WHERE id = $7 RETURNING *`;
+      params.push(is_active, id);
+    } else {
+      query += ` WHERE id = $6 RETURNING *`;
+      params.push(id);
+    }
+    
+    const result = await pool.query(query, params);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Account not found' });
+    }
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating account:', error);
+    res.status(500).json({ error: 'Failed to update account' });
+  }
+});
+
+// Deactivate account
+app.delete('/api/accounting/accounts/:id', isAuthenticated, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(
+      'UPDATE chart_of_accounts SET is_active = 0 WHERE id = $1 RETURNING *',
+      [id]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Account not found' });
+    }
+    
+    res.json({ success: true, account: result.rows[0] });
+  } catch (error) {
+    console.error('Error deactivating account:', error);
+    res.status(500).json({ error: 'Failed to deactivate account' });
+  }
+});
+
+// ===== TRANSACTIONS =====
+
+// Get all transactions with filters
+app.get('/api/accounting/transactions', isAuthenticated, async (req, res) => {
+  try {
+    const { start_date, end_date, account_id, type, status, booking_id, limit } = req.query;
+    
+    let query = `
+      SELECT t.*, a.account_name, a.account_code 
+      FROM transactions t
+      LEFT JOIN chart_of_accounts a ON t.account_id = a.id
+      WHERE 1=1
+    `;
+    const params = [];
+    let paramCount = 1;
+    
+    if (start_date) {
+      query += ` AND t.transaction_date >= $${paramCount}`;
+      params.push(start_date);
+      paramCount++;
+    }
+    
+    if (end_date) {
+      query += ` AND t.transaction_date <= $${paramCount}`;
+      params.push(end_date);
+      paramCount++;
+    }
+    
+    if (account_id) {
+      query += ` AND t.account_id = $${paramCount}`;
+      params.push(account_id);
+      paramCount++;
+    }
+    
+    if (type) {
+      query += ` AND t.transaction_type = $${paramCount}`;
+      params.push(type);
+      paramCount++;
+    }
+    
+    if (status) {
+      query += ` AND t.status = $${paramCount}`;
+      params.push(status);
+      paramCount++;
+    }
+    
+    if (booking_id) {
+      query += ` AND t.booking_id = $${paramCount}`;
+      params.push(booking_id);
+      paramCount++;
+    }
+    
+    query += ' ORDER BY t.transaction_date DESC, t.created_at DESC';
+    
+    if (limit) {
+      query += ` LIMIT $${paramCount}`;
+      params.push(parseInt(limit));
+    }
+    
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching transactions:', error);
+    res.status(500).json({ error: 'Failed to fetch transactions' });
+  }
+});
+
+// Get single transaction
+app.get('/api/accounting/transactions/:id', isAuthenticated, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(
+      `SELECT t.*, a.account_name, a.account_code 
+       FROM transactions t
+       LEFT JOIN chart_of_accounts a ON t.account_id = a.id
+       WHERE t.id = $1`,
+      [id]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Transaction not found' });
+    }
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error fetching transaction:', error);
+    res.status(500).json({ error: 'Failed to fetch transaction' });
+  }
+});
+
+// Create transaction
+app.post('/api/accounting/transactions', isAuthenticated, async (req, res) => {
+  try {
+    const { nanoid } = await import('nanoid');
+    const {
+      transaction_date, account_id, amount, transaction_type, description,
+      reference_number, booking_id, reconciliation_id, payment_method, status
+    } = req.body;
+    
+    // Validation
+    if (!transaction_date || !account_id || amount === undefined || !transaction_type) {
+      return res.status(400).json({ error: 'transaction_date, account_id, amount, and transaction_type are required' });
+    }
+    
+    if (!['debit', 'credit'].includes(transaction_type)) {
+      return res.status(400).json({ error: 'Invalid transaction_type (must be debit or credit)' });
+    }
+    
+    if (typeof amount !== 'number' || amount < 0) {
+      return res.status(400).json({ error: 'amount must be a positive number' });
+    }
+    
+    const validStatuses = ['draft', 'posted', 'void', 'pending'];
+    if (status && !validStatuses.includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+    
+    const id = nanoid();
+    const result = await pool.query(
+      `INSERT INTO transactions 
+       (id, transaction_date, account_id, amount, transaction_type, description, 
+        reference_number, booking_id, reconciliation_id, payment_method, status) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) 
+       RETURNING *`,
+      [id, transaction_date, account_id, amount, transaction_type, description,
+       reference_number || null, booking_id || null, reconciliation_id || null,
+       payment_method || null, status || 'posted']
+    );
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error creating transaction:', error);
+    res.status(500).json({ error: 'Failed to create transaction' });
+  }
+});
+
+// Update transaction
+app.put('/api/accounting/transactions/:id', isAuthenticated, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      transaction_date, account_id, amount, transaction_type, description,
+      reference_number, payment_method, status
+    } = req.body;
+    
+    // Validation
+    if (!transaction_date || !account_id || amount === undefined || !transaction_type) {
+      return res.status(400).json({ error: 'transaction_date, account_id, amount, and transaction_type are required' });
+    }
+    
+    if (!['debit', 'credit'].includes(transaction_type)) {
+      return res.status(400).json({ error: 'Invalid transaction_type (must be debit or credit)' });
+    }
+    
+    if (typeof amount !== 'number' || amount < 0) {
+      return res.status(400).json({ error: 'amount must be a positive number' });
+    }
+    
+    const validStatuses = ['draft', 'posted', 'void', 'pending'];
+    if (status && !validStatuses.includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+    
+    const result = await pool.query(
+      `UPDATE transactions 
+       SET transaction_date = $1, account_id = $2, amount = $3, transaction_type = $4,
+           description = $5, reference_number = $6, payment_method = $7, status = $8,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $9 RETURNING *`,
+      [transaction_date, account_id, amount, transaction_type, description,
+       reference_number, payment_method, status, id]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Transaction not found' });
+    }
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating transaction:', error);
+    res.status(500).json({ error: 'Failed to update transaction' });
+  }
+});
+
+// Delete transaction
+app.delete('/api/accounting/transactions/:id', isAuthenticated, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(
+      'DELETE FROM transactions WHERE id = $1 RETURNING *',
+      [id]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Transaction not found' });
+    }
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting transaction:', error);
+    res.status(500).json({ error: 'Failed to delete transaction' });
+  }
+});
+
+// ===== BANK STATEMENTS =====
+
+// Get all bank statements
+app.get('/api/accounting/bank-statements', isAuthenticated, async (req, res) => {
+  try {
+    const { start_date, end_date, matched, limit } = req.query;
+    
+    let query = 'SELECT * FROM bank_statements WHERE 1=1';
+    const params = [];
+    let paramCount = 1;
+    
+    if (start_date) {
+      query += ` AND statement_date >= $${paramCount}`;
+      params.push(start_date);
+      paramCount++;
+    }
+    
+    if (end_date) {
+      query += ` AND statement_date <= $${paramCount}`;
+      params.push(end_date);
+      paramCount++;
+    }
+    
+    if (matched === 'true') {
+      query += ' AND matched_transaction_id IS NOT NULL';
+    } else if (matched === 'false') {
+      query += ' AND matched_transaction_id IS NULL';
+    }
+    
+    query += ' ORDER BY statement_date DESC, created_at DESC';
+    
+    if (limit) {
+      query += ` LIMIT $${paramCount}`;
+      params.push(parseInt(limit));
+    }
+    
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching bank statements:', error);
+    res.status(500).json({ error: 'Failed to fetch bank statements' });
+  }
+});
+
+// Get unmatched bank statements
+app.get('/api/accounting/bank-statements/unmatched', isAuthenticated, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM bank_statements WHERE matched_transaction_id IS NULL ORDER BY statement_date DESC'
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching unmatched statements:', error);
+    res.status(500).json({ error: 'Failed to fetch unmatched statements' });
+  }
+});
+
+// Import bank statements (CSV)
+app.post('/api/accounting/bank-statements/import', isAuthenticated, async (req, res) => {
+  try {
+    const { nanoid } = await import('nanoid');
+    const { statements } = req.body; // Array of statement objects
+    
+    if (!Array.isArray(statements) || statements.length === 0) {
+      return res.status(400).json({ error: 'statements must be a non-empty array' });
+    }
+    
+    // Validate each statement
+    for (const stmt of statements) {
+      if (!stmt.statement_date || stmt.amount === undefined || !stmt.description) {
+        return res.status(400).json({ 
+          error: 'Each statement must have statement_date, amount, and description' 
+        });
+      }
+      if (typeof stmt.amount !== 'number') {
+        return res.status(400).json({ error: 'amount must be a number' });
+      }
+    }
+    
+    const imported = [];
+    for (const stmt of statements) {
+      const id = nanoid();
+      const result = await pool.query(
+        `INSERT INTO bank_statements 
+         (id, statement_date, description, amount, balance, reference_number, category) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7) 
+         RETURNING *`,
+        [id, stmt.statement_date, stmt.description, stmt.amount, stmt.balance || null,
+         stmt.reference_number || null, stmt.category || null]
+      );
+      imported.push(result.rows[0]);
+    }
+    
+    res.json({ success: true, imported: imported.length, statements: imported });
+  } catch (error) {
+    console.error('Error importing bank statements:', error);
+    res.status(500).json({ error: 'Failed to import bank statements' });
+  }
+});
+
+// Auto-match bank statements to transactions
+app.post('/api/accounting/bank-statements/auto-match', isAuthenticated, async (req, res) => {
+  try {
+    const { statement_id, transaction_id } = req.body;
+    
+    // Update bank statement with matched transaction
+    const result = await pool.query(
+      'UPDATE bank_statements SET matched_transaction_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *',
+      [transaction_id, statement_id]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Bank statement not found' });
+    }
+    
+    res.json({ success: true, statement: result.rows[0] });
+  } catch (error) {
+    console.error('Error matching bank statement:', error);
+    res.status(500).json({ error: 'Failed to match bank statement' });
+  }
+});
+
+// Suggest matches for a bank statement
+app.get('/api/accounting/bank-statements/:id/suggest-matches', isAuthenticated, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Get the bank statement
+    const stmtResult = await pool.query('SELECT * FROM bank_statements WHERE id = $1', [id]);
+    if (stmtResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Bank statement not found' });
+    }
+    
+    const statement = stmtResult.rows[0];
+    
+    // Find potential matches (same amount, within 7 days, not yet reconciled)
+    const matchesResult = await pool.query(
+      `SELECT t.*, a.account_name, a.account_code 
+       FROM transactions t
+       LEFT JOIN chart_of_accounts a ON t.account_id = a.id
+       WHERE t.amount = $1 
+       AND t.transaction_date >= DATE($2) - INTERVAL '7 days'
+       AND t.transaction_date <= DATE($2) + INTERVAL '7 days'
+       AND t.reconciliation_id IS NULL
+       ORDER BY ABS(EXTRACT(EPOCH FROM (t.transaction_date - DATE($2))))
+       LIMIT 10`,
+      [Math.abs(statement.amount), statement.statement_date]
+    );
+    
+    res.json({ statement, suggested_matches: matchesResult.rows });
+  } catch (error) {
+    console.error('Error suggesting matches:', error);
+    res.status(500).json({ error: 'Failed to suggest matches' });
+  }
+});
+
+// ===== RECONCILIATION =====
+
+// Get all reconciliation sessions
+app.get('/api/accounting/reconciliations', isAuthenticated, async (req, res) => {
+  try {
+    const { status, limit } = req.query;
+    
+    let query = 'SELECT * FROM reconciliation_sessions WHERE 1=1';
+    const params = [];
+    let paramCount = 1;
+    
+    if (status) {
+      query += ` AND status = $${paramCount}`;
+      params.push(status);
+      paramCount++;
+    }
+    
+    query += ' ORDER BY period_end DESC, created_at DESC';
+    
+    if (limit) {
+      query += ` LIMIT $${paramCount}`;
+      params.push(parseInt(limit));
+    }
+    
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching reconciliations:', error);
+    res.status(500).json({ error: 'Failed to fetch reconciliations' });
+  }
+});
+
+// Get single reconciliation session with transactions
+app.get('/api/accounting/reconciliations/:id', isAuthenticated, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Get reconciliation session
+    const sessionResult = await pool.query(
+      'SELECT * FROM reconciliation_sessions WHERE id = $1',
+      [id]
+    );
+    
+    if (sessionResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Reconciliation session not found' });
+    }
+    
+    // Get transactions in this reconciliation
+    const transactionsResult = await pool.query(
+      `SELECT t.*, a.account_name, a.account_code 
+       FROM transactions t
+       LEFT JOIN chart_of_accounts a ON t.account_id = a.id
+       WHERE t.reconciliation_id = $1
+       ORDER BY t.transaction_date`,
+      [id]
+    );
+    
+    res.json({
+      session: sessionResult.rows[0],
+      transactions: transactionsResult.rows
+    });
+  } catch (error) {
+    console.error('Error fetching reconciliation:', error);
+    res.status(500).json({ error: 'Failed to fetch reconciliation' });
+  }
+});
+
+// Create reconciliation session
+app.post('/api/accounting/reconciliations', isAuthenticated, async (req, res) => {
+  try {
+    const { nanoid } = await import('nanoid');
+    const { period_start, period_end, opening_balance, closing_balance } = req.body;
+    
+    // Validation
+    if (!period_start || !period_end || opening_balance === undefined || closing_balance === undefined) {
+      return res.status(400).json({ 
+        error: 'period_start, period_end, opening_balance, and closing_balance are required' 
+      });
+    }
+    
+    if (typeof opening_balance !== 'number' || typeof closing_balance !== 'number') {
+      return res.status(400).json({ error: 'opening_balance and closing_balance must be numbers' });
+    }
+    
+    const id = nanoid();
+    const result = await pool.query(
+      `INSERT INTO reconciliation_sessions 
+       (id, period_start, period_end, opening_balance, closing_balance, status) 
+       VALUES ($1, $2, $3, $4, $5, 'in_progress') 
+       RETURNING *`,
+      [id, period_start, period_end, opening_balance, closing_balance]
+    );
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error creating reconciliation:', error);
+    res.status(500).json({ error: 'Failed to create reconciliation' });
+  }
+});
+
+// Complete reconciliation session
+app.post('/api/accounting/reconciliations/:id/complete', isAuthenticated, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reconciled_by } = req.body;
+    
+    // Calculate totals from transactions
+    const totalsResult = await pool.query(
+      `SELECT 
+         COALESCE(SUM(CASE WHEN transaction_type = 'credit' THEN amount ELSE 0 END), 0) as total_credits,
+         COALESCE(SUM(CASE WHEN transaction_type = 'debit' THEN amount ELSE 0 END), 0) as total_debits
+       FROM transactions 
+       WHERE reconciliation_id = $1`,
+      [id]
+    );
+    
+    const { total_credits, total_debits } = totalsResult.rows[0];
+    
+    // Get session to calculate variance
+    const sessionResult = await pool.query(
+      'SELECT opening_balance, closing_balance FROM reconciliation_sessions WHERE id = $1',
+      [id]
+    );
+    
+    if (sessionResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Reconciliation session not found' });
+    }
+    
+    const { opening_balance, closing_balance } = sessionResult.rows[0];
+    const calculated_balance = parseFloat(opening_balance) + parseFloat(total_credits) - parseFloat(total_debits);
+    const variance = calculated_balance - parseFloat(closing_balance);
+    
+    // Update session
+    const result = await pool.query(
+      `UPDATE reconciliation_sessions 
+       SET status = 'completed', total_credits = $1, total_debits = $2, variance = $3,
+           reconciled_by = $4, reconciled_at = CURRENT_TIMESTAMP
+       WHERE id = $5 RETURNING *`,
+      [total_credits, total_debits, variance, reconciled_by || 'System', id]
+    );
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error completing reconciliation:', error);
+    res.status(500).json({ error: 'Failed to complete reconciliation' });
+  }
+});
+
+// ===== FINANCIAL REPORTS =====
+
+// Profit & Loss Report
+app.get('/api/accounting/reports/profit-loss', isAuthenticated, async (req, res) => {
+  try {
+    const { start_date, end_date } = req.query;
+    
+    if (!start_date || !end_date) {
+      return res.status(400).json({ error: 'start_date and end_date are required' });
+    }
+    
+    // Get revenue
+    const revenueResult = await pool.query(
+      `SELECT a.account_name, a.account_code, SUM(t.amount) as total
+       FROM transactions t
+       JOIN chart_of_accounts a ON t.account_id = a.id
+       WHERE a.account_type = 'revenue' 
+       AND t.transaction_date >= $1 AND t.transaction_date <= $2
+       AND t.status = 'posted'
+       GROUP BY a.id, a.account_name, a.account_code
+       ORDER BY a.account_code`,
+      [start_date, end_date]
+    );
+    
+    // Get expenses
+    const expenseResult = await pool.query(
+      `SELECT a.account_name, a.account_code, SUM(t.amount) as total
+       FROM transactions t
+       JOIN chart_of_accounts a ON t.account_id = a.id
+       WHERE a.account_type = 'expense' 
+       AND t.transaction_date >= $1 AND t.transaction_date <= $2
+       AND t.status = 'posted'
+       GROUP BY a.id, a.account_name, a.account_code
+       ORDER BY a.account_code`,
+      [start_date, end_date]
+    );
+    
+    const total_revenue = revenueResult.rows.reduce((sum, row) => sum + parseFloat(row.total), 0);
+    const total_expenses = expenseResult.rows.reduce((sum, row) => sum + parseFloat(row.total), 0);
+    const net_income = total_revenue - total_expenses;
+    
+    res.json({
+      period: { start_date, end_date },
+      revenue: revenueResult.rows,
+      expenses: expenseResult.rows,
+      summary: {
+        total_revenue,
+        total_expenses,
+        net_income,
+        profit_margin: total_revenue > 0 ? (net_income / total_revenue) * 100 : 0
+      }
+    });
+  } catch (error) {
+    console.error('Error generating P&L report:', error);
+    res.status(500).json({ error: 'Failed to generate P&L report' });
+  }
+});
+
+// Balance Sheet Report
+app.get('/api/accounting/reports/balance-sheet', isAuthenticated, async (req, res) => {
+  try {
+    const { as_of_date } = req.query;
+    const date = as_of_date || new Date().toISOString().split('T')[0];
+    
+    // Get assets
+    const assetsResult = await pool.query(
+      `SELECT a.account_name, a.account_code, 
+              COALESCE(SUM(CASE WHEN t.transaction_type = 'debit' THEN t.amount ELSE -t.amount END), 0) as balance
+       FROM chart_of_accounts a
+       LEFT JOIN transactions t ON a.id = t.account_id AND t.transaction_date <= $1 AND t.status = 'posted'
+       WHERE a.account_type = 'asset' AND a.is_active = 1
+       GROUP BY a.id, a.account_name, a.account_code
+       ORDER BY a.account_code`,
+      [date]
+    );
+    
+    // Get liabilities
+    const liabilitiesResult = await pool.query(
+      `SELECT a.account_name, a.account_code,
+              COALESCE(SUM(CASE WHEN t.transaction_type = 'credit' THEN t.amount ELSE -t.amount END), 0) as balance
+       FROM chart_of_accounts a
+       LEFT JOIN transactions t ON a.id = t.account_id AND t.transaction_date <= $1 AND t.status = 'posted'
+       WHERE a.account_type = 'liability' AND a.is_active = 1
+       GROUP BY a.id, a.account_name, a.account_code
+       ORDER BY a.account_code`,
+      [date]
+    );
+    
+    // Get equity
+    const equityResult = await pool.query(
+      `SELECT a.account_name, a.account_code,
+              COALESCE(SUM(CASE WHEN t.transaction_type = 'credit' THEN t.amount ELSE -t.amount END), 0) as balance
+       FROM chart_of_accounts a
+       LEFT JOIN transactions t ON a.id = t.account_id AND t.transaction_date <= $1 AND t.status = 'posted'
+       WHERE a.account_type = 'equity' AND a.is_active = 1
+       GROUP BY a.id, a.account_name, a.account_code
+       ORDER BY a.account_code`,
+      [date]
+    );
+    
+    const total_assets = assetsResult.rows.reduce((sum, row) => sum + parseFloat(row.balance), 0);
+    const total_liabilities = liabilitiesResult.rows.reduce((sum, row) => sum + parseFloat(row.balance), 0);
+    const total_equity = equityResult.rows.reduce((sum, row) => sum + parseFloat(row.balance), 0);
+    
+    res.json({
+      as_of_date: date,
+      assets: assetsResult.rows,
+      liabilities: liabilitiesResult.rows,
+      equity: equityResult.rows,
+      summary: {
+        total_assets,
+        total_liabilities,
+        total_equity,
+        balance_check: total_assets - (total_liabilities + total_equity)
+      }
+    });
+  } catch (error) {
+    console.error('Error generating balance sheet:', error);
+    res.status(500).json({ error: 'Failed to generate balance sheet' });
+  }
+});
+
+// Cash Flow Report
+app.get('/api/accounting/reports/cash-flow', isAuthenticated, async (req, res) => {
+  try {
+    const { start_date, end_date } = req.query;
+    
+    if (!start_date || !end_date) {
+      return res.status(400).json({ error: 'start_date and end_date are required' });
+    }
+    
+    // Operating activities (revenue and expenses)
+    const operatingResult = await pool.query(
+      `SELECT 
+         SUM(CASE WHEN a.account_type = 'revenue' THEN t.amount ELSE 0 END) as cash_from_revenue,
+         SUM(CASE WHEN a.account_type = 'expense' THEN t.amount ELSE 0 END) as cash_for_expenses
+       FROM transactions t
+       JOIN chart_of_accounts a ON t.account_id = a.id
+       WHERE t.transaction_date >= $1 AND t.transaction_date <= $2
+       AND t.status = 'posted'
+       AND a.account_type IN ('revenue', 'expense')`,
+      [start_date, end_date]
+    );
+    
+    const cash_from_revenue = parseFloat(operatingResult.rows[0].cash_from_revenue) || 0;
+    const cash_for_expenses = parseFloat(operatingResult.rows[0].cash_for_expenses) || 0;
+    const net_operating_cash = cash_from_revenue - cash_for_expenses;
+    
+    res.json({
+      period: { start_date, end_date },
+      operating_activities: {
+        cash_from_revenue,
+        cash_for_expenses,
+        net_operating_cash
+      },
+      summary: {
+        net_cash_flow: net_operating_cash
+      }
+    });
+  } catch (error) {
+    console.error('Error generating cash flow report:', error);
+    res.status(500).json({ error: 'Failed to generate cash flow report' });
+  }
+});
+
+// ROI Analysis (by boat if boat_id provided in transactions)
+app.get('/api/accounting/reports/roi', isAuthenticated, async (req, res) => {
+  try {
+    const { start_date, end_date, boat_id } = req.query;
+    
+    if (!start_date || !end_date) {
+      return res.status(400).json({ error: 'start_date and end_date are required' });
+    }
+    
+    // Get revenue by boat (from bookings)
+    let revenueQuery = `
+      SELECT b.boat_type, COUNT(*) as trip_count, SUM(b.total_amount) as revenue
+      FROM bookings b
+      WHERE b.booking_date >= $1 AND b.booking_date <= $2
+      AND b.status = 'confirmed'
+    `;
+    const params = [start_date, end_date];
+    
+    if (boat_id) {
+      revenueQuery += ' AND b.boat_type = $3';
+      params.push(boat_id);
+    }
+    
+    revenueQuery += ' GROUP BY b.boat_type ORDER BY revenue DESC';
+    
+    const revenueResult = await pool.query(revenueQuery, params);
+    
+    // Get expenses (fuel, maintenance, etc.)
+    const expenseResult = await pool.query(
+      `SELECT a.account_name, SUM(t.amount) as total
+       FROM transactions t
+       JOIN chart_of_accounts a ON t.account_id = a.id
+       WHERE t.transaction_date >= $1 AND t.transaction_date <= $2
+       AND a.account_type = 'expense'
+       AND t.status = 'posted'
+       GROUP BY a.account_name`,
+      [start_date, end_date]
+    );
+    
+    const total_revenue = revenueResult.rows.reduce((sum, row) => sum + parseFloat(row.revenue || 0), 0);
+    const total_expenses = expenseResult.rows.reduce((sum, row) => sum + parseFloat(row.total || 0), 0);
+    const net_profit = total_revenue - total_expenses;
+    
+    res.json({
+      period: { start_date, end_date },
+      by_boat: revenueResult.rows,
+      expenses: expenseResult.rows,
+      summary: {
+        total_revenue,
+        total_expenses,
+        net_profit,
+        roi_percentage: total_expenses > 0 ? (net_profit / total_expenses) * 100 : 0
+      }
+    });
+  } catch (error) {
+    console.error('Error generating ROI report:', error);
+    res.status(500).json({ error: 'Failed to generate ROI report' });
+  }
+});
+
+// ===== TAX & PERIODS =====
+
+// Get tax configurations
+app.get('/api/accounting/tax-configs', isAuthenticated, async (req, res) => {
+  try {
+    const { status } = req.query;
+    
+    let query = 'SELECT * FROM tax_configs WHERE 1=1';
+    const params = [];
+    
+    if (status) {
+      query += ' AND status = $1';
+      params.push(status);
+    }
+    
+    query += ' ORDER BY jurisdiction, effective_date DESC';
+    
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching tax configs:', error);
+    res.status(500).json({ error: 'Failed to fetch tax configs' });
+  }
+});
+
+// Create tax configuration
+app.post('/api/accounting/tax-configs', isAuthenticated, async (req, res) => {
+  try {
+    const { nanoid } = await import('nanoid');
+    const { jurisdiction, tax_type, rate, effective_date, status } = req.body;
+    
+    const id = nanoid();
+    const result = await pool.query(
+      `INSERT INTO tax_configs (id, jurisdiction, tax_type, rate, effective_date, status) 
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [id, jurisdiction, tax_type, rate, effective_date, status || 'active']
+    );
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error creating tax config:', error);
+    res.status(500).json({ error: 'Failed to create tax config' });
+  }
+});
+
+// Get financial periods
+app.get('/api/accounting/financial-periods', isAuthenticated, async (req, res) => {
+  try {
+    const { status, year } = req.query;
+    
+    let query = 'SELECT * FROM financial_periods WHERE 1=1';
+    const params = [];
+    let paramCount = 1;
+    
+    if (status) {
+      query += ` AND status = $${paramCount}`;
+      params.push(status);
+      paramCount++;
+    }
+    
+    if (year) {
+      query += ` AND EXTRACT(YEAR FROM period_start) = $${paramCount}`;
+      params.push(parseInt(year));
+    }
+    
+    query += ' ORDER BY period_start DESC';
+    
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching financial periods:', error);
+    res.status(500).json({ error: 'Failed to fetch financial periods' });
+  }
+});
+
+// Create financial period
+app.post('/api/accounting/financial-periods', isAuthenticated, async (req, res) => {
+  try {
+    const { nanoid } = await import('nanoid');
+    const { period_name, period_start, period_end, status } = req.body;
+    
+    const id = nanoid();
+    const result = await pool.query(
+      `INSERT INTO financial_periods (id, period_name, period_start, period_end, status) 
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [id, period_name, period_start, period_end, status || 'open']
+    );
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error creating financial period:', error);
+    res.status(500).json({ error: 'Failed to create financial period' });
+  }
+});
+
+// Close financial period
+app.post('/api/accounting/financial-periods/:id/close', isAuthenticated, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { closed_by } = req.body;
+    
+    const result = await pool.query(
+      `UPDATE financial_periods 
+       SET status = 'closed', closed_by = $1, closed_at = CURRENT_TIMESTAMP 
+       WHERE id = $2 RETURNING *`,
+      [closed_by || 'System', id]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Financial period not found' });
+    }
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error closing financial period:', error);
+    res.status(500).json({ error: 'Failed to close financial period' });
+  }
+});
+
 // 🚀 INICIAR SERVIDOR
 const PORT = process.env.PORT || 5000;
 const HOST = '0.0.0.0'; // Required for deployment
