@@ -567,6 +567,93 @@ async function initializeDatabase() {
     
     console.log('✅ FASE 8 tables created (accounting, transactions, reconciliation, categorization, alerts)');
     
+    // ============================================================================
+    // FASE 9: MESSAGING CENTER - Multi-platform unified inbox
+    // ============================================================================
+    
+    // FASE 9: Create platform_configs table for platform metadata
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS platform_configs (
+        id TEXT PRIMARY KEY,
+        platform_name TEXT NOT NULL UNIQUE,
+        platform_icon TEXT,
+        platform_color TEXT,
+        base_url TEXT,
+        is_auto_ingestion INTEGER DEFAULT 0 CHECK (is_auto_ingestion IN (0, 1)),
+        webhook_enabled INTEGER DEFAULT 0 CHECK (webhook_enabled IN (0, 1)),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+    
+    // FASE 9: Create message_threads table for conversation threads
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS message_threads (
+        id TEXT PRIMARY KEY,
+        customer_name TEXT,
+        customer_email TEXT,
+        customer_phone TEXT,
+        platform TEXT NOT NULL REFERENCES platform_configs(platform_name) ON DELETE RESTRICT,
+        last_message_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        status TEXT DEFAULT 'active' CHECK (status IN ('active', 'pending', 'responded', 'closed')),
+        booking_id TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+    
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_message_threads_platform_status 
+      ON message_threads(platform, status)
+    `);
+    
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_message_threads_customer 
+      ON message_threads(customer_email, customer_phone)
+    `);
+    
+    // FASE 9: Create platform_messages table for individual messages
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS platform_messages (
+        id TEXT PRIMARY KEY,
+        thread_id TEXT NOT NULL REFERENCES message_threads(id) ON DELETE CASCADE,
+        platform TEXT NOT NULL,
+        sender_name TEXT,
+        sender_contact TEXT,
+        message_content TEXT NOT NULL,
+        direction TEXT NOT NULL CHECK (direction IN ('inbound', 'outbound')),
+        status TEXT DEFAULT 'new' CHECK (status IN ('new', 'read', 'responded', 'archived')),
+        received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        responded_at TIMESTAMP,
+        platform_message_url TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+    
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_platform_messages_thread 
+      ON platform_messages(thread_id, received_at)
+    `);
+    
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_platform_messages_status 
+      ON platform_messages(status, received_at)
+    `);
+    
+    // FASE 9: Create message_templates table for quick replies
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS message_templates (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        category TEXT NOT NULL CHECK (category IN ('pricing', 'availability', 'modifications', 'cancellations', 'general')),
+        content TEXT NOT NULL,
+        platform TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+    
+    console.log('✅ FASE 9 tables created (messaging center, platform configs, templates)');
+    
     // Seed chart of accounts if empty
     const accountsCheck = await pool.query('SELECT COUNT(*) FROM chart_of_accounts');
     if (parseInt(accountsCheck.rows[0].count) === 0) {
@@ -679,7 +766,47 @@ async function initializeDatabase() {
       )
     `);
     
-    console.log('✅ Database schema initialized successfully (all 8 phases + authentication)');
+    // FASE 9: Seed platform_configs if empty
+    const platformsCheck = await pool.query('SELECT COUNT(*) FROM platform_configs');
+    if (parseInt(platformsCheck.rows[0].count) === 0) {
+      const { nanoid } = await import('nanoid');
+      
+      await pool.query(`
+        INSERT INTO platform_configs (id, platform_name, platform_icon, platform_color, base_url, is_auto_ingestion, webhook_enabled) VALUES
+        ('${nanoid()}', 'Airbnb', '🏠', '#FF5A5F', 'https://www.airbnb.com/hosting/inbox', 0, 0),
+        ('${nanoid()}', 'Boat Setter', '⛵', '#0066CC', 'https://www.boatsetter.com/messages', 0, 0),
+        ('${nanoid()}', 'GetMyBoat', '🚤', '#00A3E0', 'https://www.getmyboat.com/inbox', 0, 0),
+        ('${nanoid()}', 'WhatsApp', '💬', '#25D366', 'auto', 1, 1),
+        ('${nanoid()}', 'Email', '📧', '#4285F4', 'auto', 1, 1),
+        ('${nanoid()}', 'Viator', '🎫', '#00AA6C', 'https://www.viator.com/messages', 0, 0),
+        ('${nanoid()}', 'TripAdvisor', '🦉', '#00AF87', 'https://www.tripadvisor.com/Inbox', 0, 0),
+        ('${nanoid()}', 'Expedia', '✈️', '#003B95', 'https://www.expedia.com/messages', 0, 0),
+        ('${nanoid()}', 'Website Chat', '💭', '#2563EB', 'auto', 1, 0),
+        ('${nanoid()}', 'FareHarbor', '🎟️', '#FF6B35', 'https://www.fareharbor.com/messages', 0, 0)
+      `);
+      
+      console.log('✅ Platform configurations seeded with 10 messaging platforms');
+    }
+    
+    // FASE 9: Seed message_templates with common responses
+    const templatesCheck = await pool.query('SELECT COUNT(*) FROM message_templates');
+    if (parseInt(templatesCheck.rows[0].count) === 0) {
+      const { nanoid } = await import('nanoid');
+      
+      await pool.query(`
+        INSERT INTO message_templates (id, name, category, content, platform) VALUES
+        ('${nanoid()}', 'Consulta de Precio', 'pricing', 'Hola {customer_name}! Gracias por tu interés en Nadaki Excursions. Nuestros tours tienen los siguientes precios:\n\n🚤 Tour de 2 horas: $XXX\n⛵ Tour de 4 horas: $XXX\n🌅 Tour de día completo (8h): $XXX\n\n¿Qué fecha te interesa?', NULL),
+        ('${nanoid()}', 'Verificar Disponibilidad', 'availability', 'Hola {customer_name}! Déjame verificar la disponibilidad para la fecha {date}. Te responderé en breve con opciones de horarios disponibles. 📅', NULL),
+        ('${nanoid()}', 'Confirmación de Reserva', 'general', '¡Perfecto! Tu reserva está confirmada para {date} a las {time}. 🎉\n\nDetalles:\n🚤 Barco: {boat_type}\n👨‍✈️ Capitán asignado\n📍 Punto de encuentro: Marina Nadaki\n⏰ Hora de llegada: 15 min antes\n\n¿Alguna pregunta adicional?', NULL),
+        ('${nanoid()}', 'Modificar Reserva', 'modifications', 'Entiendo que necesitas modificar tu reserva. ¿Qué cambio te gustaría hacer?\n\n✏️ Cambiar fecha\n🕐 Cambiar horario\n👥 Cambiar número de pasajeros\n\nDímelo y lo arreglo de inmediato.', NULL),
+        ('${nanoid()}', 'Política de Cancelación', 'cancellations', 'Nuestra política de cancelación es:\n\n✅ Cancelación gratuita hasta 48h antes\n⚠️ 50% de reembolso entre 24-48h antes\n❌ Sin reembolso menos de 24h antes\n\n¿Quieres proceder con la cancelación?', NULL),
+        ('${nanoid()}', 'Después de Horas', 'general', '¡Gracias por contactarnos! Actualmente estamos fuera de horario (9 AM - 6 PM). Te responderemos mañana a primera hora. Para emergencias, llama al +XXX-XXX-XXXX. 🌙', NULL)
+      `);
+      
+      console.log('✅ Message templates seeded with 6 common response templates');
+    }
+    
+    console.log('✅ Database schema initialized successfully (all 9 phases + authentication)');
   } catch (error) {
     console.error('❌ Error initializing database schema:', error);
     throw error;
@@ -5393,7 +5520,401 @@ app.post('/api/accounting/financial-periods/:id/close', isAuthenticated, async (
   }
 });
 
+// ============================================================================
+// FASE 9: MESSAGING CENTER ENDPOINTS
+// ============================================================================
+
+// Get all platform configurations
+app.get('/api/messages/platforms', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM platform_configs ORDER BY platform_name');
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching platforms:', error);
+    res.status(500).json({ error: 'Failed to fetch platforms' });
+  }
+});
+
+// Get inbox with filters (all message threads)
+app.get('/api/messages/inbox', async (req, res) => {
+  try {
+    const { platform, status, start_date, end_date, search, limit = 50, offset = 0 } = req.query;
+    
+    let query = `
+      SELECT 
+        t.*,
+        COUNT(m.id) FILTER (WHERE m.status = 'new') as unread_count,
+        COUNT(m.id) as total_messages,
+        MAX(m.received_at) as last_message_time
+      FROM message_threads t
+      LEFT JOIN platform_messages m ON t.id = m.thread_id
+      WHERE 1=1
+    `;
+    
+    const params = [];
+    let paramCount = 1;
+    
+    if (platform) {
+      query += ` AND t.platform = $${paramCount}`;
+      params.push(platform);
+      paramCount++;
+    }
+    
+    if (status) {
+      query += ` AND t.status = $${paramCount}`;
+      params.push(status);
+      paramCount++;
+    }
+    
+    if (start_date) {
+      query += ` AND t.last_message_at >= $${paramCount}`;
+      params.push(start_date);
+      paramCount++;
+    }
+    
+    if (end_date) {
+      query += ` AND t.last_message_at <= $${paramCount}`;
+      params.push(end_date);
+      paramCount++;
+    }
+    
+    if (search) {
+      query += ` AND (t.customer_name ILIKE $${paramCount} OR t.customer_email ILIKE $${paramCount} OR t.customer_phone ILIKE $${paramCount})`;
+      params.push(`%${search}%`);
+      paramCount++;
+    }
+    
+    query += ` 
+      GROUP BY t.id 
+      ORDER BY t.last_message_at DESC 
+      LIMIT $${paramCount} OFFSET $${paramCount + 1}
+    `;
+    params.push(parseInt(limit), parseInt(offset));
+    
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching inbox:', error);
+    res.status(500).json({ error: 'Failed to fetch inbox' });
+  }
+});
+
+// Get messages in a specific thread
+app.get('/api/messages/threads/:threadId', async (req, res) => {
+  try {
+    const { threadId } = req.params;
+    
+    // Get thread info
+    const threadResult = await pool.query(
+      'SELECT * FROM message_threads WHERE id = $1',
+      [threadId]
+    );
+    
+    if (threadResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Thread not found' });
+    }
+    
+    // Get messages in thread
+    const messagesResult = await pool.query(
+      `SELECT * FROM platform_messages 
+       WHERE thread_id = $1 
+       ORDER BY received_at ASC`,
+      [threadId]
+    );
+    
+    res.json({
+      thread: threadResult.rows[0],
+      messages: messagesResult.rows
+    });
+  } catch (error) {
+    console.error('Error fetching thread:', error);
+    res.status(500).json({ error: 'Failed to fetch thread' });
+  }
+});
+
+// Manual message ingestion
+app.post('/api/messages/manual', async (req, res) => {
+  try {
+    const { nanoid } = await import('nanoid');
+    const { 
+      platform, 
+      customer_name, 
+      customer_email, 
+      customer_phone, 
+      message_content,
+      platform_message_url,
+      booking_id 
+    } = req.body;
+    
+    // Validation
+    if (!platform || !message_content) {
+      return res.status(400).json({ error: 'Platform and message content are required' });
+    }
+    
+    if (!customer_name && !customer_email && !customer_phone) {
+      return res.status(400).json({ error: 'At least one customer identifier required (name, email, or phone)' });
+    }
+    
+    // Find or create thread
+    let threadId;
+    const existingThread = await pool.query(
+      `SELECT id FROM message_threads 
+       WHERE platform = $1 
+       AND (customer_email = $2 OR customer_phone = $3)
+       ORDER BY last_message_at DESC 
+       LIMIT 1`,
+      [platform, customer_email || null, customer_phone || null]
+    );
+    
+    if (existingThread.rows.length > 0) {
+      threadId = existingThread.rows[0].id;
+      
+      // Update thread
+      await pool.query(
+        `UPDATE message_threads 
+         SET last_message_at = CURRENT_TIMESTAMP, 
+             customer_name = COALESCE($1, customer_name),
+             customer_email = COALESCE($2, customer_email),
+             customer_phone = COALESCE($3, customer_phone),
+             status = 'pending',
+             booking_id = COALESCE($4, booking_id)
+         WHERE id = $5`,
+        [customer_name, customer_email, customer_phone, booking_id, threadId]
+      );
+    } else {
+      // Create new thread
+      threadId = nanoid();
+      await pool.query(
+        `INSERT INTO message_threads (id, customer_name, customer_email, customer_phone, platform, status, booking_id)
+         VALUES ($1, $2, $3, $4, $5, 'pending', $6)`,
+        [threadId, customer_name, customer_email, customer_phone, platform, booking_id || null]
+      );
+    }
+    
+    // Create message
+    const messageId = nanoid();
+    const messageResult = await pool.query(
+      `INSERT INTO platform_messages (
+        id, thread_id, platform, sender_name, sender_contact, 
+        message_content, direction, status, platform_message_url
+      ) VALUES ($1, $2, $3, $4, $5, $6, 'inbound', 'new', $7) 
+      RETURNING *`,
+      [messageId, threadId, platform, customer_name, customer_email || customer_phone, message_content, platform_message_url]
+    );
+    
+    res.status(201).json(messageResult.rows[0]);
+  } catch (error) {
+    console.error('Error creating manual message:', error);
+    res.status(500).json({ error: 'Failed to create message' });
+  }
+});
+
+// Send message (WhatsApp/Email)
+app.post('/api/messages/send', async (req, res) => {
+  try {
+    const { nanoid } = await import('nanoid');
+    const { thread_id, message_content, send_via } = req.body;
+    
+    if (!thread_id || !message_content || !send_via) {
+      return res.status(400).json({ error: 'Thread ID, message content, and send method are required' });
+    }
+    
+    // Get thread info
+    const threadResult = await pool.query(
+      'SELECT * FROM message_threads WHERE id = $1',
+      [thread_id]
+    );
+    
+    if (threadResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Thread not found' });
+    }
+    
+    const thread = threadResult.rows[0];
+    
+    // Send via WhatsApp or Email
+    if (send_via === 'whatsapp' && thread.customer_phone) {
+      // Send WhatsApp message using Twilio
+      const twilioSid = process.env.TWILIO_SID;
+      const twilioToken = process.env.TWILIO_AUTH_TOKEN;
+      
+      if (twilioSid && twilioToken) {
+        const twilio = require('twilio');
+        const client = twilio(twilioSid, twilioToken);
+        
+        await client.messages.create({
+          body: message_content,
+          from: 'whatsapp:+14155238886',
+          to: `whatsapp:+${thread.customer_phone.replace(/\D/g, '')}`
+        });
+      }
+    } else if (send_via === 'email' && thread.customer_email) {
+      // Email sending would go here (using nodemailer or similar)
+      console.log('Email sending not yet implemented');
+    }
+    
+    // Record outbound message
+    const messageId = nanoid();
+    const messageResult = await pool.query(
+      `INSERT INTO platform_messages (
+        id, thread_id, platform, sender_name, message_content, 
+        direction, status, responded_at
+      ) VALUES ($1, $2, $3, 'Nadaki Excursions', $4, 'outbound', 'read', CURRENT_TIMESTAMP) 
+      RETURNING *`,
+      [messageId, thread_id, thread.platform, message_content]
+    );
+    
+    // Update thread status
+    await pool.query(
+      `UPDATE message_threads 
+       SET status = 'responded', last_message_at = CURRENT_TIMESTAMP 
+       WHERE id = $1`,
+      [thread_id]
+    );
+    
+    res.status(201).json(messageResult.rows[0]);
+  } catch (error) {
+    console.error('Error sending message:', error);
+    res.status(500).json({ error: 'Failed to send message' });
+  }
+});
+
+// Get all message templates
+app.get('/api/messages/templates', async (req, res) => {
+  try {
+    const { category } = req.query;
+    
+    let query = 'SELECT * FROM message_templates WHERE 1=1';
+    const params = [];
+    
+    if (category) {
+      query += ' AND category = $1';
+      params.push(category);
+    }
+    
+    query += ' ORDER BY category, name';
+    
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching templates:', error);
+    res.status(500).json({ error: 'Failed to fetch templates' });
+  }
+});
+
+// Create message template
+app.post('/api/messages/templates', async (req, res) => {
+  try {
+    const { nanoid } = await import('nanoid');
+    const { name, category, content, platform } = req.body;
+    
+    if (!name || !category || !content) {
+      return res.status(400).json({ error: 'Name, category, and content are required' });
+    }
+    
+    const id = nanoid();
+    const result = await pool.query(
+      `INSERT INTO message_templates (id, name, category, content, platform) 
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [id, name, category, content, platform || null]
+    );
+    
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Error creating template:', error);
+    res.status(500).json({ error: 'Failed to create template' });
+  }
+});
+
+// Get messaging analytics
+app.get('/api/messages/analytics', async (req, res) => {
+  try {
+    const { start_date, end_date } = req.query;
+    
+    // Total messages by platform
+    const platformStats = await pool.query(`
+      SELECT 
+        platform,
+        COUNT(*) as total_messages,
+        COUNT(*) FILTER (WHERE status = 'new') as unread_messages,
+        COUNT(*) FILTER (WHERE direction = 'inbound') as inbound,
+        COUNT(*) FILTER (WHERE direction = 'outbound') as outbound,
+        AVG(EXTRACT(EPOCH FROM (responded_at - received_at))/3600) FILTER (WHERE responded_at IS NOT NULL) as avg_response_hours
+      FROM platform_messages
+      WHERE 1=1
+      ${start_date ? `AND received_at >= '${start_date}'` : ''}
+      ${end_date ? `AND received_at <= '${end_date}'` : ''}
+      GROUP BY platform
+      ORDER BY total_messages DESC
+    `);
+    
+    // Overall stats
+    const overallStats = await pool.query(`
+      SELECT 
+        COUNT(DISTINCT thread_id) as total_threads,
+        COUNT(*) as total_messages,
+        COUNT(*) FILTER (WHERE status = 'new') as pending_messages,
+        AVG(EXTRACT(EPOCH FROM (responded_at - received_at))/3600) FILTER (WHERE responded_at IS NOT NULL) as avg_response_hours
+      FROM platform_messages
+      WHERE 1=1
+      ${start_date ? `AND received_at >= '${start_date}'` : ''}
+      ${end_date ? `AND received_at <= '${end_date}'` : ''}
+    `);
+    
+    // Messages with linked bookings
+    const conversionStats = await pool.query(`
+      SELECT 
+        COUNT(DISTINCT t.id) as threads_with_bookings,
+        COUNT(DISTINCT t.id) FILTER (WHERE t.booking_id IS NOT NULL) as converted_threads
+      FROM message_threads t
+      WHERE t.last_message_at >= COALESCE($1::timestamp, t.created_at)
+      AND t.last_message_at <= COALESCE($2::timestamp, CURRENT_TIMESTAMP)
+    `, [start_date || null, end_date || null]);
+    
+    res.json({
+      by_platform: platformStats.rows,
+      overall: overallStats.rows[0],
+      conversion: conversionStats.rows[0]
+    });
+  } catch (error) {
+    console.error('Error fetching analytics:', error);
+    res.status(500).json({ error: 'Failed to fetch analytics' });
+  }
+});
+
+// Update message status
+app.patch('/api/messages/:messageId/status', async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const { status } = req.body;
+    
+    if (!['new', 'read', 'responded', 'archived'].includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+    
+    const result = await pool.query(
+      `UPDATE platform_messages 
+       SET status = $1, 
+           responded_at = CASE WHEN $1 = 'responded' THEN CURRENT_TIMESTAMP ELSE responded_at END
+       WHERE id = $2 
+       RETURNING *`,
+      [status, messageId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating message status:', error);
+    res.status(500).json({ error: 'Failed to update message status' });
+  }
+});
+
+// ============================================================================
 // 🚀 INICIAR SERVIDOR
+// ============================================================================
+
 const PORT = process.env.PORT || 5000;
 const HOST = '0.0.0.0'; // Required for deployment
 
