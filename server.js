@@ -3959,8 +3959,8 @@ app.post('/api/accounting/reconciliations/:id/complete', isAuthenticated, async 
     // Calculate totals from transactions
     const totalsResult = await pool.query(
       `SELECT 
-         COALESCE(SUM(CASE WHEN transaction_type = 'credit' THEN amount ELSE 0 END), 0) as total_credits,
-         COALESCE(SUM(CASE WHEN transaction_type = 'debit' THEN amount ELSE 0 END), 0) as total_debits
+         COALESCE(SUM(CASE WHEN transaction_type = 'income' THEN amount ELSE 0 END), 0) as total_credits,
+         COALESCE(SUM(CASE WHEN transaction_type = 'expense' THEN amount ELSE 0 END), 0) as total_debits
        FROM transactions 
        WHERE reconciliation_id = $1`,
       [id]
@@ -3998,6 +3998,196 @@ app.post('/api/accounting/reconciliations/:id/complete', isAuthenticated, async 
   }
 });
 
+// Variance analysis with intelligent suggestions
+app.get('/api/accounting/reconciliations/:id/variance-analysis', isAuthenticated, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Get reconciliation session
+    const sessionResult = await pool.query(
+      'SELECT * FROM reconciliation_sessions WHERE id = $1',
+      [id]
+    );
+    
+    if (sessionResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Reconciliation session not found' });
+    }
+    
+    const session = sessionResult.rows[0];
+    const { period_start, period_end, opening_balance, closing_balance } = session;
+    
+    // Calculate actual variance
+    const transactionsResult = await pool.query(
+      `SELECT 
+         COALESCE(SUM(CASE WHEN transaction_type = 'income' THEN amount ELSE 0 END), 0) as total_credits,
+         COALESCE(SUM(CASE WHEN transaction_type = 'expense' THEN amount ELSE 0 END), 0) as total_debits,
+         COUNT(*) as transaction_count
+       FROM transactions 
+       WHERE reconciliation_id = $1`,
+      [id]
+    );
+    
+    const { total_credits, total_debits, transaction_count } = transactionsResult.rows[0];
+    const calculated_balance = parseFloat(opening_balance) + parseFloat(total_credits) - parseFloat(total_debits);
+    const variance = calculated_balance - parseFloat(closing_balance);
+    const variance_abs = Math.abs(variance);
+    
+    // Intelligent suggestions
+    const suggestions = [];
+    
+    // 1. Check for unmatched bank statements in period
+    const unmatchedStatementsResult = await pool.query(
+      `SELECT COUNT(*) as count, COALESCE(SUM(amount), 0) as total_amount
+       FROM bank_statements
+       WHERE matched_transaction_id IS NULL
+       AND statement_date >= $1 AND statement_date <= $2`,
+      [period_start, period_end]
+    );
+    
+    const unmatchedCount = parseInt(unmatchedStatementsResult.rows[0].count);
+    const unmatchedTotal = parseFloat(unmatchedStatementsResult.rows[0].total_amount);
+    
+    if (unmatchedCount > 0) {
+      suggestions.push({
+        type: 'unmatched_statements',
+        severity: variance_abs > 100 ? 'high' : 'medium',
+        message: `Found ${unmatchedCount} unmatched bank statements totaling $${unmatchedTotal.toFixed(2)}`,
+        action: 'Review and match bank statements to transactions',
+        potential_impact: unmatchedTotal
+      });
+    }
+    
+    // 2. Check for unreconciled transactions in period
+    const unreconciledTxResult = await pool.query(
+      `SELECT COUNT(*) as count, COALESCE(SUM(amount), 0) as total_amount
+       FROM transactions
+       WHERE reconciliation_id IS NULL
+       AND transaction_date >= $1 AND transaction_date <= $2`,
+      [period_start, period_end]
+    );
+    
+    const unreconciledCount = parseInt(unreconciledTxResult.rows[0].count);
+    const unreconciledTotal = parseFloat(unreconciledTxResult.rows[0].total_amount);
+    
+    if (unreconciledCount > 0) {
+      suggestions.push({
+        type: 'unreconciled_transactions',
+        severity: 'medium',
+        message: `Found ${unreconciledCount} unreconciled transactions totaling $${unreconciledTotal.toFixed(2)}`,
+        action: 'Add missing transactions to reconciliation session',
+        potential_impact: unreconciledTotal
+      });
+    }
+    
+    // 3. Variance magnitude analysis
+    if (variance_abs > 0.01) {
+      let severity = 'low';
+      let message = '';
+      
+      if (variance_abs < 10) {
+        severity = 'low';
+        message = `Small variance of $${variance_abs.toFixed(2)} - likely rounding or pending transactions`;
+      } else if (variance_abs < 100) {
+        severity = 'medium';
+        message = `Moderate variance of $${variance_abs.toFixed(2)} - review recent transactions`;
+      } else {
+        severity = 'high';
+        message = `Large variance of $${variance_abs.toFixed(2)} - significant discrepancy detected`;
+      }
+      
+      suggestions.push({
+        type: 'variance_magnitude',
+        severity,
+        message,
+        action: variance_abs > 100 ? 'Investigate large discrepancy immediately' : 'Review for minor adjustments',
+        variance_amount: variance
+      });
+    }
+    
+    // 4. Check for duplicate transactions (same amount, same date)
+    const duplicatesResult = await pool.query(
+      `SELECT amount, transaction_date, COUNT(*) as dup_count
+       FROM transactions
+       WHERE reconciliation_id = $1
+       GROUP BY amount, transaction_date
+       HAVING COUNT(*) > 1`,
+      [id]
+    );
+    
+    if (duplicatesResult.rows.length > 0) {
+      suggestions.push({
+        type: 'potential_duplicates',
+        severity: 'medium',
+        message: `Found ${duplicatesResult.rows.length} potential duplicate transaction sets`,
+        action: 'Review transactions with same amount and date for duplicates',
+        duplicates: duplicatesResult.rows
+      });
+    }
+    
+    // 5. Check for unusual transaction patterns
+    const avgTransactionResult = await pool.query(
+      `SELECT AVG(amount) as avg_amount, STDDEV(amount) as stddev_amount
+       FROM transactions
+       WHERE reconciliation_id = $1`,
+      [id]
+    );
+    
+    if (avgTransactionResult.rows.length > 0) {
+      const avg = parseFloat(avgTransactionResult.rows[0].avg_amount || 0);
+      const stddev = parseFloat(avgTransactionResult.rows[0].stddev_amount || 0);
+      
+      if (stddev > 0) {
+        const outlierThreshold = avg + (3 * stddev);
+        const outlierResult = await pool.query(
+          `SELECT COUNT(*) as count
+           FROM transactions
+           WHERE reconciliation_id = $1 AND amount > $2`,
+          [id, outlierThreshold]
+        );
+        
+        const outlierCount = parseInt(outlierResult.rows[0].count);
+        if (outlierCount > 0) {
+          suggestions.push({
+            type: 'unusual_transactions',
+            severity: 'low',
+            message: `Found ${outlierCount} transactions significantly above average ($${avg.toFixed(2)})`,
+            action: 'Review large transactions for accuracy'
+          });
+        }
+      }
+    }
+    
+    // Reconciliation health score (0-100)
+    let health_score = 100;
+    if (variance_abs > 0.01) health_score -= Math.min(30, variance_abs / 10);
+    if (unmatchedCount > 0) health_score -= Math.min(20, unmatchedCount * 2);
+    if (unreconciledCount > 0) health_score -= Math.min(15, unreconciledCount);
+    if (duplicatesResult.rows.length > 0) health_score -= 10;
+    
+    res.json({
+      session: session,
+      calculated_balance,
+      variance,
+      variance_abs,
+      health_score: Math.max(0, Math.round(health_score)),
+      suggestions: suggestions.sort((a, b) => {
+        const severityOrder = { high: 3, medium: 2, low: 1 };
+        return severityOrder[b.severity] - severityOrder[a.severity];
+      }),
+      statistics: {
+        transaction_count: parseInt(transaction_count),
+        total_credits: parseFloat(total_credits),
+        total_debits: parseFloat(total_debits),
+        unmatched_statements: unmatchedCount,
+        unreconciled_transactions: unreconciledCount
+      }
+    });
+  } catch (error) {
+    console.error('Error analyzing variance:', error);
+    res.status(500).json({ error: 'Failed to analyze variance' });
+  }
+});
+
 // ===== FINANCIAL REPORTS =====
 
 // Profit & Loss Report
@@ -4016,7 +4206,6 @@ app.get('/api/accounting/reports/profit-loss', isAuthenticated, async (req, res)
        JOIN chart_of_accounts a ON t.account_id = a.id
        WHERE a.account_type = 'revenue' 
        AND t.transaction_date >= $1 AND t.transaction_date <= $2
-       AND t.status = 'posted'
        GROUP BY a.id, a.account_name, a.account_code
        ORDER BY a.account_code`,
       [start_date, end_date]
@@ -4029,7 +4218,6 @@ app.get('/api/accounting/reports/profit-loss', isAuthenticated, async (req, res)
        JOIN chart_of_accounts a ON t.account_id = a.id
        WHERE a.account_type = 'expense' 
        AND t.transaction_date >= $1 AND t.transaction_date <= $2
-       AND t.status = 'posted'
        GROUP BY a.id, a.account_name, a.account_code
        ORDER BY a.account_code`,
       [start_date, end_date]
@@ -4067,7 +4255,7 @@ app.get('/api/accounting/reports/balance-sheet', isAuthenticated, async (req, re
       `SELECT a.account_name, a.account_code, 
               COALESCE(SUM(CASE WHEN t.transaction_type = 'debit' THEN t.amount ELSE -t.amount END), 0) as balance
        FROM chart_of_accounts a
-       LEFT JOIN transactions t ON a.id = t.account_id AND t.transaction_date <= $1 AND t.status = 'posted'
+       LEFT JOIN transactions t ON a.id = t.account_id AND t.transaction_date <= $1
        WHERE a.account_type = 'asset' AND a.is_active = 1
        GROUP BY a.id, a.account_name, a.account_code
        ORDER BY a.account_code`,
@@ -4079,7 +4267,7 @@ app.get('/api/accounting/reports/balance-sheet', isAuthenticated, async (req, re
       `SELECT a.account_name, a.account_code,
               COALESCE(SUM(CASE WHEN t.transaction_type = 'credit' THEN t.amount ELSE -t.amount END), 0) as balance
        FROM chart_of_accounts a
-       LEFT JOIN transactions t ON a.id = t.account_id AND t.transaction_date <= $1 AND t.status = 'posted'
+       LEFT JOIN transactions t ON a.id = t.account_id AND t.transaction_date <= $1
        WHERE a.account_type = 'liability' AND a.is_active = 1
        GROUP BY a.id, a.account_name, a.account_code
        ORDER BY a.account_code`,
@@ -4091,7 +4279,7 @@ app.get('/api/accounting/reports/balance-sheet', isAuthenticated, async (req, re
       `SELECT a.account_name, a.account_code,
               COALESCE(SUM(CASE WHEN t.transaction_type = 'credit' THEN t.amount ELSE -t.amount END), 0) as balance
        FROM chart_of_accounts a
-       LEFT JOIN transactions t ON a.id = t.account_id AND t.transaction_date <= $1 AND t.status = 'posted'
+       LEFT JOIN transactions t ON a.id = t.account_id AND t.transaction_date <= $1
        WHERE a.account_type = 'equity' AND a.is_active = 1
        GROUP BY a.id, a.account_name, a.account_code
        ORDER BY a.account_code`,
@@ -4137,7 +4325,6 @@ app.get('/api/accounting/reports/cash-flow', isAuthenticated, async (req, res) =
        FROM transactions t
        JOIN chart_of_accounts a ON t.account_id = a.id
        WHERE t.transaction_date >= $1 AND t.transaction_date <= $2
-       AND t.status = 'posted'
        AND a.account_type IN ('revenue', 'expense')`,
       [start_date, end_date]
     );
@@ -4197,7 +4384,6 @@ app.get('/api/accounting/reports/roi', isAuthenticated, async (req, res) => {
        JOIN chart_of_accounts a ON t.account_id = a.id
        WHERE t.transaction_date >= $1 AND t.transaction_date <= $2
        AND a.account_type = 'expense'
-       AND t.status = 'posted'
        GROUP BY a.account_name`,
       [start_date, end_date]
     );
