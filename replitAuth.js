@@ -124,6 +124,14 @@ async function setupAuth(app) {
     }
   };
 
+  // PRE-REGISTER production domain strategy
+  // This ensures the strategy is available when Replit redirects back to the callback
+  if (process.env.REPLIT_DEPLOYMENT === '1') {
+    const productionDomain = 'sfrentals.replit.app';
+    console.log(`🚀 Production deployment detected - pre-registering strategy for: ${productionDomain}`);
+    ensureStrategy(productionDomain);
+  }
+
   // Serialize/deserialize user
   passport.serializeUser((user, cb) => cb(null, user));
   passport.deserializeUser((user, cb) => cb(null, user));
@@ -146,14 +154,25 @@ async function setupAuth(app) {
   // OAuth callback route - uses req.hostname from official blueprint
   app.get('/api/callback', (req, res, next) => {
     try {
-      console.log(`🔙 Callback - hostname: ${req.hostname}, code: ${req.query.code ? 'present' : 'missing'}`);
+      // Detailed logging for debugging
+      console.log(`🔙 Callback received:`, {
+        hostname: req.hostname,
+        host: req.get('host'),
+        'x-forwarded-host': req.get('x-forwarded-host'),
+        'x-forwarded-proto': req.get('x-forwarded-proto'),
+        code: req.query.code ? 'present' : 'missing',
+        registeredStrategies: Array.from(registeredStrategies)
+      });
+      
       ensureStrategy(req.hostname);
+      
       passport.authenticate(`replitauth:${req.hostname}`, {
         successReturnToOrRedirect: '/',
         failureRedirect: '/api/login',
       })(req, res, next);
     } catch (error) {
       console.error('❌ Callback error:', error);
+      console.error('Error stack:', error.stack);
       res.status(500).send('Error during callback: ' + error.message);
     }
   });
