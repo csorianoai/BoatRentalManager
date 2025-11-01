@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nadaki Excursions - Portal Administrativo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+        }
+
+        .container {
+            text-align: center;
+            padding: 40px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            max-width: 500px;
+            width: 90%;
+        }
+
+        .logo {
+            font-size: 3em;
+            margin-bottom: 10px;
+        }
+
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+
+        .subtitle {
+            font-size: 1.2em;
+            margin-bottom: 30px;
+            opacity: 0.9;
+        }
+
+        .description {
+            font-size: 1em;
+            line-height: 1.6;
+            margin-bottom: 40px;
+            opacity: 0.85;
+        }
+
+        .login-btn {
+            background: #fff;
+            color: #667eea;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.1em;
+            font-weight: 600;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .login-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+            background: #f8f9fa;
+        }
+
+        .login-btn:active {
+            transform: translateY(-1px);
+        }
+
+        .features {
+            margin-top: 50px;
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 20px;
+            text-align: left;
+        }
+
+        .feature {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .feature-title {
+            font-weight: 600;
+            margin-bottom: 5px;
+            font-size: 1.1em;
+        }
+
+        .feature-desc {
+            opacity: 0.8;
+            font-size: 0.95em;
+        }
+
+        @media (max-width: 600px) {
+            h1 {
+                font-size: 2em;
+            }
+
+            .subtitle {
+                font-size: 1em;
+            }
+
+            .login-btn {
+                padding: 12px 30px;
+                font-size: 1em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">⛵</div>
+        <h1>Nadaki Excursions</h1>
+        <p class="subtitle">Portal Administrativo</p>
+        <p class="description">
+            Sistema integrado de gestión para reservas, capitanes, comisiones y sincronización multi-plataforma.
+        </p>
+        
+        <a href="/api/login" class="login-btn" data-testid="button-login">
+            🔐 Iniciar Sesión
+        </a>
+
+        <div class="features">
+            <div class="feature">
+                <div class="feature-title">🤖 Asistente AI</div>
+                <div class="feature-desc">Chatbot inteligente para automatizar reservas</div>
+            </div>
+            <div class="feature">
+                <div class="feature-title">🔄 Sincronización</div>
+                <div class="feature-desc">13 plataformas de reservas integradas</div>
+            </div>
+            <div class="feature">
+                <div class="feature-title">📱 App Móvil</div>
+                <div class="feature-desc">Gestión de viajes para capitanes</div>
+            </div>
+            <div class="feature">
+                <div class="feature-title">💰 Comisiones</div>
+                <div class="feature-desc">Cálculo automático y reportes financieros</div>
+            </div>
+            <div class="feature">
+                <div class="feature-title">📅 Optimizador</div>
+                <div class="feature-desc">Asignación inteligente de horarios</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Check if user is already authenticated
+        fetch('/api/auth/user')
+            .then(response => {
+                if (response.ok) {
+                    // User is authenticated, redirect to dashboard
+                    window.location.href = '/dashboard.html';
+                }
+            })
+            .catch(() => {
+                // User not authenticated, stay on login page
+            });
+    </script>
+</body>
+</html>

@@ -267,9 +267,13 @@ app.use(express.static('public'));
   }
 })();
 
-// 🏠 RUTA RAÍZ - Redirigir al Dashboard
+// 🏠 RUTA RAÍZ - Mostrar login o dashboard según autenticación
 app.get('/', (req, res) => {
-  res.redirect('/dashboard.html');
+  if (req.isAuthenticated && req.isAuthenticated()) {
+    res.redirect('/dashboard.html');
+  } else {
+    res.redirect('/login.html');
+  }
 });
 
 // Configuración para tu dominio WordPress
