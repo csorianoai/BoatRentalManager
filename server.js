@@ -1407,6 +1407,18 @@ app.post('/api/ai/escalate', rateLimit, async (req, res) => {
 // ⚡ FASE 2: PLATFORM SYNCHRONIZATION ENDPOINTS
 const syncService = require('./server/syncService');
 
+// ⚡ FASE 7: PRICING, AVAILABILITY, AND SYNC JOBS SERVICES
+const PricingService = require('./server/pricingService');
+const AvailabilityService = require('./server/availabilityService');
+const SyncJobsWorker = require('./server/syncJobsWorker');
+
+const pricingService = new PricingService(pool);
+const availabilityService = new AvailabilityService(pool);
+const syncJobsWorker = new SyncJobsWorker(pool);
+
+// Start sync jobs worker
+syncJobsWorker.start();
+
 // Trigger sync for specific platform
 app.post('/api/sync/trigger/:platform', isAuthenticated, async (req, res) => {
   try {
@@ -2338,6 +2350,242 @@ Thanks for choosing us! 🚤
     
   } catch (error) {
     console.error('Error in post-trip follow-ups:', error);
+  }
+});
+
+// ========================================
+// ⚡ FASE 7: PRICING MANAGEMENT ENDPOINTS
+// ========================================
+
+// Get all boats
+app.get('/api/pricing/boats', isAuthenticated, async (req, res) => {
+  try {
+    const boats = await pricingService.getBoats();
+    res.json(boats);
+  } catch (error) {
+    console.error('Error getting boats:', error);
+    res.status(500).json({ error: 'Failed to get boats' });
+  }
+});
+
+// Create new boat
+app.post('/api/pricing/boats', isAuthenticated, async (req, res) => {
+  try {
+    const boat = await pricingService.createBoat(req.body);
+    res.json(boat);
+  } catch (error) {
+    console.error('Error creating boat:', error);
+    res.status(500).json({ error: 'Failed to create boat' });
+  }
+});
+
+// Get pricing policies
+app.get('/api/pricing/policies', isAuthenticated, async (req, res) => {
+  try {
+    const { platform, boatId } = req.query;
+    const policies = await pricingService.getPlatformPricingPolicies(platform, boatId);
+    res.json(policies);
+  } catch (error) {
+    console.error('Error getting pricing policies:', error);
+    res.status(500).json({ error: 'Failed to get pricing policies' });
+  }
+});
+
+// Create or update pricing policy
+app.post('/api/pricing/policies', isAuthenticated, async (req, res) => {
+  try {
+    const policy = await pricingService.createOrUpdatePricingPolicy(req.body);
+    res.json(policy);
+  } catch (error) {
+    console.error('Error creating/updating pricing policy:', error);
+    res.status(500).json({ error: 'Failed to create/update pricing policy' });
+  }
+});
+
+// Get all pricing adjustments
+app.get('/api/pricing/adjustments', isAuthenticated, async (req, res) => {
+  try {
+    const adjustments = await pricingService.getAllPricingAdjustments();
+    res.json(adjustments);
+  } catch (error) {
+    console.error('Error getting pricing adjustments:', error);
+    res.status(500).json({ error: 'Failed to get pricing adjustments' });
+  }
+});
+
+// Create pricing adjustment
+app.post('/api/pricing/adjustments', isAuthenticated, async (req, res) => {
+  try {
+    const adjustment = await pricingService.createPricingAdjustment(req.body);
+    res.json(adjustment);
+  } catch (error) {
+    console.error('Error creating pricing adjustment:', error);
+    res.status(500).json({ error: 'Failed to create pricing adjustment' });
+  }
+});
+
+// Update pricing adjustment
+app.put('/api/pricing/adjustments/:id', isAuthenticated, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const adjustment = await pricingService.updatePricingAdjustment(id, req.body);
+    res.json(adjustment);
+  } catch (error) {
+    console.error('Error updating pricing adjustment:', error);
+    res.status(500).json({ error: 'Failed to update pricing adjustment' });
+  }
+});
+
+// Delete pricing adjustment
+app.delete('/api/pricing/adjustments/:id', isAuthenticated, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pricingService.deletePricingAdjustment(id);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting pricing adjustment:', error);
+    res.status(500).json({ error: 'Failed to delete pricing adjustment' });
+  }
+});
+
+// Calculate effective price
+app.post('/api/pricing/calculate', isAuthenticated, async (req, res) => {
+  try {
+    const { platform, boatId, duration, date } = req.body;
+    const result = await pricingService.calculateEffectivePrice(
+      platform, 
+      boatId, 
+      duration, 
+      date ? new Date(date) : new Date()
+    );
+    res.json(result);
+  } catch (error) {
+    console.error('Error calculating price:', error);
+    res.status(500).json({ error: error.message || 'Failed to calculate price' });
+  }
+});
+
+// Preview adjustment impact
+app.post('/api/pricing/preview-impact', isAuthenticated, async (req, res) => {
+  try {
+    const impact = await pricingService.previewAdjustmentImpact(req.body);
+    res.json(impact);
+  } catch (error) {
+    console.error('Error previewing impact:', error);
+    res.status(500).json({ error: 'Failed to preview impact' });
+  }
+});
+
+// Get all platforms
+app.get('/api/pricing/platforms', isAuthenticated, async (req, res) => {
+  try {
+    const platforms = await pricingService.getAllPlatforms();
+    res.json(platforms);
+  } catch (error) {
+    console.error('Error getting platforms:', error);
+    res.status(500).json({ error: 'Failed to get platforms' });
+  }
+});
+
+// ========================================
+// ⚡ FASE 7: AVAILABILITY MANAGEMENT ENDPOINTS
+// ========================================
+
+// Check availability
+app.post('/api/availability/check', isAuthenticated, async (req, res) => {
+  try {
+    const { boatId, date, startTime, endTime } = req.body;
+    const result = await availabilityService.checkAvailability(boatId, date, startTime, endTime);
+    res.json(result);
+  } catch (error) {
+    console.error('Error checking availability:', error);
+    res.status(500).json({ error: 'Failed to check availability' });
+  }
+});
+
+// Create availability block
+app.post('/api/availability/blocks', isAuthenticated, async (req, res) => {
+  try {
+    const block = await availabilityService.createBlock(req.body);
+    res.json(block);
+  } catch (error) {
+    console.error('Error creating block:', error);
+    res.status(500).json({ error: 'Failed to create block' });
+  }
+});
+
+// Release availability block
+app.post('/api/availability/blocks/:id/release', isAuthenticated, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const block = await availabilityService.releaseBlock(id);
+    res.json(block);
+  } catch (error) {
+    console.error('Error releasing block:', error);
+    res.status(500).json({ error: 'Failed to release block' });
+  }
+});
+
+// Get availability blocks
+app.get('/api/availability/blocks', isAuthenticated, async (req, res) => {
+  try {
+    const { boatId, startDate, endDate } = req.query;
+    const blocks = boatId 
+      ? await availabilityService.getBlocksByBoat(boatId, startDate, endDate)
+      : await availabilityService.getAllBlocks(startDate, endDate);
+    res.json(blocks);
+  } catch (error) {
+    console.error('Error getting blocks:', error);
+    res.status(500).json({ error: 'Failed to get blocks' });
+  }
+});
+
+// ========================================
+// ⚡ FASE 7: SYNC JOBS ENDPOINTS
+// ========================================
+
+// Get sync jobs queue
+app.get('/api/sync/jobs', isAuthenticated, async (req, res) => {
+  try {
+    const { limit } = req.query;
+    const jobs = await syncJobsWorker.getRecentJobs(limit ? parseInt(limit) : 50);
+    res.json(jobs);
+  } catch (error) {
+    console.error('Error getting sync jobs:', error);
+    res.status(500).json({ error: 'Failed to get sync jobs' });
+  }
+});
+
+// Get sync jobs stats
+app.get('/api/sync/jobs/stats', isAuthenticated, async (req, res) => {
+  try {
+    const stats = await syncJobsWorker.getJobStats();
+    res.json(stats);
+  } catch (error) {
+    console.error('Error getting job stats:', error);
+    res.status(500).json({ error: 'Failed to get job stats' });
+  }
+});
+
+// Retry failed jobs
+app.post('/api/sync/jobs/retry-failed', isAuthenticated, async (req, res) => {
+  try {
+    const jobs = await syncJobsWorker.retryFailedJobs();
+    res.json({ success: true, retriedCount: jobs.length });
+  } catch (error) {
+    console.error('Error retrying failed jobs:', error);
+    res.status(500).json({ error: 'Failed to retry failed jobs' });
+  }
+});
+
+// Manual trigger to process jobs
+app.post('/api/sync/jobs/process', isAuthenticated, async (req, res) => {
+  try {
+    await syncJobsWorker.processPendingJobs();
+    res.json({ success: true, message: 'Job processing triggered' });
+  } catch (error) {
+    console.error('Error processing jobs:', error);
+    res.status(500).json({ error: 'Failed to process jobs' });
   }
 });
 
