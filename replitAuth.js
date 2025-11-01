@@ -86,11 +86,16 @@ async function setupAuth(app) {
   const config = await getOidcConfig();
 
   // Verify function for passport strategy
-  const verify = async (tokens, verified) => {
-    const user = {};
-    updateUserSession(user, tokens);
-    await upsertUser(tokens.claims());
-    verified(null, user);
+  const verify = async (tokenSet, userinfo, done) => {
+    try {
+      const user = {};
+      updateUserSession(user, tokenSet);
+      await upsertUser(tokenSet.claims());
+      done(null, user);
+    } catch (error) {
+      console.error('Error in verify callback:', error);
+      done(error);
+    }
   };
 
   // Track registered strategies per domain

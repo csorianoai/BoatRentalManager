@@ -2,8 +2,8 @@
 
 This is a multi-platform boat rental management system for Nadaki Excursions built with Node.js/Express backend and PostgreSQL database. The system integrates with 13 booking platforms (Airbnb, GetMyBoat, Viator, etc.), Stripe for payments, Twilio for WhatsApp notifications, and features an AI assistant powered by OpenAI for automated bookings.
 
-**Current Status**: PHASE 5 (Schedule Optimizer) COMPLETED ✅
-**Deployment**: All 5 phases completed. System ready for authentication implementation before production deployment.
+**Current Status**: ALL PHASES COMPLETED + AUTHENTICATION IMPLEMENTED ✅
+**Deployment**: All 5 phases completed with comprehensive Replit Auth integration across the entire system. Ready for production deployment.
 
 # User Preferences
 
@@ -31,7 +31,7 @@ Preferred communication style: Simple, everyday language.
 - Check-in/check-out with timestamps and coordinates
 - Trip report system (weather, conditions, fuel, ratings)
 - Offline capability via Service Worker
-- ⚠️ **Security Note**: Current MVP uses unauthenticated captain ID login. Production deployment requires proper authentication (passwords/PIN + session tokens) and endpoint protection to prevent unauthorized access.
+- ✅ **Security**: Protected with Replit Auth. Captain ID login identifies which captain is using the device after authentication.
 
 **PHASE 4: Commission System** ✅ COMPLETED
 - Automated commission calculations for completed bookings
@@ -39,7 +39,7 @@ Preferred communication style: Simple, everyday language.
 - Payment tracking (pending/paid status management)
 - Multi-platform commission rules (14 platforms configured)
 - Visual analytics (commission by platform, captain earnings)
-- ⚠️ **Security Note**: Commission endpoints lack authentication/authorization. Production deployment requires access control for financial data, audit logging for rule changes, and secure permission system.
+- ✅ **Security**: All commission endpoints protected with Replit Auth isAuthenticated middleware.
 
 **PHASE 5: Schedule Optimizer** ✅ COMPLETED
 - Intelligent captain assignment algorithm with time-based conflict detection
@@ -47,7 +47,7 @@ Preferred communication style: Simple, everyday language.
 - Double-booking prevention with overlap detection
 - Week view calendar interface with visual grid
 - Conflict checker tool for pre-validation
-- ⚠️ **Security Note**: Schedule endpoints lack authentication/authorization. Production deployment requires access control to prevent unauthorized schedule manipulation.
+- ✅ **Security**: All schedule endpoints protected with Replit Auth isAuthenticated middleware.
 
 # System Architecture
 
@@ -122,6 +122,8 @@ Preferred communication style: Simple, everyday language.
   - `commission_rules` - Commission configuration (PHASE 4)
   - `commission_payments` - Payment tracking (PHASE 4)
   - `captain_availability` - Schedule management (PHASE 5)
+  - `users` - Authenticated user data from OpenID provider
+  - `sessions` - PostgreSQL session storage for Replit Auth
 
 **Chat Conversations Table**:
 ```sql
@@ -138,12 +140,66 @@ Preferred communication style: Simple, everyday language.
 
 ## Authentication & Authorization
 
-**Session-Based Authentication**: Cookie-based sessions with `cookie` and `cookie-signature` packages
-- Sessions are cryptographically signed to prevent tampering
-- Sessions persist in PostgreSQL for scalability
-- Cookie management handles secure storage of session identifiers
+**Technology**: Replit Auth with OpenID Connect (OIDC)
+- **Implementation**: passport.js with openid-client strategy
+- **Session Storage**: PostgreSQL-backed sessions using connect-pg-simple
+- **Session Configuration**: 
+  - 7-day TTL (maxAge: 7 days)
+  - httpOnly cookies for XSS protection
+  - Secure cookies in production
+  - Session secret stored in SESSION_SECRET environment variable
+  - Automatic session cleanup via PostgreSQL TTL
 
-**Design Rationale**: Session-based authentication provides a traditional, well-understood security model suitable for server-rendered or hybrid applications.
+**Database Tables**:
+- `users` - Stores authenticated user information from OpenID provider (id, email, name, timestamps)
+- `sessions` - PostgreSQL session storage managed by connect-pg-simple
+
+**Protected Endpoints**: All administrative endpoints require authentication via isAuthenticated middleware:
+- Dashboard endpoints (`/api/dashboard-data`, `/api/bookings`, etc.)
+- Platform sync endpoints (`/api/sync/*`, `/api/platforms/*`, `/api/conflicts/*`)
+- Commission endpoints (`/api/commissions/*`, `/api/commission-rules/*`)
+- Schedule endpoints (`/api/schedule/*`, `/api/availability/*`, `/api/check-conflicts`)
+- Captain management endpoints (`/api/captains`, `/api/captains/:id`)
+
+**Public Endpoints** (intentionally left unprotected):
+- `/api/webhooks/booking/:platform` - External webhook receivers (platforms need to push bookings)
+- `/api/chat/send` - Customer-facing AI chatbot (public customer access)
+- `/api/captain/*` - Captain app endpoints (currently public for MVP)
+
+**Authentication Flow**:
+1. Unauthenticated user visits root (/) → redirected to /login.html
+2. User clicks "Iniciar Sesión" → redirects to /api/login (initiates OIDC flow)
+3. User authenticates via Replit (Google, GitHub, or email)
+4. OIDC callback at /api/callback creates session and user record
+5. User redirected to /dashboard.html
+6. All protected pages verify authentication via inline script checking /api/auth/user
+7. If not authenticated, pages redirect to /api/login
+
+**Logout Flow**:
+1. User clicks logout button (🚪 Cerrar Sesión) on any page
+2. Request to /api/logout destroys session
+3. User redirected to root (/) which shows login page
+
+**Captain App Authentication**:
+Captain app uses dual authentication:
+1. Replit Auth - Required to access captain.html (prevents unauthorized access)
+2. Captain ID selection - Identifies which captain is using the device (for assignment filtering)
+
+**Security Features**:
+- Session-based authentication (stateful, server-side)
+- Cryptographically signed cookies
+- PostgreSQL session persistence (survives server restarts)
+- httpOnly cookies (prevent XSS attacks)
+- Automatic session expiration (7 days)
+- Database-backed user records with audit trail (created_at, updated_at)
+
+**Authentication Module**: replitAuth.js
+- Exports setupAuth(app, db) function for easy integration
+- Exports isAuthenticated middleware for route protection
+- Handles OIDC discovery, token verification, and session management
+- Automatic user creation/update from OpenID provider data
+
+**Design Rationale**: Replit Auth provides enterprise-grade authentication without custom user management. OpenID Connect ensures secure, standardized authentication. PostgreSQL session storage enables horizontal scaling and session persistence across deployments.
 
 ## Build & Development Tools
 
