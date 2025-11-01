@@ -428,5 +428,6 @@ module.exports = {
   syncAllPlatforms,
   getSyncStatus,
   getConflicts,
+  calculateEndTime,
   PLATFORMS
 };

@@ -471,6 +471,43 @@ app.post('/webhook/booking/:platform', async (req, res) => {
       bookingRecord.internal_notes
     ]);
 
+    // FASE 7: Crear bloqueo de disponibilidad y encolar sync_jobs
+    try {
+      const { calculateEndTime } = require('./server/syncService');
+      const endTime = calculateEndTime(bookingRecord.start_time, bookingRecord.duration_hours);
+      
+      // Crear bloqueo de disponibilidad
+      await availabilityService.createBlock({
+        boatId: 'default_boat', // En producción, vendría del sistema de inventario
+        blockDate: bookingRecord.booking_date,
+        startTime: bookingRecord.start_time,
+        endTime: endTime,
+        blockType: 'booking',
+        bookingId: bookingRecord.id,
+        reason: `Reserva confirmada desde ${platform}`,
+        status: 'blocked'
+      });
+      
+      // Crear trabajos de sincronización masivos para bloquear en todas las otras plataformas
+      const jobs = await syncJobsWorker.createBulkSyncJobs(
+        'block_date',
+        {
+          boatId: 'default_boat',
+          date: bookingRecord.booking_date,
+          startTime: bookingRecord.start_time,
+          endTime: endTime,
+          bookingId: bookingRecord.id,
+          reason: `Reserva confirmada en ${platform}`
+        },
+        platform // Excluir la plataforma origen
+      );
+      
+      console.log(`✅ Created availability block and ${jobs.length} sync jobs for booking ${bookingRecord.id}`);
+    } catch (blockError) {
+      console.error('❌ Error creating availability block or sync jobs:', blockError);
+      // No fallar el booking si falla el bloqueo
+    }
+
     // Asignar capitán y enviar notificaciones (FASE 5: algoritmo mejorado)
     const assignedCaptain = await assignCaptain(
       normalizedBooking.boat_type,
