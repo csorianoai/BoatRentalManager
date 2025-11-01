@@ -4,6 +4,25 @@ let platforms = [];
 let policies = [];
 let adjustments = [];
 
+// Helper function for authenticated fetch
+async function authFetch(url, options = {}) {
+    try {
+        const response = await fetch(url, options);
+        if (response.status === 401) {
+            window.location.href = '/api/login';
+            throw new Error('Unauthorized');
+        }
+        return response;
+    } catch (error) {
+        if (error.message === 'Unauthorized') {
+            throw error;
+        }
+        // Network error or other issue
+        console.error('Fetch error:', error);
+        throw error;
+    }
+}
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
     initializeTabs();
@@ -74,7 +93,7 @@ function setupEventListeners() {
 
 async function loadBoats() {
     try {
-        const response = await fetch('/api/pricing/boats');
+        const response = await authFetch('/api/pricing/boats');
         boats = await response.json();
         
         const select = document.getElementById('boat-select');
@@ -108,7 +127,7 @@ async function loadBoats() {
 
 async function loadPlatforms() {
     try {
-        const response = await fetch('/api/pricing/platforms');
+        const response = await authFetch('/api/pricing/platforms');
         platforms = await response.json();
         
         const calcPlatformSelect = document.getElementById('calc-platform');
@@ -147,7 +166,7 @@ async function loadPolicies() {
     if (!currentBoat) return;
     
     try {
-        const response = await fetch(`/api/pricing/policies?boatId=${currentBoat}`);
+        const response = await authFetch(`/api/pricing/policies?boatId=${currentBoat}`);
         policies = await response.json();
         
         renderPricingMatrix();
@@ -244,7 +263,7 @@ async function savePolicyForm(e) {
     };
     
     try {
-        const response = await fetch('/api/pricing/policies', {
+        const response = await authFetch('/api/pricing/policies', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(policyData)
@@ -265,7 +284,7 @@ async function savePolicyForm(e) {
 
 async function loadAdjustments() {
     try {
-        const response = await fetch('/api/pricing/adjustments');
+        const response = await authFetch('/api/pricing/adjustments');
         adjustments = await response.json();
         
         renderAdjustments();
@@ -356,7 +375,7 @@ async function previewImpact() {
     const adjustmentData = getAdjustmentFormData();
     
     try {
-        const response = await fetch('/api/pricing/preview-impact', {
+        const response = await authFetch('/api/pricing/preview-impact', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(adjustmentData)
@@ -420,7 +439,7 @@ async function saveAdjustmentForm(e) {
     const adjustmentData = getAdjustmentFormData();
     
     try {
-        const response = await fetch('/api/pricing/adjustments', {
+        const response = await authFetch('/api/pricing/adjustments', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(adjustmentData)
@@ -441,7 +460,7 @@ async function saveAdjustmentForm(e) {
 
 async function toggleAdjustment(id, isActive) {
     try {
-        const response = await fetch(`/api/pricing/adjustments/${id}`, {
+        const response = await authFetch(`/api/pricing/adjustments/${id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ isActive: isActive ? 0 : 1 })
@@ -470,7 +489,7 @@ async function calculatePrice() {
     }
     
     try {
-        const response = await fetch('/api/pricing/calculate', {
+        const response = await authFetch('/api/pricing/calculate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ platform, boatId, duration })
@@ -529,8 +548,8 @@ function renderCalculationResult(result) {
 async function loadSyncJobs() {
     try {
         const [jobsResponse, statsResponse] = await Promise.all([
-            fetch('/api/sync/jobs?limit=50'),
-            fetch('/api/sync/jobs/stats')
+            authFetch('/api/sync/jobs?limit=50'),
+            authFetch('/api/sync/jobs/stats')
         ]);
         
         const jobs = await jobsResponse.json();
@@ -583,7 +602,7 @@ async function retryFailedJobs() {
     if (!confirm('¿Reintentar todos los trabajos fallidos?')) return;
     
     try {
-        const response = await fetch('/api/sync/jobs/retry-failed', { method: 'POST' });
+        const response = await authFetch('/api/sync/jobs/retry-failed', { method: 'POST' });
         const result = await response.json();
         
         if (response.ok) {
@@ -618,7 +637,7 @@ async function saveBoatForm(e) {
     };
     
     try {
-        const response = await fetch('/api/pricing/boats', {
+        const response = await authFetch('/api/pricing/boats', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(boatData)
