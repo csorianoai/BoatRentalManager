@@ -14,6 +14,8 @@
 
 const { Pool, neonConfig } = require('@neondatabase/serverless');
 const ws = require('ws');
+const availabilityService = require('./availabilityService');
+const syncJobsWorker = require('./syncJobsWorker');
 
 // Configure WebSocket for Neon
 neonConfig.webSocketConstructor = ws;
@@ -117,7 +119,7 @@ async function detectConflicts(newBooking) {
 
 /**
  * Importa una reserva a la base de datos local
- * Detecta conflictos antes de importar
+ * FASE 7: Integra verificación de disponibilidad y sincronización bidireccional
  */
 async function importBooking(booking) {
   try {
@@ -139,6 +141,24 @@ async function importBooking(booking) {
         status: 'conflict', 
         bookingId: booking.externalId,
         conflicts 
+      };
+    }
+    
+    // FASE 7: Verificar disponibilidad usando availability_blocks
+    // Asumimos que cada booking requiere 1 barco (boatId genérico por ahora)
+    const endTime = calculateEndTime(booking.startTime, booking.durationHours);
+    const availabilityCheck = await availabilityService.checkAvailability(
+      'default_boat', // En producción, esto vendría del sistema de inventario
+      booking.bookingDate,
+      booking.startTime,
+      endTime
+    );
+    
+    if (!availabilityCheck.available) {
+      return {
+        status: 'unavailable',
+        bookingId: booking.externalId,
+        message: 'Fecha/hora no disponible (bloqueada por otra plataforma)'
       };
     }
     
@@ -165,12 +185,51 @@ async function importBooking(booking) {
       `Importado automáticamente de ${booking.platform}`,
     ]);
     
+    // FASE 7: Crear bloqueo de disponibilidad para prevenir double-booking
+    await availabilityService.createBlock({
+      boatId: 'default_boat',
+      blockDate: booking.bookingDate,
+      startTime: booking.startTime,
+      endTime: endTime,
+      blockType: 'booking',
+      sourcePlatform: booking.platform,
+      bookingId: booking.externalId,
+      notes: `Bloqueo automático por reserva ${booking.externalId}`
+    });
+    
+    // FASE 7: Encolar trabajos de sincronización para bloquear en otras plataformas
+    // Bloquear la misma fecha/hora en las otras 12 plataformas
+    const otherPlatforms = PLATFORMS.filter(p => p !== booking.platform);
+    for (const targetPlatform of otherPlatforms) {
+      await syncJobsWorker.queueSyncJob({
+        jobType: 'block_date',
+        targetPlatform,
+        sourcePlatform: booking.platform,
+        bookingId: booking.externalId,
+        payload: {
+          date: booking.bookingDate,
+          startTime: booking.startTime,
+          endTime: endTime,
+          reason: `Reserva confirmada en ${booking.platform}`
+        }
+      });
+    }
+    
     return { status: 'imported', bookingId: booking.externalId };
     
   } catch (error) {
     console.error('Error importing booking:', error);
     return { status: 'error', error: error.message };
   }
+}
+
+/**
+ * Calcula hora de fin basado en hora de inicio y duración
+ */
+function calculateEndTime(startTime, durationHours) {
+  const [hours, minutes] = startTime.split(':').map(Number);
+  const endHours = hours + durationHours;
+  return `${String(endHours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
 }
 
 /**
