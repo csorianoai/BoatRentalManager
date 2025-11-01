@@ -1,0 +1,76 @@
+node -e "
+const { exec } = require('child_process');
+const fs = require('fs');
+
+console.log('🚀 INICIANDO CONFIGURACIÓN AUTOMÁTICA NADAKI...');
+console.log('📋 Verificando servidor...');
+
+// Obtener URL de Replit automáticamente
+const replUrl = process.env.REPL_SLUG + '.' + process.env.REPL_OWNER + '.repl.co';
+
+const setupConfig = \`
+🎯 CONFIGURACIÓN PARA NADAKIEXCURSIONS.COM - PASOS MANUALES
+
+PASO 1 - EN 10WEB (Hacer ahora):
+1. 🔐 Ve a tu panel 10Web: https://10web.io
+2. 📥 Ve a: Dominios → Subdominios  
+3. ➕ Crear subdominio: portal
+4. 📝 URL resultante: portal.nadakiexcursions.com
+5. 💾 Guardar y anotar estado
+
+PASO 2 - EN TU PROVEEDOR DNS (Hacer ahora):
+1. 🌐 Ve donde compraste el dominio (GoDaddy, Namecheap, etc.)
+2. 🔍 Busca 'DNS Management' o 'Zone Editor'
+3. ➕ Agregar registro CNAME:
+   - Name: portal
+   - Type: CNAME  
+   - Value: \${replUrl}
+   - TTL: 3600
+4. 💾 Guardar cambios
+
+PASO 3 - EN 10WEB WORDPRESS (Después de DNS):
+1. 📄 Ve a Páginas → Añadir Nueva
+2. 🏷️ Título: 'Portal de Gestión' 
+3. ⚙️ Agregar bloque 'HTML Personalizado'
+4. 📋 Copiar este código:
+
+<div style='text-align: center; padding: 20px;'>
+  <h2>🚤 Portal de Gestión Nadaki Excursions</h2>
+  <iframe src='https://portal.nadakiexcursions.com' 
+          width='100%' height='800px'
+          style='border: 2px solid #0077be; border-radius: 10px;'
+          title='Sistema de Gestión Nadaki'>
+  </iframe>
+</div>
+
+5. 💾 Publicar página
+
+PASO 4 - WEBHOOKS LISTOS (Automático):
+Una vez el subdominio funcione, usa estas URLs:
+• GetMyBoat: https://portal.nadakiexcursions.com/webhook/booking/GetMyBoat
+• BoatSetter: https://portal.nadakiexcursions.com/webhook/booking/BoatSetter  
+• Airbnb: https://portal.nadakiexcursions.com/webhook/booking/Airbnb
+
+📊 TU URL ACTUAL DE REPLIT: \${replUrl}
+⏳ DNS puede tomar 1-24 horas en propagarse.
+
+🎯 PRÓXIMO PASO: Ve a 10Web y crea el subdominio 'portal'
+\`;
+
+console.log(setupConfig);
+
+// Crear archivo de configuración
+const configContent = \`
+// CONFIGURACIÓN NADAKI - \${new Date().toISOString()}
+module.exports = {
+  domain: 'nadakiexcursions.com',
+  subdomain: 'portal.nadakiexcursions.com', 
+  replitUrl: '\${replUrl}',
+  created: '\${new Date().toISOString()}'
+};
+\`;
+
+fs.writeFileSync('deploy-config.js', configContent);
+console.log('✅ Archivo de configuración creado: deploy-config.js');
+console.log('🎯 ¡SIGUE LOS PASOS ARRIBA! Comienza con PASO 1 en 10Web');
+"
