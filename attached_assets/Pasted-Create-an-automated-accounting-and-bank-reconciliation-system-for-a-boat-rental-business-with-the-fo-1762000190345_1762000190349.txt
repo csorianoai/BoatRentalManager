@@ -1,0 +1,82 @@
+Create an automated accounting and bank reconciliation system for a boat rental business with the following features:
+
+## AUTOMATED INCOME TRACKING:
+- Direct integration with booking system to capture all revenue streams
+- Automatic income categorization by boat, platform, and service type
+- Real-time revenue recognition when trips are completed
+- Multi-currency support with automatic exchange rates
+- Pending vs collected revenue tracking
+
+## EXPENSE AUTOMATION:
+- Integration with existing expense tracking module
+- Automatic expense categorization (fuel, maintenance, marina, etc.)
+- Receipt OCR processing for automatic data entry
+- Recurring expense detection and forecasting
+- Vendor payment tracking and history
+
+## BANK RECONCILIATION SYSTEM:
+- Bank statement import (CSV, OFX, QFX formats)
+- Plaid API integration for direct bank connectivity
+- Automatic transaction matching: bookings → bank deposits
+- Smart suggestion engine for unmatched transactions
+- Reconciliation status dashboard with variance alerts
+
+## FINANCIAL REPORTING:
+- Automated profit & loss statements per boat monthly
+- Balance sheet generation with asset depreciation
+- Cash flow analysis and forecasting
+- Tax liability calculations and reminders
+- Customizable financial period reporting
+
+## BOAT-PROFITABILITY ANALYTICS:
+- Individual boat P&L statements
+- Cost per operating hour calculations
+- Revenue per available hour (RevPAH) metrics
+- ROI analysis per boat with maintenance cost factoring
+- Comparative performance across fleet
+
+## AUTOMATED RECONCILIATION FEATURES:
+- Rule-based transaction categorization
+  - Booking platforms → specific income accounts
+  - Fuel purchases → fuel expense account
+  - Marina payments → dockage expense
+  - Mechanic payments → maintenance expense
+- Machine learning for pattern recognition in transactions
+- Exception reporting for unusual transactions
+
+## TAX & COMPLIANCE:
+- Automated sales tax calculations per jurisdiction
+- Tax form preparation assistance (1099, Schedule C)
+- Deductible expense tracking and reporting
+- Audit trail with complete transaction history
+- Compliance calendar with filing deadlines
+
+## INTEGRATION ARCHITECTURE:
+- REST API connections to existing systems:
+  - Booking system for revenue data
+  - Expense module for cost data
+  - Bank APIs for transaction feeds
+- Webhook support for real-time financial events
+- Automated nightly reconciliation processes
+
+## DASHBOARD & ALERTS:
+- Real-time financial health dashboard
+- Bank balance vs book balance monitoring
+- Cash flow预警 alerts (low balance, unusual spending)
+- Profit margin alerts per boat
+- Tax payment reminders
+
+## SECURITY & CONTROLS:
+- Role-based access (admin, accountant, view-only)
+- Approval workflows for large transactions
+- Audit logs for all financial activities
+- Data encryption for bank credentials
+- Automated backup of financial records
+
+## DATA STRUCTURE:
+- Chart of accounts tailored for marine business
+- Transaction table with: date, amount, description, category, boat_id, reconciled_status
+- Reconciliation sessions with period open/close functionality
+- Financial periods with rollover capabilities
+
+Create this as a standalone but integrated module that works with the existing boat management platform, providing complete financial automation and compliance readiness.
