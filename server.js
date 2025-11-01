@@ -6616,6 +6616,465 @@ app.get('/api/mechanics/performance', async (req, res) => {
   }
 });
 
+// ========== MAINTENANCE RECORDS APIs ==========
+
+// Get maintenance records
+app.get('/api/maintenance-records', async (req, res) => {
+  try {
+    const { boat_id, service_type, status, start_date, end_date } = req.query;
+    
+    let query = `
+      SELECT mr.*, b.name as boat_name, m.name as mechanic_name
+      FROM maintenance_records mr
+      LEFT JOIN boats b ON mr.boat_id = b.id
+      LEFT JOIN mechanics m ON mr.mechanic_id = m.id
+      WHERE 1=1
+    `;
+    const params = [];
+    let paramIndex = 1;
+    
+    if (boat_id) {
+      query += ` AND mr.boat_id = $${paramIndex++}`;
+      params.push(boat_id);
+    }
+    
+    if (service_type) {
+      query += ` AND mr.service_type = $${paramIndex++}`;
+      params.push(service_type);
+    }
+    
+    if (status) {
+      query += ` AND mr.status = $${paramIndex++}`;
+      params.push(status);
+    }
+    
+    if (start_date) {
+      query += ` AND mr.service_date >= $${paramIndex++}`;
+      params.push(start_date);
+    }
+    
+    if (end_date) {
+      query += ` AND mr.service_date <= $${paramIndex++}`;
+      params.push(end_date);
+    }
+    
+    query += ' ORDER BY mr.service_date DESC';
+    
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching maintenance records:', error);
+    res.status(500).json({ error: 'Failed to fetch maintenance records' });
+  }
+});
+
+// Create maintenance record
+app.post('/api/maintenance-records', async (req, res) => {
+  try {
+    const { nanoid } = await import('nanoid');
+    const {
+      boat_id, service_type, description, parts_used, labor_hours,
+      mechanic_id, parts_cost, labor_cost, total_cost, service_date,
+      next_service_date, engine_hours_at_service, work_order_id, notes
+    } = req.body;
+    
+    if (!boat_id || !service_type || !description || total_cost === undefined || !service_date) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    
+    const id = nanoid();
+    const result = await pool.query(`
+      INSERT INTO maintenance_records 
+      (id, boat_id, service_type, description, parts_used, labor_hours, mechanic_id,
+       parts_cost, labor_cost, total_cost, service_date, next_service_date, 
+       engine_hours_at_service, work_order_id, notes)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      RETURNING *
+    `, [
+      id, boat_id, service_type, description, 
+      parts_used ? JSON.stringify(parts_used) : null,
+      labor_hours || 0, mechanic_id || null, parts_cost || 0, labor_cost || 0,
+      total_cost, service_date, next_service_date || null,
+      engine_hours_at_service || null, work_order_id || null, notes || null
+    ]);
+    
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Error creating maintenance record:', error);
+    res.status(500).json({ error: 'Failed to create maintenance record' });
+  }
+});
+
+// Update maintenance record
+app.patch('/api/maintenance-records/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body;
+    
+    const allowedFields = [
+      'service_type', 'description', 'parts_used', 'labor_hours', 'mechanic_id',
+      'parts_cost', 'labor_cost', 'total_cost', 'service_date', 'next_service_date',
+      'engine_hours_at_service', 'work_order_id', 'status', 'notes'
+    ];
+    
+    const setClause = [];
+    const values = [];
+    let paramIndex = 1;
+    
+    Object.keys(updates).forEach(key => {
+      if (allowedFields.includes(key)) {
+        if (key === 'parts_used' && updates[key]) {
+          setClause.push(`${key} = $${paramIndex++}`);
+          values.push(JSON.stringify(updates[key]));
+        } else {
+          setClause.push(`${key} = $${paramIndex++}`);
+          values.push(updates[key]);
+        }
+      }
+    });
+    
+    if (setClause.length === 0) {
+      return res.status(400).json({ error: 'No valid fields to update' });
+    }
+    
+    setClause.push(`updated_at = CURRENT_TIMESTAMP`);
+    values.push(id);
+    
+    const result = await pool.query(`
+      UPDATE maintenance_records
+      SET ${setClause.join(', ')}
+      WHERE id = $${paramIndex}
+      RETURNING *
+    `, values);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Maintenance record not found' });
+    }
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating maintenance record:', error);
+    res.status(500).json({ error: 'Failed to update maintenance record' });
+  }
+});
+
+// Get upcoming maintenance
+app.get('/api/maintenance-records/upcoming', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT mr.*, b.name as boat_name
+      FROM maintenance_records mr
+      LEFT JOIN boats b ON mr.boat_id = b.id
+      WHERE mr.next_service_date IS NOT NULL
+        AND mr.next_service_date >= CURRENT_DATE
+      ORDER BY mr.next_service_date ASC
+      LIMIT 20
+    `);
+    
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching upcoming maintenance:', error);
+    res.status(500).json({ error: 'Failed to fetch upcoming maintenance' });
+  }
+});
+
+// ========== PARTS INVENTORY APIs ==========
+
+// Get all parts
+app.get('/api/parts-inventory', async (req, res) => {
+  try {
+    const { category, low_stock } = req.query;
+    
+    let query = 'SELECT * FROM parts_inventory WHERE 1=1';
+    const params = [];
+    let paramIndex = 1;
+    
+    if (category) {
+      query += ` AND category = $${paramIndex++}`;
+      params.push(category);
+    }
+    
+    if (low_stock === 'true') {
+      query += ' AND quantity <= min_stock_level';
+    }
+    
+    query += ' ORDER BY category, part_name';
+    
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching parts inventory:', error);
+    res.status(500).json({ error: 'Failed to fetch parts inventory' });
+  }
+});
+
+// Create part
+app.post('/api/parts-inventory', async (req, res) => {
+  try {
+    const { nanoid } = await import('nanoid');
+    const {
+      part_name, part_number, category, quantity, unit_cost,
+      supplier, supplier_phone, min_stock_level, notes
+    } = req.body;
+    
+    if (!part_name || !category || quantity === undefined || unit_cost === undefined) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    
+    const id = nanoid();
+    const result = await pool.query(`
+      INSERT INTO parts_inventory 
+      (id, part_name, part_number, category, quantity, unit_cost, supplier, 
+       supplier_phone, min_stock_level, notes)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      RETURNING *
+    `, [
+      id, part_name, part_number || null, category, quantity, unit_cost,
+      supplier || null, supplier_phone || null, min_stock_level || 0, notes || null
+    ]);
+    
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Error creating part:', error);
+    res.status(500).json({ error: 'Failed to create part' });
+  }
+});
+
+// Update part
+app.patch('/api/parts-inventory/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body;
+    
+    const allowedFields = [
+      'part_name', 'part_number', 'category', 'quantity', 'unit_cost',
+      'supplier', 'supplier_phone', 'min_stock_level', 'notes'
+    ];
+    
+    const setClause = [];
+    const values = [];
+    let paramIndex = 1;
+    
+    Object.keys(updates).forEach(key => {
+      if (allowedFields.includes(key)) {
+        setClause.push(`${key} = $${paramIndex++}`);
+        values.push(updates[key]);
+      }
+    });
+    
+    if (setClause.length === 0) {
+      return res.status(400).json({ error: 'No valid fields to update' });
+    }
+    
+    setClause.push(`updated_at = CURRENT_TIMESTAMP`);
+    values.push(id);
+    
+    const result = await pool.query(`
+      UPDATE parts_inventory
+      SET ${setClause.join(', ')}
+      WHERE id = $${paramIndex}
+      RETURNING *
+    `, values);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Part not found' });
+    }
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating part:', error);
+    res.status(500).json({ error: 'Failed to update part' });
+  }
+});
+
+// Restock part
+app.post('/api/parts-inventory/:id/restock', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { quantity } = req.body;
+    
+    if (!quantity || quantity <= 0) {
+      return res.status(400).json({ error: 'Valid quantity required' });
+    }
+    
+    const result = await pool.query(`
+      UPDATE parts_inventory
+      SET quantity = quantity + $1,
+          last_restock_date = CURRENT_DATE,
+          last_restock_quantity = $1,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = $2
+      RETURNING *
+    `, [quantity, id]);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Part not found' });
+    }
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error restocking part:', error);
+    res.status(500).json({ error: 'Failed to restock part' });
+  }
+});
+
+// ========== WORK ORDERS APIs ==========
+
+// Get work orders
+app.get('/api/work-orders', async (req, res) => {
+  try {
+    const { boat_id, mechanic_id, status, priority } = req.query;
+    
+    let query = `
+      SELECT wo.*, b.name as boat_name, m.name as mechanic_name
+      FROM work_orders wo
+      LEFT JOIN boats b ON wo.boat_id = b.id
+      LEFT JOIN mechanics m ON wo.mechanic_id = m.id
+      WHERE 1=1
+    `;
+    const params = [];
+    let paramIndex = 1;
+    
+    if (boat_id) {
+      query += ` AND wo.boat_id = $${paramIndex++}`;
+      params.push(boat_id);
+    }
+    
+    if (mechanic_id) {
+      query += ` AND wo.mechanic_id = $${paramIndex++}`;
+      params.push(mechanic_id);
+    }
+    
+    if (status) {
+      query += ` AND wo.status = $${paramIndex++}`;
+      params.push(status);
+    }
+    
+    if (priority) {
+      query += ` AND wo.priority = $${paramIndex++}`;
+      params.push(priority);
+    }
+    
+    query += ' ORDER BY wo.priority DESC, wo.scheduled_date ASC, wo.created_at DESC';
+    
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching work orders:', error);
+    res.status(500).json({ error: 'Failed to fetch work orders' });
+  }
+});
+
+// Create work order
+app.post('/api/work-orders', async (req, res) => {
+  try {
+    const { nanoid } = await import('nanoid');
+    const {
+      boat_id, mechanic_id, title, description, priority, scheduled_date,
+      estimated_cost, estimated_hours, notes, created_by
+    } = req.body;
+    
+    if (!boat_id || !title || !description) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    
+    const id = nanoid();
+    const result = await pool.query(`
+      INSERT INTO work_orders 
+      (id, boat_id, mechanic_id, title, description, priority, scheduled_date,
+       estimated_cost, estimated_hours, notes, created_by)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      RETURNING *
+    `, [
+      id, boat_id, mechanic_id || null, title, description, priority || 'medium',
+      scheduled_date || null, estimated_cost || null, estimated_hours || null,
+      notes || null, created_by || null
+    ]);
+    
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Error creating work order:', error);
+    res.status(500).json({ error: 'Failed to create work order' });
+  }
+});
+
+// Update work order
+app.patch('/api/work-orders/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body;
+    
+    const allowedFields = [
+      'mechanic_id', 'title', 'description', 'priority', 'status', 'scheduled_date',
+      'completion_date', 'estimated_cost', 'actual_cost', 'estimated_hours',
+      'actual_hours', 'maintenance_record_id', 'notes'
+    ];
+    
+    const setClause = [];
+    const values = [];
+    let paramIndex = 1;
+    
+    Object.keys(updates).forEach(key => {
+      if (allowedFields.includes(key)) {
+        setClause.push(`${key} = $${paramIndex++}`);
+        values.push(updates[key]);
+      }
+    });
+    
+    if (setClause.length === 0) {
+      return res.status(400).json({ error: 'No valid fields to update' });
+    }
+    
+    setClause.push(`updated_at = CURRENT_TIMESTAMP`);
+    values.push(id);
+    
+    const result = await pool.query(`
+      UPDATE work_orders
+      SET ${setClause.join(', ')}
+      WHERE id = $${paramIndex}
+      RETURNING *
+    `, values);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Work order not found' });
+    }
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating work order:', error);
+    res.status(500).json({ error: 'Failed to update work order' });
+  }
+});
+
+// Complete work order
+app.post('/api/work-orders/:id/complete', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { actual_cost, actual_hours, maintenance_record_id } = req.body;
+    
+    const result = await pool.query(`
+      UPDATE work_orders
+      SET status = 'completed',
+          completion_date = CURRENT_DATE,
+          actual_cost = $1,
+          actual_hours = $2,
+          maintenance_record_id = $3,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = $4
+      RETURNING *
+    `, [actual_cost || null, actual_hours || null, maintenance_record_id || null, id]);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Work order not found' });
+    }
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error completing work order:', error);
+    res.status(500).json({ error: 'Failed to complete work order' });
+  }
+});
+
 // ============================================================================
 // 🚀 INICIAR SERVIDOR
 // ============================================================================
