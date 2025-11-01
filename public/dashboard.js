@@ -1,4 +1,23 @@
 // Business Intelligence Dashboard for Nadaki Excursions
+
+// Helper function for authenticated fetch
+async function authFetch(url, options = {}) {
+    try {
+        const response = await fetch(url, options);
+        if (response.status === 401) {
+            window.location.href = '/api/login';
+            throw new Error('Unauthorized');
+        }
+        return response;
+    } catch (error) {
+        if (error.message === 'Unauthorized') {
+            throw error;
+        }
+        console.error('Fetch error:', error);
+        throw error;
+    }
+}
+
 // Multi-language support
 const translations = {
     es: {
@@ -112,11 +131,11 @@ async function loadDashboardData() {
         showLoadingState();
         
         // Fetch dashboard data
-        const response = await fetch(`${API_BASE}/api/dashboard-data`);
+        const response = await authFetch(`${API_BASE}/api/dashboard-data`);
         dashboardData = await response.json();
         
         // Fetch platforms
-        const platformsResponse = await fetch(`${API_BASE}/api/platforms`);
+        const platformsResponse = await authFetch(`${API_BASE}/api/platforms`);
         const platforms = await platformsResponse.json();
         
         // Update platform filter
@@ -967,7 +986,7 @@ if (document.readyState === 'loading') {
 
 async function loadSyncStatus() {
     try {
-        const response = await fetch(`${API_BASE}/api/sync/status`);
+        const response = await authFetch(`${API_BASE}/api/sync/status`);
         const status = await response.json();
         renderSyncStatus(status);
     } catch (error) {
@@ -1046,7 +1065,7 @@ async function syncSinglePlatform(platform) {
         button.disabled = true;
         button.textContent = '⏳ Sincronizando...';
         
-        const response = await fetch(`${API_BASE}/api/sync/trigger/${platform}`, {
+        const response = await authFetch(`${API_BASE}/api/sync/trigger/${platform}`, {
             method: 'POST'
         });
         const result = await response.json();
@@ -1076,7 +1095,7 @@ async function syncAllPlatforms() {
         button.disabled = true;
         button.textContent = '⏳ Sincronizando...';
         
-        const response = await fetch(`${API_BASE}/api/sync/trigger-all`, {
+        const response = await authFetch(`${API_BASE}/api/sync/trigger-all`, {
             method: 'POST'
         });
         const result = await response.json();
@@ -1102,7 +1121,7 @@ async function syncAllPlatforms() {
 
 async function loadConflicts() {
     try {
-        const response = await fetch(`${API_BASE}/api/sync/conflicts`);
+        const response = await authFetch(`${API_BASE}/api/sync/conflicts`);
         const conflicts = await response.json();
         renderConflicts(conflicts);
     } catch (error) {
@@ -1162,7 +1181,7 @@ async function resolveConflict(bookingIdToCancel) {
     try {
         console.log('🔄 Resolving conflict - canceling booking:', bookingIdToCancel);
         
-        const response = await fetch(`${API_BASE}/api/sync/resolve-conflict`, {
+        const response = await authFetch(`${API_BASE}/api/sync/resolve-conflict`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

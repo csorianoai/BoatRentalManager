@@ -7,6 +7,24 @@ let dateFrom = '';
 let dateTo = '';
 let currentAvailabilityId = null;
 
+// Helper function for authenticated fetch
+async function authFetch(url, options = {}) {
+    try {
+        const response = await fetch(url, options);
+        if (response.status === 401) {
+            window.location.href = '/api/login';
+            throw new Error('Unauthorized');
+        }
+        return response;
+    } catch (error) {
+        if (error.message === 'Unauthorized') {
+            throw error;
+        }
+        console.error('Fetch error:', error);
+        throw error;
+    }
+}
+
 // Initialize on load
 document.addEventListener('DOMContentLoaded', async () => {
   await loadCaptains();
@@ -38,7 +56,7 @@ function formatDate(date) {
 // Load captains
 async function loadCaptains() {
   try {
-    const response = await fetch('/api/captains');
+    const response = await authFetch('/api/captains');
     captains = await response.json();
     
     populateCaptainSelects();
@@ -96,7 +114,7 @@ async function loadBookings() {
     if (dateFrom) params.append('dateFrom', dateFrom);
     if (dateTo) params.append('dateTo', dateTo);
     
-    const response = await fetch(url + params.toString());
+    const response = await authFetch(url + params.toString());
     const data = await response.json();
     bookings = data.filter(b => ['pending', 'confirmed', 'assigned', 'in_progress'].includes(b.status));
   } catch (error) {
@@ -112,7 +130,7 @@ async function loadAvailability() {
     if (dateFrom) params.append('startDate', dateFrom);
     if (dateTo) params.append('endDate', dateTo);
     
-    const response = await fetch('/api/availability?' + params.toString());
+    const response = await authFetch('/api/availability?' + params.toString());
     availability = await response.json();
   } catch (error) {
     console.error('Error loading availability:', error);
@@ -337,7 +355,7 @@ async function saveAvailability() {
       reason
     };
     
-    const response = await fetch('/api/availability', {
+    const response = await authFetch('/api/availability', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
@@ -362,7 +380,7 @@ async function deleteAvailability(id) {
   }
   
   try {
-    const response = await fetch(`/api/availability/${id}`, {
+    const response = await authFetch(`/api/availability/${id}`, {
       method: 'DELETE'
     });
     
@@ -390,7 +408,7 @@ async function checkConflict() {
       return;
     }
     
-    const response = await fetch('/api/availability/check-conflict', {
+    const response = await authFetch('/api/availability/check-conflict', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

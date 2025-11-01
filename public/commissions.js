@@ -1,6 +1,24 @@
 // Commissions Management System
 const API_BASE = window.location.origin;
 
+// Helper function for authenticated fetch
+async function authFetch(url, options = {}) {
+    try {
+        const response = await fetch(url, options);
+        if (response.status === 401) {
+            window.location.href = '/api/login';
+            throw new Error('Unauthorized');
+        }
+        return response;
+    } catch (error) {
+        if (error.message === 'Unauthorized') {
+            throw error;
+        }
+        console.error('Fetch error:', error);
+        throw error;
+    }
+}
+
 // State
 let currentPayments = [];
 let currentRules = [];
@@ -105,7 +123,7 @@ async function loadInitialData() {
 
 async function loadCaptains() {
     try {
-        const response = await fetch(`${API_BASE}/api/captains`);
+        const response = await authFetch(`${API_BASE}/api/captains`);
         currentCaptains = await response.json();
         
         // Populate captain filter
@@ -123,7 +141,7 @@ async function loadCaptains() {
 
 async function loadRules() {
     try {
-        const response = await fetch(`${API_BASE}/api/commissions/rules`);
+        const response = await authFetch(`${API_BASE}/api/commissions/rules`);
         currentRules = await response.json();
         renderRulesTable();
     } catch (error) {
@@ -145,7 +163,7 @@ async function loadPayments() {
         if (startDate) url += `startDate=${startDate}&`;
         if (endDate) url += `endDate=${endDate}&`;
         
-        const response = await fetch(url);
+        const response = await authFetch(url);
         currentPayments = await response.json();
         renderPaymentsTable();
     } catch (error) {
@@ -163,7 +181,7 @@ async function loadReports() {
         if (startDate) url += `startDate=${startDate}&`;
         if (endDate) url += `endDate=${endDate}&`;
         
-        const response = await fetch(url);
+        const response = await authFetch(url);
         const data = await response.json();
         
         updateKPIs(data.summary);
@@ -360,7 +378,7 @@ async function saveRule(e) {
     const fixedFee = Math.floor(parseFloat(elements.editFixedFee.value) * 100);
     
     try {
-        const response = await fetch(`${API_BASE}/api/commissions/rules`, {
+        const response = await authFetch(`${API_BASE}/api/commissions/rules`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -389,7 +407,7 @@ async function markAsPaid(paymentId) {
     if (!confirm('¿Marcar este pago como pagado?')) return;
     
     try {
-        const response = await fetch(`${API_BASE}/api/commissions/mark-paid`, {
+        const response = await authFetch(`${API_BASE}/api/commissions/mark-paid`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ paymentId })
@@ -415,7 +433,7 @@ async function calculateCommissions() {
     showLoading();
     
     try {
-        const response = await fetch(`${API_BASE}/api/commissions/calculate`, {
+        const response = await authFetch(`${API_BASE}/api/commissions/calculate`, {
             method: 'POST'
         });
         
