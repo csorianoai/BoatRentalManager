@@ -9,6 +9,7 @@ const { Pool, neonConfig } = require('@neondatabase/serverless');
 const ws = require('ws');
 const OpenAI = require('openai');
 const { setupAuth, isAuthenticated } = require('./replitAuth');
+const aiOrchestrator = require('./ai-orchestrator');
 require('dotenv').config();
 
 // Initialize OpenAI with Replit AI Integrations
@@ -25,6 +26,10 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL
 });
 pool.on('connect', () => console.log('✅ Connected to PostgreSQL database'));
+
+// Initialize AI Orchestrator with shared pool and openai client
+aiOrchestrator.initialize(pool, openai);
+console.log('✅ AI Orchestrator initialized');
 
 // Initialize database schema on startup
 async function initializeDatabase() {
@@ -80,6 +85,38 @@ async function initializeDatabase() {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
       )
     `);
+    
+    // FASE 6: Create chat_ai_context table for AI-powered booking assistant
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS chat_ai_context (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL UNIQUE,
+        detected_language TEXT,
+        detected_intent TEXT,
+        intent_confidence INTEGER,
+        customer_preferences JSONB,
+        recommended_boats JSONB,
+        upsell_opportunities JSONB,
+        escalated_to_human INTEGER DEFAULT 0,
+        escalation_reason TEXT,
+        last_interaction_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+    
+    // Create indices for chat_ai_context (optimized for fast lookups)
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_chat_ai_context_last_interaction 
+      ON chat_ai_context(last_interaction_at DESC)
+    `);
+    
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_chat_ai_context_intent 
+      ON chat_ai_context(detected_intent)
+    `);
+    
+    console.log('✅ Chat AI Context indices created');
     
     // FASE 2: Create platform_sync_status table
     await pool.query(`
@@ -949,6 +986,320 @@ app.get('/api/chat/conversations', isAuthenticated, async (req, res) => {
   }
 });
 
+// 🤖 FASE 6: ENHANCED AI-POWERED BOOKING ASSISTANT
+const ENHANCED_AI_SYSTEM_PROMPT_ES = `Eres un asistente virtual avanzado para Nadaki Excursions, una empresa premium de tours en barco en Puerto Rico. Tu objetivo es proporcionar una experiencia excepcional y ayudar a los clientes a reservar el tour perfecto.
+
+INFORMACIÓN SOBRE NUESTROS SERVICIOS:
+- **Tours de Medio Día (4 horas)**: $800-$1,200
+  • Horarios: 9:00 AM, 12:00 PM, 3:00 PM
+  • Capacidad: 6-8 personas
+  • Incluye: Capitán certificado, equipo de snorkel, bebidas
+  • Ideal para: Familias, primera experiencia, grupos pequeños
+  
+- **Tours de Día Completo (8 horas)**: $1,500-$2,000
+  • Horarios: 9:00 AM
+  • Capacidad: 8-12 personas
+  • Incluye: Todo lo anterior + lunch gourmet, más destinos
+  • Ideal para: Aventureros, celebraciones, exploración extendida
+
+- **Excursión de Pesca**: $900-$1,300
+  • Tours especializados con equipo profesional
+  • Capitanes expertos en pesca deportiva
+
+- **Tour VIP Privado**: $2,000-$3,000
+  • Servicio totalmente personalizado
+  • Itinerario a medida
+
+TEMPORADAS Y PRECIOS:
+- Alta (Diciembre-Abril): +15% sobre precio base
+- Media (Mayo, Noviembre): Precio normal
+- Baja (Junio-Octubre): -10% sobre precio base
+
+TU COMPORTAMIENTO:
+1. **Personalización**: Entiende las preferencias del cliente antes de sugerir
+2. **Proactividad**: Ofrece recomendaciones basadas en sus necesidades
+3. **Transparencia**: Proporciona precios estimados cuando sea relevante
+4. **Entusiasmo**: Sé amigable y entusiasta sobre las experiencias
+5. **Eficiencia**: Guía la conversación hacia la reserva sin ser agresivo
+6. **Upselling Natural**: Sugiere upgrades si benefician genuinamente al cliente
+
+CAPACIDADES ESPECIALES:
+- Puedo verificar disponibilidad en tiempo real
+- Puedo calcular precios exactos según fecha y grupo
+- Puedo recomendar el mejor tour según tus preferencias
+- Puedo detectar si prefieres español o inglés automáticamente
+
+ESCALACIÓN A AGENTE HUMANO:
+Si encuentras:
+- Quejas o problemas complejos
+- Solicitudes muy específicas fuera de tours estándar
+- Clientes que parecen frustrados o confundidos
+→ Sugiere amablemente que un agente humano puede ayudar mejor
+
+PARA CREAR UNA RESERVA necesitas estos 7 datos:
+1. Nombre completo
+2. Teléfono (+1XXXXXXXXXX)
+3. Email
+4. Fecha del tour (YYYY-MM-DD)
+5. Número de personas
+6. Tipo de tour
+7. Hora de inicio
+
+Cuando tengas TODOS los datos, usa: "CREAR_RESERVA: {JSON con datos}"
+`;
+
+const ENHANCED_AI_SYSTEM_PROMPT_EN = `You are an advanced virtual assistant for Nadaki Excursions, a premium boat tour company in Puerto Rico. Your goal is to provide an exceptional experience and help customers book the perfect tour.
+
+ABOUT OUR SERVICES:
+- **Half-Day Tours (4 hours)**: $800-$1,200
+  • Times: 9:00 AM, 12:00 PM, 3:00 PM
+  • Capacity: 6-8 people
+  • Includes: Certified captain, snorkel gear, beverages
+  • Ideal for: Families, first-timers, small groups
+  
+- **Full-Day Tours (8 hours)**: $1,500-$2,000
+  • Times: 9:00 AM
+  • Capacity: 8-12 people
+  • Includes: Everything above + gourmet lunch, more destinations
+  • Ideal for: Adventurers, celebrations, extended exploration
+
+- **Fishing Expeditions**: $900-$1,300
+  • Specialized tours with professional equipment
+  • Expert fishing captains
+
+- **Private VIP Tour**: $2,000-$3,000
+  • Fully customized service
+  • Tailored itinerary
+
+SEASONS AND PRICING:
+- High (December-April): +15% over base price
+- Mid (May, November): Normal price
+- Low (June-October): -10% over base price
+
+YOUR BEHAVIOR:
+1. **Personalization**: Understand customer preferences before suggesting
+2. **Proactivity**: Offer recommendations based on their needs
+3. **Transparency**: Provide estimated prices when relevant
+4. **Enthusiasm**: Be friendly and enthusiastic about the experiences
+5. **Efficiency**: Guide conversation toward booking without being pushy
+6. **Natural Upselling**: Suggest upgrades if they genuinely benefit the customer
+
+SPECIAL CAPABILITIES:
+- I can check real-time availability
+- I can calculate exact prices based on date and group size
+- I can recommend the best tour for your preferences
+- I can automatically detect if you prefer Spanish or English
+
+ESCALATION TO HUMAN AGENT:
+If you encounter:
+- Complaints or complex issues
+- Very specific requests outside standard tours
+- Customers who seem frustrated or confused
+→ Kindly suggest that a human agent can help better
+
+TO CREATE A BOOKING you need these 7 pieces of data:
+1. Full name
+2. Phone (+1XXXXXXXXXX)
+3. Email
+4. Tour date (YYYY-MM-DD)
+5. Number of people
+6. Tour type
+7. Start time
+
+When you have ALL the data, use: "CREAR_RESERVA: {JSON with data}"
+`;
+
+// Enhanced AI chat endpoint with orchestrator
+app.post('/api/ai/chat', rateLimit, async (req, res) => {
+  try {
+    const { sessionId, message, customerName, customerPhone, customerEmail } = req.body;
+    
+    // Validation
+    if (!sessionId || typeof sessionId !== 'string' || sessionId.length > 200) {
+      return res.status(400).json({ error: 'Valid sessionId is required (max 200 chars)' });
+    }
+    
+    if (!message || typeof message !== 'string' || message.trim().length === 0) {
+      return res.status(400).json({ error: 'Message is required' });
+    }
+    
+    if (message.length > 2000) {
+      return res.status(400).json({ error: 'Message is too long (max 2000 chars)' });
+    }
+    
+    // Get or create conversation
+    let conversation = await pool.query(
+      'SELECT * FROM chat_conversations WHERE session_id = $1',
+      [sessionId]
+    );
+    
+    let messages = [];
+    let conversationId = `chat_${Date.now()}`;
+    
+    if (conversation.rows.length > 0) {
+      messages = conversation.rows[0].messages || [];
+      conversationId = conversation.rows[0].id;
+    }
+    
+    // Add user message
+    messages.push({
+      role: 'user',
+      content: message,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Process with AI Orchestrator (fast - just language & intent detection)
+    console.log(`🤖 Processing AI chat for session: ${sessionId}`);
+    const orchestratorResult = await aiOrchestrator.processAIChat(sessionId, message);
+    
+    // Select system prompt based on detected language
+    const systemPrompt = orchestratorResult.detectedLanguage === 'en' ? 
+      ENHANCED_AI_SYSTEM_PROMPT_EN : ENHANCED_AI_SYSTEM_PROMPT_ES;
+    
+    // Add intent context to help AI understand user's goal
+    let contextMessage = `\n[DETECTED INTENT: ${orchestratorResult.intent}]`;
+    
+    // Note: Heavy operations like recommendations, pricing, availability 
+    // are now handled by the AI itself via the enhanced system prompt
+    
+    // Call OpenAI with enhanced context
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: systemPrompt + contextMessage },
+        ...messages.map(m => ({ role: m.role, content: m.content }))
+      ],
+      temperature: 0.7,
+      max_tokens: 600
+    });
+    
+    const aiResponse = completion.choices[0].message.content;
+    
+    // Add AI response
+    messages.push({
+      role: 'assistant',
+      content: aiResponse,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Check if AI wants to create a booking
+    let bookingId = null;
+    if (aiResponse.includes('CREAR_RESERVA:')) {
+      try {
+        const jsonMatch = aiResponse.match(/CREAR_RESERVA:\s*(\{.*\})/);
+        if (jsonMatch) {
+          const bookingData = JSON.parse(jsonMatch[1]);
+          
+          // Create booking
+          bookingId = `ai_booking_${Date.now()}`;
+          await pool.query(`
+            INSERT INTO bookings (
+              id, platform, customer_name, customer_phone, customer_email,
+              boat_type, booking_date, start_time, duration_hours, total_amount,
+              status, notes
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+          `, [
+            bookingId, 'AI Assistant', bookingData.customerName,
+            bookingData.customerPhone, bookingData.customerEmail, bookingData.boatType,
+            bookingData.date, bookingData.startTime, bookingData.durationHours,
+            bookingData.amount, 'pending', bookingData.notes || ''
+          ]);
+          
+          console.log(`✅ AI created booking: ${bookingId}`);
+        }
+      } catch (error) {
+        console.error('Error creating AI booking:', error);
+      }
+    }
+    
+    // Save or update conversation
+    if (conversation.rows.length === 0) {
+      await pool.query(`
+        INSERT INTO chat_conversations (
+          id, session_id, customer_name, customer_phone, customer_email,
+          messages, status, booking_id
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `, [
+        conversationId, sessionId, customerName || null, customerPhone || null,
+        customerEmail || null, JSON.stringify(messages),
+        bookingId ? 'booking_created' : 'active', bookingId
+      ]);
+    } else {
+      await pool.query(`
+        UPDATE chat_conversations 
+        SET messages = $1, 
+            updated_at = CURRENT_TIMESTAMP,
+            status = $2,
+            booking_id = COALESCE($3, booking_id)
+        WHERE session_id = $4
+      `, [
+        JSON.stringify(messages),
+        bookingId ? 'booking_created' : conversation.rows[0].status,
+        bookingId,
+        sessionId
+      ]);
+    }
+    
+    // Return response with simplified metadata
+    res.json({
+      message: aiResponse,
+      bookingId,
+      metadata: {
+        detectedLanguage: orchestratorResult.detectedLanguage,
+        intent: orchestratorResult.intent,
+        confidence: orchestratorResult.confidence,
+        processingTime: orchestratorResult.processingTime
+      }
+    });
+    
+  } catch (error) {
+    console.error('Enhanced AI chat error:', error);
+    res.status(500).json({ 
+      error: 'Error processing message',
+      message: 'Lo siento, hubo un error. Por favor intenta de nuevo.' 
+    });
+  }
+});
+
+// Escalate conversation to human agent
+app.post('/api/ai/escalate', rateLimit, async (req, res) => {
+  try {
+    const { sessionId, reason } = req.body;
+    
+    if (!sessionId) {
+      return res.status(400).json({ error: 'Session ID required' });
+    }
+    
+    // Get conversation data
+    const conversation = await pool.query(
+      'SELECT * FROM chat_conversations WHERE session_id = $1',
+      [sessionId]
+    );
+    
+    if (conversation.rows.length === 0) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+    
+    const conv = conversation.rows[0];
+    const success = await aiOrchestrator.escalateToHuman(sessionId, reason, {
+      name: conv.customer_name,
+      phone: conv.customer_phone,
+      email: conv.customer_email
+    });
+    
+    res.json({ 
+      success, 
+      message: success ? 
+        'Conversation escalated to human agent. Someone will assist you shortly.' :
+        'Failed to escalate. Please try again.'
+    });
+    
+  } catch (error) {
+    console.error('Escalation error:', error);
+    res.status(500).json({ error: 'Error escalating conversation' });
+  }
+});
+
 // ⚡ FASE 2: PLATFORM SYNCHRONIZATION ENDPOINTS
 const syncService = require('./server/syncService');
 
@@ -1768,6 +2119,123 @@ setTimeout(async () => {
     console.error('Error in initial sync:', error);
   }
 }, 30000);
+
+// ⏰ POST-TRIP FOLLOW-UP SCHEDULER (FASE 6)
+// Runs daily at 10:00 AM to send review requests to customers who completed trips 1-2 days ago
+console.log('📧 Scheduling daily post-trip follow-ups...');
+cron.schedule('0 10 * * *', async () => {
+  console.log('📧 Running post-trip follow-ups...');
+  try {
+    // Get bookings completed 1-2 days ago
+    const oneDayAgo = moment().subtract(1, 'days').format('YYYY-MM-DD');
+    const twoDaysAgo = moment().subtract(2, 'days').format('YYYY-MM-DD');
+    
+    const result = await pool.query(`
+      SELECT b.*, c.name as captain_name 
+      FROM bookings b
+      LEFT JOIN captains c ON b.assigned_captain_id = c.id
+      WHERE b.status = 'completed'
+        AND b.booking_date >= $1
+        AND b.booking_date <= $2
+        AND NOT EXISTS (
+          SELECT 1 FROM chat_conversations 
+          WHERE booking_id = b.id AND status = 'review_requested'
+        )
+    `, [twoDaysAgo, oneDayAgo]);
+    
+    const bookings = result.rows;
+    console.log(`Found ${bookings.length} completed bookings for follow-up`);
+    
+    // Send review requests via WhatsApp
+    const twilioSid = process.env.TWILIO_SID || '';
+    const twilioToken = process.env.TWILIO_AUTH_TOKEN || '';
+    
+    if (twilioSid && twilioToken && twilioSid.startsWith('AC')) {
+      const client = twilio(twilioSid, twilioToken);
+      
+      for (const booking of bookings) {
+        try {
+          const language = await aiOrchestrator.detectLanguage(booking.customer_name || 'customer');
+          
+          const messageES = `
+¡Hola ${booking.customer_name}! 👋
+
+Esperamos que hayas disfrutado tu tour con Nadaki Excursions el ${booking.booking_date}. 
+
+¿Nos podrías dejar una reseña? Tu opinión nos ayuda muchísimo:
+⭐ ¿Cómo estuvo tu experiencia?
+⭐ ¿Qué fue lo mejor del tour?
+⭐ ¿Recomendarías a otros?
+
+Responde a este mensaje con tus comentarios.
+
+¡Gracias por elegirnos! 🚤
+- Equipo Nadaki Excursions
+          `.trim();
+          
+          const messageEN = `
+Hi ${booking.customer_name}! 👋
+
+We hope you enjoyed your tour with Nadaki Excursions on ${booking.booking_date}. 
+
+Would you mind leaving us a review? Your feedback helps us a lot:
+⭐ How was your experience?
+⭐ What did you enjoy most?
+⭐ Would you recommend us to others?
+
+Reply to this message with your comments.
+
+Thanks for choosing us! 🚤
+- Nadaki Excursions Team
+          `.trim();
+          
+          const message = language === 'en' ? messageEN : messageES;
+          
+          await client.messages.create({
+            body: message,
+            from: 'whatsapp:+14155238886',
+            to: `whatsapp:${booking.customer_phone}`
+          });
+          
+          console.log(`✅ Sent review request to ${booking.customer_name}`);
+          
+          // Mark as review requested
+          await pool.query(`
+            INSERT INTO chat_conversations (
+              id, session_id, customer_name, customer_phone, customer_email,
+              messages, status, booking_id
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            ON CONFLICT (session_id) DO UPDATE SET status = 'review_requested'
+          `, [
+            `review_${booking.id}`,
+            `review_${booking.id}`,
+            booking.customer_name,
+            booking.customer_phone,
+            booking.customer_email,
+            JSON.stringify([{
+              role: 'system',
+              content: 'Review request sent',
+              timestamp: new Date().toISOString()
+            }]),
+            'review_requested',
+            booking.id
+          ]);
+          
+        } catch (error) {
+          console.error(`Error sending review request to ${booking.customer_name}:`, error);
+        }
+        
+        // Rate limit: wait 2 seconds between messages
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    } else {
+      console.log('⚠️ Twilio not configured, skipping WhatsApp messages');
+    }
+    
+  } catch (error) {
+    console.error('Error in post-trip follow-ups:', error);
+  }
+});
 
 // 🚀 INICIAR SERVIDOR
 const PORT = process.env.PORT || 5000;

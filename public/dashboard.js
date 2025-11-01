@@ -755,7 +755,8 @@ async function sendChatMessage() {
     showTyping();
 
     try {
-        const response = await fetch(`${API_BASE}/api/chat/send`, {
+        // Use enhanced AI endpoint
+        const response = await fetch(`${API_BASE}/api/ai/chat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -772,12 +773,33 @@ async function sendChatMessage() {
         // Remove typing indicator
         hideTyping();
 
-        // Add AI response
-        let aiMessage = data.response;
+        // Add AI response (new endpoint uses 'message' instead of 'response')
+        let aiMessage = data.message || data.response;
         
         // Remove the CREAR_RESERVA: part from the message if it exists
         if (aiMessage.includes('CREAR_RESERVA:')) {
             aiMessage = aiMessage.split('CREAR_RESERVA:')[0].trim() || '✅ ¡Perfecto! He creado tu reserva. Recibirás una confirmación pronto.';
+        }
+        
+        // Log enhanced metadata for debugging
+        if (data.metadata) {
+            console.log('🤖 AI Metadata:', {
+                language: data.metadata.detectedLanguage,
+                intent: data.metadata.intent,
+                confidence: data.metadata.confidence + '%',
+                processingTime: data.metadata.processingTime + 'ms'
+            });
+            
+            // Show visual indicators for special features
+            if (data.metadata.recommendations && data.metadata.recommendations.length > 0) {
+                console.log('🚤 Boat Recommendations:', data.metadata.recommendations);
+            }
+            if (data.metadata.estimatedPrice) {
+                console.log('💰 Estimated Price: $' + data.metadata.estimatedPrice);
+            }
+            if (data.metadata.availability) {
+                console.log('📅 Availability Check:', data.metadata.availability);
+            }
         }
         
         addAIMessage(aiMessage);

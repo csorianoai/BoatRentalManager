@@ -61,6 +61,33 @@ export type ChatConversation = typeof chatConversations.$inferSelect;
 export type InsertChatConversation = typeof chatConversations.$inferInsert;
 export const insertChatConversationSchema = createInsertSchema(chatConversations);
 
+// FASE 6: AI-powered booking assistant context
+export const chatAiContext = pgTable("chat_ai_context", {
+  id: text("id").primaryKey(),
+  sessionId: text("session_id").notNull().unique(),
+  detectedLanguage: text("detected_language"), // 'es' or 'en'
+  detectedIntent: text("detected_intent"), // 'booking', 'inquiry', 'support', 'availability_check', 'recommendation'
+  intentConfidence: integer("intent_confidence"), // 0-100
+  customerPreferences: json("customer_preferences").$type<{
+    boatType?: string,
+    duration?: string,
+    groupSize?: number,
+    budget?: string,
+    specialRequests?: string[]
+  }>(),
+  recommendedBoats: json("recommended_boats").$type<string[]>(),
+  upsellOpportunities: json("upsell_opportunities").$type<string[]>(),
+  escalatedToHuman: integer("escalated_to_human").default(0), // 0 or 1
+  escalationReason: text("escalation_reason"),
+  lastInteractionAt: timestamp("last_interaction_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull()
+});
+
+export type ChatAiContext = typeof chatAiContext.$inferSelect;
+export type InsertChatAiContext = typeof chatAiContext.$inferInsert;
+export const insertChatAiContextSchema = createInsertSchema(chatAiContext);
+
 // FASE 2: Platform sync status
 export const platformSyncStatus = pgTable("platform_sync_status", {
   id: text("id").primaryKey(),
