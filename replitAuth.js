@@ -101,6 +101,21 @@ async function setupAuth(app) {
   // Track registered strategies per domain
   const registeredStrategies = new Set();
 
+  // Get the production domain (Replit app domain or fallback)
+  const getProductionDomain = (req) => {
+    // Check if we're on a *.replit.app domain
+    const host = req.get('host') || req.hostname;
+    if (host && host.includes('.replit.app')) {
+      // Extract the app name (e.g., sfrentals from sfrentals.replit.app)
+      const match = host.match(/^([^.]+)\.replit\.app/);
+      if (match) {
+        return `${match[1]}.replit.app`;
+      }
+    }
+    // Fallback to the host header
+    return host || 'localhost';
+  };
+
   // Helper to ensure strategy exists for a domain
   const ensureStrategy = (domain) => {
     const strategyName = `replitauth:${domain}`;
@@ -116,6 +131,7 @@ async function setupAuth(app) {
       );
       passport.use(strategy);
       registeredStrategies.add(strategyName);
+      console.log(`✅ Registered auth strategy for domain: ${domain}`);
     }
   };
 
@@ -126,14 +142,10 @@ async function setupAuth(app) {
   // Login route
   app.get('/api/login', (req, res, next) => {
     try {
-      const hostname = req.hostname || req.get('host') || 'localhost';
-      console.log(`🔐 Login attempt - hostname: ${hostname}, headers:`, {
-        host: req.get('host'),
-        'x-forwarded-host': req.get('x-forwarded-host'),
-        'x-replit-user-name': req.get('x-replit-user-name')
-      });
-      ensureStrategy(hostname);
-      passport.authenticate(`replitauth:${hostname}`, {
+      const domain = getProductionDomain(req);
+      console.log(`🔐 Login attempt - domain: ${domain}, raw host: ${req.get('host')}`);
+      ensureStrategy(domain);
+      passport.authenticate(`replitauth:${domain}`, {
         prompt: 'login consent',
         scope: ['openid', 'email', 'profile', 'offline_access'],
       })(req, res, next);
@@ -146,10 +158,10 @@ async function setupAuth(app) {
   // OAuth callback route
   app.get('/api/callback', (req, res, next) => {
     try {
-      const hostname = req.hostname || req.get('host') || 'localhost';
-      console.log(`🔙 Callback - hostname: ${hostname}, query:`, req.query);
-      ensureStrategy(hostname);
-      passport.authenticate(`replitauth:${hostname}`, {
+      const domain = getProductionDomain(req);
+      console.log(`🔙 Callback - domain: ${domain}, raw host: ${req.get('host')}, code: ${req.query.code ? 'present' : 'missing'}`);
+      ensureStrategy(domain);
+      passport.authenticate(`replitauth:${domain}`, {
         successReturnToOrRedirect: '/',
         failureRedirect: '/api/login',
       })(req, res, next);
