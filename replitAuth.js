@@ -50,6 +50,22 @@ function getSession() {
   });
 }
 
+// Helper to get the correct request origin (protocol + hostname)
+// Replit uses a reverse proxy, so we need to check x-forwarded headers
+function getRequestOrigin(req) {
+  // Check x-forwarded-proto header (set by Replit's proxy)
+  const proto = req.get('x-forwarded-proto') || req.protocol;
+  
+  // For .replit.app domains, always use https
+  const hostname = req.hostname;
+  if (hostname.endsWith('.replit.app')) {
+    return `https://${hostname}`;
+  }
+  
+  // For development (.replit.dev) or localhost, respect the protocol
+  return `${proto}://${hostname}`;
+}
+
 // Update user session with fresh tokens
 function updateUserSession(user, tokens) {
   user.claims = tokens.claims();
@@ -103,14 +119,21 @@ async function setupAuth(app) {
 
   // Helper to get or create strategy for a domain
   const strategies = new Map();
-  const getStrategy = (domain) => {
+  const getStrategy = (req) => {
+    const domain = req.hostname;
     if (!strategies.has(domain)) {
+      // Use the helper to get correct callback URL
+      const origin = getRequestOrigin(req);
+      const callbackURL = `${origin}/api/callback`;
+      
+      console.log(`🔧 Creating strategy for ${domain} with callback: ${callbackURL}`);
+      
       const strategy = new Strategy(
         {
           name: `replitauth:${domain}`,
           config,
           scope: 'openid email profile offline_access',
-          callbackURL: `https://${domain}/api/callback`,
+          callbackURL,
         },
         verify,
       );
@@ -129,7 +152,7 @@ async function setupAuth(app) {
   app.get('/api/login', (req, res, next) => {
     try {
       console.log(`🔐 Login attempt - hostname: ${req.hostname}`);
-      const strategyName = getStrategy(req.hostname);
+      const strategyName = getStrategy(req);
       passport.authenticate(strategyName, {
         prompt: 'login consent',
         scope: ['openid', 'email', 'profile', 'offline_access'],
@@ -144,10 +167,10 @@ async function setupAuth(app) {
   app.get('/api/callback', (req, res, next) => {
     try {
       console.log(`🔙 Callback - hostname: ${req.hostname}, code: ${req.query.code ? 'present' : 'missing'}`);
-      const strategyName = getStrategy(req.hostname);
+      const strategyName = getStrategy(req);
       
       passport.authenticate(strategyName, {
-        successReturnToOrRedirect: '/',
+        successReturnToOrRedirect: '/dashboard.html',
         failureRedirect: '/api/login',
       })(req, res, next);
     } catch (error) {
@@ -159,10 +182,12 @@ async function setupAuth(app) {
   // Logout route
   app.get('/api/logout', (req, res) => {
     req.logout(() => {
+      const origin = getRequestOrigin(req);
+      console.log(`🚪 Logout - redirecting to: ${origin}`);
       res.redirect(
         client.buildEndSessionUrl(config, {
           client_id: process.env.REPL_ID,
-          post_logout_redirect_uri: `${req.protocol}://${req.hostname}`,
+          post_logout_redirect_uri: origin,
         }).href
       );
     });
