@@ -420,22 +420,27 @@ function renderMechanicsTable() {
     return;
   }
   
-  tbody.innerHTML = mechanics.map(mechanic => `
-    <tr data-testid="row-mechanic-${mechanic.id}">
-      <td><strong>${mechanic.name}</strong></td>
-      <td>${getSpecialtyLabel(mechanic.specialty)}</td>
-      <td>${mechanic.phone}</td>
-      <td>$${parseFloat(mechanic.hourly_rate).toFixed(2)}/hr</td>
-      <td>${mechanic.rating ? `⭐ ${mechanic.rating.toFixed(1)}` : 'N/A'}</td>
-      <td>${mechanic.total_jobs || 0}</td>
-      <td>
-        <span class="card-badge badge-${mechanic.status}">${mechanic.status === 'active' ? 'Activo' : 'Inactivo'}</span>
-      </td>
-      <td>
-        <button class="btn btn-primary btn-sm" onclick="viewMechanicHistory('${mechanic.id}')" data-testid="button-view-history-${mechanic.id}">Historial</button>
-      </td>
-    </tr>
-  `).join('');
+  tbody.innerHTML = mechanics.map(mechanic => {
+    const rating = mechanic.rating ? parseFloat(mechanic.rating).toFixed(1) : 'N/A';
+    const ratingDisplay = mechanic.rating ? `⭐ ${rating}` : 'N/A';
+    
+    return `
+      <tr data-testid="row-mechanic-${mechanic.id}">
+        <td><strong>${mechanic.name}</strong></td>
+        <td>${getSpecialtyLabel(mechanic.specialty)}</td>
+        <td>${mechanic.phone}</td>
+        <td>$${parseFloat(mechanic.hourly_rate).toFixed(2)}/hr</td>
+        <td>${ratingDisplay}</td>
+        <td>${mechanic.total_jobs || 0}</td>
+        <td>
+          <span class="card-badge badge-${mechanic.status}">${mechanic.status === 'active' ? 'Activo' : 'Inactivo'}</span>
+        </td>
+        <td>
+          <button class="btn btn-primary btn-sm" onclick="viewMechanicHistory('${mechanic.id}')" data-testid="button-view-history-${mechanic.id}">Historial</button>
+        </td>
+      </tr>
+    `;
+  }).join('');
 }
 
 function renderLowStockAlerts() {
@@ -904,7 +909,10 @@ function setDefaultDates() {
 
 function formatDate(dateString) {
   if (!dateString) return 'N/A';
-  const date = new Date(dateString + 'T00:00:00');
+  // Handle both date-only strings and ISO format
+  const date = dateString.includes('T') ? new Date(dateString) : new Date(dateString + 'T00:00:00');
+  // Check if date is valid
+  if (isNaN(date.getTime())) return 'N/A';
   return date.toLocaleDateString('es-ES', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 

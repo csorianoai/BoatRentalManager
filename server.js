@@ -893,11 +893,18 @@ async function initializeDatabase() {
         ('${nanoid()}', '4900', 'Revenue - Other', 'revenue', '${revenueParent}', 'Other miscellaneous revenue')
       `);
       
-      // Expense Sub-Accounts
+      // Expense Sub-Accounts (FASE 10 boat expenses integration)
       await pool.query(`
         INSERT INTO chart_of_accounts (id, account_code, account_name, account_type, parent_account_id, description) VALUES
         ('${nanoid()}', '5010', 'Fuel Expense', 'expense', '${expenseParent}', 'Fuel costs for boats'),
-        ('${nanoid()}', '5100', 'Maintenance & Repairs', 'expense', '${expenseParent}', 'Boat maintenance and repairs'),
+        ('${nanoid()}', '5020', 'Boat Parts & Maintenance', 'expense', '${expenseParent}', 'Boat parts and maintenance expenses'),
+        ('${nanoid()}', '5030', 'Marine Labor', 'expense', '${expenseParent}', 'Mechanic and technician labor costs'),
+        ('${nanoid()}', '5040', 'Boat Cleaning', 'expense', '${expenseParent}', 'Boat cleaning and detailing'),
+        ('${nanoid()}', '5050', 'Marina & Dock Fees', 'expense', '${expenseParent}', 'Dockage and marina fees'),
+        ('${nanoid()}', '5060', 'Marine Insurance', 'expense', '${expenseParent}', 'Boat and liability insurance'),
+        ('${nanoid()}', '5070', 'Emergency Repairs', 'expense', '${expenseParent}', 'Emergency boat repairs'),
+        ('${nanoid()}', '5080', 'Operational Expenses', 'expense', '${expenseParent}', 'General operational expenses'),
+        ('${nanoid()}', '5100', 'Maintenance & Repairs', 'expense', '${expenseParent}', 'General maintenance and repairs'),
         ('${nanoid()}', '5200', 'Marina Fees', 'expense', '${expenseParent}', 'Dockage and marina fees'),
         ('${nanoid()}', '5300', 'Insurance Expense', 'expense', '${expenseParent}', 'Boat and liability insurance'),
         ('${nanoid()}', '5400', 'Captain Wages', 'expense', '${expenseParent}', 'Captain salaries and wages'),
@@ -3580,11 +3587,11 @@ async function syncBoatExpenseToAccounting(boatExpenseId, category, amount, expe
     await pool.query(
       `INSERT INTO transactions 
        (id, transaction_date, account_id, amount, transaction_type, description, 
-        reference_number, status) 
-       VALUES ($1, $2, $3, $4, 'expense', $5, $6, 'posted')`,
+        reference_id, reference_type) 
+       VALUES ($1, $2, $3, $4, 'expense', $5, $6, 'other')`,
       [transactionId, expenseDate, accountId, amount,
-       `${description} - ${boatName}`,
-       `BOAT-EXP-${boatExpenseId}`]
+       `BOAT EXPENSE: ${description} - ${boatName}`,
+       boatExpenseId]
     );
     
     // Update boat_expense to mark as synced
@@ -6323,6 +6330,17 @@ app.get('/api/messages/unread-count', async (req, res) => {
 // ============================================================================
 // FASE 10: BOAT MAINTENANCE & EXPENSE TRACKING APIs
 // ============================================================================
+
+// Get all boats (for dropdowns in FASE 10 UI)
+app.get('/api/boats', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT id, name, capacity, boat_type, status FROM boats ORDER BY name');
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching boats:', error);
+    res.status(500).json({ error: 'Failed to fetch boats' });
+  }
+});
 
 // ========== BOAT EXPENSES APIs ==========
 
