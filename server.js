@@ -8,10 +8,11 @@ const moment = require('moment');
 const { Pool, neonConfig } = require('@neondatabase/serverless');
 const ws = require('ws');
 const OpenAI = require('openai');
-const { setupAuth, isAuthenticated: replitAuthMiddleware } = require('./replitAuth');
+// AUTHENTICATION DISABLED - No validation required
+// const { setupAuth, isAuthenticated: replitAuthMiddleware } = require('./replitAuth');
 
-// Use real Replit Auth middleware for all protected endpoints
-const isAuthenticated = replitAuthMiddleware;
+// Dummy middleware - always allow access
+const isAuthenticated = (req, res, next) => next();
 const aiOrchestrator = require('./ai-orchestrator');
 require('dotenv').config();
 
@@ -394,23 +395,19 @@ app.use(express.json());
 // Servir archivos estáticos del dashboard
 app.use(express.static('public'));
 
-// Configure authentication (async setup)
-(async () => {
-  try {
-    await setupAuth(app);
-    console.log('✅ Authentication configured successfully');
-  } catch (error) {
-    console.error('❌ Error setting up authentication:', error);
-  }
-})();
+// AUTHENTICATION DISABLED
+// (async () => {
+//   try {
+//     await setupAuth(app);
+//     console.log('✅ Authentication configured successfully');
+//   } catch (error) {
+//     console.error('❌ Error setting up authentication:', error);
+//   }
+// })();
 
-// 🏠 RUTA RAÍZ - Mostrar login o dashboard según autenticación
+// 🏠 RUTA RAÍZ - Redirect to dashboard (no authentication)
 app.get('/', (req, res) => {
-  if (req.isAuthenticated && req.isAuthenticated()) {
-    res.redirect('/dashboard.html');
-  } else {
-    res.redirect('/login.html');
-  }
+  res.redirect('/dashboard.html');
 });
 
 // Configuración para tu dominio WordPress
