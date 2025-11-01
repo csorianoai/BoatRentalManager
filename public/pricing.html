@@ -275,22 +275,9 @@
 
     <script src="pricing.js"></script>
 
-    <!-- Auth Check -->
     <script>
-        fetch('/api/auth/user')
-            .then(res => {
-                if (!res.ok) {
-                    window.location.href = '/api/login';
-                }
-            })
-            .catch(() => {
-                window.location.href = '/api/login';
-            });
-
         document.getElementById('logout-btn').addEventListener('click', () => {
-            fetch('/api/logout', { method: 'POST' })
-                .then(() => window.location.href = '/')
-                .catch(() => window.location.href = '/');
+            window.location.href = '/';
         });
     </script>
 </body>

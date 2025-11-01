@@ -8,22 +8,6 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body class="light-mode">
-    <!-- Authentication Check -->
-    <script>
-        // Check if user is authenticated before loading page
-        fetch('/api/auth/user')
-            .then(response => {
-                if (!response.ok) {
-                    // Not authenticated, redirect to login
-                    window.location.href = '/api/login';
-                }
-            })
-            .catch(() => {
-                // Error checking auth, redirect to login
-                window.location.href = '/api/login';
-            });
-    </script>
-    
     <!-- Header -->
     <header class="dashboard-header">
         <div class="header-content">
