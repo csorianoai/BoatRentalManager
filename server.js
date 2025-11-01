@@ -5870,9 +5870,22 @@ app.get('/api/messages/analytics', async (req, res) => {
       AND t.last_message_at <= COALESCE($2::timestamp, CURRENT_TIMESTAMP)
     `, [start_date || null, end_date || null]);
     
+    const overall = overallStats.rows[0];
+    
     res.json({
+      totalMessages: parseInt(overall.total_messages) || 0,
+      avgResponseTime: overall.avg_response_hours ? `${parseFloat(overall.avg_response_hours).toFixed(1)} hrs` : '0.0 hrs',
+      pendingMessages: parseInt(overall.pending_messages) || 0,
+      responseRate: overall.total_messages > 0 ? ((overall.total_messages - overall.pending_messages) / overall.total_messages * 100).toFixed(1) + '%' : '0%',
+      byPlatform: platformStats.rows.map(p => ({
+        platform: p.platform,
+        count: parseInt(p.total_messages),
+        avgTime: p.avg_response_hours ? `${parseFloat(p.avg_response_hours).toFixed(1)} hrs` : null,
+        conversionRate: '0%' // Can be enhanced with booking linkage
+      })),
+      // Keep original structure for backward compatibility with frontend
       by_platform: platformStats.rows,
-      overall: overallStats.rows[0],
+      overall: overall,
       conversion: conversionStats.rows[0]
     });
   } catch (error) {
