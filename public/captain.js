@@ -125,7 +125,8 @@ function handleLogout() {
         currentCaptain = null;
         localStorage.removeItem('captain');
         stopGPSTracking();
-        showScreen('login');
+        // Redirect to logout endpoint to clear Replit Auth session
+        window.location.href = '/api/logout';
     }
 }
 
