@@ -777,6 +777,20 @@ app.post('/webhook/booking/:platform', async (req, res) => {
       await sendNotifications(assignedCaptain, bookingRecord);
     }
 
+    // FASE 8: Auto-create revenue transaction
+    try {
+      await createRevenueFromBooking(
+        bookingRecord.id,
+        platform,
+        bookingRecord.total_amount,
+        bookingRecord.booking_date,
+        `Revenue from ${platform} booking - ${bookingRecord.customer_name}`
+      );
+    } catch (autoAccountingError) {
+      console.error('⚠️ Auto-accounting failed (non-critical):', autoAccountingError);
+      // Don't fail the booking if accounting fails
+    }
+
     res.json({ 
       success: true, 
       booking_id: bookingRecord.id,
@@ -1954,8 +1968,35 @@ app.post('/api/captain/trip-report', async (req, res) => {
       JSON.stringify(photos || []), notes
     ]);
     
-    console.log('✅ Trip report created:', result.rows[0]);
-    res.json(result.rows[0]);
+    const report = result.rows[0];
+    console.log('✅ Trip report created:', report);
+    
+    // FASE 8: Auto-create fuel expense transaction if fuel was used
+    if (fuelUsed && fuelUsed > 0) {
+      try {
+        // Get booking date for the transaction date
+        const bookingResult = await pool.query(
+          'SELECT booking_date FROM bookings WHERE id = $1',
+          [bookingId]
+        );
+        
+        const tripDate = bookingResult.rows.length > 0 
+          ? bookingResult.rows[0].booking_date 
+          : new Date().toISOString().split('T')[0];
+        
+        await createFuelExpenseFromTripReport(
+          reportId,
+          fuelUsed,
+          null, // Auto-calculate cost
+          tripDate
+        );
+      } catch (autoAccountingError) {
+        console.error('⚠️ Auto-accounting for fuel failed (non-critical):', autoAccountingError);
+        // Don't fail the trip report if accounting fails
+      }
+    }
+    
+    res.json(report);
   } catch (error) {
     console.error('Error creating trip report:', error);
     res.status(500).json({ error: 'Failed to create trip report' });
@@ -2173,8 +2214,32 @@ app.post('/api/commissions/mark-paid', isAuthenticated, async (req, res) => {
       return res.status(404).json({ error: 'Payment not found' });
     }
     
-    console.log('✅ Payment marked as paid:', result.rows[0]);
-    res.json(result.rows[0]);
+    const payment = result.rows[0];
+    console.log('✅ Payment marked as paid:', payment);
+    
+    // FASE 8: Auto-create commission expense transaction
+    try {
+      // Get booking details for platform info
+      const bookingResult = await pool.query(
+        'SELECT platform FROM bookings WHERE id = $1',
+        [payment.booking_id]
+      );
+      
+      if (bookingResult.rows.length > 0) {
+        const platform = bookingResult.rows[0].platform;
+        await createExpenseFromCommission(
+          payment.id,
+          platform,
+          payment.commission_amount,
+          new Date().toISOString().split('T')[0] // Today's date
+        );
+      }
+    } catch (autoAccountingError) {
+      console.error('⚠️ Auto-accounting for commission failed (non-critical):', autoAccountingError);
+      // Don't fail the payment if accounting fails
+    }
+    
+    res.json(payment);
   } catch (error) {
     console.error('Error marking payment as paid:', error);
     res.status(500).json({ error: 'Failed to mark payment as paid' });
@@ -2885,6 +2950,179 @@ app.post('/api/sync/jobs/process', isAuthenticated, async (req, res) => {
 // ========================================
 // 💰 FASE 8: ACCOUNTING & RECONCILIATION ENDPOINTS
 // ========================================
+
+// ===== AUTOMATIC ACCOUNTING INTEGRATION HELPERS =====
+
+// Auto-create revenue transaction from booking
+async function createRevenueFromBooking(bookingId, platform, amount, bookingDate, description) {
+  try {
+    if (!amount || amount <= 0) {
+      console.log(`⚠️ Skipping revenue transaction for booking ${bookingId} - amount is zero or invalid`);
+      return null;
+    }
+    
+    // Find revenue account for tours
+    const accountResult = await pool.query(
+      `SELECT id FROM chart_of_accounts 
+       WHERE account_code = '4010' OR (account_type = 'revenue' AND account_name LIKE '%Tour%')
+       ORDER BY account_code LIMIT 1`
+    );
+    
+    if (accountResult.rows.length === 0) {
+      console.error('❌ No revenue account found for tour bookings');
+      return null;
+    }
+    
+    const accountId = accountResult.rows[0].id;
+    const { nanoid } = await import('nanoid');
+    const transactionId = nanoid();
+    
+    await pool.query(
+      `INSERT INTO transactions 
+       (id, transaction_date, account_id, amount, transaction_type, description, 
+        reference_number, booking_id, status) 
+       VALUES ($1, $2, $3, $4, 'credit', $5, $6, $7, 'posted')`,
+      [transactionId, bookingDate, accountId, amount, 
+       description || `Revenue from ${platform} booking`, 
+       `BOOKING-${bookingId}`, bookingId]
+    );
+    
+    console.log(`✅ Created revenue transaction ${transactionId} for booking ${bookingId}: $${amount}`);
+    return transactionId;
+  } catch (error) {
+    console.error('❌ Error creating revenue transaction:', error);
+    return null;
+  }
+}
+
+// Auto-create expense transaction from commission payment
+async function createExpenseFromCommission(commissionId, platform, amount, paymentDate) {
+  try {
+    if (!amount || amount <= 0) {
+      console.log(`⚠️ Skipping commission expense for ${commissionId} - amount is zero or invalid`);
+      return null;
+    }
+    
+    // Find platform commissions expense account
+    const accountResult = await pool.query(
+      `SELECT id FROM chart_of_accounts 
+       WHERE account_code = '5500' OR (account_type = 'expense' AND account_name LIKE '%Commission%')
+       ORDER BY account_code LIMIT 1`
+    );
+    
+    if (accountResult.rows.length === 0) {
+      console.error('❌ No expense account found for platform commissions');
+      return null;
+    }
+    
+    const accountId = accountResult.rows[0].id;
+    const { nanoid } = await import('nanoid');
+    const transactionId = nanoid();
+    
+    await pool.query(
+      `INSERT INTO transactions 
+       (id, transaction_date, account_id, amount, transaction_type, description, 
+        reference_number, status) 
+       VALUES ($1, $2, $3, $4, 'debit', $5, $6, 'posted')`,
+      [transactionId, paymentDate, accountId, amount,
+       `Platform commission - ${platform}`,
+       `COMMISSION-${commissionId}`]
+    );
+    
+    console.log(`✅ Created commission expense ${transactionId} for ${platform}: $${amount}`);
+    return transactionId;
+  } catch (error) {
+    console.error('❌ Error creating commission expense:', error);
+    return null;
+  }
+}
+
+// Auto-create fuel expense from trip report
+async function createFuelExpenseFromTripReport(tripReportId, fuelUsed, estimatedCost, tripDate) {
+  try {
+    if (!fuelUsed || fuelUsed <= 0) {
+      console.log(`⚠️ Skipping fuel expense for trip ${tripReportId} - no fuel consumed`);
+      return null;
+    }
+    
+    // Calculate cost if not provided (assume $4.50/gallon)
+    const fuelCost = estimatedCost || (fuelUsed * 4.50);
+    
+    // Find fuel expense account
+    const accountResult = await pool.query(
+      `SELECT id FROM chart_of_accounts 
+       WHERE account_code = '5010' OR (account_type = 'expense' AND account_name LIKE '%Fuel%')
+       ORDER BY account_code LIMIT 1`
+    );
+    
+    if (accountResult.rows.length === 0) {
+      console.error('❌ No expense account found for fuel');
+      return null;
+    }
+    
+    const accountId = accountResult.rows[0].id;
+    const { nanoid } = await import('nanoid');
+    const transactionId = nanoid();
+    
+    await pool.query(
+      `INSERT INTO transactions 
+       (id, transaction_date, account_id, amount, transaction_type, description, 
+        reference_number, status) 
+       VALUES ($1, $2, $3, $4, 'debit', $5, $6, 'posted')`,
+      [transactionId, tripDate, accountId, fuelCost,
+       `Fuel expense - ${fuelUsed} gallons consumed`,
+       `FUEL-${tripReportId}`]
+    );
+    
+    console.log(`✅ Created fuel expense ${transactionId} for trip ${tripReportId}: ${fuelUsed} gal = $${fuelCost}`);
+    return transactionId;
+  } catch (error) {
+    console.error('❌ Error creating fuel expense:', error);
+    return null;
+  }
+}
+
+// Auto-create captain wage expense
+async function createCaptainWageExpense(captainId, captainName, amount, paymentDate, bookingId) {
+  try {
+    if (!amount || amount <= 0) {
+      return null;
+    }
+    
+    // Find captain wages expense account
+    const accountResult = await pool.query(
+      `SELECT id FROM chart_of_accounts 
+       WHERE account_code = '5400' OR (account_type = 'expense' AND account_name LIKE '%Captain%')
+       ORDER BY account_code LIMIT 1`
+    );
+    
+    if (accountResult.rows.length === 0) {
+      console.error('❌ No expense account found for captain wages');
+      return null;
+    }
+    
+    const accountId = accountResult.rows[0].id;
+    const { nanoid } = await import('nanoid');
+    const transactionId = nanoid();
+    
+    await pool.query(
+      `INSERT INTO transactions 
+       (id, transaction_date, account_id, amount, transaction_type, description, 
+        reference_number, booking_id, status) 
+       VALUES ($1, $2, $3, $4, 'debit', $5, $6, $7, 'posted')`,
+      [transactionId, paymentDate, accountId, amount,
+       `Captain wages - ${captainName}`,
+       `WAGE-${captainId}-${Date.now()}`,
+       bookingId || null]
+    );
+    
+    console.log(`✅ Created captain wage expense ${transactionId} for ${captainName}: $${amount}`);
+    return transactionId;
+  } catch (error) {
+    console.error('❌ Error creating captain wage expense:', error);
+    return null;
+  }
+}
 
 // ===== CHART OF ACCOUNTS =====
 
