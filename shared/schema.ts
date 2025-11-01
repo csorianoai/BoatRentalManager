@@ -191,6 +191,107 @@ export type TripReport = typeof tripReports.$inferSelect;
 export type InsertTripReport = typeof tripReports.$inferInsert;
 export const insertTripReportSchema = createInsertSchema(tripReports);
 
+// FASE 7: Boats inventory (assets disponibles para rentar)
+export const boats = pgTable("boats", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  capacity: integer("capacity").notNull(),
+  boatType: text("boat_type").notNull(), // fishing, touring, VIP, standard
+  status: text("status").notNull(), // active, maintenance, retired
+  description: text("description"),
+  features: json("features").$type<string[]>(),
+  createdAt: timestamp("created_at").defaultNow().notNull()
+});
+
+export type Boat = typeof boats.$inferSelect;
+export type InsertBoat = typeof boats.$inferInsert;
+export const insertBoatSchema = createInsertSchema(boats);
+
+// FASE 7: Platform pricing policies (precio base por plataforma)
+export const platformPricingPolicies = pgTable("platform_pricing_policies", {
+  id: text("id").primaryKey(),
+  platform: text("platform").notNull(),
+  boatId: text("boat_id").notNull(),
+  basePriceHalfDay: integer("base_price_half_day").notNull(), // 4 hours
+  basePriceFullDay: integer("base_price_full_day").notNull(), // 8 hours
+  currency: text("currency").default("USD"),
+  isActive: integer("is_active").default(1),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull()
+});
+
+export type PlatformPricingPolicy = typeof platformPricingPolicies.$inferSelect;
+export type InsertPlatformPricingPolicy = typeof platformPricingPolicies.$inferInsert;
+export const insertPlatformPricingPolicySchema = createInsertSchema(platformPricingPolicies);
+
+// FASE 7: Pricing adjustments (descuentos/aumentos centralizados)
+export const pricingAdjustments = pgTable("pricing_adjustments", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  adjustmentType: text("adjustment_type").notNull(), // percentage, fixed_amount
+  adjustmentValue: integer("adjustment_value").notNull(), // can be negative for discounts
+  scope: text("scope").notNull(), // all_platforms, specific_platforms, specific_boats
+  targetPlatforms: json("target_platforms").$type<string[]>(), // ['Airbnb', 'GetMyBoat'] or null for all
+  targetBoats: json("target_boats").$type<string[]>(), // ['boat_1', 'boat_2'] or null for all
+  validFrom: timestamp("valid_from"),
+  validUntil: timestamp("valid_until"),
+  priority: integer("priority").default(0), // for stacking order, higher = applied last
+  isActive: integer("is_active").default(1),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull()
+});
+
+export type PricingAdjustment = typeof pricingAdjustments.$inferSelect;
+export type InsertPricingAdjustment = typeof pricingAdjustments.$inferInsert;
+export const insertPricingAdjustmentSchema = createInsertSchema(pricingAdjustments);
+
+// FASE 7: Availability blocks (prevención de double-booking)
+export const availabilityBlocks = pgTable("availability_blocks", {
+  id: text("id").primaryKey(),
+  boatId: text("boat_id").notNull(),
+  blockDate: text("block_date").notNull(), // YYYY-MM-DD
+  startTime: text("start_time").notNull(), // HH:MM
+  endTime: text("end_time").notNull(), // HH:MM
+  blockType: text("block_type").notNull(), // booking, maintenance, manual
+  bookingId: text("booking_id"), // reference to booking if blockType = 'booking'
+  reason: text("reason"),
+  status: text("status").notNull(), // blocked, released
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  releasedAt: timestamp("released_at")
+});
+
+export type AvailabilityBlock = typeof availabilityBlocks.$inferSelect;
+export type InsertAvailabilityBlock = typeof availabilityBlocks.$inferInsert;
+export const insertAvailabilityBlockSchema = createInsertSchema(availabilityBlocks);
+
+// FASE 7: Sync jobs (cola de sincronización bidireccional)
+export const syncJobs = pgTable("sync_jobs", {
+  id: text("id").primaryKey(),
+  jobType: text("job_type").notNull(), // block_date, unblock_date, update_price
+  targetPlatform: text("target_platform").notNull(),
+  payload: json("payload").$type<{
+    boatId?: string,
+    date?: string,
+    startTime?: string,
+    endTime?: string,
+    bookingId?: string,
+    price?: number,
+    [key: string]: any
+  }>().notNull(),
+  status: text("status").notNull(), // pending, processing, completed, failed
+  attempts: integer("attempts").default(0),
+  maxAttempts: integer("max_attempts").default(3),
+  lastAttemptAt: timestamp("last_attempt_at"),
+  errorMessage: text("error_message"),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull()
+});
+
+export type SyncJob = typeof syncJobs.$inferSelect;
+export type InsertSyncJob = typeof syncJobs.$inferInsert;
+export const insertSyncJobSchema = createInsertSchema(syncJobs);
+
 // AUTHENTICATION: Session storage table
 // (IMPORTANT) This table is mandatory for Replit Auth, don't drop it.
 export const sessions = pgTable(
