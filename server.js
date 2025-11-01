@@ -870,7 +870,7 @@ app.get('/api/platforms', isAuthenticated, (req, res) => {
   res.json(PLATFORMS);
 });
 
-app.get('/api/captains', isAuthenticated, async (req, res) => {
+app.get('/api/captains', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM captains');
     res.json(result.rows);
