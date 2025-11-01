@@ -1,0 +1,73 @@
+Create a comprehensive boat expense tracking and maintenance management system with the following features:
+
+## EXPENSE CATEGORIZATION SYSTEM:
+- Fuel tracking (gallons/liters, cost, station, date)
+- Maintenance parts inventory (batteries, oils, filters, etc.)
+- Labor costs with mechanic assignment
+- Cleaning supplies and services
+- Marina fees (dockage, storage, utilities)
+- Insurance and documentation costs
+- Emergency repairs tracking
+- Monthly operational expenses summary
+
+## MECHANIC MANAGEMENT:
+- Mechanic database with: name, phone, specialty, hourly rate
+- Service types categorization (engine repair, electrical, hull, etc.)
+- Work order assignment and tracking
+- Labor cost calculation (hours worked × hourly rate)
+- Mechanic performance and rating system
+- Preferred mechanics list per boat type
+
+## MAINTENANCE SCHEDULING:
+- Preventive maintenance based on engine hours or time intervals
+- Service history per boat with cost tracking
+- Next service due dates and alerts
+- Maintenance checklist templates per boat type
+- Parts replacement history and lifecycle tracking
+
+## EXPENSE ANALYTICS:
+- Monthly expense reports per boat
+- Category-wise spending analysis (fuel, maintenance, labor, etc.)
+- Cost per operating hour calculation
+- Budget vs actual spending comparison
+- Year-over-year expense trends
+- Most expensive boats to maintain ranking
+
+## INVENTORY MANAGEMENT:
+- Parts inventory tracking with stock levels
+- Reorder alerts for critical parts
+- Supplier database with contact information
+- Purchase order generation
+- Parts usage history and cost analysis
+
+## TECHNICAL FEATURES:
+- REST API integration with existing boat management system
+- Image upload for receipts and work documentation
+- PDF report generation for accounting
+- Barcode scanning for parts inventory (optional)
+- Multi-currency support
+
+## DASHBOARD & REPORTING:
+- Real-time expense dashboard per boat
+- Monthly maintenance cost overview
+- Mechanic workload and cost analysis
+- Fuel consumption efficiency metrics
+- Budget utilization alerts
+- Tax-deductible expense categorization
+
+## DATA STRUCTURE:
+Integrate with existing boat database and add:
+- Expenses table: boat_id, category, amount, date, description, receipt_image, mechanic_id
+- Mechanics table: name, phone, specialty, hourly_rate, status
+- Maintenance table: boat_id, service_type, parts_used, labor_hours, total_cost, date
+- Inventory table: part_name, quantity, cost, supplier, min_stock_level
+
+## USER INTERFACE:
+- Expense entry form with category dropdown
+- Mechanic assignment interface
+- Maintenance scheduling calendar
+- Receipt photo upload capability
+- Real-time budget monitoring
+- Export to Excel/PDF functionality
+
+Create this as a modular system that seamlessly integrates with the existing boat rental management platform.
