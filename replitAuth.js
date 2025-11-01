@@ -166,9 +166,27 @@ async function setupAuth(app) {
       
       ensureStrategy(req.hostname);
       
-      passport.authenticate(`replitauth:${req.hostname}`, {
-        successReturnToOrRedirect: '/',
-        failureRedirect: '/api/login',
+      passport.authenticate(`replitauth:${req.hostname}`, (err, user, info) => {
+        if (err) {
+          console.error('❌ Passport authentication error:', err);
+          console.error('Error details:', { message: err.message, stack: err.stack });
+          return res.status(500).send(`Authentication error: ${err.message}`);
+        }
+        
+        if (!user) {
+          console.error('❌ Authentication failed - no user returned. Info:', info);
+          return res.redirect('/api/login');
+        }
+        
+        req.logIn(user, (loginErr) => {
+          if (loginErr) {
+            console.error('❌ Session login error:', loginErr);
+            return res.status(500).send(`Session error: ${loginErr.message}`);
+          }
+          
+          console.log('✅ Authentication successful, redirecting to /');
+          res.redirect('/');
+        });
       })(req, res, next);
     } catch (error) {
       console.error('❌ Callback error:', error);
