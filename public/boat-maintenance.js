@@ -218,6 +218,8 @@ async function loadAnalytics() {
     // Render charts
     renderExpensesByCategoryChart(expenseAnalytics.byCategory);
     renderExpensesTrendChart();
+    renderExpensesByBoatChart();
+    renderExpensesByCategoryAndBoatChart();
   } catch (error) {
     console.error('Error loading analytics:', error);
   }
@@ -542,6 +544,125 @@ function renderExpensesTrendChart() {
       },
       scales: {
         y: {
+          beginAtZero: true,
+          ticks: {
+            callback: value => `$${value.toLocaleString()}`
+          }
+        }
+      }
+    }
+  });
+}
+
+function renderExpensesByBoatChart() {
+  const ctx = document.getElementById('chart-expenses-by-boat');
+  
+  // Group expenses by boat
+  const boatData = {};
+  expenses.forEach(expense => {
+    const boatName = expense.boat_name || 'Desconocido';
+    boatData[boatName] = (boatData[boatName] || 0) + parseFloat(expense.amount);
+  });
+  
+  const boatNames = Object.keys(boatData);
+  const boatTotals = Object.values(boatData);
+  
+  if (charts.expensesByBoat) {
+    charts.expensesByBoat.destroy();
+  }
+  
+  charts.expensesByBoat = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: boatNames,
+      datasets: [{
+        label: 'Total Gastos',
+        data: boatTotals,
+        backgroundColor: '#0066cc',
+        borderColor: '#004c99',
+        borderWidth: 1
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        legend: {
+          display: false
+        }
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: {
+            callback: value => `$${value.toLocaleString()}`
+          }
+        }
+      }
+    }
+  });
+}
+
+function renderExpensesByCategoryAndBoatChart() {
+  const ctx = document.getElementById('chart-expenses-category-boat');
+  
+  // Get unique boats and categories
+  const boats = [...new Set(expenses.map(e => e.boat_name || 'Desconocido'))];
+  const categories = [...new Set(expenses.map(e => e.category))];
+  
+  // Create datasets for each category
+  const datasets = categories.map((category, index) => {
+    const categoryExpenses = boats.map(boat => {
+      const total = expenses
+        .filter(e => (e.boat_name || 'Desconocido') === boat && e.category === category)
+        .reduce((sum, e) => sum + parseFloat(e.amount), 0);
+      return total;
+    });
+    
+    const colors = [
+      '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', 
+      '#9966FF', '#FF9F40', '#FF6384', '#C9CBCF'
+    ];
+    
+    return {
+      label: getCategoryLabel(category),
+      data: categoryExpenses,
+      backgroundColor: colors[index % colors.length],
+      borderColor: colors[index % colors.length],
+      borderWidth: 1
+    };
+  });
+  
+  if (charts.expensesCategoryBoat) {
+    charts.expensesCategoryBoat.destroy();
+  }
+  
+  charts.expensesCategoryBoat = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: boats,
+      datasets: datasets
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: {
+            boxWidth: 12,
+            font: {
+              size: 10
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          stacked: true
+        },
+        y: {
+          stacked: true,
           beginAtZero: true,
           ticks: {
             callback: value => `$${value.toLocaleString()}`
