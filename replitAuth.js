@@ -101,17 +101,13 @@ async function setupAuth(app) {
     }
   };
 
-  // Track registered strategies per domain
-  const registeredStrategies = new Set();
-
-  // Helper to ensure strategy exists for a domain
-  // IMPORTANT: Uses req.hostname (from official blueprint) instead of custom domain logic
-  const ensureStrategy = (domain) => {
-    const strategyName = `replitauth:${domain}`;
-    if (!registeredStrategies.has(strategyName)) {
+  // Helper to get or create strategy for a domain
+  const strategies = new Map();
+  const getStrategy = (domain) => {
+    if (!strategies.has(domain)) {
       const strategy = new Strategy(
         {
-          name: strategyName,
+          name: `replitauth:${domain}`,
           config,
           scope: 'openid email profile offline_access',
           callbackURL: `https://${domain}/api/callback`,
@@ -119,29 +115,25 @@ async function setupAuth(app) {
         verify,
       );
       passport.use(strategy);
-      registeredStrategies.add(strategyName);
-      console.log(`✅ Registered auth strategy for domain: ${domain}`);
+      strategies.set(domain, strategy);
+      console.log(`✅ Registered auth strategy for: ${domain}`);
     }
+    return `replitauth:${domain}`;
   };
-
-  // PRE-REGISTER production domain strategy
-  // This ensures the strategy is available when Replit redirects back to the callback
-  if (process.env.REPLIT_DEPLOYMENT === '1') {
-    const productionDomain = 'sfrentals.replit.app';
-    console.log(`🚀 Production deployment detected - pre-registering strategy for: ${productionDomain}`);
-    ensureStrategy(productionDomain);
-  }
 
   // Serialize/deserialize user
   passport.serializeUser((user, cb) => cb(null, user));
   passport.deserializeUser((user, cb) => cb(null, user));
 
-  // Login route - uses req.hostname from official blueprint
+  // Login route
   app.get('/api/login', (req, res, next) => {
     try {
-      console.log(`🔐 Login attempt - hostname: ${req.hostname}`);
-      ensureStrategy(req.hostname);
-      passport.authenticate(`replitauth:${req.hostname}`, {
+      // Use x-forwarded-host header or fallback to req.hostname
+      const domain = req.get('x-forwarded-host') || req.get('host') || req.hostname;
+      console.log(`🔐 Login attempt - domain: ${domain}`);
+      
+      const strategyName = getStrategy(domain);
+      passport.authenticate(strategyName, {
         prompt: 'login consent',
         scope: ['openid', 'email', 'profile', 'offline_access'],
       })(req, res, next);
@@ -151,22 +143,24 @@ async function setupAuth(app) {
     }
   });
 
-  // OAuth callback route - uses req.hostname from official blueprint
+  // OAuth callback route
   app.get('/api/callback', (req, res, next) => {
     try {
-      // Detailed logging for debugging
-      console.log(`🔙 Callback received:`, {
-        hostname: req.hostname,
-        host: req.get('host'),
+      // Use x-forwarded-host header or fallback to req.hostname
+      const domain = req.get('x-forwarded-host') || req.get('host') || req.hostname;
+      
+      console.log(`🔙 Callback received`, {
+        domain,
         'x-forwarded-host': req.get('x-forwarded-host'),
-        'x-forwarded-proto': req.get('x-forwarded-proto'),
+        host: req.get('host'),
+        hostname: req.hostname,
         code: req.query.code ? 'present' : 'missing',
-        registeredStrategies: Array.from(registeredStrategies)
+        iss: req.query.iss
       });
       
-      ensureStrategy(req.hostname);
+      const strategyName = getStrategy(domain);
       
-      passport.authenticate(`replitauth:${req.hostname}`, (err, user, info) => {
+      passport.authenticate(strategyName, (err, user, info) => {
         if (err) {
           console.error('❌ Passport authentication error:', err);
           console.error('Error details:', { message: err.message, stack: err.stack });
