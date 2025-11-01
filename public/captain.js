@@ -190,6 +190,13 @@ async function loadAssignments() {
     }
 }
 
+function escapeHTML(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
 function renderAssignments(assignments) {
     const container = document.getElementById('assignmentsList');
     
@@ -204,27 +211,27 @@ function renderAssignments(assignments) {
     }
     
     container.innerHTML = assignments.map((assignment, index) => `
-        <div class="assignment-card" onclick="openTripDetail('${assignment.id}')" data-testid="assignment-card-${index}">
+        <div class="assignment-card" onclick="openTripDetail('${escapeHTML(assignment.id)}')" data-testid="assignment-card-${index}">
             <div class="card-header">
-                <div class="card-title">${assignment.customer_name}</div>
-                <span class="status-badge ${assignment.status}">${getStatusText(assignment.status)}</span>
+                <div class="card-title">${escapeHTML(assignment.customer_name)}</div>
+                <span class="status-badge ${escapeHTML(assignment.status)}">${escapeHTML(getStatusText(assignment.status))}</span>
             </div>
             <div class="card-details">
                 <div class="detail-row">
-                    <strong>📅 Fecha:</strong> ${formatDate(assignment.booking_date)}
+                    <strong>📅 Fecha:</strong> ${escapeHTML(formatDate(assignment.booking_date))}
                 </div>
                 <div class="detail-row">
-                    <strong>🕐 Hora:</strong> ${assignment.start_time}
+                    <strong>🕐 Hora:</strong> ${escapeHTML(assignment.start_time)}
                 </div>
                 <div class="detail-row">
-                    <strong>⛵ Tipo:</strong> ${assignment.boat_type}
+                    <strong>⛵ Tipo:</strong> ${escapeHTML(assignment.boat_type)}
                 </div>
                 <div class="detail-row">
-                    <strong>📞 Teléfono:</strong> ${assignment.customer_phone}
+                    <strong>📞 Teléfono:</strong> ${escapeHTML(assignment.customer_phone)}
                 </div>
                 ${assignment.trip_status ? `
                     <div class="detail-row">
-                        <strong>🚢 Estado:</strong> <span class="text-success">${getTripStatusText(assignment.trip_status)}</span>
+                        <strong>🚢 Estado:</strong> <span class="text-success">${escapeHTML(getTripStatusText(assignment.trip_status))}</span>
                     </div>
                 ` : ''}
             </div>
@@ -269,22 +276,22 @@ function renderHistory(history) {
     container.innerHTML = history.map((trip, index) => `
         <div class="history-card" data-testid="history-card-${index}">
             <div class="card-header">
-                <div class="card-title">${trip.customer_name}</div>
+                <div class="card-title">${escapeHTML(trip.customer_name)}</div>
                 <span class="status-badge completed">Completado</span>
             </div>
             <div class="card-details">
                 <div class="detail-row">
-                    <strong>📅 Fecha:</strong> ${formatDate(trip.booking_date)}
+                    <strong>📅 Fecha:</strong> ${escapeHTML(formatDate(trip.booking_date))}
                 </div>
                 <div class="detail-row">
-                    <strong>🕐 Check-in:</strong> ${formatDateTime(trip.check_in_time)}
+                    <strong>🕐 Check-in:</strong> ${escapeHTML(formatDateTime(trip.check_in_time))}
                 </div>
                 <div class="detail-row">
-                    <strong>🕐 Check-out:</strong> ${formatDateTime(trip.check_out_time)}
+                    <strong>🕐 Check-out:</strong> ${escapeHTML(formatDateTime(trip.check_out_time))}
                 </div>
                 ${trip.customer_satisfaction ? `
                     <div class="detail-row">
-                        <strong>⭐ Satisfacción:</strong> ${trip.customer_satisfaction}/5
+                        <strong>⭐ Satisfacción:</strong> ${escapeHTML(trip.customer_satisfaction)}/5
                     </div>
                 ` : ''}
             </div>
@@ -333,35 +340,35 @@ function renderTripDetail(trip) {
         <div class="info-grid">
             <div class="info-item">
                 <span class="info-label">Cliente:</span>
-                <span class="info-value">${trip.customer_name}</span>
+                <span class="info-value">${escapeHTML(trip.customer_name)}</span>
             </div>
             <div class="info-item">
                 <span class="info-label">Teléfono:</span>
-                <span class="info-value">${trip.customer_phone}</span>
+                <span class="info-value">${escapeHTML(trip.customer_phone)}</span>
             </div>
             <div class="info-item">
                 <span class="info-label">Email:</span>
-                <span class="info-value">${trip.customer_email || 'N/A'}</span>
+                <span class="info-value">${escapeHTML(trip.customer_email || 'N/A')}</span>
             </div>
             <div class="info-item">
                 <span class="info-label">Fecha:</span>
-                <span class="info-value">${formatDate(trip.booking_date)}</span>
+                <span class="info-value">${escapeHTML(formatDate(trip.booking_date))}</span>
             </div>
             <div class="info-item">
                 <span class="info-label">Hora de inicio:</span>
-                <span class="info-value">${trip.start_time}</span>
+                <span class="info-value">${escapeHTML(trip.start_time)}</span>
             </div>
             <div class="info-item">
                 <span class="info-label">Duración:</span>
-                <span class="info-value">${trip.duration_hours} horas</span>
+                <span class="info-value">${escapeHTML(trip.duration_hours)} horas</span>
             </div>
             <div class="info-item">
                 <span class="info-label">Tipo de tour:</span>
-                <span class="info-value">${trip.boat_type}</span>
+                <span class="info-value">${escapeHTML(trip.boat_type)}</span>
             </div>
             <div class="info-item">
                 <span class="info-label">Monto:</span>
-                <span class="info-value">$${trip.total_amount}</span>
+                <span class="info-value">$${escapeHTML(trip.total_amount)}</span>
             </div>
         </div>
     `;
@@ -387,7 +394,7 @@ function renderTripDetail(trip) {
         tripActions.innerHTML = `
             <div class="action-card">
                 <h4>✅ Check-In Completado</h4>
-                <p>Hora: ${formatDateTime(trip.check_in_time)}</p>
+                <p>Hora: ${escapeHTML(formatDateTime(trip.check_in_time))}</p>
                 <h4 class="mt-2">📍 Check-Out</h4>
                 <p>Presiona el botón cuando finalices el tour</p>
                 <div id="checkoutLocation" class="location-info">
@@ -402,8 +409,8 @@ function renderTripDetail(trip) {
         tripActions.innerHTML = `
             <div class="action-card">
                 <h4>✅ Viaje Completado</h4>
-                <p>Check-In: ${formatDateTime(trip.check_in_time)}</p>
-                <p>Check-Out: ${formatDateTime(trip.check_out_time)}</p>
+                <p>Check-In: ${escapeHTML(formatDateTime(trip.check_in_time))}</p>
+                <p>Check-Out: ${escapeHTML(formatDateTime(trip.check_out_time))}</p>
                 <button class="btn btn-primary mt-2" onclick="showTripReportForm()" data-testid="button-create-report">
                     📝 Crear Reporte
                 </button>
