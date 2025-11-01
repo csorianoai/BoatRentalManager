@@ -128,7 +128,7 @@ async function loadData() {
         accountSelects.forEach(select => {
             select.innerHTML = '<option value="">Seleccionar cuenta...</option>';
             accountsData.forEach(account => {
-                if (!account.parent_account_id) return; // Skip parent accounts
+                if (!account.is_active) return; // Skip inactive accounts
                 const option = document.createElement('option');
                 option.value = account.id;
                 option.textContent = `${account.account_code} - ${account.account_name}`;

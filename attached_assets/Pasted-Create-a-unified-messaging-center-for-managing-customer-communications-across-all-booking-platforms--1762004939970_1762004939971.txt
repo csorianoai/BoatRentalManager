@@ -1,0 +1,70 @@
+Create a unified messaging center for managing customer communications across all booking platforms with the following features:
+
+## MULTI-PLATFORM INBOX:
+- Unified inbox aggregating messages from:
+  • Boat Setter
+  • Airbnb
+  • Get My Boat
+  • Viator
+  • Website chat
+  • WhatsApp Business
+  • Email
+  • [Other platforms]
+- Real-time message sync from all platforms
+- Platform-specific branding and icons for each message
+- Message threading by customer across platforms
+
+## API INTEGRATIONS:
+- Boat Setter API for message retrieval/sending
+- Airbnb API integration for host communications
+- GetMyBoat messaging API connectivity
+- WhatsApp Business API (existing integration)
+- SMTP/IMAP for email integration
+- Webhook system for real-time notifications
+
+## INTELLIGENT NOTIFICATION SYSTEM:
+- Push notifications for new messages
+- Priority inbox sorting (urgent, new customer, follow-up)
+- Automated response time tracking and alerts
+- SLA monitoring for response times
+- Bulk message actions for similar inquiries
+
+## RESPONSE MANAGEMENT:
+- Quick reply templates for common questions
+  • Pricing inquiries
+  • Availability requests
+  • Booking modifications
+  • Cancellation requests
+- Platform-specific response formatting
+- Media attachment support (photos, documents)
+- Response history and customer conversation timeline
+
+## AUTOMATION FEATURES:
+- Auto-responder for after-hours messages
+- AI-suggested responses based on message content
+- Automatic assignment to team members
+- Follow-up reminder system
+- Customer satisfaction tracking
+
+## DASHBOARD & ANALYTICS:
+- Response time metrics per platform
+- Customer satisfaction scores
+- Team performance analytics
+- Busiest communication times
+- Inquiry-to-booking conversion rates
+
+## TECHNICAL ARCHITECTURE:
+- Microservices for each platform integration
+- Message queue for reliable delivery
+- Rate limiting handling per platform
+- Message encryption and privacy compliance
+- Backup and message history retention
+
+## USER INTERFACE:
+- Single view for all customer conversations
+- Platform-specific color coding and icons
+- Customer profile sidebar with booking history
+- Quick action buttons for common responses
+- Mobile-responsive design for on-the-go management
+
+Create this as a central communication hub that eliminates the need to switch between multiple platforms while maintaining full platform compliance and branding requirements.

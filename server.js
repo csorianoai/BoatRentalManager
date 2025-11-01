@@ -4306,7 +4306,7 @@ app.get('/api/accounting/profit-loss', isAuthenticated, async (req, res) => {
       `SELECT a.account_name, a.account_code, SUM(t.amount) as total
        FROM transactions t
        JOIN chart_of_accounts a ON t.account_id = a.id
-       WHERE a.account_type = 'revenue' 
+       WHERE t.transaction_type = 'income' 
        AND t.transaction_date >= $1 AND t.transaction_date <= $2
        GROUP BY a.id, a.account_name, a.account_code
        ORDER BY a.account_code`,
@@ -4318,7 +4318,7 @@ app.get('/api/accounting/profit-loss', isAuthenticated, async (req, res) => {
       `SELECT a.account_name, a.account_code, SUM(t.amount) as total
        FROM transactions t
        JOIN chart_of_accounts a ON t.account_id = a.id
-       WHERE a.account_type = 'expense' 
+       WHERE t.transaction_type = 'expense' 
        AND t.transaction_date >= $1 AND t.transaction_date <= $2
        GROUP BY a.id, a.account_name, a.account_code
        ORDER BY a.account_code`,
