@@ -654,6 +654,180 @@ async function initializeDatabase() {
     
     console.log('✅ FASE 9 tables created (messaging center, platform configs, templates)');
     
+    // =============================================================================
+    // FASE 10: BOAT MAINTENANCE & EXPENSE TRACKING SYSTEM
+    // =============================================================================
+    
+    // FASE 10: Create mechanics table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS mechanics (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        phone TEXT NOT NULL,
+        email TEXT,
+        specialty TEXT NOT NULL CHECK (specialty IN ('engine_repair', 'electrical', 'hull', 'propulsion', 'fiberglass', 'general')),
+        hourly_rate NUMERIC(10,2) NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'on_leave')),
+        rating NUMERIC(3,2) DEFAULT 0 CHECK (rating >= 0 AND rating <= 5),
+        total_jobs INTEGER DEFAULT 0,
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+    
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_mechanics_status 
+      ON mechanics(status, rating DESC)
+    `);
+    
+    // FASE 10: Create boat_expenses table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS boat_expenses (
+        id TEXT PRIMARY KEY,
+        boat_id TEXT NOT NULL REFERENCES boats(id) ON DELETE CASCADE,
+        category TEXT NOT NULL CHECK (category IN ('fuel', 'maintenance_parts', 'labor', 'cleaning', 'marina_fees', 'insurance', 'emergency_repairs', 'operational')),
+        amount NUMERIC(12,2) NOT NULL,
+        expense_date DATE NOT NULL,
+        description TEXT NOT NULL,
+        receipt_image TEXT,
+        mechanic_id TEXT REFERENCES mechanics(id),
+        fuel_gallons NUMERIC(8,2),
+        fuel_station TEXT,
+        invoice_number TEXT,
+        is_tax_deductible INTEGER DEFAULT 1 CHECK (is_tax_deductible IN (0, 1)),
+        synced_to_accounting INTEGER DEFAULT 0 CHECK (synced_to_accounting IN (0, 1)),
+        accounting_transaction_id TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+    
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_boat_expenses_boat_date 
+      ON boat_expenses(boat_id, expense_date DESC)
+    `);
+    
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_boat_expenses_category 
+      ON boat_expenses(category, expense_date DESC)
+    `);
+    
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_boat_expenses_synced 
+      ON boat_expenses(synced_to_accounting)
+    `);
+    
+    // FASE 10: Create parts_inventory table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS parts_inventory (
+        id TEXT PRIMARY KEY,
+        part_name TEXT NOT NULL,
+        part_number TEXT,
+        category TEXT NOT NULL CHECK (category IN ('batteries', 'oils', 'filters', 'belts', 'spark_plugs', 'impellers', 'anodes', 'electrical', 'safety', 'other')),
+        quantity INTEGER NOT NULL DEFAULT 0,
+        unit_cost NUMERIC(10,2) NOT NULL,
+        supplier TEXT,
+        supplier_phone TEXT,
+        min_stock_level INTEGER NOT NULL DEFAULT 0,
+        last_restock_date DATE,
+        last_restock_quantity INTEGER,
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+    
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_parts_inventory_category 
+      ON parts_inventory(category)
+    `);
+    
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_parts_inventory_stock 
+      ON parts_inventory(quantity)
+    `);
+    
+    // FASE 10: Create maintenance_records table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS maintenance_records (
+        id TEXT PRIMARY KEY,
+        boat_id TEXT NOT NULL REFERENCES boats(id) ON DELETE CASCADE,
+        service_type TEXT NOT NULL CHECK (service_type IN ('engine_oil_change', 'engine_service', 'hull_cleaning', 'electrical_repair', 'propeller_service', 'fuel_system', 'cooling_system', 'safety_inspection', 'general_maintenance', 'emergency_repair')),
+        description TEXT NOT NULL,
+        parts_used JSONB,
+        labor_hours NUMERIC(6,2) NOT NULL DEFAULT 0,
+        mechanic_id TEXT REFERENCES mechanics(id),
+        parts_cost NUMERIC(10,2) DEFAULT 0,
+        labor_cost NUMERIC(10,2) DEFAULT 0,
+        total_cost NUMERIC(10,2) NOT NULL,
+        service_date DATE NOT NULL,
+        next_service_date DATE,
+        engine_hours_at_service INTEGER,
+        work_order_id TEXT,
+        status TEXT NOT NULL DEFAULT 'completed' CHECK (status IN ('scheduled', 'in_progress', 'completed', 'cancelled')),
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+    
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_maintenance_records_boat 
+      ON maintenance_records(boat_id, service_date DESC)
+    `);
+    
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_maintenance_records_next_service 
+      ON maintenance_records(next_service_date)
+    `);
+    
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_maintenance_records_status 
+      ON maintenance_records(status, service_date)
+    `);
+    
+    // FASE 10: Create work_orders table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS work_orders (
+        id TEXT PRIMARY KEY,
+        boat_id TEXT NOT NULL REFERENCES boats(id) ON DELETE CASCADE,
+        mechanic_id TEXT REFERENCES mechanics(id),
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        priority TEXT NOT NULL DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high', 'critical')),
+        status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'assigned', 'in_progress', 'completed', 'cancelled')),
+        scheduled_date DATE,
+        completion_date DATE,
+        estimated_cost NUMERIC(10,2),
+        actual_cost NUMERIC(10,2),
+        estimated_hours NUMERIC(6,2),
+        actual_hours NUMERIC(6,2),
+        maintenance_record_id TEXT REFERENCES maintenance_records(id),
+        notes TEXT,
+        created_by TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+    
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_work_orders_boat_status 
+      ON work_orders(boat_id, status)
+    `);
+    
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_work_orders_mechanic 
+      ON work_orders(mechanic_id, status)
+    `);
+    
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_work_orders_priority 
+      ON work_orders(priority DESC, created_at DESC)
+    `);
+    
+    console.log('✅ FASE 10 tables created (boat maintenance & expense tracking)');
+    
     // Seed chart of accounts if empty
     const accountsCheck = await pool.query('SELECT COUNT(*) FROM chart_of_accounts');
     if (parseInt(accountsCheck.rows[0].count) === 0) {
@@ -806,7 +980,46 @@ async function initializeDatabase() {
       console.log('✅ Message templates seeded with 6 common response templates');
     }
     
-    console.log('✅ Database schema initialized successfully (all 9 phases + authentication)');
+    // FASE 10: Seed mechanics with example technicians
+    const mechanicsCheck = await pool.query('SELECT COUNT(*) FROM mechanics');
+    if (parseInt(mechanicsCheck.rows[0].count) === 0) {
+      const { nanoid } = await import('nanoid');
+      
+      await pool.query(`
+        INSERT INTO mechanics (id, name, phone, email, specialty, hourly_rate, status, rating, total_jobs) VALUES
+        ('${nanoid()}', 'Carlos Rodriguez', '+1-305-555-0101', 'carlos@marineworks.com', 'engine_repair', 85.00, 'active', 4.8, 127),
+        ('${nanoid()}', 'Mike Thompson', '+1-305-555-0102', 'mike@seasideboats.com', 'electrical', 75.00, 'active', 4.6, 89),
+        ('${nanoid()}', 'Jose Martinez', '+1-305-555-0103', 'jose@boattech.com', 'hull', 70.00, 'active', 4.9, 156),
+        ('${nanoid()}', 'David Chen', '+1-305-555-0104', 'david@propexperts.com', 'propulsion', 80.00, 'active', 4.7, 93),
+        ('${nanoid()}', 'Roberto Silva', '+1-305-555-0105', 'roberto@marinefix.com', 'general', 65.00, 'active', 4.5, 201)
+      `);
+      
+      console.log('✅ Mechanics seeded with 5 technicians across different specialties');
+    }
+    
+    // FASE 10: Seed parts_inventory with common boat parts
+    const partsCheck = await pool.query('SELECT COUNT(*) FROM parts_inventory');
+    if (parseInt(partsCheck.rows[0].count) === 0) {
+      const { nanoid } = await import('nanoid');
+      
+      await pool.query(`
+        INSERT INTO parts_inventory (id, part_name, part_number, category, quantity, unit_cost, supplier, min_stock_level) VALUES
+        ('${nanoid()}', 'Marine Battery 12V', 'MB-12V-100AH', 'batteries', 8, 189.99, 'West Marine Supply', 3),
+        ('${nanoid()}', 'Engine Oil 10W-30 (5L)', 'EO-10W30-5L', 'oils', 15, 34.99, 'Yamaha Parts Direct', 5),
+        ('${nanoid()}', 'Fuel Filter', 'FF-MERCURY-001', 'filters', 12, 24.99, 'Mercury Marine', 4),
+        ('${nanoid()}', 'Oil Filter', 'OF-YAMAHA-200', 'filters', 10, 18.99, 'Yamaha Parts Direct', 4),
+        ('${nanoid()}', 'V-Belt Set', 'VB-STANDARD-SET', 'belts', 6, 45.99, 'Marine Parts Plus', 2),
+        ('${nanoid()}', 'Spark Plugs (Set of 6)', 'SP-NGK-BPR6ES', 'spark_plugs', 20, 29.99, 'NGK Distributor', 8),
+        ('${nanoid()}', 'Water Pump Impeller', 'IMP-MERCURY-47', 'impellers', 5, 64.99, 'Mercury Marine', 2),
+        ('${nanoid()}', 'Zinc Anode Kit', 'ZA-UNIVERSAL-KIT', 'anodes', 14, 39.99, 'West Marine Supply', 6),
+        ('${nanoid()}', 'Bilge Pump', 'BP-RULE-1100', 'electrical', 4, 89.99, 'Rule Industries', 2),
+        ('${nanoid()}', 'Life Jacket Adult', 'LJ-USCG-ADULT', 'safety', 25, 34.99, 'Safety Marine Co', 10)
+      `);
+      
+      console.log('✅ Parts inventory seeded with 10 common boat parts');
+    }
+    
+    console.log('✅ Database schema initialized successfully (all 10 phases + authentication)');
   } catch (error) {
     console.error('❌ Error initializing database schema:', error);
     throw error;
@@ -6028,6 +6241,378 @@ app.get('/api/messages/unread-count', async (req, res) => {
   } catch (error) {
     console.error('Error fetching unread count:', error);
     res.status(500).json({ error: 'Failed to fetch unread count' });
+  }
+});
+
+// ============================================================================
+// FASE 10: BOAT MAINTENANCE & EXPENSE TRACKING APIs
+// ============================================================================
+
+// ========== BOAT EXPENSES APIs ==========
+
+// Get all boat expenses with filters
+app.get('/api/boat-expenses', async (req, res) => {
+  try {
+    const { boat_id, category, start_date, end_date, synced } = req.query;
+    
+    let query = `
+      SELECT be.*, b.name as boat_name, m.name as mechanic_name
+      FROM boat_expenses be
+      LEFT JOIN boats b ON be.boat_id = b.id
+      LEFT JOIN mechanics m ON be.mechanic_id = m.id
+      WHERE 1=1
+    `;
+    const params = [];
+    let paramIndex = 1;
+    
+    if (boat_id) {
+      query += ` AND be.boat_id = $${paramIndex++}`;
+      params.push(boat_id);
+    }
+    
+    if (category) {
+      query += ` AND be.category = $${paramIndex++}`;
+      params.push(category);
+    }
+    
+    if (start_date) {
+      query += ` AND be.expense_date >= $${paramIndex++}`;
+      params.push(start_date);
+    }
+    
+    if (end_date) {
+      query += ` AND be.expense_date <= $${paramIndex++}`;
+      params.push(end_date);
+    }
+    
+    if (synced !== undefined) {
+      query += ` AND be.synced_to_accounting = $${paramIndex++}`;
+      params.push(synced === 'true' ? 1 : 0);
+    }
+    
+    query += ' ORDER BY be.expense_date DESC, be.created_at DESC';
+    
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching boat expenses:', error);
+    res.status(500).json({ error: 'Failed to fetch boat expenses' });
+  }
+});
+
+// Create boat expense
+app.post('/api/boat-expenses', async (req, res) => {
+  try {
+    const { nanoid } = await import('nanoid');
+    const {
+      boat_id, category, amount, expense_date, description,
+      mechanic_id, fuel_gallons, fuel_station, invoice_number, is_tax_deductible
+    } = req.body;
+    
+    if (!boat_id || !category || !amount || !expense_date || !description) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    
+    const id = nanoid();
+    const result = await pool.query(`
+      INSERT INTO boat_expenses 
+      (id, boat_id, category, amount, expense_date, description, mechanic_id, 
+       fuel_gallons, fuel_station, invoice_number, is_tax_deductible)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      RETURNING *
+    `, [
+      id, boat_id, category, amount, expense_date, description,
+      mechanic_id || null, fuel_gallons || null, fuel_station || null,
+      invoice_number || null, is_tax_deductible !== undefined ? is_tax_deductible : 1
+    ]);
+    
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Error creating boat expense:', error);
+    res.status(500).json({ error: 'Failed to create boat expense' });
+  }
+});
+
+// Update boat expense
+app.patch('/api/boat-expenses/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body;
+    
+    const allowedFields = [
+      'category', 'amount', 'expense_date', 'description', 'mechanic_id',
+      'fuel_gallons', 'fuel_station', 'invoice_number', 'is_tax_deductible', 'receipt_image'
+    ];
+    
+    const setClause = [];
+    const values = [];
+    let paramIndex = 1;
+    
+    Object.keys(updates).forEach(key => {
+      if (allowedFields.includes(key)) {
+        setClause.push(`${key} = $${paramIndex++}`);
+        values.push(updates[key]);
+      }
+    });
+    
+    if (setClause.length === 0) {
+      return res.status(400).json({ error: 'No valid fields to update' });
+    }
+    
+    setClause.push(`updated_at = CURRENT_TIMESTAMP`);
+    values.push(id);
+    
+    const result = await pool.query(`
+      UPDATE boat_expenses 
+      SET ${setClause.join(', ')}
+      WHERE id = $${paramIndex}
+      RETURNING *
+    `, values);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Expense not found' });
+    }
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating boat expense:', error);
+    res.status(500).json({ error: 'Failed to update boat expense' });
+  }
+});
+
+// Delete boat expense
+app.delete('/api/boat-expenses/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const result = await pool.query('DELETE FROM boat_expenses WHERE id = $1 RETURNING *', [id]);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Expense not found' });
+    }
+    
+    res.json({ success: true, deleted: result.rows[0] });
+  } catch (error) {
+    console.error('Error deleting boat expense:', error);
+    res.status(500).json({ error: 'Failed to delete boat expense' });
+  }
+});
+
+// Get expense analytics
+app.get('/api/boat-expenses/analytics', async (req, res) => {
+  try {
+    const { boat_id, start_date, end_date } = req.query;
+    
+    let whereClause = '1=1';
+    const params = [];
+    let paramIndex = 1;
+    
+    if (boat_id) {
+      whereClause += ` AND boat_id = $${paramIndex++}`;
+      params.push(boat_id);
+    }
+    
+    if (start_date) {
+      whereClause += ` AND expense_date >= $${paramIndex++}`;
+      params.push(start_date);
+    }
+    
+    if (end_date) {
+      whereClause += ` AND expense_date <= $${paramIndex++}`;
+      params.push(end_date);
+    }
+    
+    // Total expenses and by category
+    const categoryStats = await pool.query(`
+      SELECT 
+        category,
+        COUNT(*) as count,
+        SUM(amount) as total
+      FROM boat_expenses
+      WHERE ${whereClause}
+      GROUP BY category
+      ORDER BY total DESC
+    `, params);
+    
+    // Overall totals
+    const overallStats = await pool.query(`
+      SELECT 
+        COUNT(*) as total_transactions,
+        SUM(amount) as total_expenses,
+        AVG(amount) as avg_expense
+      FROM boat_expenses
+      WHERE ${whereClause}
+    `, params);
+    
+    // Fuel efficiency (if fuel data exists)
+    const fuelStats = await pool.query(`
+      SELECT 
+        SUM(fuel_gallons) as total_gallons,
+        SUM(amount) as total_fuel_cost,
+        AVG(amount / NULLIF(fuel_gallons, 0)) as avg_price_per_gallon
+      FROM boat_expenses
+      WHERE ${whereClause} AND category = 'fuel' AND fuel_gallons > 0
+    `, params);
+    
+    res.json({
+      byCategory: categoryStats.rows,
+      overall: overallStats.rows[0],
+      fuelStats: fuelStats.rows[0]
+    });
+  } catch (error) {
+    console.error('Error fetching expense analytics:', error);
+    res.status(500).json({ error: 'Failed to fetch expense analytics' });
+  }
+});
+
+// ========== MECHANICS APIs ==========
+
+// Get all mechanics
+app.get('/api/mechanics', async (req, res) => {
+  try {
+    const { specialty, status } = req.query;
+    
+    let query = 'SELECT * FROM mechanics WHERE 1=1';
+    const params = [];
+    let paramIndex = 1;
+    
+    if (specialty) {
+      query += ` AND specialty = $${paramIndex++}`;
+      params.push(specialty);
+    }
+    
+    if (status) {
+      query += ` AND status = $${paramIndex++}`;
+      params.push(status);
+    }
+    
+    query += ' ORDER BY rating DESC, name';
+    
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching mechanics:', error);
+    res.status(500).json({ error: 'Failed to fetch mechanics' });
+  }
+});
+
+// Create mechanic
+app.post('/api/mechanics', async (req, res) => {
+  try {
+    const { nanoid } = await import('nanoid');
+    const { name, phone, email, specialty, hourly_rate, notes } = req.body;
+    
+    if (!name || !phone || !specialty || hourly_rate === undefined) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    
+    const id = nanoid();
+    const result = await pool.query(`
+      INSERT INTO mechanics (id, name, phone, email, specialty, hourly_rate, notes)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING *
+    `, [id, name, phone, email || null, specialty, hourly_rate, notes || null]);
+    
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Error creating mechanic:', error);
+    res.status(500).json({ error: 'Failed to create mechanic' });
+  }
+});
+
+// Update mechanic
+app.patch('/api/mechanics/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body;
+    
+    const allowedFields = ['name', 'phone', 'email', 'specialty', 'hourly_rate', 'status', 'rating', 'notes'];
+    
+    const setClause = [];
+    const values = [];
+    let paramIndex = 1;
+    
+    Object.keys(updates).forEach(key => {
+      if (allowedFields.includes(key)) {
+        setClause.push(`${key} = $${paramIndex++}`);
+        values.push(updates[key]);
+      }
+    });
+    
+    if (setClause.length === 0) {
+      return res.status(400).json({ error: 'No valid fields to update' });
+    }
+    
+    setClause.push(`updated_at = CURRENT_TIMESTAMP`);
+    values.push(id);
+    
+    const result = await pool.query(`
+      UPDATE mechanics
+      SET ${setClause.join(', ')}
+      WHERE id = $${paramIndex}
+      RETURNING *
+    `, values);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Mechanic not found' });
+    }
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating mechanic:', error);
+    res.status(500).json({ error: 'Failed to update mechanic' });
+  }
+});
+
+// Get mechanic work history
+app.get('/api/mechanics/:id/work-history', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const result = await pool.query(`
+      SELECT 
+        mr.id,
+        mr.service_date,
+        mr.service_type,
+        mr.labor_hours,
+        mr.labor_cost,
+        mr.total_cost,
+        b.name as boat_name
+      FROM maintenance_records mr
+      LEFT JOIN boats b ON mr.boat_id = b.id
+      WHERE mr.mechanic_id = $1
+      ORDER BY mr.service_date DESC
+      LIMIT 50
+    `, [id]);
+    
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching mechanic work history:', error);
+    res.status(500).json({ error: 'Failed to fetch work history' });
+  }
+});
+
+// Get mechanics performance ranking
+app.get('/api/mechanics/performance', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT 
+        id,
+        name,
+        specialty,
+        rating,
+        total_jobs,
+        hourly_rate,
+        status
+      FROM mechanics
+      WHERE status = 'active'
+      ORDER BY rating DESC, total_jobs DESC
+    `);
+    
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching mechanics performance:', error);
+    res.status(500).json({ error: 'Failed to fetch performance data' });
   }
 });
 
