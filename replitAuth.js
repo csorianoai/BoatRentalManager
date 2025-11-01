@@ -1,3 +1,6 @@
+// Replit Auth integration - Official blueprint implementation
+// Reference: blueprint:javascript_log_in_with_replit
+
 const client = require('openid-client');
 const { Strategy } = require('openid-client/passport');
 const passport = require('passport');
@@ -101,43 +104,8 @@ async function setupAuth(app) {
   // Track registered strategies per domain
   const registeredStrategies = new Set();
 
-  // Get the production domain (Replit app domain or fallback)
-  const getProductionDomain = (req) => {
-    // Priority 1: Use PRODUCTION_DOMAIN env var if set (for deployed apps)
-    if (process.env.PRODUCTION_DOMAIN) {
-      console.log(`📍 Using PRODUCTION_DOMAIN: ${process.env.PRODUCTION_DOMAIN}`);
-      return process.env.PRODUCTION_DOMAIN;
-    }
-    
-    // Priority 2: If deployed (REPLIT_DEPLOYMENT=1), construct domain from owner and slug
-    // This handles published Replit apps (e.g., sfrentals.replit.app)
-    if (process.env.REPLIT_DEPLOYMENT === '1' && process.env.REPL_OWNER && process.env.REPL_SLUG) {
-      // For published apps, the domain is typically owner-slug.replit.app or just slug.replit.app
-      // Check the actual host first
-      const host = req.get('host');
-      if (host && host.endsWith('.replit.app')) {
-        console.log(`📍 Using deployment host: ${host}`);
-        return host;
-      }
-    }
-    
-    // Priority 3: Check if we're on a *.replit.app domain (from host header)
-    const host = req.get('host') || req.hostname;
-    if (host && host.includes('.replit.app')) {
-      // Extract the app name (e.g., sfrentals from sfrentals.replit.app)
-      const match = host.match(/^([^.]+)\.replit\.app/);
-      if (match) {
-        console.log(`📍 Using extracted domain: ${match[1]}.replit.app`);
-        return `${match[1]}.replit.app`;
-      }
-    }
-    
-    // Fallback to the host header (for development)
-    console.log(`📍 Using fallback domain: ${host}`);
-    return host || 'localhost';
-  };
-
   // Helper to ensure strategy exists for a domain
+  // IMPORTANT: Uses req.hostname (from official blueprint) instead of custom domain logic
   const ensureStrategy = (domain) => {
     const strategyName = `replitauth:${domain}`;
     if (!registeredStrategies.has(strategyName)) {
@@ -160,13 +128,12 @@ async function setupAuth(app) {
   passport.serializeUser((user, cb) => cb(null, user));
   passport.deserializeUser((user, cb) => cb(null, user));
 
-  // Login route
+  // Login route - uses req.hostname from official blueprint
   app.get('/api/login', (req, res, next) => {
     try {
-      const domain = getProductionDomain(req);
-      console.log(`🔐 Login attempt - domain: ${domain}, raw host: ${req.get('host')}`);
-      ensureStrategy(domain);
-      passport.authenticate(`replitauth:${domain}`, {
+      console.log(`🔐 Login attempt - hostname: ${req.hostname}`);
+      ensureStrategy(req.hostname);
+      passport.authenticate(`replitauth:${req.hostname}`, {
         prompt: 'login consent',
         scope: ['openid', 'email', 'profile', 'offline_access'],
       })(req, res, next);
@@ -176,13 +143,12 @@ async function setupAuth(app) {
     }
   });
 
-  // OAuth callback route
+  // OAuth callback route - uses req.hostname from official blueprint
   app.get('/api/callback', (req, res, next) => {
     try {
-      const domain = getProductionDomain(req);
-      console.log(`🔙 Callback - domain: ${domain}, raw host: ${req.get('host')}, code: ${req.query.code ? 'present' : 'missing'}`);
-      ensureStrategy(domain);
-      passport.authenticate(`replitauth:${domain}`, {
+      console.log(`🔙 Callback - hostname: ${req.hostname}, code: ${req.query.code ? 'present' : 'missing'}`);
+      ensureStrategy(req.hostname);
+      passport.authenticate(`replitauth:${req.hostname}`, {
         successReturnToOrRedirect: '/',
         failureRedirect: '/api/login',
       })(req, res, next);
