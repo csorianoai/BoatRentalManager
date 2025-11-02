@@ -3,20 +3,23 @@ import { useLocation } from 'wouter'
 import { Anchor, LayoutDashboard, DollarSign, Waves, Calculator, Wrench, MessageSquare, Menu } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ThemeToggle } from '@/components/theme-toggle'
+import { LanguageToggle } from '@/components/language-toggle'
+import { useLanguage } from '@/i18n/LanguageContext'
 import { MobileSidebar } from './mobile-sidebar'
 
 const navItems = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/pricing', label: 'Pricing', icon: DollarSign },
-  { href: '/marine', label: 'Marine', icon: Waves },
-  { href: '/accounting', label: 'Contabilidad', icon: Calculator },
-  { href: '/maintenance', label: 'Mantenimiento', icon: Wrench },
-  { href: '/messages', label: 'Mensajes', icon: MessageSquare },
+  { href: '/dashboard', labelKey: 'nav.dashboard', icon: LayoutDashboard },
+  { href: '/pricing', labelKey: 'nav.pricing', icon: DollarSign },
+  { href: '/marine', labelKey: 'nav.marine', icon: Waves },
+  { href: '/accounting', labelKey: 'nav.accounting', icon: Calculator },
+  { href: '/maintenance', labelKey: 'nav.maintenance', icon: Wrench },
+  { href: '/messages', labelKey: 'nav.messages', icon: MessageSquare },
 ]
 
 export function Navbar() {
   const [location, navigate] = useLocation()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const { t } = useLanguage()
 
   return (
     <>
@@ -49,12 +52,13 @@ export function Navbar() {
                       data-testid={`link-nav-${item.href.slice(1)}`}
                     >
                       <Icon className="w-4 h-4" />
-                      {item.label}
+                      {t(item.labelKey)}
                     </Button>
                   )
                 })}
               </div>
 
+              <LanguageToggle />
               <ThemeToggle />
 
               <div className="md:hidden">

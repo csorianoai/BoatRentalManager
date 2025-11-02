@@ -1,6 +1,7 @@
 import { Route, Switch } from 'wouter'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ThemeProvider } from './components/theme-provider'
+import { LanguageProvider } from './i18n/LanguageContext'
 import { fetcher } from './lib/api'
 
 import HomePage from './pages/home'
@@ -26,18 +27,20 @@ const queryClient = new QueryClient({
 export default function App() {
   return (
     <ThemeProvider defaultTheme="light" storageKey="nadaki-ui-theme">
-      <QueryClientProvider client={queryClient}>
-        <Switch>
-          <Route path="/" component={HomePage} />
-          <Route path="/dashboard" component={DashboardPage} />
-          <Route path="/pricing" component={PricingPage} />
-          <Route path="/marine" component={MarinePage} />
-          <Route path="/accounting" component={AccountingPage} />
-          <Route path="/maintenance" component={MaintenancePage} />
-          <Route path="/messages" component={MessagesPage} />
-          <Route path="/demo-loading" component={DemoLoadingPage} />
-        </Switch>
-      </QueryClientProvider>
+      <LanguageProvider>
+        <QueryClientProvider client={queryClient}>
+          <Switch>
+            <Route path="/" component={HomePage} />
+            <Route path="/dashboard" component={DashboardPage} />
+            <Route path="/pricing" component={PricingPage} />
+            <Route path="/marine" component={MarinePage} />
+            <Route path="/accounting" component={AccountingPage} />
+            <Route path="/maintenance" component={MaintenancePage} />
+            <Route path="/messages" component={MessagesPage} />
+            <Route path="/demo-loading" component={DemoLoadingPage} />
+          </Switch>
+        </QueryClientProvider>
+      </LanguageProvider>
     </ThemeProvider>
   )
 }
