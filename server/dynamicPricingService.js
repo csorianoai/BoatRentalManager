@@ -84,20 +84,22 @@ class DynamicPricingService {
     return result.rows[0];
   }
 
-  async getActiveMarketEvents(region = null) {
+  async getActiveMarketEvents(region = null, activeOnly = false) {
     const today = new Date();
-    let query = `
-      SELECT * FROM market_events 
-      WHERE start_date <= $1 AND end_date >= $1
-    `;
-    const params = [today];
+    let query = `SELECT * FROM market_events WHERE 1=1`;
+    const params = [];
+    
+    if (activeOnly) {
+      params.push(today);
+      query += ` AND start_date <= $${params.length} AND end_date >= $${params.length}`;
+    }
     
     if (region) {
       params.push(region);
       query += ` AND (region = $${params.length} OR region IS NULL)`;
     }
     
-    query += ' ORDER BY price_multiplier DESC';
+    query += ' ORDER BY start_date DESC, price_multiplier DESC';
     
     const result = await this.pool.query(query, params);
     return result.rows;
@@ -122,7 +124,7 @@ class DynamicPricingService {
       const isWeekend = targetDOW === 0 || targetDOW === 6;
       const isSummerMonth = targetMonth >= 6 && targetMonth <= 8;
       
-      const events = await this.getActiveMarketEvents(region);
+      const events = await this.getActiveMarketEvents(region, true);
       const eventMultiplier = events.length > 0 
         ? Math.max(...events.map(e => parseFloat(e.price_multiplier) || 1.0))
         : 1.0;
@@ -197,7 +199,7 @@ class DynamicPricingService {
     const regionalMultiplier = REGIONAL_MULTIPLIERS[region] || REGIONAL_MULTIPLIERS.default;
     demandScore = Math.round(demandScore * regionalMultiplier);
 
-    const events = await this.getActiveMarketEvents(region);
+    const events = await this.getActiveMarketEvents(region, true);
     let eventMultiplier = 1.0;
     if (events.length > 0) {
       eventMultiplier = Math.max(...events.map(e => parseFloat(e.price_multiplier) || 1.0));
@@ -367,7 +369,7 @@ class DynamicPricingService {
 
   async getMarketInsights(region = null) {
     const competitorData = await this.getCompetitorData(region);
-    const activeEvents = await this.getActiveMarketEvents(region);
+    const activeEvents = await this.getActiveMarketEvents(region, true);
 
     const recentForecasts = await this.pool.query(
       `SELECT * FROM demand_forecasts 
@@ -436,7 +438,7 @@ class DynamicPricingService {
       }
     }
 
-    const activeEvents = await this.getActiveMarketEvents(region);
+    const activeEvents = await this.getActiveMarketEvents(region, true);
     activeEvents.forEach(event => {
       opportunities.push({
         type: 'event_opportunity',
