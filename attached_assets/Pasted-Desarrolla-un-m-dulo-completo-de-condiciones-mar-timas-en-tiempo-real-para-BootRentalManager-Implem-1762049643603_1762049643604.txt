@@ -1,0 +1,59 @@
+Desarrolla un módulo completo de condiciones marítimas en tiempo real para BootRentalManager. Implementa en JavaScript/Node.js con las siguientes características:
+
+**ARCHIVO PRINCIPAL:** /services/marine-conditions.js
+
+**FUNCIONALIDADES REQUERIDAS:**
+
+1. **INTEGRACIÓN CON APIS:**
+   - NOAA Marine Weather API
+   - Weather.gov Marine Forecast
+   - Windy.com API (opcional)
+   - National Data Buoy Center (NDBC)
+   - API de mareas (NOAA Tides & Currents)
+
+2. **DATOS EN TIEMPO REAL:**
+   - Velocidad y dirección del viento
+   - Altura y período de olas
+   - Temperatura del agua
+   - Condiciones de marea (altura, horarios)
+   - Visibilidad y condiciones climáticas
+   - Alertas de "Small Craft Advisory"
+
+3. **UBICACIÓN ESPECÍFICA:**
+   - Biscayne Bay, Miami FL
+   - Coordenadas: 25.7311° N, 80.1621° W
+   - Zona de navegación costera
+
+4. **ENDPOINTS DEL MÓDULO:**
+   - GET /api/marine/current → Condiciones actuales
+   - GET /api/marine/forecast → Pronóstico 3 días
+   - GET /api/marine/tides → Tabla de mareas
+   - GET /api/marine/alerts → Alertas activas
+   - GET /api/marine/buoy-data → Datos de boyas cercanas
+
+5. **CARACTERÍSTICAS TÉCNICAS:**
+   - Cache de datos (5 minutos)
+   - Manejo de errores y fallbacks
+   - Formato de respuesta estandarizado
+   - Logging de consultas
+   - Validación de datos
+
+6. **FRONTEND COMPONENT:**
+   - Componente React: /components/MarineConditions.jsx
+   - Display en tarjeta con iconos intuitivos
+   - Colores por severidad (verde/amarillo/rojo)
+   - Actualización automática cada 10 minutos
+
+**CONFIGURACIÓN DE APIs:**
+- NOAA: api.weather.gov
+- Windy: api.windy.com (necesita API key)
+- NDBC: https://www.ndbc.noaa.gov/data/latest_obs/
+
+**IMPLEMENTA:**
+- Servicio principal con métodos async/await
+- Cliente HTTP con axios
+- Parsing y normalización de datos
+- Sistema de alertas automáticas
+- Integración con base de datos existente
+
+¿Puedes desarrollar este módulo completo con estructura modular y documentación?
