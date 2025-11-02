@@ -41,12 +41,7 @@ async function setupVite(app) {
         hmr: {
           clientPort: 443,
         },
-        allowedHosts: [
-          '.replit.dev',
-          '.repl.co',
-          '.replit.app',
-          'gestion.nadakiexcursions.com',
-        ],
+        allowedHosts: 'all', // Permite cualquier dominio (gestion.nadakiexcursions.com, sfrentals.replit.app, etc.)
       },
       appType: 'spa',
     });
