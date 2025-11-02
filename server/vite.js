@@ -45,7 +45,7 @@ async function setupVite(app) {
         hmr: {
           clientPort: 443,
         },
-        allowedHosts: 'all', // Permite cualquier dominio (gestion.nadakiexcursions.com, sfrentals.replit.app, etc.)
+        allowedHosts: true, // Desactiva completamente verificación de hosts - permite cualquier dominio
       },
       appType: 'spa',
     });
