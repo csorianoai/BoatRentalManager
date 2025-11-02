@@ -10,6 +10,7 @@ import MarinePage from './pages/marine'
 import AccountingPage from './pages/accounting'
 import MaintenancePage from './pages/maintenance'
 import MessagesPage from './pages/messages'
+import DemoLoadingPage from './pages/demo-loading'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -34,6 +35,7 @@ export default function App() {
           <Route path="/accounting" component={AccountingPage} />
           <Route path="/maintenance" component={MaintenancePage} />
           <Route path="/messages" component={MessagesPage} />
+          <Route path="/demo-loading" component={DemoLoadingPage} />
         </Switch>
       </QueryClientProvider>
     </ThemeProvider>

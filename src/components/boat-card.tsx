@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion'
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { LoadingButton } from '@/components/loading-button'
 import { Anchor, Users, Clock } from 'lucide-react'
 
 interface BoatCardProps {
@@ -16,6 +16,7 @@ interface BoatCardProps {
   status?: string
   imageUrl?: string
   onBook?: (id: string) => void
+  isBooking?: boolean
 }
 
 export function BoatCard({
@@ -30,6 +31,7 @@ export function BoatCard({
   status = 'active',
   imageUrl,
   onBook,
+  isBooking = false,
 }: BoatCardProps) {
   const getBoatTypeLabel = (type: string) => {
     const labels: Record<string, string> = {
@@ -162,15 +164,17 @@ export function BoatCard({
         </CardContent>
 
         <CardFooter>
-          <Button
+          <LoadingButton
             className="w-full"
             variant="default"
             onClick={() => onBook?.(id)}
             disabled={status !== 'active'}
+            loading={isBooking}
+            loadingText="Reservando..."
             data-testid={`button-book-${id}`}
           >
             {status === 'active' ? 'Reservar Ahora' : 'No Disponible'}
-          </Button>
+          </LoadingButton>
         </CardFooter>
       </Card>
     </motion.div>

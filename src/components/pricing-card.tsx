@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion'
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
+import { LoadingButton } from '@/components/loading-button'
 import { Check, Sparkles } from 'lucide-react'
 
 interface PricingCardProps {
@@ -14,6 +14,7 @@ interface PricingCardProps {
   badge?: string
   onSelect?: (id: string) => void
   ctaText?: string
+  isSelecting?: boolean
 }
 
 export function PricingCard({
@@ -27,6 +28,7 @@ export function PricingCard({
   badge,
   onSelect,
   ctaText = 'Seleccionar Plan',
+  isSelecting = false,
 }: PricingCardProps) {
   const formatPrice = (value: number) => {
     return new Intl.NumberFormat('es-US', {
@@ -111,14 +113,16 @@ export function PricingCard({
         </CardContent>
 
         <CardFooter>
-          <Button
+          <LoadingButton
             className="w-full"
             variant={highlighted ? 'default' : 'outline'}
             onClick={() => onSelect?.(id)}
+            loading={isSelecting}
+            loadingText="Procesando..."
             data-testid={`button-select-${id}`}
           >
             {ctaText}
-          </Button>
+          </LoadingButton>
         </CardFooter>
       </Card>
     </motion.div>
