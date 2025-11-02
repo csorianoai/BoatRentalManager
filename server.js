@@ -3525,7 +3525,7 @@ app.get('/api/pricing/platforms', isAuthenticated, async (req, res) => {
 // ========================================
 
 // Add competitor data
-app.post('/api/pricing/competitor-data', isAuthenticated, async (req, res) => {
+app.post('/api/pricing/competitor-data', async (req, res) => {
   try {
     const data = await dynamicPricingService.addCompetitorData(req.body);
     res.json(data);
@@ -3536,7 +3536,7 @@ app.post('/api/pricing/competitor-data', isAuthenticated, async (req, res) => {
 });
 
 // Get competitor data
-app.get('/api/pricing/competitor-data', isAuthenticated, async (req, res) => {
+app.get('/api/pricing/competitor-data', async (req, res) => {
   try {
     const { region, boatType } = req.query;
     const data = await dynamicPricingService.getCompetitorData(region, boatType);
@@ -3548,7 +3548,7 @@ app.get('/api/pricing/competitor-data', isAuthenticated, async (req, res) => {
 });
 
 // Add market event
-app.post('/api/pricing/market-events', isAuthenticated, async (req, res) => {
+app.post('/api/pricing/market-events', async (req, res) => {
   try {
     const event = await dynamicPricingService.addMarketEvent(req.body);
     res.json(event);
@@ -3559,7 +3559,7 @@ app.post('/api/pricing/market-events', isAuthenticated, async (req, res) => {
 });
 
 // Get active market events
-app.get('/api/pricing/market-events', isAuthenticated, async (req, res) => {
+app.get('/api/pricing/market-events', async (req, res) => {
   try {
     const { region } = req.query;
     const events = await dynamicPricingService.getActiveMarketEvents(region);
@@ -3571,7 +3571,7 @@ app.get('/api/pricing/market-events', isAuthenticated, async (req, res) => {
 });
 
 // Get demand forecast
-app.get('/api/pricing/demand-forecast', isAuthenticated, async (req, res) => {
+app.get('/api/pricing/demand-forecast', async (req, res) => {
   try {
     const { region, boatType, date } = req.query;
     const forecast = await dynamicPricingService.predictDemand(
@@ -3587,7 +3587,7 @@ app.get('/api/pricing/demand-forecast', isAuthenticated, async (req, res) => {
 });
 
 // Generate price recommendation
-app.post('/api/pricing/recommend', isAuthenticated, async (req, res) => {
+app.post('/api/pricing/recommend', async (req, res) => {
   try {
     const { boatId, date, durationHours, region } = req.body;
     
@@ -3609,7 +3609,7 @@ app.post('/api/pricing/recommend', isAuthenticated, async (req, res) => {
 });
 
 // Get recent recommendations
-app.get('/api/pricing/recommendations', isAuthenticated, async (req, res) => {
+app.get('/api/pricing/recommendations', async (req, res) => {
   try {
     const { limit } = req.query;
     const recommendations = await dynamicPricingService.getRecentRecommendations(
@@ -3623,7 +3623,7 @@ app.get('/api/pricing/recommendations', isAuthenticated, async (req, res) => {
 });
 
 // Get market insights
-app.get('/api/pricing/market-insights', isAuthenticated, async (req, res) => {
+app.get('/api/pricing/market-insights', async (req, res) => {
   try {
     const { region } = req.query;
     const insights = await dynamicPricingService.getMarketInsights(region);
@@ -3635,7 +3635,7 @@ app.get('/api/pricing/market-insights', isAuthenticated, async (req, res) => {
 });
 
 // Identify pricing opportunities
-app.get('/api/pricing/opportunities', isAuthenticated, async (req, res) => {
+app.get('/api/pricing/opportunities', async (req, res) => {
   try {
     const { region } = req.query;
     const opportunities = await dynamicPricingService.identifyOpportunities(region || 'Miami');
