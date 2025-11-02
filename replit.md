@@ -49,13 +49,17 @@ Building a comprehensive component library following shadcn patterns:
 - ✅ Premium UI Components: BoatCard (glow hover effects), PricingCard (animated with ribbons), FeatureCard (Lucide iconography)
 - ✅ Complete Loading State System: Skeleton component base, 7 specialized skeletons (BoatCard, PricingCard, FeatureCard, MetricCard, Table, Dashboard, Form), LoadingButton with spinner, integration in premium components
 - ✅ Demo Loading Page (/demo-loading): Interactive showcase of all loading states with button microinteractions, skeleton components, and async operation simulations
+- ✅ Comprehensive API Integration Layer (src/hooks/): 6 custom hook modules with 50+ hooks total covering all backend APIs (bookings, marine, pricing, accounting, maintenance, messages). All hooks follow React Query v5 best practices with hierarchical query keys for efficient cache invalidation, proper TypeScript typing, and strategic staleTime configuration.
+- ✅ Dynamic Pricing Intelligence Page (/pricing): 4 animated tabs (Overview, Demand Forecast, Competitors, Market Events), Recharts AreaChart for 14-day ML demand forecasting, region + boat type filters (Miami/Keys/Tampa/Fort Lauderdale), competitor analysis grid, market event tracking, LoadingButton for AI recommendations, comprehensive loading states with DashboardSkeleton and TableRowSkeleton.
+- ✅ Marine Conditions Real-Time Page (/marine): Live NOAA data integration with safety score indicator (dynamic color coding), 4 current conditions cards (temperature, wind, waves, visibility), weather forecast display (6 periods), tide chart (AreaChart with gradient), NDBC Buoy 41009 real-time data, alert banners for dangerous conditions, refresh functionality with cache clearing using React Query prefix-based invalidation.
 
 **In Progress (React Migration):**
-- Dynamic pricing intelligence dashboard with ML-powered insights
 - Comprehensive accounting interface with transaction management
 - Unified messaging center across 13 booking platforms
 - Boat maintenance tracking system with expense synchronization
-- Real-time marine conditions display with NOAA API integration
+- Mobile optimization (Swiper.js, touch targets, viewport)
+- PWA configuration (manifest, service worker, icons)
+- E2E testing with Playwright
 
 **Legacy System:**
 The original Vanilla JavaScript application remains operational in the `public/` folder during the transition period. Backend Express APIs remain unchanged and compatible with both frontends.
@@ -79,6 +83,7 @@ Key patterns include:
 **Frontend (React):**
 - **React Query Default Fetcher Pattern**: Centralized API fetching via default queryFn in QueryClient configuration. All useQuery calls automatically include credentials: 'include' for session cookie authentication. Configured with 5-minute staleTime, retry: 1, and refetchOnWindowFocus: false for optimal performance.
 - **Shared API Utilities (src/lib/api.ts)**: Two core functions - fetcher() for GET requests (React Query), apiRequest() for mutations (POST/PUT/DELETE). Both include credentials and proper error handling.
+- **Custom Hooks Architecture (src/hooks/)**: Organized into 6 modules (use-bookings, use-marine, use-pricing, use-accounting, use-maintenance, use-messages) with barrel export via index.ts. Query keys use hierarchical arrays (e.g., ['/api/marine', 'summary']) enabling efficient prefix-based cache invalidation. Mutations include automatic queryClient.invalidateQueries for affected caches. Strategic staleTime configuration: 5-10 minutes for frequently updated data, 30-60 minutes for stable data, 24 hours for ML forecasts.
 - **SPA Routing with wouter**: Lightweight routing using wouter's navigate() hook via useLocation() instead of nested anchor tags to avoid DOM nesting violations.
 - **Component Composition**: Premium cards (BoatCard, PricingCard, FeatureCard) with Framer Motion stagger animations, reusable UI components from shadcn/ui library, dynamic theming with boat-type badges, price formatting helpers, interactive callbacks.
 
