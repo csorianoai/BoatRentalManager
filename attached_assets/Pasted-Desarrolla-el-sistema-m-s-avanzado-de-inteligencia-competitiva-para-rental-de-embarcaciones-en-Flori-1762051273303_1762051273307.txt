@@ -1,0 +1,121 @@
+Desarrolla el sistema más avanzado de inteligencia competitiva para rental de embarcaciones en Florida, integrando todas las plataformas principales con scraping ético, machine learning y ajuste automático de precios.
+
+**ARCHITECTURA COMPLETA:**
+
+**ARCHIVOS PRINCIPALES:**
+/services/competitor-analysis.js
+/utils/florida-scraper-manager.js
+/models/competitor-data.js
+/controllers/pricing-strategy-engine.js
+/routes/competitive-intelligence-api.js
+/services/market-alert-system.js
+/utils/proxy-rotation-system.js
+/scripts/data-enrichment-processor.js
+
+**PLATAFORMAS COMPETITIVAS FLORIDA - COBERTURA TOTAL:**
+
+```javascript
+const FLORIDA_BOAT_RENTAL_PLATFORMS = {
+  // PLATAFORMAS NACIONALES PRINCIPALES
+  'GETMYBOAT': {
+    florida_urls: [
+      'https://www.getmyboat.com/charters/florida/miami/',
+      'https://www.getmyboat.com/charters/florida/fort-lauderdale/',
+      'https://www.getmyboat.com/charters/florida/key-west/',
+      'https://www.getmyboat.com/charters/florida/tampa/',
+      'https://www.getmyboat.com/charters/florida/orlando/',
+      'https://www.getmyboat.com/charters/florida/naples/',
+      'https://www.getmyboat.com/charters/florida/destin/'
+    ],
+    priority: 'HIGH',
+    data_points: ['pricing', 'availability', 'reviews', 'vessel_specs']
+  },
+
+  'AIRBNB_EXPERIENCES': {
+    florida_markets: [
+      'https://www.airbnb.com/experiences/miami',
+      'https://www.airbnb.com/experiences/fort-lauderdale',
+      'https://www.airbnb.com/experiences/key-west',
+      'https://www.airbnb.com/experiences/tampa',
+      'https://www.airbnb.com/experiences/orlando',
+      'https://www.airbnb.com/experiences/naples',
+      'https://www.airbnb.com/experiences/destin'
+    ],
+    priority: 'HIGH',
+    data_points: ['experience_pricing', 'rating', 'capacity', 'inclusions']
+  },
+
+  'BOATSETTER': {
+    regions: [
+      'https://www.boatsetter.com/boat-rentals/miami',
+      'https://www.boatsetter.com/boat-rentals/fort-lauderdale',
+      'https://www.boatsetter.com/boat-rentals/key-west',
+      'https://www.boatsetter.com/boat-rentals/tampa-bay'
+    ],
+    priority: 'HIGH',
+    data_points: ['captain_options', 'insurance_details', 'delivery_options']
+  },
+
+  // PLATAFORMAS ESPECIALIZADAS FLORIDA
+  'BOATHUB': {
+    florida_locations: [
+      'https://www.boathub.com/boat-rentals/florida/miami',
+      'https://www.boathub.com/boat-rentals/florida/keys'
+    ],
+    priority: 'MEDIUM',
+    data_points: ['owner_operated', 'fleet_size', 'direct_booking']
+  },
+
+  'MARINA': {
+    locations: [
+      'https://www.marina.com/charters/florida/miami',
+      'https://www.marina.com/charters/florida/fort-lauderdale'
+    ],
+    priority: 'MEDIUM',
+    data_points: ['marina_affiliated', 'premium_services']
+  },
+
+  // OPERADORES LOCALES FLORIDA CLAVE
+  'LOCAL_FLORIDA_OPERATORS': {
+    'MIAMI': [
+      'https://miamiboattours.com',
+      'https://miamiboatcharter.com',
+      'https://biscaynebaycharters.com',
+      'https://miamipontoonrentals.com'
+    ],
+    'KEYS': [
+      'https://keywestboatrentals.com',
+      'https://floridakeysboattours.com',
+      'https://keyswatersports.com'
+    ],
+    'TAMPA_BAY': [
+      'https://tampabayboattours.com',
+      'https://clearwaterbeachboats.com'
+    ],
+    'FORT_LAUDERDALE': [
+      'https://fortlauderdaleboatcharters.com',
+      'https://venetianwaterways.com'
+    ],
+    priority: 'HIGH',
+    data_points: ['local_pricing', 'seasonal_specials', 'package_deals']
+  },
+
+  // PLATAFORMAS DE ACTIVIDADES ACUÁTICAS
+  'VIATOR': {
+    florida_activities: [
+      'https://www.viator.com/Miami-tours/Water-Sports/d662-g12',
+      'https://www.viator.com/Key-West-tours/Water-Sports/d22266-g12'
+    ],
+    priority: 'MEDIUM',
+    data_points: ['tour_packages', 'group_pricing', 'duration_options']
+  },
+
+  'TRIPADVISOR': {
+    experiences: [
+      'https://www.tripadvisor.com/Attractions-g34439-Activities-c61-t183-Miami_Florida.html',
+      'https://www.tripadvisor.com/Attractions-g34345-Activities-c61-t183-Key_West_Florida_Keys_Florida.html'
+    ],
+    priority: 'MEDIUM',
+    data_points: ['review_sentiment', 'popularity_ranking', 'booking_volume']
+  }
+};
