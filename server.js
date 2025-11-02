@@ -320,6 +320,77 @@ async function initializeDatabase() {
     
     console.log('✅ FASE 7 tables created (boats, pricing, availability, sync_jobs)');
     
+    // FASE 7 (Extended): Create dynamic pricing & market intelligence tables
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS competitor_data (
+        id TEXT PRIMARY KEY,
+        region TEXT,
+        competitor_name TEXT,
+        boat_type TEXT,
+        capacity INTEGER,
+        price_half_day NUMERIC(10,2),
+        price_full_day NUMERIC(10,2),
+        recorded_date DATE,
+        source TEXT,
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+    
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS market_events (
+        id TEXT PRIMARY KEY,
+        event_name TEXT NOT NULL,
+        region TEXT,
+        start_date DATE,
+        end_date DATE,
+        price_multiplier NUMERIC(5,2),
+        event_type TEXT,
+        impact_level TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+    
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS demand_forecasts (
+        id TEXT PRIMARY KEY,
+        forecast_date DATE NOT NULL,
+        region TEXT,
+        boat_type TEXT,
+        predicted_demand_score INTEGER,
+        recommended_price_multiplier NUMERIC(5,2),
+        confidence_level NUMERIC(5,2),
+        generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+    
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS pricing_recommendations (
+        id TEXT PRIMARY KEY,
+        boat_id TEXT,
+        recommended_date DATE,
+        duration_hours INTEGER,
+        base_price NUMERIC(10,2),
+        recommended_price NUMERIC(10,2),
+        factors JSONB,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+    
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS customer_segments (
+        id TEXT PRIMARY KEY,
+        segment_name TEXT NOT NULL,
+        characteristics JSONB,
+        price_sensitivity TEXT,
+        preferred_boat_types TEXT[],
+        avg_booking_value NUMERIC(10,2),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+    
+    console.log('✅ FASE 7 (Extended) tables created (competitor_data, market_events, demand_forecasts, pricing_recommendations, customer_segments)');
+    
     // FASE 8: Create chart_of_accounts table (accounting categories)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS chart_of_accounts (
@@ -2154,10 +2225,12 @@ const syncService = require('./server/syncService');
 
 // ⚡ FASE 7: PRICING, AVAILABILITY, AND SYNC JOBS SERVICES
 const PricingService = require('./server/pricingService');
+const DynamicPricingService = require('./server/dynamicPricingService');
 const AvailabilityService = require('./server/availabilityService');
 const SyncJobsWorker = require('./server/syncJobsWorker');
 
 const pricingService = new PricingService(pool);
+const dynamicPricingService = new DynamicPricingService(pool, marineConditionsService);
 const availabilityService = new AvailabilityService(pool);
 const syncJobsWorker = new SyncJobsWorker(pool);
 
@@ -3415,6 +3488,132 @@ app.get('/api/pricing/platforms', isAuthenticated, async (req, res) => {
   } catch (error) {
     console.error('Error getting platforms:', error);
     res.status(500).json({ error: 'Failed to get platforms' });
+  }
+});
+
+// ========================================
+// ⚡ DYNAMIC PRICING & MARKET INTELLIGENCE ENDPOINTS
+// ========================================
+
+// Add competitor data
+app.post('/api/pricing/competitor-data', isAuthenticated, async (req, res) => {
+  try {
+    const data = await dynamicPricingService.addCompetitorData(req.body);
+    res.json(data);
+  } catch (error) {
+    console.error('Error adding competitor data:', error);
+    res.status(500).json({ error: error.message || 'Failed to add competitor data' });
+  }
+});
+
+// Get competitor data
+app.get('/api/pricing/competitor-data', isAuthenticated, async (req, res) => {
+  try {
+    const { region, boatType } = req.query;
+    const data = await dynamicPricingService.getCompetitorData(region, boatType);
+    res.json(data);
+  } catch (error) {
+    console.error('Error getting competitor data:', error);
+    res.status(500).json({ error: 'Failed to get competitor data' });
+  }
+});
+
+// Add market event
+app.post('/api/pricing/market-events', isAuthenticated, async (req, res) => {
+  try {
+    const event = await dynamicPricingService.addMarketEvent(req.body);
+    res.json(event);
+  } catch (error) {
+    console.error('Error adding market event:', error);
+    res.status(500).json({ error: error.message || 'Failed to add market event' });
+  }
+});
+
+// Get active market events
+app.get('/api/pricing/market-events', isAuthenticated, async (req, res) => {
+  try {
+    const { region } = req.query;
+    const events = await dynamicPricingService.getActiveMarketEvents(region);
+    res.json(events);
+  } catch (error) {
+    console.error('Error getting market events:', error);
+    res.status(500).json({ error: 'Failed to get market events' });
+  }
+});
+
+// Get demand forecast
+app.get('/api/pricing/demand-forecast', isAuthenticated, async (req, res) => {
+  try {
+    const { region, boatType, date } = req.query;
+    const forecast = await dynamicPricingService.predictDemand(
+      region || 'Miami',
+      boatType || 'yacht',
+      date || new Date()
+    );
+    res.json(forecast);
+  } catch (error) {
+    console.error('Error generating demand forecast:', error);
+    res.status(500).json({ error: 'Failed to generate demand forecast' });
+  }
+});
+
+// Generate price recommendation
+app.post('/api/pricing/recommend', isAuthenticated, async (req, res) => {
+  try {
+    const { boatId, date, durationHours, region } = req.body;
+    
+    if (!boatId || !date || !durationHours) {
+      return res.status(400).json({ error: 'Missing required fields: boatId, date, durationHours' });
+    }
+    
+    const recommendation = await dynamicPricingService.generatePriceRecommendation(
+      boatId,
+      date,
+      durationHours,
+      region || 'Miami'
+    );
+    res.json(recommendation);
+  } catch (error) {
+    console.error('Error generating price recommendation:', error);
+    res.status(500).json({ error: error.message || 'Failed to generate price recommendation' });
+  }
+});
+
+// Get recent recommendations
+app.get('/api/pricing/recommendations', isAuthenticated, async (req, res) => {
+  try {
+    const { limit } = req.query;
+    const recommendations = await dynamicPricingService.getRecentRecommendations(
+      limit ? parseInt(limit) : 20
+    );
+    res.json(recommendations);
+  } catch (error) {
+    console.error('Error getting recommendations:', error);
+    res.status(500).json({ error: 'Failed to get recommendations' });
+  }
+});
+
+// Get market insights
+app.get('/api/pricing/market-insights', isAuthenticated, async (req, res) => {
+  try {
+    const { region } = req.query;
+    const insights = await dynamicPricingService.getMarketInsights(region);
+    res.json(insights);
+  } catch (error) {
+    console.error('Error getting market insights:', error);
+    res.status(500).json({ error: 'Failed to get market insights' });
+  }
+});
+
+// Identify pricing opportunities
+app.get('/api/pricing/opportunities', isAuthenticated, async (req, res) => {
+  try {
+    const { region } = req.query;
+    const opportunities = await dynamicPricingService.identifyOpportunities(region || 'Miami');
+    res.json(opportunities);
+  } catch (error) {
+    console.error('Error identifying opportunities:', error);
+    res.status(500).json({ error: 'Failed to identify opportunities' });
   }
 });
 
