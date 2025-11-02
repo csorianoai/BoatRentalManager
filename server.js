@@ -1162,7 +1162,10 @@ setInterval(() => {
 }, RATE_LIMIT_WINDOW);
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: true, // Reflects the request origin (allows any origin dynamically)
+  credentials: true // Allows cookies and credentials
+}));
 app.use(express.json());
 
 // React SPA served via Vite - Old public/ folder disabled

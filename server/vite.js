@@ -29,7 +29,23 @@ async function setupVite(app) {
     const { createServer } = await import('vite');
     
     const vite = await createServer({
-      server: { middlewareMode: true },
+      resolve: {
+        alias: {
+          '@': path.resolve(__dirname, '../src'),
+          '@assets': path.resolve(__dirname, '../attached_assets'),
+        },
+      },
+      server: { 
+        middlewareMode: true,
+        host: '0.0.0.0',
+        hmr: {
+          clientPort: 443,
+        },
+        allowedHosts: [
+          '.replit.dev',
+          '.repl.co',
+        ],
+      },
       appType: 'spa',
     });
 
