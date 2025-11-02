@@ -31,7 +31,13 @@ Preferred communication style: Simple, everyday language.
 Custom ThemeProvider with dark/light/system modes, localStorage persistence, and automatic document.documentElement class toggling.
 
 **UI Components:**
-Building a comprehensive component library in `src/components/ui/` following shadcn patterns: Button (with CVA variants), Card, Form controls, Charts, etc.
+Building a comprehensive component library following shadcn patterns:
+- **Base Components** (src/components/ui/): Button (CVA variants), Card, Form controls, Badge, Input, etc.
+- **Premium Components** (src/components/):
+  - BoatCard: Display boats with hover animations, dynamic badges, pricing, features, status indicators
+  - PricingCard: Animated pricing plans with highlighted variants, ribbon badges, staggered feature reveals
+  - FeatureCard: Module cards with Lucide icons, stagger entrance animations, hover elevation
+  - MetricCard: Dashboard metrics with Framer Motion stagger effects
 
 **Completed Features (React Migration - Nov 2, 2025):**
 - ✅ Mobile-first responsive navigation with Navbar, MobileSidebar, FloatingActionMenu using wouter's navigate() hook
@@ -40,6 +46,7 @@ Building a comprehensive component library in `src/components/ui/` following sha
 - ✅ Dashboard with MetricCards (Framer Motion animations), Recharts visualizations, React Query integration
 - ✅ React Query default fetcher with credentials: 'include' for authenticated API requests
 - ✅ Shared API utilities (src/lib/api.ts): fetcher() for GET, apiRequest() for mutations
+- ✅ Premium UI Components: BoatCard (glow hover effects), PricingCard (animated with ribbons), FeatureCard (Lucide iconography)
 
 **In Progress (React Migration):**
 - Dynamic pricing intelligence dashboard with ML-powered insights
@@ -70,8 +77,8 @@ Key patterns include:
 **Frontend (React):**
 - **React Query Default Fetcher Pattern**: Centralized API fetching via default queryFn in QueryClient configuration. All useQuery calls automatically include credentials: 'include' for session cookie authentication. Configured with 5-minute staleTime, retry: 1, and refetchOnWindowFocus: false for optimal performance.
 - **Shared API Utilities (src/lib/api.ts)**: Two core functions - fetcher() for GET requests (React Query), apiRequest() for mutations (POST/PUT/DELETE). Both include credentials and proper error handling.
-- **SPA Routing with wouter**: Lightweight routing using wouter's navigate() hook instead of nested anchor tags to avoid DOM nesting violations.
-- **Component Composition**: MetricCard with Framer Motion stagger animations, reusable UI components from shadcn/ui library.
+- **SPA Routing with wouter**: Lightweight routing using wouter's navigate() hook via useLocation() instead of nested anchor tags to avoid DOM nesting violations.
+- **Component Composition**: Premium cards (BoatCard, PricingCard, FeatureCard) with Framer Motion stagger animations, reusable UI components from shadcn/ui library, dynamic theming with boat-type badges, price formatting helpers, interactive callbacks.
 
 **Backend (Node.js/Express):**
 - Chart.js lifecycle management for stable dashboards
