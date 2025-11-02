@@ -17,6 +17,7 @@ const ofx = require('ofx-js');
 // Dummy middleware - always allow access
 const isAuthenticated = (req, res, next) => next();
 const aiOrchestrator = require('./ai-orchestrator');
+const marineConditionsService = require('./server/marineConditionsService');
 require('dotenv').config();
 
 // Initialize OpenAI with Replit AI Integrations
@@ -2939,6 +2940,87 @@ app.get('/api/schedule/:captainId', isAuthenticated, async (req, res) => {
   }
 });
 
+// ====================================
+// MARINE CONDITIONS API ENDPOINTS
+// ====================================
+
+// Get current marine conditions
+app.get('/api/marine/current', async (req, res) => {
+  try {
+    const data = await marineConditionsService.getCurrentConditions();
+    res.json(data);
+  } catch (error) {
+    console.error('Error getting current conditions:', error);
+    res.status(500).json({ error: 'Failed to get current conditions' });
+  }
+});
+
+// Get marine forecast (3 days)
+app.get('/api/marine/forecast', async (req, res) => {
+  try {
+    const data = await marineConditionsService.getMarineForecast();
+    res.json(data);
+  } catch (error) {
+    console.error('Error getting forecast:', error);
+    res.status(500).json({ error: 'Failed to get forecast' });
+  }
+});
+
+// Get tides data
+app.get('/api/marine/tides', async (req, res) => {
+  try {
+    const data = await marineConditionsService.getTidesData();
+    res.json(data);
+  } catch (error) {
+    console.error('Error getting tides:', error);
+    res.status(500).json({ error: 'Failed to get tides data' });
+  }
+});
+
+// Get active marine alerts
+app.get('/api/marine/alerts', async (req, res) => {
+  try {
+    const data = await marineConditionsService.getMarineAlerts();
+    res.json(data);
+  } catch (error) {
+    console.error('Error getting alerts:', error);
+    res.status(500).json({ error: 'Failed to get alerts' });
+  }
+});
+
+// Get buoy data
+app.get('/api/marine/buoy-data', async (req, res) => {
+  try {
+    const data = await marineConditionsService.getBuoyData();
+    res.json(data);
+  } catch (error) {
+    console.error('Error getting buoy data:', error);
+    res.status(500).json({ error: 'Failed to get buoy data' });
+  }
+});
+
+// Get complete marine summary (all data in one call)
+app.get('/api/marine/summary', async (req, res) => {
+  try {
+    const data = await marineConditionsService.getMarineSummary();
+    res.json(data);
+  } catch (error) {
+    console.error('Error getting marine summary:', error);
+    res.status(500).json({ error: 'Failed to get marine summary' });
+  }
+});
+
+// Clear marine conditions cache (admin only, but no auth right now)
+app.post('/api/marine/clear-cache', isAuthenticated, async (req, res) => {
+  try {
+    marineConditionsService.clearCache();
+    res.json({ success: true, message: 'Cache cleared successfully' });
+  } catch (error) {
+    console.error('Error clearing cache:', error);
+    res.status(500).json({ error: 'Failed to clear cache' });
+  }
+});
+
 // Check for booking conflicts
 app.post('/api/availability/check-conflict', isAuthenticated, async (req, res) => {
   try {
@@ -3030,6 +3112,40 @@ setTimeout(async () => {
     console.error('Error in initial sync:', error);
   }
 }, 30000);
+
+// ⏰ MARINE CONDITIONS ALERT CHECKER
+// Runs every hour to check for dangerous marine conditions
+console.log('🌊 Scheduling marine conditions alert checks...');
+cron.schedule('0 * * * *', async () => {
+  console.log('🌊 Checking marine conditions for alerts...');
+  try {
+    const summary = await marineConditionsService.getMarineSummary();
+    
+    // Check safety rating
+    if (summary.safetyRating.score < 60) {
+      console.log(`⚠️ MARINE ALERT: Safety score is ${summary.safetyRating.score} - ${summary.safetyRating.recommendation}`);
+      
+      // Log dangerous conditions
+      if (summary.safetyRating.conditions.length > 0) {
+        console.log(`Conditions: ${summary.safetyRating.conditions.join(', ')}`);
+      }
+      
+      // TODO: Could send SMS/Email alerts to captains or operations team
+      // For now, just logging to console
+    }
+    
+    // Check for active marine alerts
+    if (summary.alerts.count > 0) {
+      console.log(`⚠️ ACTIVE MARINE ALERTS: ${summary.alerts.count} alert(s)`);
+      summary.alerts.alerts.forEach(alert => {
+        console.log(`- ${alert.event}: ${alert.headline}`);
+      });
+    }
+    
+  } catch (error) {
+    console.error('Error checking marine conditions:', error);
+  }
+});
 
 // ⏰ POST-TRIP FOLLOW-UP SCHEDULER (FASE 6)
 // Runs daily at 10:00 AM to send review requests to customers who completed trips 1-2 days ago
