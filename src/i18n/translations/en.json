@@ -42,7 +42,10 @@
     "viewPricing": "View Dynamic Pricing",
     "marineConditions": "Marine Conditions",
     "vsLastWeek": "vs last week",
-    "vsLastMonth": "vs last month"
+    "vsLastMonth": "vs last month",
+    "loading": "Loading dashboard...",
+    "errorLoading": "Error loading dashboard",
+    "errorMessage": "Could not load dashboard data"
   },
   "pricing": {
     "title": "Smart Dynamic Pricing",

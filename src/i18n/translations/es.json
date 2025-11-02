@@ -42,7 +42,10 @@
     "viewPricing": "Ver Pricing Dinámico",
     "marineConditions": "Condiciones Marinas",
     "vsLastWeek": "vs semana pasada",
-    "vsLastMonth": "vs mes pasado"
+    "vsLastMonth": "vs mes pasado",
+    "loading": "Cargando dashboard...",
+    "errorLoading": "Error cargando dashboard",
+    "errorMessage": "No se pudieron cargar los datos del dashboard"
   },
   "pricing": {
     "title": "Pricing Dinámico Inteligente",

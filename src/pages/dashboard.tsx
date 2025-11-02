@@ -1,9 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
+import { motion } from 'framer-motion'
 import { MainLayout } from '@/components/layout/main-layout'
-import { MetricCard } from '@/components/metric-card'
-import { DollarSign, Calendar, Users, Ship, RefreshCw, AlertTriangle } from 'lucide-react'
+import { EnhancedMetricCard } from '@/components/enhanced-metric-card'
+import { DollarSign, Calendar, Users, Ship, RefreshCw, AlertTriangle, Plus, TrendingUp, Waves, DollarSignIcon } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { useLanguage } from '@/i18n/LanguageContext'
+import { useLocation } from 'wouter'
 
 interface DashboardData {
   today_bookings: number
@@ -24,6 +27,8 @@ export default function DashboardPage() {
     queryKey: ['/api/dashboard-data'],
     refetchInterval: 60 * 1000, // Refetch every minute
   })
+  const { t } = useLanguage()
+  const [, navigate] = useLocation()
 
   if (isLoading) {
     return (
@@ -31,7 +36,7 @@ export default function DashboardPage() {
         <div className="p-4 md:p-8 flex items-center justify-center min-h-[50vh]">
           <div className="flex flex-col items-center gap-4">
             <RefreshCw className="w-8 h-8 animate-spin text-primary" />
-            <p className="text-muted-foreground">Cargando dashboard...</p>
+            <p className="text-muted-foreground">{t('dashboard.loading')}</p>
           </div>
         </div>
       </MainLayout>
@@ -46,8 +51,8 @@ export default function DashboardPage() {
             <CardContent className="p-6 flex items-center gap-4">
               <AlertTriangle className="w-8 h-8 text-destructive" />
               <div>
-                <h3 className="font-semibold text-destructive">Error cargando dashboard</h3>
-                <p className="text-sm text-muted-foreground">No se pudieron cargar los datos del dashboard</p>
+                <h3 className="font-semibold text-destructive">{t('dashboard.errorLoading')}</h3>
+                <p className="text-sm text-muted-foreground">{t('dashboard.errorMessage')}</p>
               </div>
             </CardContent>
           </Card>
@@ -66,47 +71,144 @@ export default function DashboardPage() {
 
   return (
     <MainLayout>
-      <div className="p-4 md:p-8">
-        <h1 className="text-3xl font-bold text-primary mb-2" data-testid="heading-dashboard">
-          Dashboard
-        </h1>
-        <p className="text-muted-foreground mb-8">Vista general de métricas y bookings</p>
+      {/* Hero Section with Gradient */}
+      <motion.div 
+        className="relative bg-gradient-to-br from-[#0A2E52] via-[#1E90FF] to-[#0A2E52] text-white overflow-hidden"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.8 }}
+      >
+        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wNSI+PHBhdGggZD0iTTM2IDM0djItaDJWMzZoLTJ6bTAtNGgydjJoLTJ2LTJ6bTAtNHYyaC0ydi0yaDF6bS0yLTJ2LTJoMnYyaC0yem0tMiAwdjJoLTJ2LTJoMnptLTItMmgtMnYtMmgydjJ6bTItMnYtMmgydjJoLTJ6bTIgMGgydjJoLTJ2LTJ6bTIgMnYyaC0ydi0yaDJ6bTAgMmgydjJoLTJ2LTJ6bS0yIDBoLTJ2Mmgydi0yem0wLTJoMnYtMmgydjJoLTJ2Mmgtdi0yem0wLTJ2LTJoMnYyaC0yem0tMi0yaDJ2Mmgtdi0yem0tMiAyaDJ2MmgtMnYtMnptMC0yaC0ydjJoMnYtMnoiLz48L2c+PC9nPjwvc3ZnPg==')] opacity-20"></div>
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+          <motion.div
+            initial={{ y: 20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ duration: 0.6, delay: 0.2 }}
+          >
+            <h1 className="text-4xl md:text-5xl font-bold mb-3" data-testid="heading-dashboard">
+              {t('dashboard.title')}
+            </h1>
+            <p className="text-xl text-blue-100 max-w-2xl">
+              {t('dashboard.subtitle')}
+            </p>
+          </motion.div>
+        </div>
+      </motion.div>
 
-        {/* Metrics Grid */}
+      <div className="p-4 md:p-8">
+        {/* Enhanced Metrics Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <MetricCard
-            title="Revenue Total"
-            value={formatCurrency(data.total_revenue)}
+          <EnhancedMetricCard
+            title={t('dashboard.totalRevenue')}
+            value={data.total_revenue}
+            prefix="$"
             icon={DollarSign}
             index={0}
+            trend={{ value: 12, label: t('dashboard.vsLastWeek') }}
+            variant="success"
           />
-          <MetricCard
-            title="Bookings Semana"
+          <EnhancedMetricCard
+            title={t('dashboard.weekBookings')}
             value={data.week_bookings}
             icon={Calendar}
             index={1}
+            trend={{ value: 8, label: t('dashboard.vsLastWeek') }}
+            variant="default"
           />
-          <MetricCard
-            title="Capitanes Activos"
-            value={`${data.active_captains} / ${data.total_captains}`}
+          <EnhancedMetricCard
+            title={t('dashboard.activeCaptains')}
+            value={`${data.active_captains}/${data.total_captains}`}
             icon={Users}
             index={2}
+            variant="default"
           />
-          <MetricCard
-            title="Revenue Semanal"
-            value={formatCurrency(data.week_revenue)}
+          <EnhancedMetricCard
+            title={t('dashboard.weekRevenue')}
+            value={data.week_revenue}
+            prefix="$"
             icon={Ship}
             index={3}
+            trend={{ value: 15, label: t('dashboard.vsLastWeek') }}
+            variant="success"
           />
         </div>
 
-        {/* Charts Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Quick Actions */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.4 }}
+          className="mb-8"
+        >
+          <h2 className="text-2xl font-bold mb-4">{t('dashboard.quickActions')}</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card className="hover-elevate active-elevate-2 cursor-pointer transition-all">
+              <CardContent className="p-6">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-primary/10 text-primary rounded-lg">
+                    <Plus className="w-6 h-6" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-lg mb-1">{t('dashboard.newBooking')}</h3>
+                    <p className="text-sm text-muted-foreground">Crear nueva reserva</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card 
+              className="hover-elevate active-elevate-2 cursor-pointer transition-all"
+              onClick={() => navigate('/pricing')}
+              data-testid="quick-action-pricing"
+            >
+              <CardContent className="p-6">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-accent/10 text-accent rounded-lg">
+                    <TrendingUp className="w-6 h-6" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-lg mb-1">{t('dashboard.viewPricing')}</h3>
+                    <p className="text-sm text-muted-foreground">Inteligencia ML de mercado</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card 
+              className="hover-elevate active-elevate-2 cursor-pointer transition-all"
+              onClick={() => navigate('/marine')}
+              data-testid="quick-action-marine"
+            >
+              <CardContent className="p-6">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-secondary/10 text-secondary rounded-lg">
+                    <Waves className="w-6 h-6" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-lg mb-1">{t('dashboard.marineConditions')}</h3>
+                    <p className="text-sm text-muted-foreground">Datos NOAA en vivo</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </motion.div>
+
+        {/* Charts Grid - Enhanced with Gradients */}
+        <motion.div
+          className="grid grid-cols-1 lg:grid-cols-2 gap-6"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.6 }}
+        >
           {/* Revenue Chart */}
-          <Card data-testid="card-revenue-chart">
+          <Card data-testid="card-revenue-chart" className="hover-elevate transition-all">
             <CardHeader>
-              <CardTitle>Revenue por Plataforma</CardTitle>
-              <CardDescription>Distribución actual</CardDescription>
+              <CardTitle className="flex items-center gap-2">
+                <DollarSignIcon className="w-5 h-5 text-[#D4AF37]" />
+                {t('dashboard.revenueByPlatform')}
+              </CardTitle>
+              <CardDescription>Distribución actual de ingresos</CardDescription>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={300}>
@@ -114,21 +216,28 @@ export default function DashboardPage() {
                   platform,
                   revenue,
                 }))}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                  <defs>
+                    <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#D4AF37" stopOpacity={0.9} />
+                      <stop offset="100%" stopColor="#D4AF37" stopOpacity={0.3} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" opacity={0.2} />
                   <XAxis dataKey="platform" className="text-xs" angle={-45} textAnchor="end" height={100} />
                   <YAxis className="text-xs" />
                   <Tooltip 
                     contentStyle={{ 
                       backgroundColor: 'hsl(var(--card))',
                       border: '1px solid hsl(var(--border))',
-                      borderRadius: '6px'
+                      borderRadius: '8px',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
                     }}
                     formatter={(value) => formatCurrency(Number(value))}
                   />
                   <Bar 
                     dataKey="revenue" 
-                    fill="hsl(var(--accent))" 
-                    radius={[4, 4, 0, 0]}
+                    fill="url(#revenueGradient)" 
+                    radius={[8, 8, 0, 0]}
                   />
                 </BarChart>
               </ResponsiveContainer>
@@ -136,34 +245,44 @@ export default function DashboardPage() {
           </Card>
 
           {/* Bookings by Platform Chart */}
-          <Card data-testid="card-platform-chart">
+          <Card data-testid="card-platform-chart" className="hover-elevate transition-all">
             <CardHeader>
-              <CardTitle>Bookings por Plataforma</CardTitle>
-              <CardDescription>Distribución actual</CardDescription>
+              <CardTitle className="flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-secondary" />
+                {t('dashboard.bookingsByPlatform')}
+              </CardTitle>
+              <CardDescription>Distribución actual de reservas</CardDescription>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={platformData}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                  <defs>
+                    <linearGradient id="bookingsGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#1E90FF" stopOpacity={0.9} />
+                      <stop offset="100%" stopColor="#1E90FF" stopOpacity={0.3} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" opacity={0.2} />
                   <XAxis dataKey="platform" className="text-xs" angle={-45} textAnchor="end" height={100} />
                   <YAxis className="text-xs" />
                   <Tooltip 
                     contentStyle={{ 
                       backgroundColor: 'hsl(var(--card))',
                       border: '1px solid hsl(var(--border))',
-                      borderRadius: '6px'
+                      borderRadius: '8px',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
                     }}
                   />
                   <Bar 
                     dataKey="bookings" 
-                    fill="hsl(var(--secondary))" 
-                    radius={[4, 4, 0, 0]}
+                    fill="url(#bookingsGradient)" 
+                    radius={[8, 8, 0, 0]}
                   />
                 </BarChart>
               </ResponsiveContainer>
             </CardContent>
           </Card>
-        </div>
+        </motion.div>
       </div>
     </MainLayout>
   )
