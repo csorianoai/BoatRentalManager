@@ -1,12 +1,13 @@
 {
-  "name": "Nadaki Captain App",
+  "name": "Nadaki Excursions Portal",
   "short_name": "Nadaki",
-  "description": "Portal móvil para capitanes de Nadaki Excursions",
-  "start_url": "/captain.html",
+  "description": "Sistema de gestión integral para excursiones náuticas Nadaki - Reservas, capitanes, contabilidad, pricing dinámico y más",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#006494",
-  "theme_color": "#006494",
-  "orientation": "portrait",
+  "background_color": "#0A2E52",
+  "theme_color": "#1E90FF",
+  "orientation": "portrait-primary",
   "icons": [
     {
       "src": "/icon-192.svg",
@@ -21,7 +22,30 @@
       "purpose": "any maskable"
     }
   ],
-  "categories": ["business", "productivity"],
-  "lang": "es-MX",
-  "dir": "ltr"
+  "categories": ["business", "productivity", "travel"],
+  "lang": "es",
+  "dir": "ltr",
+  "shortcuts": [
+    {
+      "name": "Dashboard",
+      "short_name": "Dashboard",
+      "description": "Ver métricas y bookings en tiempo real",
+      "url": "/dashboard",
+      "icons": [{ "src": "/icon-192.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "Pricing Dinámico",
+      "short_name": "Pricing",
+      "description": "Inteligencia de mercado y recomendaciones ML",
+      "url": "/pricing",
+      "icons": [{ "src": "/icon-192.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "Condiciones Marinas",
+      "short_name": "Marine",
+      "description": "Datos NOAA en tiempo real",
+      "url": "/marine",
+      "icons": [{ "src": "/icon-192.svg", "sizes": "192x192" }]
+    }
+  ]
 }

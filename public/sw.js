@@ -1,10 +1,11 @@
-// Service Worker for Nadaki Captain App
-const CACHE_NAME = 'nadaki-captain-v1';
+// Service Worker for Nadaki Excursions Portal
+const CACHE_NAME = 'nadaki-portal-v2';
 const urlsToCache = [
-  '/captain.html',
-  '/captain.css',
-  '/captain.js',
-  '/manifest.json'
+  '/',
+  '/index.html',
+  '/manifest.json',
+  '/icon-192.svg',
+  '/icon-512.svg'
 ];
 
 // Install event - cache resources
