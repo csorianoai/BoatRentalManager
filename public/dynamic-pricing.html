@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pricing Dinámico & Inteligencia de Mercado - Nadaki Excursions</title>
+    <link rel="stylesheet" href="pricing.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <!-- Navegación -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-brand">
+                <h1>⛵ Nadaki Excursions</h1>
+            </div>
+            <div class="nav-links">
+                <a href="/dashboard.html">📊 Dashboard</a>
+                <a href="/pricing.html">💵 Precios</a>
+                <a href="/dynamic-pricing.html" class="active">🧠 Pricing Dinámico</a>
+                <a href="/marine-conditions.html">🌊 Condiciones</a>
+                <button id="logout-btn" data-testid="button-logout" class="logout-btn">🚪 Cerrar Sesión</button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <!-- Header -->
+        <div class="header-actions">
+            <h1>🧠 Pricing Dinámico & Inteligencia de Mercado</h1>
+            <button id="refresh-all-btn" data-testid="button-refresh-all" class="btn btn-primary">🔄 Actualizar Todo</button>
+        </div>
+
+        <!-- Tabs Navigation -->
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="insights" data-testid="tab-insights">
+                📊 Insights de Mercado
+            </button>
+            <button class="tab-btn" data-tab="recommendations" data-testid="tab-recommendations">
+                💡 Recomendaciones
+            </button>
+            <button class="tab-btn" data-tab="opportunities" data-testid="tab-opportunities">
+                🎯 Oportunidades
+            </button>
+            <button class="tab-btn" data-tab="competitors" data-testid="tab-competitors">
+                🏢 Datos de Competencia
+            </button>
+            <button class="tab-btn" data-tab="events" data-testid="tab-events">
+                📅 Eventos de Mercado
+            </button>
+        </div>
+
+        <!-- Tab 1: Market Insights -->
+        <div class="tab-content active" id="insights-tab">
+            <h2>📊 Análisis de Inteligencia de Mercado</h2>
+            
+            <!-- Region Selector -->
+            <div class="boat-selector">
+                <label for="insights-region">Región:</label>
+                <select id="insights-region" data-testid="select-insights-region">
+                    <option value="Miami">Miami</option>
+                    <option value="Keys">Keys</option>
+                    <option value="Tampa">Tampa</option>
+                    <option value="Fort Lauderdale">Fort Lauderdale</option>
+                </select>
+                <button id="load-insights-btn" data-testid="button-load-insights" class="btn btn-primary">📈 Cargar Insights</button>
+            </div>
+
+            <!-- Insights Summary Cards -->
+            <div class="insights-summary" id="insights-summary">
+                <div class="insight-card">
+                    <h3>Nivel de Demanda Actual</h3>
+                    <p class="insight-value" id="demand-level">Cargando...</p>
+                    <p class="insight-label">Score Promedio: <span id="avg-demand-score">--</span></p>
+                </div>
+                
+                <div class="insight-card">
+                    <h3>Multiplicador Regional</h3>
+                    <p class="insight-value" id="regional-multiplier">--</p>
+                    <p class="insight-label">Ajuste de precio sugerido</p>
+                </div>
+                
+                <div class="insight-card">
+                    <h3>Eventos Activos</h3>
+                    <p class="insight-value" id="active-events-count">--</p>
+                    <p class="insight-label">Eventos impactando precios</p>
+                </div>
+                
+                <div class="insight-card">
+                    <h3>Competidores Monitoreados</h3>
+                    <p class="insight-value" id="competitors-count">--</p>
+                    <p class="insight-label">Precio promedio: $<span id="avg-competitor-price">--</span></p>
+                </div>
+            </div>
+
+            <!-- Demand Forecast Chart -->
+            <div class="chart-container">
+                <h3>📈 Pronóstico de Demanda (Próximos 7 Días)</h3>
+                <canvas id="demand-forecast-chart"></canvas>
+            </div>
+
+            <!-- Competitor Price Comparison Chart -->
+            <div class="chart-container">
+                <h3>💰 Comparación de Precios vs Competencia</h3>
+                <canvas id="competitor-comparison-chart"></canvas>
+            </div>
+        </div>
+
+        <!-- Tab 2: Price Recommendations -->
+        <div class="tab-content" id="recommendations-tab">
+            <div class="header-actions">
+                <h2>💡 Recomendaciones de Precio</h2>
+                <button id="generate-recommendation-btn" data-testid="button-generate-recommendation" class="btn btn-primary">➕ Nueva Recomendación</button>
+            </div>
+
+            <!-- Generate Recommendation Form (hidden by default) -->
+            <div id="recommendation-form-container" class="form-container" style="display: none;">
+                <h3>Generar Nueva Recomendación</h3>
+                <form id="recommendation-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="rec-boat">Barco:</label>
+                            <select id="rec-boat" data-testid="select-rec-boat" required>
+                                <option value="">Seleccionar...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="rec-date">Fecha:</label>
+                            <input type="date" id="rec-date" data-testid="input-rec-date" required>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="rec-duration">Duración:</label>
+                            <select id="rec-duration" data-testid="select-rec-duration" required>
+                                <option value="4">4 horas (Medio día)</option>
+                                <option value="8">8 horas (Día completo)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="rec-region">Región:</label>
+                            <select id="rec-region" data-testid="select-rec-region" required>
+                                <option value="Miami">Miami</option>
+                                <option value="Keys">Keys</option>
+                                <option value="Tampa">Tampa</option>
+                                <option value="Fort Lauderdale">Fort Lauderdale</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary" data-testid="button-submit-recommendation">🎯 Generar</button>
+                        <button type="button" id="cancel-rec-form" class="btn btn-secondary" data-testid="button-cancel-rec-form">Cancelar</button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Recommendations List -->
+            <div class="recommendations-list" id="recommendations-list">
+                <p class="loading">Cargando recomendaciones...</p>
+            </div>
+        </div>
+
+        <!-- Tab 3: Opportunities -->
+        <div class="tab-content" id="opportunities-tab">
+            <div class="header-actions">
+                <h2>🎯 Oportunidades de Pricing</h2>
+                <div class="boat-selector">
+                    <label for="opp-region">Región:</label>
+                    <select id="opp-region" data-testid="select-opp-region">
+                        <option value="Miami">Miami</option>
+                        <option value="Keys">Keys</option>
+                        <option value="Tampa">Tampa</option>
+                        <option value="Fort Lauderdale">Fort Lauderdale</option>
+                    </select>
+                    <button id="load-opportunities-btn" data-testid="button-load-opportunities" class="btn btn-primary">🔍 Buscar</button>
+                </div>
+            </div>
+
+            <!-- Opportunities List -->
+            <div class="opportunities-list" id="opportunities-list">
+                <p class="loading">Cargando oportunidades...</p>
+            </div>
+        </div>
+
+        <!-- Tab 4: Competitor Data -->
+        <div class="tab-content" id="competitors-tab">
+            <div class="header-actions">
+                <h2>🏢 Datos de Competencia</h2>
+                <button id="add-competitor-btn" data-testid="button-add-competitor" class="btn btn-primary">➕ Agregar Datos</button>
+            </div>
+
+            <!-- Add Competitor Form (hidden by default) -->
+            <div id="competitor-form-container" class="form-container" style="display: none;">
+                <h3>Agregar Datos de Competidor</h3>
+                <form id="competitor-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="comp-name">Nombre del Competidor:</label>
+                            <input type="text" id="comp-name" data-testid="input-comp-name" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="comp-region">Región:</label>
+                            <select id="comp-region" data-testid="select-comp-region" required>
+                                <option value="Miami">Miami</option>
+                                <option value="Keys">Keys</option>
+                                <option value="Tampa">Tampa</option>
+                                <option value="Fort Lauderdale">Fort Lauderdale</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="comp-boat-type">Tipo de Barco:</label>
+                            <input type="text" id="comp-boat-type" data-testid="input-comp-boat-type" placeholder="e.g., Yacht, Sailboat">
+                        </div>
+                        <div class="form-group">
+                            <label for="comp-capacity">Capacidad:</label>
+                            <input type="number" id="comp-capacity" data-testid="input-comp-capacity" placeholder="Número de pasajeros">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="comp-price-half">Precio Medio Día ($):</label>
+                            <input type="number" step="0.01" id="comp-price-half" data-testid="input-comp-price-half">
+                        </div>
+                        <div class="form-group">
+                            <label for="comp-price-full">Precio Día Completo ($):</label>
+                            <input type="number" step="0.01" id="comp-price-full" data-testid="input-comp-price-full">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="comp-date">Fecha de Registro:</label>
+                            <input type="date" id="comp-date" data-testid="input-comp-date" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="comp-source">Fuente:</label>
+                            <input type="text" id="comp-source" data-testid="input-comp-source" placeholder="e.g., website, phone call">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="comp-notes">Notas:</label>
+                        <textarea id="comp-notes" data-testid="textarea-comp-notes" rows="3"></textarea>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary" data-testid="button-submit-competitor">💾 Guardar</button>
+                        <button type="button" id="cancel-comp-form" class="btn btn-secondary" data-testid="button-cancel-comp-form">Cancelar</button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Competitor Data Table -->
+            <div class="competitor-data-table" id="competitor-data-table">
+                <p class="loading">Cargando datos de competidores...</p>
+            </div>
+        </div>
+
+        <!-- Tab 5: Market Events -->
+        <div class="tab-content" id="events-tab">
+            <div class="header-actions">
+                <h2>📅 Eventos de Mercado</h2>
+                <button id="add-event-btn" data-testid="button-add-event" class="btn btn-primary">➕ Agregar Evento</button>
+            </div>
+
+            <!-- Add Event Form (hidden by default) -->
+            <div id="event-form-container" class="form-container" style="display: none;">
+                <h3>Agregar Evento de Mercado</h3>
+                <form id="event-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="event-name">Nombre del Evento:</label>
+                            <input type="text" id="event-name" data-testid="input-event-name" required placeholder="e.g., Miami Boat Show">
+                        </div>
+                        <div class="form-group">
+                            <label for="event-region">Región:</label>
+                            <select id="event-region" data-testid="select-event-region" required>
+                                <option value="Miami">Miami</option>
+                                <option value="Keys">Keys</option>
+                                <option value="Tampa">Tampa</option>
+                                <option value="Fort Lauderdale">Fort Lauderdale</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="event-start">Fecha Inicio:</label>
+                            <input type="date" id="event-start" data-testid="input-event-start" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="event-end">Fecha Fin:</label>
+                            <input type="date" id="event-end" data-testid="input-event-end" required>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="event-multiplier">Multiplicador de Precio:</label>
+                            <input type="number" step="0.01" id="event-multiplier" data-testid="input-event-multiplier" required placeholder="e.g., 1.25 = +25%">
+                        </div>
+                        <div class="form-group">
+                            <label for="event-type">Tipo de Evento:</label>
+                            <select id="event-type" data-testid="select-event-type" required>
+                                <option value="festival">Festival</option>
+                                <option value="sport">Evento Deportivo</option>
+                                <option value="holiday">Feriado</option>
+                                <option value="conference">Conferencia</option>
+                                <option value="other">Otro</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="event-impact">Nivel de Impacto:</label>
+                        <select id="event-impact" data-testid="select-event-impact" required>
+                            <option value="low">Bajo</option>
+                            <option value="medium">Medio</option>
+                            <option value="high">Alto</option>
+                        </select>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary" data-testid="button-submit-event">💾 Guardar</button>
+                        <button type="button" id="cancel-event-form" class="btn btn-secondary" data-testid="button-cancel-event-form">Cancelar</button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Events List -->
+            <div class="events-list" id="events-list">
+                <p class="loading">Cargando eventos...</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="dynamic-pricing.js"></script>
+</body>
+</html>

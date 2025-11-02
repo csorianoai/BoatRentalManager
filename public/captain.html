@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#006494">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Nadaki Captain App</title>
+    <link rel="stylesheet" href="captain.css">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="apple-touch-icon" href="/icon-192.png">
+</head>
+<body>
+    <div id="app" class="app">
+        <!-- Login Screen -->
+        <div id="loginScreen" class="screen active">
+            <div class="login-container">
+                <div class="logo-section">
+                    <h1>⚓ Nadaki Captain</h1>
+                    <p>Portal para Capitanes</p>
+                </div>
+                <form id="loginForm" class="login-form">
+                    <div class="form-group">
+                        <label for="captainId">Captain ID</label>
+                        <input 
+                            type="text" 
+                            id="captainId" 
+                            name="captainId" 
+                            placeholder="cap_12345"
+                            required
+                            data-testid="input-captain-id">
+                    </div>
+                    <button type="submit" class="btn btn-primary" data-testid="button-login">
+                        Iniciar Sesión
+                    </button>
+                </form>
+                <div class="quick-access">
+                    <p class="quick-access-title">Acceso rápido de prueba:</p>
+                    <button class="btn-quick-access" onclick="quickLogin('cap_001')" data-testid="button-quick-captain1">
+                        Capitán 1 (Juan Pérez)
+                    </button>
+                    <button class="btn-quick-access" onclick="quickLogin('cap_002')" data-testid="button-quick-captain2">
+                        Capitán 2 (María García)
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Screen -->
+        <div id="mainScreen" class="screen">
+            <!-- Header -->
+            <header class="app-header">
+                <div class="header-content">
+                    <h1>⚓ Nadaki</h1>
+                    <span id="captainName" class="captain-name"></span>
+                </div>
+                <button id="logoutBtn" class="btn-icon" data-testid="button-logout">
+                    🚪
+                </button>
+            </header>
+
+            <!-- Navigation Tabs -->
+            <nav class="nav-tabs">
+                <button class="nav-tab active" data-tab="assignments" data-testid="tab-assignments">
+                    📋 Asignaciones
+                </button>
+                <button class="nav-tab" data-tab="history" data-testid="tab-history">
+                    🗂️ Historial
+                </button>
+            </nav>
+
+            <!-- Assignments Tab -->
+            <div id="assignmentsTab" class="tab-content active">
+                <div class="tab-header">
+                    <h2>Mis Asignaciones</h2>
+                    <button id="refreshAssignments" class="btn-refresh" data-testid="button-refresh-assignments">
+                        🔄 Actualizar
+                    </button>
+                </div>
+                
+                <div id="assignmentsList" class="assignments-list">
+                    <!-- Loaded via JS -->
+                </div>
+            </div>
+
+            <!-- History Tab -->
+            <div id="historyTab" class="tab-content">
+                <div class="tab-header">
+                    <h2>Historial de Viajes</h2>
+                    <button id="refreshHistory" class="btn-refresh" data-testid="button-refresh-history">
+                        🔄 Actualizar
+                    </button>
+                </div>
+                
+                <div id="historyList" class="history-list">
+                    <!-- Loaded via JS -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Trip Detail Screen -->
+        <div id="tripDetailScreen" class="screen">
+            <header class="app-header">
+                <button id="backToMain" class="btn-icon" data-testid="button-back">
+                    ← Volver
+                </button>
+                <h1>Detalles del Viaje</h1>
+            </header>
+
+            <div class="trip-detail-content">
+                <div id="tripInfo" class="trip-info">
+                    <!-- Loaded via JS -->
+                </div>
+
+                <div id="tripActions" class="trip-actions">
+                    <!-- Loaded via JS -->
+                </div>
+
+                <div id="tripReport" class="trip-report-section" style="display: none;">
+                    <!-- Report form loaded via JS -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay" style="display: none;">
+        <div class="spinner"></div>
+        <p>Cargando...</p>
+    </div>
+
+    <!-- GPS Status Bar -->
+    <div id="gpsStatus" class="gps-status" style="display: none;">
+        📍 GPS: <span id="gpsAccuracy">---</span>
+    </div>
+
+    <script src="captain.js"></script>
+</body>
+</html>

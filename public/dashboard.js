@@ -1,0 +1,1264 @@
+// Business Intelligence Dashboard for Nadaki Excursions
+
+// Helper function for authenticated fetch
+async function authFetch(url, options = {}) {
+    try {
+        const response = await fetch(url, options);
+        if (response.status === 401) {
+            window.location.href = '/api/login';
+            throw new Error('Unauthorized');
+        }
+        return response;
+    } catch (error) {
+        if (error.message === 'Unauthorized') {
+            throw error;
+        }
+        console.error('Fetch error:', error);
+        throw error;
+    }
+}
+
+// Multi-language support
+const translations = {
+    es: {
+        'dashboard-title': 'Dashboard de Inteligencia de Negocio',
+        'refresh': '🔄 Actualizar',
+        'date-range': 'Rango de Fecha:',
+        'today': 'Hoy',
+        'this-week': 'Esta Semana',
+        'this-month': 'Este Mes',
+        'quarter': 'Trimestre',
+        'custom': 'Personalizado',
+        'platform': 'Plataforma:',
+        'all-platforms': 'Todas las Plataformas',
+        'export-pdf': '📄 Exportar PDF',
+        'export-excel': '📊 Exportar Excel',
+        'today-bookings': 'Reservas Hoy',
+        'today-revenue': 'Ingresos Hoy',
+        'active-captains': 'Capitanes Activos',
+        'satisfaction': 'Satisfacción',
+        'of-total': 'de {count} total',
+        'avg-rating': 'Promedio',
+        'revenue-by-platform': 'Ingresos por Plataforma',
+        'monthly-trends': 'Tendencias Mensuales',
+        'booking-distribution': 'Distribución de Reservas',
+        'platform-leaderboard': '🏆 Ranking de Plataformas',
+        'captain-performance': 'Rendimiento de Capitanes',
+        'recent-bookings': 'Reservas Recientes',
+        'bookings': 'Reservas',
+        'revenue': 'Ingresos',
+        'view-all': 'Ver Todas',
+        'booking-id': 'ID',
+        'customer': 'Cliente',
+        'boat': 'Barco',
+        'date': 'Fecha',
+        'amount': 'Monto',
+        'status': 'Estado',
+        'last-updated': 'Última actualización:',
+        'auto-refresh': 'Actualización automática cada 30s'
+    },
+    en: {
+        'dashboard-title': 'Business Intelligence Dashboard',
+        'refresh': '🔄 Refresh',
+        'date-range': 'Date Range:',
+        'today': 'Today',
+        'this-week': 'This Week',
+        'this-month': 'This Month',
+        'quarter': 'Quarter',
+        'custom': 'Custom',
+        'platform': 'Platform:',
+        'all-platforms': 'All Platforms',
+        'export-pdf': '📄 Export PDF',
+        'export-excel': '📊 Export Excel',
+        'today-bookings': "Today's Bookings",
+        'today-revenue': "Today's Revenue",
+        'active-captains': 'Active Captains',
+        'satisfaction': 'Satisfaction',
+        'of-total': 'of {count} total',
+        'avg-rating': 'Average',
+        'revenue-by-platform': 'Revenue by Platform',
+        'monthly-trends': 'Monthly Trends',
+        'booking-distribution': 'Booking Distribution',
+        'platform-leaderboard': '🏆 Platform Leaderboard',
+        'captain-performance': 'Captain Performance',
+        'recent-bookings': 'Recent Bookings',
+        'bookings': 'Bookings',
+        'revenue': 'Revenue',
+        'view-all': 'View All',
+        'booking-id': 'ID',
+        'customer': 'Customer',
+        'boat': 'Boat',
+        'date': 'Date',
+        'amount': 'Amount',
+        'status': 'Status',
+        'last-updated': 'Last updated:',
+        'auto-refresh': 'Auto-refresh every 30s'
+    }
+};
+
+// Global state
+let currentLang = 'es';
+let currentTheme = 'light';
+let charts = {};
+let refreshInterval;
+let dashboardData = null;
+
+// API Configuration
+const API_BASE = window.location.origin;
+
+// Initialize Dashboard
+document.addEventListener('DOMContentLoaded', () => {
+    console.log('Dashboard initializing...');
+    console.log('Chart.js available:', typeof Chart !== 'undefined');
+    initializeEventListeners();
+    loadDashboardData();
+    startAutoRefresh();
+});
+
+function initializeEventListeners() {
+    document.getElementById('refreshBtn').addEventListener('click', loadDashboardData);
+    document.getElementById('themeToggle').addEventListener('click', toggleTheme);
+    document.getElementById('langToggle').addEventListener('click', toggleLanguage);
+    document.getElementById('dateRange').addEventListener('change', loadDashboardData);
+    document.getElementById('platformFilter').addEventListener('change', loadDashboardData);
+    document.getElementById('exportPDF').addEventListener('click', exportToPDF);
+    document.getElementById('exportExcel').addEventListener('click', exportToExcel);
+}
+
+// Data Loading
+async function loadDashboardData() {
+    try {
+        showLoadingState();
+        
+        // Fetch dashboard data
+        const response = await authFetch(`${API_BASE}/api/dashboard-data`);
+        dashboardData = await response.json();
+        
+        // Fetch platforms
+        const platformsResponse = await authFetch(`${API_BASE}/api/platforms`);
+        const platforms = await platformsResponse.json();
+        
+        // Update platform filter
+        updatePlatformFilter(platforms);
+        
+        // Update KPIs
+        updateKPIs(dashboardData);
+        
+        // Initialize/Update Charts
+        updateCharts(dashboardData);
+        
+        // Update leaderboard
+        updatePlatformLeaderboard(dashboardData);
+        
+        // Update captain performance
+        updateCaptainPerformance(dashboardData);
+        
+        // Update bookings table
+        updateBookingsTable(dashboardData.recent_bookings);
+        
+        // Update timestamp
+        const lastUpdate = document.getElementById('lastUpdate');
+        if (lastUpdate) {
+            lastUpdate.textContent = new Date().toLocaleString(currentLang === 'es' ? 'es-ES' : 'en-US');
+        }
+        
+        hideLoadingState();
+    } catch (error) {
+        console.error('Error loading dashboard data:', error);
+        showError('Error al cargar los datos. Reintentando...');
+        setTimeout(loadDashboardData, 5000);
+    }
+}
+
+function updatePlatformFilter(platforms) {
+    const select = document.getElementById('platformFilter');
+    if (!select) return;
+    
+    const currentValue = select.value;
+    
+    // Keep "All" option and add platforms
+    select.innerHTML = `<option value="all">${translate('all-platforms')}</option>`;
+    platforms.forEach(platform => {
+        const option = document.createElement('option');
+        option.value = platform;
+        option.textContent = platform;
+        select.appendChild(option);
+    });
+    
+    select.value = currentValue;
+}
+
+function updateKPIs(data) {
+    const todayBookings = document.getElementById('todayBookings');
+    const todayRevenue = document.getElementById('todayRevenue');
+    const activeCaptains = document.getElementById('activeCaptains');
+    const totalCaptains = document.getElementById('totalCaptains');
+    const bookingChange = document.getElementById('bookingChange');
+    const revenueChange = document.getElementById('revenueChange');
+    const totalRevenueBadge = document.getElementById('totalRevenueBadge');
+    
+    if (todayBookings) todayBookings.textContent = data.today_bookings || 0;
+    if (todayRevenue) todayRevenue.textContent = `$${(data.today_revenue || 0).toLocaleString()}`;
+    if (activeCaptains) activeCaptains.textContent = data.active_captains || 0;
+    if (totalCaptains) totalCaptains.textContent = translate('of-total').replace('{count}', data.total_captains || 0);
+    
+    // Calculate changes (simulated for now)
+    const bookingChangeText = data.today_bookings > 0 ? '+15%' : '0%';
+    const revenueChangeText = data.today_revenue > 0 ? '+23%' : '0%';
+    
+    if (bookingChange) bookingChange.textContent = bookingChangeText;
+    if (revenueChange) revenueChange.textContent = revenueChangeText;
+    
+    // Total revenue badge
+    if (totalRevenueBadge) totalRevenueBadge.textContent = `$${(data.total_revenue || 0).toLocaleString()}`;
+}
+
+function updateCharts(data) {
+    console.log('Updating charts with data:', data);
+    console.log('Chart.js status:', typeof Chart);
+    updateRevenueByPlatformChart(data);
+    updateMonthlyTrendsChart(data);
+    updateBookingDistributionChart(data);
+}
+
+function updateRevenueByPlatformChart(data) {
+    console.log('Creating revenue by platform chart...');
+    const canvas = document.getElementById('revenueByPlatform');
+    if (!canvas) {
+        console.error('Canvas element revenueByPlatform not found!');
+        return;
+    }
+    if (typeof Chart === 'undefined') {
+        console.error('Chart.js is not loaded!');
+        return;
+    }
+    
+    const ctx = canvas.getContext('2d');
+    const platforms = Object.keys(data.revenue_by_platform || {});
+    const revenues = Object.values(data.revenue_by_platform || {});
+    
+    if (charts.revenueByPlatform) {
+        charts.revenueByPlatform.destroy();
+    }
+    
+    charts.revenueByPlatform = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: platforms,
+            datasets: [{
+                label: translate('revenue'),
+                data: revenues,
+                backgroundColor: 'rgba(0, 119, 190, 0.7)',
+                borderColor: 'rgba(0, 119, 190, 1)',
+                borderWidth: 2,
+                borderRadius: 8
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return `${translate('revenue')}: $${context.parsed.y.toLocaleString()}`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) {
+                            return '$' + value.toLocaleString();
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+function updateMonthlyTrendsChart(data) {
+    const ctx = document.getElementById('monthlyTrends').getContext('2d');
+    
+    // Generate last 6 months
+    const months = [];
+    const bookingsData = [];
+    const revenueData = [];
+    
+    for (let i = 5; i >= 0; i--) {
+        const date = new Date();
+        date.setMonth(date.getMonth() - i);
+        months.push(date.toLocaleDateString(currentLang === 'es' ? 'es-ES' : 'en-US', { month: 'short', year: 'numeric' }));
+        
+        // Simulated data - in real app, fetch from API
+        bookingsData.push(Math.floor(Math.random() * 50) + 20);
+        revenueData.push(Math.floor(Math.random() * 5000) + 2000);
+    }
+    
+    if (charts.monthlyTrends) {
+        charts.monthlyTrends.destroy();
+    }
+    
+    charts.monthlyTrends = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: months,
+            datasets: [
+                {
+                    label: translate('bookings'),
+                    data: bookingsData,
+                    borderColor: 'rgba(0, 119, 190, 1)',
+                    backgroundColor: 'rgba(0, 119, 190, 0.1)',
+                    tension: 0.4,
+                    fill: true,
+                    yAxisID: 'y'
+                },
+                {
+                    label: translate('revenue'),
+                    data: revenueData,
+                    borderColor: 'rgba(46, 196, 182, 1)',
+                    backgroundColor: 'rgba(46, 196, 182, 0.1)',
+                    tension: 0.4,
+                    fill: true,
+                    yAxisID: 'y1'
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false
+            },
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                y: {
+                    type: 'linear',
+                    display: true,
+                    position: 'left',
+                    beginAtZero: true
+                },
+                y1: {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    beginAtZero: true,
+                    grid: {
+                        drawOnChartArea: false
+                    },
+                    ticks: {
+                        callback: function(value) {
+                            return '$' + value.toLocaleString();
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+function updateBookingDistributionChart(data) {
+    const ctx = document.getElementById('bookingDistribution').getContext('2d');
+    
+    const platforms = Object.keys(data.bookings_by_platform || {});
+    const bookings = Object.values(data.bookings_by_platform || {});
+    
+    // Marine color palette
+    const colors = [
+        '#0077BE', '#56CCF2', '#2EC4B6', '#06D6A0', 
+        '#FFB800', '#FF6B6B', '#003D5C', '#F4F1DE',
+        '#4A90E2', '#7B68EE', '#20B2AA', '#FF7F50', '#9370DB'
+    ];
+    
+    if (charts.bookingDistribution) {
+        charts.bookingDistribution.destroy();
+    }
+    
+    charts.bookingDistribution = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: platforms,
+            datasets: [{
+                data: bookings,
+                backgroundColor: colors.slice(0, platforms.length),
+                borderWidth: 2,
+                borderColor: '#fff'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'right',
+                    labels: {
+                        padding: 15,
+                        font: {
+                            size: 12
+                        }
+                    }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                            const percentage = ((context.parsed / total) * 100).toFixed(1);
+                            return `${context.label}: ${context.parsed} (${percentage}%)`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+function updatePlatformLeaderboard(data) {
+    const leaderboard = document.getElementById('platformLeaderboard');
+    const revenue = data.revenue_by_platform || {};
+    
+    // Sort platforms by revenue
+    const sorted = Object.entries(revenue)
+        .sort(([, a], [, b]) => b - a)
+        .slice(0, 5);
+    
+    leaderboard.innerHTML = sorted.map(([platform, amount], index) => `
+        <div class="leaderboard-item">
+            <div class="leaderboard-rank">${index + 1}</div>
+            <div class="leaderboard-info">
+                <div class="leaderboard-name">${platform}</div>
+                <div class="leaderboard-stats">${data.bookings_by_platform[platform] || 0} ${translate('bookings')}</div>
+            </div>
+            <div class="leaderboard-value">$${amount.toLocaleString()}</div>
+        </div>
+    `).join('');
+}
+
+function updateCaptainPerformance(data) {
+    const container = document.getElementById('captainPerformance');
+    const captains = data.active_captains_list || [];
+    
+    container.innerHTML = captains.map(captain => `
+        <div class="captain-card">
+            <div class="captain-avatar">👨‍✈️</div>
+            <div class="captain-name">${captain.name}</div>
+            <div class="captain-stats">
+                ${captain.specialties.join(', ')}<br>
+                <strong>📞 ${captain.phone}</strong>
+            </div>
+        </div>
+    `).join('');
+}
+
+function updateBookingsTable(bookings) {
+    const tbody = document.getElementById('bookingsTableBody');
+    
+    if (!bookings || bookings.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="7" style="text-align: center; padding: 2rem; color: var(--text-secondary);">
+                    No hay reservas recientes
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    tbody.innerHTML = bookings.map(booking => `
+        <tr onclick="viewBookingDetails('${booking.id}')">
+            <td><strong>${booking.id.substring(0, 12)}...</strong></td>
+            <td>${booking.customer_name || 'N/A'}</td>
+            <td>${booking.platform}</td>
+            <td>${booking.boat_type || 'N/A'}</td>
+            <td>${booking.booking_date}</td>
+            <td><strong>$${booking.total_amount}</strong></td>
+            <td><span class="status-badge ${booking.status}">${booking.status}</span></td>
+        </tr>
+    `).join('');
+}
+
+function viewBookingDetails(bookingId) {
+    alert(`Ver detalles de reserva: ${bookingId}\n(Funcionalidad de drill-down)`);
+}
+
+// Theme Toggle
+function toggleTheme() {
+    currentTheme = currentTheme === 'light' ? 'dark' : 'light';
+    document.body.className = `${currentTheme}-mode`;
+    
+    // Recreate charts with new theme
+    if (dashboardData) {
+        updateCharts(dashboardData);
+    }
+}
+
+// Language Toggle
+function toggleLanguage() {
+    currentLang = currentLang === 'es' ? 'en' : 'es';
+    document.getElementById('currentLang').textContent = currentLang.toUpperCase();
+    
+    // Update all translatable elements
+    document.querySelectorAll('[data-i18n]').forEach(element => {
+        const key = element.getAttribute('data-i18n');
+        element.textContent = translate(key);
+    });
+    
+    // Reload data to update charts
+    if (dashboardData) {
+        updateCharts(dashboardData);
+        updateKPIs(dashboardData);
+        updatePlatformLeaderboard(dashboardData);
+    }
+}
+
+function translate(key) {
+    return translations[currentLang][key] || key;
+}
+
+// Export Functions
+function exportToPDF() {
+    if (!dashboardData) return;
+    
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    
+    // Header
+    doc.setFontSize(20);
+    doc.setTextColor(0, 51, 102);
+    doc.text('Nadaki Excursions', 20, 20);
+    doc.setFontSize(12);
+    doc.setTextColor(100);
+    doc.text('Business Intelligence Dashboard', 20, 28);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 20, 35);
+    
+    // KPIs Section
+    doc.setFontSize(14);
+    doc.setTextColor(0);
+    doc.text('Key Metrics', 20, 50);
+    
+    doc.setFontSize(10);
+    const kpis = [
+        ['Today Bookings:', dashboardData.today_bookings],
+        ['Today Revenue:', `$${dashboardData.today_revenue.toLocaleString()}`],
+        ['Week Bookings:', dashboardData.week_bookings],
+        ['Week Revenue:', `$${dashboardData.week_revenue.toLocaleString()}`],
+        ['Active Captains:', `${dashboardData.active_captains}/${dashboardData.total_captains}`]
+    ];
+    
+    let yPos = 60;
+    kpis.forEach(([label, value]) => {
+        doc.text(label, 25, yPos);
+        doc.setFont(undefined, 'bold');
+        doc.text(String(value), 80, yPos);
+        doc.setFont(undefined, 'normal');
+        yPos += 7;
+    });
+    
+    // Revenue by Platform
+    doc.setFontSize(14);
+    yPos += 10;
+    doc.text('Revenue by Platform', 20, yPos);
+    yPos += 10;
+    
+    doc.setFontSize(10);
+    Object.entries(dashboardData.revenue_by_platform || {}).forEach(([platform, revenue]) => {
+        const bookings = dashboardData.bookings_by_platform[platform] || 0;
+        doc.text(`${platform}:`, 25, yPos);
+        doc.setFont(undefined, 'bold');
+        doc.text(`$${revenue.toLocaleString()} (${bookings} bookings)`, 80, yPos);
+        doc.setFont(undefined, 'normal');
+        yPos += 7;
+    });
+    
+    // Recent Bookings
+    if (dashboardData.recent_bookings && dashboardData.recent_bookings.length > 0) {
+        doc.addPage();
+        doc.setFontSize(14);
+        doc.text('Recent Bookings', 20, 20);
+        
+        yPos = 30;
+        doc.setFontSize(9);
+        dashboardData.recent_bookings.slice(0, 15).forEach(booking => {
+            doc.text(`${booking.customer_name} - ${booking.platform}`, 20, yPos);
+            doc.text(`${booking.boat_type} | ${booking.booking_date}`, 20, yPos + 5);
+            doc.setFont(undefined, 'bold');
+            doc.text(`$${booking.total_amount}`, 150, yPos);
+            doc.setFont(undefined, 'normal');
+            doc.setTextColor(150);
+            doc.text(booking.status, 150, yPos + 5);
+            doc.setTextColor(0);
+            yPos += 15;
+            
+            if (yPos > 270) {
+                doc.addPage();
+                yPos = 20;
+            }
+        });
+    }
+    
+    doc.save(`Nadaki_Dashboard_${new Date().toISOString().split('T')[0]}.pdf`);
+}
+
+function exportToExcel() {
+    if (!dashboardData) return;
+    
+    const wb = XLSX.utils.book_new();
+    
+    // Sheet 1: Summary
+    const summaryData = [
+        ['Nadaki Excursions - Dashboard Report'],
+        ['Generated:', new Date().toLocaleString()],
+        [],
+        ['Metric', 'Value'],
+        ['Today Bookings', dashboardData.today_bookings],
+        ['Today Revenue', dashboardData.today_revenue],
+        ['Week Bookings', dashboardData.week_bookings],
+        ['Week Revenue', dashboardData.week_revenue],
+        ['Active Captains', dashboardData.active_captains],
+        ['Total Captains', dashboardData.total_captains]
+    ];
+    
+    const ws1 = XLSX.utils.aoa_to_sheet(summaryData);
+    XLSX.utils.book_append_sheet(wb, ws1, 'Summary');
+    
+    // Sheet 2: Revenue by Platform
+    const revenueData = [
+        ['Platform', 'Revenue', 'Bookings']
+    ];
+    Object.keys(dashboardData.revenue_by_platform || {}).forEach(platform => {
+        revenueData.push([
+            platform,
+            dashboardData.revenue_by_platform[platform],
+            dashboardData.bookings_by_platform[platform] || 0
+        ]);
+    });
+    
+    const ws2 = XLSX.utils.aoa_to_sheet(revenueData);
+    XLSX.utils.book_append_sheet(wb, ws2, 'Revenue by Platform');
+    
+    // Sheet 3: Recent Bookings
+    if (dashboardData.recent_bookings && dashboardData.recent_bookings.length > 0) {
+        const bookingsData = [
+            ['ID', 'Customer', 'Platform', 'Boat', 'Date', 'Amount', 'Status']
+        ];
+        dashboardData.recent_bookings.forEach(booking => {
+            bookingsData.push([
+                booking.id,
+                booking.customer_name,
+                booking.platform,
+                booking.boat_type,
+                booking.booking_date,
+                booking.total_amount,
+                booking.status
+            ]);
+        });
+        
+        const ws3 = XLSX.utils.aoa_to_sheet(bookingsData);
+        XLSX.utils.book_append_sheet(wb, ws3, 'Recent Bookings');
+    }
+    
+    // Download
+    XLSX.writeFile(wb, `Nadaki_Dashboard_${new Date().toISOString().split('T')[0]}.xlsx`);
+}
+
+// Auto Refresh
+function startAutoRefresh() {
+    refreshInterval = setInterval(loadDashboardData, 30000); // 30 seconds
+}
+
+function stopAutoRefresh() {
+    if (refreshInterval) {
+        clearInterval(refreshInterval);
+    }
+}
+
+// Loading States
+function showLoadingState() {
+    // Could add loading spinners to cards
+}
+
+function hideLoadingState() {
+    // Remove loading spinners
+}
+
+function showError(message) {
+    console.error(message);
+    // Could show toast notification
+}
+
+// Cleanup on page unload
+window.addEventListener('beforeunload', () => {
+    stopAutoRefresh();
+});
+
+// ==========================================
+// 🤖 AI CHATBOT FUNCTIONALITY
+// ==========================================
+
+let chatSessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+let chatMessages = [];
+let isTyping = false;
+
+// Initialize chat widget
+function initChatWidget() {
+    const trigger = document.getElementById('chatTrigger');
+    const widget = document.getElementById('chatWidget');
+    const closeBtn = document.getElementById('chatClose');
+    const sendBtn = document.getElementById('chatSend');
+    const input = document.getElementById('chatInput');
+
+    if (!trigger || !widget) return;
+
+    // Toggle widget
+    trigger.addEventListener('click', async () => {
+        widget.classList.toggle('active');
+        if (widget.classList.contains('active') && chatMessages.length === 0) {
+            // Load conversation history
+            await loadConversationHistory();
+            
+            // If no history, send welcome message
+            if (chatMessages.length === 0) {
+                addAIMessage('¡Hola! 👋 Soy el asistente virtual de Nadaki Excursions. ¿En qué puedo ayudarte hoy? Puedo ayudarte a reservar un tour, responder preguntas sobre nuestros servicios, o consultar disponibilidad.');
+            }
+        }
+        if (widget.classList.contains('active')) {
+            input.focus();
+        }
+    });
+
+    // Close widget
+    closeBtn.addEventListener('click', () => {
+        widget.classList.remove('active');
+    });
+
+    // Send message on button click
+    sendBtn.addEventListener('click', sendChatMessage);
+
+    // Send message on Enter key
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendChatMessage();
+        }
+    });
+
+    // Auto-resize textarea
+    input.addEventListener('input', () => {
+        input.style.height = 'auto';
+        input.style.height = input.scrollHeight + 'px';
+    });
+}
+
+async function sendChatMessage() {
+    const input = document.getElementById('chatInput');
+    const message = input.value.trim();
+
+    if (!message || isTyping) return;
+
+    // Add user message to UI
+    addUserMessage(message);
+    input.value = '';
+    input.style.height = 'auto';
+
+    // Show typing indicator
+    showTyping();
+
+    try {
+        // Use enhanced AI endpoint
+        const response = await fetch(`${API_BASE}/api/ai/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                sessionId: chatSessionId,
+                message: message,
+                customerName: '',
+                customerPhone: '',
+                customerEmail: ''
+            })
+        });
+
+        const data = await response.json();
+        
+        // Remove typing indicator
+        hideTyping();
+
+        // Add AI response (new endpoint uses 'message' instead of 'response')
+        let aiMessage = data.message || data.response;
+        
+        // Remove the CREAR_RESERVA: part from the message if it exists
+        if (aiMessage.includes('CREAR_RESERVA:')) {
+            aiMessage = aiMessage.split('CREAR_RESERVA:')[0].trim() || '✅ ¡Perfecto! He creado tu reserva. Recibirás una confirmación pronto.';
+        }
+        
+        // Log enhanced metadata for debugging
+        if (data.metadata) {
+            console.log('🤖 AI Metadata:', {
+                language: data.metadata.detectedLanguage,
+                intent: data.metadata.intent,
+                confidence: data.metadata.confidence + '%',
+                processingTime: data.metadata.processingTime + 'ms'
+            });
+            
+            // Show visual indicators for special features
+            if (data.metadata.recommendations && data.metadata.recommendations.length > 0) {
+                console.log('🚤 Boat Recommendations:', data.metadata.recommendations);
+            }
+            if (data.metadata.estimatedPrice) {
+                console.log('💰 Estimated Price: $' + data.metadata.estimatedPrice);
+            }
+            if (data.metadata.availability) {
+                console.log('📅 Availability Check:', data.metadata.availability);
+            }
+        }
+        
+        addAIMessage(aiMessage);
+
+        // If a booking was created, show success notification
+        if (data.bookingId) {
+            setTimeout(() => {
+                addAIMessage(`✅ Reserva creada exitosamente! ID: ${data.bookingId}\n\nUno de nuestros agentes se pondrá en contacto contigo pronto para confirmar los detalles.`);
+            }, 500);
+        }
+
+    } catch (error) {
+        hideTyping();
+        addAIMessage('❌ Lo siento, hubo un error al procesar tu mensaje. Por favor intenta de nuevo.');
+        console.error('Chat error:', error);
+    }
+}
+
+function addUserMessage(text) {
+    const messagesContainer = document.getElementById('chatMessages');
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'chat-message user';
+    
+    const time = new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    
+    messageDiv.innerHTML = `
+        <div class="message-bubble">${escapeHtml(text)}</div>
+        <div class="message-timestamp">${time}</div>
+    `;
+    
+    messagesContainer.appendChild(messageDiv);
+    scrollToBottom();
+    chatMessages.push({ role: 'user', content: text, timestamp: new Date().toISOString() });
+}
+
+function addAIMessage(text) {
+    const messagesContainer = document.getElementById('chatMessages');
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'chat-message ai';
+    
+    const time = new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    
+    messageDiv.innerHTML = `
+        <div class="message-bubble">${escapeHtml(text)}</div>
+        <div class="message-timestamp">${time}</div>
+    `;
+    
+    messagesContainer.appendChild(messageDiv);
+    scrollToBottom();
+    chatMessages.push({ role: 'assistant', content: text, timestamp: new Date().toISOString() });
+}
+
+function showTyping() {
+    isTyping = true;
+    const messagesContainer = document.getElementById('chatMessages');
+    const typingDiv = document.createElement('div');
+    typingDiv.id = 'typingIndicator';
+    typingDiv.className = 'chat-message ai';
+    typingDiv.innerHTML = `
+        <div class="typing-indicator">
+            <div class="typing-dot"></div>
+            <div class="typing-dot"></div>
+            <div class="typing-dot"></div>
+        </div>
+    `;
+    messagesContainer.appendChild(typingDiv);
+    scrollToBottom();
+}
+
+function hideTyping() {
+    isTyping = false;
+    const typingIndicator = document.getElementById('typingIndicator');
+    if (typingIndicator) {
+        typingIndicator.remove();
+    }
+}
+
+function scrollToBottom() {
+    const messagesContainer = document.getElementById('chatMessages');
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+async function loadConversationHistory() {
+    try {
+        const response = await fetch(`${API_BASE}/api/chat/conversations/${chatSessionId}`);
+        
+        if (response.ok) {
+            const data = await response.json();
+            
+            if (data.messages && data.messages.length > 0) {
+                chatMessages = data.messages;
+                
+                // Clear messages container
+                const messagesContainer = document.getElementById('chatMessages');
+                messagesContainer.innerHTML = '';
+                
+                // Render all messages
+                data.messages.forEach(msg => {
+                    if (msg.role === 'user') {
+                        renderUserMessage(msg.content, msg.timestamp);
+                    } else if (msg.role === 'assistant') {
+                        renderAIMessage(msg.content, msg.timestamp);
+                    }
+                });
+                
+                scrollToBottom();
+            }
+        }
+    } catch (error) {
+        console.error('Error loading conversation history:', error);
+        // Continue with fresh conversation if loading fails
+    }
+}
+
+function renderUserMessage(text, timestamp) {
+    const messagesContainer = document.getElementById('chatMessages');
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'chat-message user';
+    
+    const time = timestamp 
+        ? new Date(timestamp).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+        : new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    
+    messageDiv.innerHTML = `
+        <div class="message-bubble">${escapeHtml(text)}</div>
+        <div class="message-timestamp">${time}</div>
+    `;
+    
+    messagesContainer.appendChild(messageDiv);
+}
+
+function renderAIMessage(text, timestamp) {
+    const messagesContainer = document.getElementById('chatMessages');
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'chat-message ai';
+    
+    const time = timestamp 
+        ? new Date(timestamp).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+        : new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    
+    messageDiv.innerHTML = `
+        <div class="message-bubble">${escapeHtml(text)}</div>
+        <div class="message-timestamp">${time}</div>
+    `;
+    
+    messagesContainer.appendChild(messageDiv);
+}
+
+// Initialize chat widget when DOM loads
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initChatWidget);
+} else {
+    initChatWidget();
+}
+
+// ==========================================
+// ⚡ FASE 2: PLATFORM SYNCHRONIZATION
+// ==========================================
+
+async function loadSyncStatus() {
+    try {
+        const response = await authFetch(`${API_BASE}/api/sync/status`);
+        const status = await response.json();
+        renderSyncStatus(status);
+    } catch (error) {
+        console.error('Error loading sync status:', error);
+    }
+}
+
+function renderSyncStatus(platforms) {
+    const grid = document.getElementById('syncStatusGrid');
+    if (!grid) return;
+    
+    grid.innerHTML = '';
+    
+    // All platforms that should be shown
+    const allPlatforms = [
+        'Airbnb', 'GetMyBoat', 'BoatSetter', 'Viator', 'Expedia', 
+        'TripAdvisor', 'Groupon', 'Booking.com', 'FareHarbor', 
+        'Bokun', 'Rezdy', 'Peek', 'Xola'
+    ];
+    
+    allPlatforms.forEach(platformName => {
+        const platform = platforms.find(p => p.platform === platformName) || {
+            platform: platformName,
+            sync_status: 'never',
+            last_sync_at: null,
+            bookings_synced: 0,
+            conflicts_detected: 0
+        };
+        
+        const card = document.createElement('div');
+        card.className = 'sync-card';
+        card.dataset.testid = `sync-card-${platformName.toLowerCase().replace(/\./g, '-')}`;
+        
+        const statusClass = platform.sync_status || 'never';
+        const statusText = statusClass === 'never' ? 'No sincronizado' : 
+                          statusClass === 'success' ? 'Exitoso' :
+                          statusClass === 'error' ? 'Error' : 'En proceso';
+        
+        const lastSync = platform.last_sync_at 
+            ? new Date(platform.last_sync_at).toLocaleString('es-ES')
+            : 'Nunca';
+        
+        card.innerHTML = `
+            <div class="sync-card-header">
+                <div class="platform-name">${platform.platform}</div>
+                <span class="sync-status-badge ${statusClass}">${statusText}</span>
+            </div>
+            <div class="sync-card-details">
+                <div class="sync-detail-row">
+                    <span class="sync-detail-label">Última sincronización:</span>
+                    <span class="sync-detail-value">${lastSync}</span>
+                </div>
+                <div class="sync-detail-row">
+                    <span class="sync-detail-label">Reservas sincronizadas:</span>
+                    <span class="sync-detail-value">${platform.bookings_synced || 0}</span>
+                </div>
+                <div class="sync-detail-row">
+                    <span class="sync-detail-label">Conflictos:</span>
+                    <span class="sync-detail-value">${platform.conflicts_detected || 0}</span>
+                </div>
+            </div>
+            <div class="sync-actions">
+                <button class="btn-sync" onclick="syncSinglePlatform('${platform.platform}')" data-testid="button-sync-${platformName.toLowerCase().replace(/\./g, '-')}">
+                    🔄 Sincronizar
+                </button>
+            </div>
+        `;
+        
+        grid.appendChild(card);
+    });
+}
+
+async function syncSinglePlatform(platform) {
+    try {
+        const button = event.target;
+        button.disabled = true;
+        button.textContent = '⏳ Sincronizando...';
+        
+        const response = await authFetch(`${API_BASE}/api/sync/trigger/${platform}`, {
+            method: 'POST'
+        });
+        const result = await response.json();
+        
+        console.log('Sync result for', platform, result);
+        
+        // Reload sync status
+        await loadSyncStatus();
+        await loadConflicts();
+        await loadDashboardData();
+        
+        button.disabled = false;
+        button.textContent = '🔄 Sincronizar';
+    } catch (error) {
+        console.error('Error syncing platform:', error);
+        alert(`Error al sincronizar ${platform}`);
+        event.target.disabled = false;
+        event.target.textContent = '🔄 Sincronizar';
+    }
+}
+
+async function syncAllPlatforms() {
+    const button = document.getElementById('syncAllPlatforms');
+    if (!button) return;
+    
+    try {
+        button.disabled = true;
+        button.textContent = '⏳ Sincronizando...';
+        
+        const response = await authFetch(`${API_BASE}/api/sync/trigger-all`, {
+            method: 'POST'
+        });
+        const result = await response.json();
+        
+        console.log('Sync all result:', result);
+        
+        // Reload everything
+        await loadSyncStatus();
+        await loadConflicts();
+        await loadDashboardData();
+        
+        button.disabled = false;
+        button.textContent = '🔄 Sincronizar Todas';
+        
+        alert(`Sincronización completada: ${result.summary.totalImported} reservas importadas, ${result.summary.totalConflicts} conflictos detectados`);
+    } catch (error) {
+        console.error('Error syncing all platforms:', error);
+        alert('Error al sincronizar plataformas');
+        button.disabled = false;
+        button.textContent = '🔄 Sincronizar Todas';
+    }
+}
+
+async function loadConflicts() {
+    try {
+        const response = await authFetch(`${API_BASE}/api/sync/conflicts`);
+        const conflicts = await response.json();
+        renderConflicts(conflicts);
+    } catch (error) {
+        console.error('Error loading conflicts:', error);
+    }
+}
+
+function renderConflicts(conflicts) {
+    const section = document.getElementById('conflictsSection');
+    const list = document.getElementById('conflictsList');
+    const count = document.getElementById('conflictCount');
+    
+    if (!section || !list || !count) return;
+    
+    if (conflicts.length === 0) {
+        section.style.display = 'none';
+        return;
+    }
+    
+    section.style.display = 'block';
+    count.textContent = conflicts.length;
+    list.innerHTML = '';
+    
+    conflicts.forEach((conflict, index) => {
+        const card = document.createElement('div');
+        card.className = 'conflict-card';
+        card.dataset.testid = `conflict-card-${index}`;
+        
+        card.innerHTML = `
+            <div class="conflict-info">
+                <div class="conflict-title">${conflict.message}</div>
+                <div class="conflict-details">
+                    Fecha: ${conflict.date} a las ${conflict.time}<br>
+                    Reserva 1: ${conflict.bookings[0].platform} - ${conflict.bookings[0].customer}<br>
+                    Reserva 2: ${conflict.bookings[1].platform} - ${conflict.bookings[1].customer}
+                </div>
+            </div>
+            <div class="conflict-actions">
+                <button class="btn-resolve" onclick="resolveConflict('${conflict.bookings[0].id}')" data-testid="button-resolve-${index}-0">
+                    Cancelar #1
+                </button>
+                <button class="btn-resolve" onclick="resolveConflict('${conflict.bookings[1].id}')" data-testid="button-resolve-${index}-1">
+                    Cancelar #2
+                </button>
+            </div>
+        `;
+        
+        list.appendChild(card);
+    });
+}
+
+async function resolveConflict(bookingIdToCancel) {
+    if (!confirm('¿Estás seguro de que deseas cancelar esta reserva?')) {
+        return;
+    }
+    
+    try {
+        console.log('🔄 Resolving conflict - canceling booking:', bookingIdToCancel);
+        
+        const response = await authFetch(`${API_BASE}/api/sync/resolve-conflict`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                bookingIdToCancel,
+                reason: 'Conflicto de sincronización resuelto manualmente'
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        console.log('✅ Conflict resolution result:', result);
+        
+        if (result.success) {
+            alert('Conflicto resuelto exitosamente');
+            
+            // Small delay to ensure DB is updated before reloading
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // Reload conflicts and dashboard data
+            await loadConflicts();
+            await loadDashboardData();
+            
+            console.log('🔄 UI updated after conflict resolution');
+        } else {
+            console.error('❌ Failed to resolve conflict:', result);
+            alert('Error al resolver conflicto: ' + (result.error || 'Unknown error'));
+        }
+    } catch (error) {
+        console.error('❌ Error resolving conflict:', error);
+        alert('Error al resolver conflicto: ' + error.message);
+    }
+}
+
+// Load unread messages count for notifications badge
+async function loadUnreadCount() {
+    try {
+        const response = await fetch('/api/messages/unread-count');
+        const data = await response.json();
+        const badge = document.getElementById('unread-badge');
+        
+        if (badge && data.count > 0) {
+            badge.textContent = data.count;
+            badge.style.display = 'inline';
+        } else if (badge) {
+            badge.style.display = 'none';
+        }
+    } catch (error) {
+        console.error('Error loading unread count:', error);
+    }
+}
+
+// Initialize sync panel
+function initSyncPanel() {
+    loadSyncStatus();
+    loadConflicts();
+    loadUnreadCount(); // Load unread messages count
+    
+    // Setup sync all button
+    const syncAllBtn = document.getElementById('syncAllPlatforms');
+    if (syncAllBtn) {
+        syncAllBtn.addEventListener('click', syncAllPlatforms);
+    }
+    
+    // Refresh sync status and unread count every 30 seconds
+    setInterval(() => {
+        loadSyncStatus();
+        loadConflicts();
+        loadUnreadCount();
+    }, 30000);
+}
+
+// Initialize when DOM loads
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initSyncPanel);
+} else {
+    initSyncPanel();
+}

@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nadaki Excursions - Mantenimiento de Flotilla</title>
+    <link rel="stylesheet" href="commissions.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin: 20px 0;
+            border-bottom: 2px solid #e0e0e0;
+            flex-wrap: wrap;
+        }
+        .tab {
+            padding: 12px 20px;
+            cursor: pointer;
+            border: none;
+            background: none;
+            font-size: 15px;
+            color: #666;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s;
+        }
+        .tab.active {
+            color: #0066cc;
+            border-bottom-color: #0066cc;
+            font-weight: 600;
+        }
+        .tab-content {
+            display: none;
+            padding: 20px 0;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        
+        /* Filters */
+        .filters-bar {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+            align-items: end;
+        }
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+        }
+        .filter-group label {
+            margin-bottom: 6px;
+            font-weight: 600;
+            color: #333;
+            font-size: 13px;
+        }
+        .filter-group input, .filter-group select {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: background 0.3s;
+        }
+        .btn-primary {
+            background: #0066cc;
+            color: white;
+        }
+        .btn-primary:hover {
+            background: #0052a3;
+        }
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+        
+        /* Cards Grid */
+        .cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transition: transform 0.2s;
+        }
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+        .card-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #333;
+        }
+        .card-badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .badge-fuel { background: #fff3cd; color: #856404; }
+        .badge-maintenance { background: #d1ecf1; color: #0c5460; }
+        .badge-labor { background: #f8d7da; color: #721c24; }
+        .badge-cleaning { background: #d4edda; color: #155724; }
+        .badge-marina { background: #e7e7e7; color: #383d41; }
+        .badge-insurance { background: #cce5ff; color: #004085; }
+        .badge-emergency { background: #f5c6cb; color: #721c24; }
+        .badge-operational { background: #fff3cd; color: #856404; }
+        
+        .badge-pending { background: #fff3cd; color: #856404; }
+        .badge-assigned { background: #cce5ff; color: #004085; }
+        .badge-in_progress { background: #d1ecf1; color: #0c5460; }
+        .badge-completed { background: #d4edda; color: #155724; }
+        .badge-cancelled { background: #f8d7da; color: #721c24; }
+        
+        .badge-low { background: #e7e7e7; color: #383d41; }
+        .badge-medium { background: #fff3cd; color: #856404; }
+        .badge-high { background: #f8d7da; color: #721c24; }
+        .badge-critical { background: #f5c6cb; color: #721c24; font-weight: 700; }
+        
+        .card-body {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .card-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 14px;
+        }
+        .card-label {
+            color: #666;
+            font-weight: 500;
+        }
+        .card-value {
+            color: #333;
+            font-weight: 600;
+        }
+        .card-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #f0f0f0;
+        }
+        .card-actions button {
+            flex: 1;
+            padding: 8px;
+            font-size: 13px;
+        }
+        
+        /* Table */
+        .data-table {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th {
+            background: #f8f9fa;
+            padding: 16px;
+            text-align: left;
+            font-weight: 700;
+            color: #333;
+            font-size: 14px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+        td {
+            padding: 14px 16px;
+            border-bottom: 1px solid #f0f0f0;
+            font-size: 14px;
+        }
+        tr:hover {
+            background: #f8f9fa;
+        }
+        
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            align-items: center;
+            justify-content: center;
+        }
+        .modal.active {
+            display: flex;
+        }
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+        .modal-title {
+            font-size: 24px;
+            font-weight: 700;
+            color: #333;
+        }
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 28px;
+            cursor: pointer;
+            color: #666;
+        }
+        .form-group {
+            margin-bottom: 18px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        .form-group textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+        .form-actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 24px;
+        }
+        .form-actions button {
+            flex: 1;
+        }
+        
+        /* Stats Cards */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 24px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+        .stat-card.green {
+            background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%);
+        }
+        .stat-card.orange {
+            background: linear-gradient(135deg, #f2994a 0%, #f2c94c 100%);
+        }
+        .stat-card.red {
+            background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%);
+        }
+        .stat-card.blue {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        }
+        .stat-label {
+            font-size: 14px;
+            opacity: 0.9;
+            margin-bottom: 8px;
+        }
+        .stat-value {
+            font-size: 32px;
+            font-weight: 700;
+        }
+        
+        /* Alerts */
+        .alert {
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .alert-warning {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            color: #856404;
+        }
+        .alert-danger {
+            background: #f8d7da;
+            border-left: 4px solid #dc3545;
+            color: #721c24;
+        }
+        .alert-icon {
+            font-size: 24px;
+        }
+        
+        /* Low Stock Indicator */
+        .stock-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 6px;
+        }
+        .stock-ok { background: #28a745; }
+        .stock-low { background: #ffc107; }
+        .stock-critical { background: #dc3545; }
+    </style>
+</head>
+<body>
+    <div class="dashboard-header">
+        <div class="header-content">
+            <div>
+                <h1 data-testid="title-page">🚤 Mantenimiento de Flotilla</h1>
+                <p style="color: #666; margin-top: 8px;">Sistema de gestión de mantenimiento y gastos operacionales</p>
+            </div>
+            <button class="btn btn-primary" onclick="window.location.href='/dashboard.html'" data-testid="button-back-dashboard">
+                ← Volver al Dashboard
+            </button>
+        </div>
+    </div>
+
+    <div class="container" style="max-width: 1400px; margin: 0 auto; padding: 20px;">
+        <!-- Tabs Navigation -->
+        <div class="tabs">
+            <button class="tab active" data-tab="expenses" data-testid="tab-expenses">💰 Gastos</button>
+            <button class="tab" data-tab="maintenance" data-testid="tab-maintenance">🔧 Mantenimiento</button>
+            <button class="tab" data-tab="work-orders" data-testid="tab-work-orders">📋 Órdenes de Trabajo</button>
+            <button class="tab" data-tab="parts" data-testid="tab-parts">📦 Inventario</button>
+            <button class="tab" data-tab="mechanics" data-testid="tab-mechanics">👨‍🔧 Mecánicos</button>
+            <button class="tab" data-tab="analytics" data-testid="tab-analytics">📊 Analíticas</button>
+        </div>
+
+        <!-- Tab 1: Boat Expenses -->
+        <div class="tab-content active" data-tab-content="expenses">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2>Gastos de Barcos</h2>
+                <button class="btn btn-primary" onclick="openExpenseModal()" data-testid="button-add-expense">+ Nuevo Gasto</button>
+            </div>
+
+            <div class="filters-bar">
+                <div class="filter-group">
+                    <label>Barco</label>
+                    <select id="filter-boat-expenses" data-testid="select-filter-boat">
+                        <option value="">Todos los barcos</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Categoría</label>
+                    <select id="filter-category" data-testid="select-filter-category">
+                        <option value="">Todas</option>
+                        <option value="fuel">Combustible</option>
+                        <option value="maintenance_parts">Partes</option>
+                        <option value="labor">Mano de Obra</option>
+                        <option value="cleaning">Limpieza</option>
+                        <option value="marina_fees">Marina</option>
+                        <option value="insurance">Seguro</option>
+                        <option value="emergency_repairs">Emergencia</option>
+                        <option value="operational">Operacional</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Desde</label>
+                    <input type="date" id="filter-start-date" data-testid="input-start-date">
+                </div>
+                <div class="filter-group">
+                    <label>Hasta</label>
+                    <input type="date" id="filter-end-date" data-testid="input-end-date">
+                </div>
+                <div class="filter-group" style="justify-content: end;">
+                    <button class="btn btn-primary" onclick="loadExpenses()" data-testid="button-apply-filters">Aplicar Filtros</button>
+                </div>
+            </div>
+
+            <div id="expenses-container" class="cards-grid"></div>
+        </div>
+
+        <!-- Tab 2: Maintenance Records -->
+        <div class="tab-content" data-tab-content="maintenance">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2>Historial de Mantenimiento</h2>
+                <button class="btn btn-primary" onclick="openMaintenanceModal()" data-testid="button-add-maintenance">+ Nuevo Registro</button>
+            </div>
+
+            <div class="filters-bar">
+                <div class="filter-group">
+                    <label>Barco</label>
+                    <select id="filter-boat-maintenance" data-testid="select-filter-boat-maintenance">
+                        <option value="">Todos los barcos</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Tipo de Servicio</label>
+                    <select id="filter-service-type" data-testid="select-filter-service">
+                        <option value="">Todos</option>
+                        <option value="engine_oil_change">Cambio de Aceite</option>
+                        <option value="engine_service">Servicio Motor</option>
+                        <option value="hull_cleaning">Limpieza Casco</option>
+                        <option value="electrical_repair">Reparación Eléctrica</option>
+                        <option value="propeller_service">Servicio Hélice</option>
+                        <option value="fuel_system">Sistema Combustible</option>
+                        <option value="cooling_system">Sistema Enfriamiento</option>
+                        <option value="safety_inspection">Inspección Seguridad</option>
+                        <option value="general_maintenance">Mantenimiento General</option>
+                        <option value="emergency_repair">Reparación Emergencia</option>
+                    </select>
+                </div>
+                <div class="filter-group" style="justify-content: end;">
+                    <button class="btn btn-primary" onclick="loadMaintenanceRecords()" data-testid="button-apply-maintenance-filters">Aplicar Filtros</button>
+                </div>
+            </div>
+
+            <div id="maintenance-container" class="cards-grid"></div>
+        </div>
+
+        <!-- Tab 3: Work Orders -->
+        <div class="tab-content" data-tab-content="work-orders">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2>Órdenes de Trabajo</h2>
+                <button class="btn btn-primary" onclick="openWorkOrderModal()" data-testid="button-add-work-order">+ Nueva Orden</button>
+            </div>
+
+            <div class="filters-bar">
+                <div class="filter-group">
+                    <label>Estado</label>
+                    <select id="filter-work-order-status" data-testid="select-filter-status">
+                        <option value="">Todos</option>
+                        <option value="pending">Pendiente</option>
+                        <option value="assigned">Asignado</option>
+                        <option value="in_progress">En Progreso</option>
+                        <option value="completed">Completado</option>
+                        <option value="cancelled">Cancelado</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Prioridad</label>
+                    <select id="filter-work-order-priority" data-testid="select-filter-priority">
+                        <option value="">Todas</option>
+                        <option value="critical">Crítica</option>
+                        <option value="high">Alta</option>
+                        <option value="medium">Media</option>
+                        <option value="low">Baja</option>
+                    </select>
+                </div>
+                <div class="filter-group" style="justify-content: end;">
+                    <button class="btn btn-primary" onclick="loadWorkOrders()" data-testid="button-apply-work-order-filters">Aplicar Filtros</button>
+                </div>
+            </div>
+
+            <div id="work-orders-container" class="cards-grid"></div>
+        </div>
+
+        <!-- Tab 4: Parts Inventory -->
+        <div class="tab-content" data-tab-content="parts">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2>Inventario de Partes</h2>
+                <button class="btn btn-primary" onclick="openPartModal()" data-testid="button-add-part">+ Nueva Parte</button>
+            </div>
+
+            <div id="low-stock-alerts"></div>
+
+            <div class="filters-bar">
+                <div class="filter-group">
+                    <label>Categoría</label>
+                    <select id="filter-part-category" data-testid="select-filter-part-category">
+                        <option value="">Todas</option>
+                        <option value="batteries">Baterías</option>
+                        <option value="oils">Aceites</option>
+                        <option value="filters">Filtros</option>
+                        <option value="belts">Correas</option>
+                        <option value="spark_plugs">Bujías</option>
+                        <option value="impellers">Impulsores</option>
+                        <option value="anodes">Ánodos</option>
+                        <option value="electrical">Eléctrico</option>
+                        <option value="safety">Seguridad</option>
+                        <option value="other">Otros</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>
+                        <input type="checkbox" id="filter-low-stock" data-testid="checkbox-low-stock"> Solo Stock Bajo
+                    </label>
+                </div>
+                <div class="filter-group" style="justify-content: end;">
+                    <button class="btn btn-primary" onclick="loadPartsInventory()" data-testid="button-apply-part-filters">Aplicar Filtros</button>
+                </div>
+            </div>
+
+            <div class="data-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Parte</th>
+                            <th>Número</th>
+                            <th>Categoría</th>
+                            <th>Stock</th>
+                            <th>Costo Unit.</th>
+                            <th>Proveedor</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="parts-table-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Tab 5: Mechanics -->
+        <div class="tab-content" data-tab-content="mechanics">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2>Mecánicos y Técnicos</h2>
+                <button class="btn btn-primary" onclick="openMechanicModal()" data-testid="button-add-mechanic">+ Nuevo Mecánico</button>
+            </div>
+
+            <div class="data-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Nombre</th>
+                            <th>Especialidad</th>
+                            <th>Teléfono</th>
+                            <th>Tarifa/Hora</th>
+                            <th>Rating</th>
+                            <th>Trabajos</th>
+                            <th>Estado</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="mechanics-table-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Tab 6: Analytics -->
+        <div class="tab-content" data-tab-content="analytics">
+            <h2 style="margin-bottom: 20px;">Analíticas de Mantenimiento</h2>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Total Gastos (Mes)</div>
+                    <div class="stat-value" id="stat-total-expenses">$0</div>
+                </div>
+                <div class="stat-card green">
+                    <div class="stat-label">Registros Mantenimiento</div>
+                    <div class="stat-value" id="stat-maintenance-count">0</div>
+                </div>
+                <div class="stat-card orange">
+                    <div class="stat-label">Órdenes Pendientes</div>
+                    <div class="stat-value" id="stat-pending-orders">0</div>
+                </div>
+                <div class="stat-card red">
+                    <div class="stat-label">Partes Bajo Stock</div>
+                    <div class="stat-value" id="stat-low-stock">0</div>
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 30px;">
+                <div class="card">
+                    <h3 style="margin-bottom: 16px;">Gastos por Categoría</h3>
+                    <canvas id="chart-expenses-category" data-testid="chart-expenses-category"></canvas>
+                </div>
+                <div class="card">
+                    <h3 style="margin-bottom: 16px;">Tendencia de Gastos (6 Meses)</h3>
+                    <canvas id="chart-expenses-trend" data-testid="chart-expenses-trend"></canvas>
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px;">
+                <div class="card">
+                    <h3 style="margin-bottom: 16px;">Gastos Totales por Barco</h3>
+                    <canvas id="chart-expenses-by-boat" data-testid="chart-expenses-by-boat"></canvas>
+                </div>
+                <div class="card">
+                    <h3 style="margin-bottom: 16px;">Gastos por Categoría y Barco</h3>
+                    <canvas id="chart-expenses-category-boat" data-testid="chart-expenses-category-boat"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Add/Edit Expense -->
+    <div id="modal-expense" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Nuevo Gasto</h2>
+                <button class="close-btn" onclick="closeExpenseModal()" data-testid="button-close-expense-modal">&times;</button>
+            </div>
+            <form id="form-expense" onsubmit="saveExpense(event)">
+                <div class="form-group">
+                    <label>Barco *</label>
+                    <select id="expense-boat" required data-testid="select-expense-boat">
+                        <option value="">Seleccionar barco</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Categoría *</label>
+                    <select id="expense-category" required data-testid="select-expense-category">
+                        <option value="fuel">Combustible</option>
+                        <option value="maintenance_parts">Partes de Mantenimiento</option>
+                        <option value="labor">Mano de Obra</option>
+                        <option value="cleaning">Limpieza</option>
+                        <option value="marina_fees">Tarifas de Marina</option>
+                        <option value="insurance">Seguro</option>
+                        <option value="emergency_repairs">Reparaciones de Emergencia</option>
+                        <option value="operational">Operacional</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Monto *</label>
+                    <input type="number" step="0.01" id="expense-amount" required data-testid="input-expense-amount">
+                </div>
+                <div class="form-group">
+                    <label>Fecha *</label>
+                    <input type="date" id="expense-date" required data-testid="input-expense-date">
+                </div>
+                <div class="form-group">
+                    <label>Descripción *</label>
+                    <textarea id="expense-description" required data-testid="textarea-expense-description"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Mecánico</label>
+                    <select id="expense-mechanic" data-testid="select-expense-mechanic">
+                        <option value="">N/A</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Galones de Combustible (opcional)</label>
+                    <input type="number" step="0.1" id="expense-fuel-gallons" data-testid="input-fuel-gallons">
+                </div>
+                <div class="form-group">
+                    <label>Estación de Combustible</label>
+                    <input type="text" id="expense-fuel-station" data-testid="input-fuel-station">
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeExpenseModal()" data-testid="button-cancel-expense">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" data-testid="button-save-expense">Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Add/Edit Maintenance Record -->
+    <div id="modal-maintenance" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Nuevo Registro de Mantenimiento</h2>
+                <button class="close-btn" onclick="closeMaintenanceModal()" data-testid="button-close-maintenance-modal">&times;</button>
+            </div>
+            <form id="form-maintenance" onsubmit="saveMaintenanceRecord(event)">
+                <div class="form-group">
+                    <label>Barco *</label>
+                    <select id="maintenance-boat" required data-testid="select-maintenance-boat">
+                        <option value="">Seleccionar barco</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Tipo de Servicio *</label>
+                    <select id="maintenance-service-type" required data-testid="select-maintenance-service-type">
+                        <option value="engine_oil_change">Cambio de Aceite de Motor</option>
+                        <option value="engine_service">Servicio de Motor</option>
+                        <option value="hull_cleaning">Limpieza de Casco</option>
+                        <option value="electrical_repair">Reparación Eléctrica</option>
+                        <option value="propeller_service">Servicio de Hélice</option>
+                        <option value="fuel_system">Sistema de Combustible</option>
+                        <option value="cooling_system">Sistema de Enfriamiento</option>
+                        <option value="safety_inspection">Inspección de Seguridad</option>
+                        <option value="general_maintenance">Mantenimiento General</option>
+                        <option value="emergency_repair">Reparación de Emergencia</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Descripción *</label>
+                    <textarea id="maintenance-description" required data-testid="textarea-maintenance-description"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Mecánico</label>
+                    <select id="maintenance-mechanic" data-testid="select-maintenance-mechanic">
+                        <option value="">N/A</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Horas de Trabajo</label>
+                    <input type="number" step="0.5" id="maintenance-labor-hours" data-testid="input-labor-hours">
+                </div>
+                <div class="form-group">
+                    <label>Costo de Partes</label>
+                    <input type="number" step="0.01" id="maintenance-parts-cost" data-testid="input-parts-cost">
+                </div>
+                <div class="form-group">
+                    <label>Costo de Mano de Obra</label>
+                    <input type="number" step="0.01" id="maintenance-labor-cost" data-testid="input-labor-cost">
+                </div>
+                <div class="form-group">
+                    <label>Costo Total *</label>
+                    <input type="number" step="0.01" id="maintenance-total-cost" required data-testid="input-total-cost">
+                </div>
+                <div class="form-group">
+                    <label>Fecha de Servicio *</label>
+                    <input type="date" id="maintenance-service-date" required data-testid="input-service-date">
+                </div>
+                <div class="form-group">
+                    <label>Próximo Servicio (Fecha)</label>
+                    <input type="date" id="maintenance-next-service" data-testid="input-next-service">
+                </div>
+                <div class="form-group">
+                    <label>Horas de Motor al Servicio</label>
+                    <input type="number" id="maintenance-engine-hours" data-testid="input-engine-hours">
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeMaintenanceModal()" data-testid="button-cancel-maintenance">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" data-testid="button-save-maintenance">Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Add/Edit Work Order -->
+    <div id="modal-work-order" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Nueva Orden de Trabajo</h2>
+                <button class="close-btn" onclick="closeWorkOrderModal()" data-testid="button-close-work-order-modal">&times;</button>
+            </div>
+            <form id="form-work-order" onsubmit="saveWorkOrder(event)">
+                <div class="form-group">
+                    <label>Barco *</label>
+                    <select id="work-order-boat" required data-testid="select-work-order-boat">
+                        <option value="">Seleccionar barco</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Título *</label>
+                    <input type="text" id="work-order-title" required data-testid="input-work-order-title">
+                </div>
+                <div class="form-group">
+                    <label>Descripción *</label>
+                    <textarea id="work-order-description" required data-testid="textarea-work-order-description"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Prioridad *</label>
+                    <select id="work-order-priority" required data-testid="select-work-order-priority">
+                        <option value="low">Baja</option>
+                        <option value="medium" selected>Media</option>
+                        <option value="high">Alta</option>
+                        <option value="critical">Crítica</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Mecánico Asignado</label>
+                    <select id="work-order-mechanic" data-testid="select-work-order-mechanic">
+                        <option value="">Sin asignar</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Fecha Programada</label>
+                    <input type="date" id="work-order-scheduled-date" data-testid="input-scheduled-date">
+                </div>
+                <div class="form-group">
+                    <label>Costo Estimado</label>
+                    <input type="number" step="0.01" id="work-order-estimated-cost" data-testid="input-estimated-cost">
+                </div>
+                <div class="form-group">
+                    <label>Horas Estimadas</label>
+                    <input type="number" step="0.5" id="work-order-estimated-hours" data-testid="input-estimated-hours">
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeWorkOrderModal()" data-testid="button-cancel-work-order">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" data-testid="button-save-work-order">Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Add/Edit Part -->
+    <div id="modal-part" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Nueva Parte</h2>
+                <button class="close-btn" onclick="closePartModal()" data-testid="button-close-part-modal">&times;</button>
+            </div>
+            <form id="form-part" onsubmit="savePart(event)">
+                <div class="form-group">
+                    <label>Nombre de Parte *</label>
+                    <input type="text" id="part-name" required data-testid="input-part-name">
+                </div>
+                <div class="form-group">
+                    <label>Número de Parte</label>
+                    <input type="text" id="part-number" data-testid="input-part-number">
+                </div>
+                <div class="form-group">
+                    <label>Categoría *</label>
+                    <select id="part-category" required data-testid="select-part-category">
+                        <option value="batteries">Baterías</option>
+                        <option value="oils">Aceites</option>
+                        <option value="filters">Filtros</option>
+                        <option value="belts">Correas</option>
+                        <option value="spark_plugs">Bujías</option>
+                        <option value="impellers">Impulsores</option>
+                        <option value="anodes">Ánodos</option>
+                        <option value="electrical">Eléctrico</option>
+                        <option value="safety">Seguridad</option>
+                        <option value="other">Otros</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Cantidad Inicial *</label>
+                    <input type="number" id="part-quantity" required data-testid="input-part-quantity">
+                </div>
+                <div class="form-group">
+                    <label>Costo Unitario *</label>
+                    <input type="number" step="0.01" id="part-unit-cost" required data-testid="input-part-unit-cost">
+                </div>
+                <div class="form-group">
+                    <label>Nivel Mínimo de Stock *</label>
+                    <input type="number" id="part-min-stock" required data-testid="input-part-min-stock">
+                </div>
+                <div class="form-group">
+                    <label>Proveedor</label>
+                    <input type="text" id="part-supplier" data-testid="input-part-supplier">
+                </div>
+                <div class="form-group">
+                    <label>Teléfono Proveedor</label>
+                    <input type="text" id="part-supplier-phone" data-testid="input-part-supplier-phone">
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closePartModal()" data-testid="button-cancel-part">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" data-testid="button-save-part">Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Add/Edit Mechanic -->
+    <div id="modal-mechanic" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Nuevo Mecánico</h2>
+                <button class="close-btn" onclick="closeMechanicModal()" data-testid="button-close-mechanic-modal">&times;</button>
+            </div>
+            <form id="form-mechanic" onsubmit="saveMechanic(event)">
+                <div class="form-group">
+                    <label>Nombre *</label>
+                    <input type="text" id="mechanic-name" required data-testid="input-mechanic-name">
+                </div>
+                <div class="form-group">
+                    <label>Teléfono *</label>
+                    <input type="tel" id="mechanic-phone" required data-testid="input-mechanic-phone">
+                </div>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="mechanic-email" data-testid="input-mechanic-email">
+                </div>
+                <div class="form-group">
+                    <label>Especialidad *</label>
+                    <select id="mechanic-specialty" required data-testid="select-mechanic-specialty">
+                        <option value="engine_repair">Reparación de Motores</option>
+                        <option value="electrical">Eléctrico</option>
+                        <option value="hull">Casco</option>
+                        <option value="propulsion">Propulsión</option>
+                        <option value="fiberglass">Fibra de Vidrio</option>
+                        <option value="general">General</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Tarifa por Hora *</label>
+                    <input type="number" step="0.01" id="mechanic-hourly-rate" required data-testid="input-mechanic-hourly-rate">
+                </div>
+                <div class="form-group">
+                    <label>Notas</label>
+                    <textarea id="mechanic-notes" data-testid="textarea-mechanic-notes"></textarea>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeMechanicModal()" data-testid="button-cancel-mechanic">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" data-testid="button-save-mechanic">Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="boat-maintenance.js"></script>
+</body>
+</html>
