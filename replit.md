@@ -33,14 +33,20 @@ Custom ThemeProvider with dark/light/system modes, localStorage persistence, and
 **UI Components:**
 Building a comprehensive component library in `src/components/ui/` following shadcn patterns: Button (with CVA variants), Card, Form controls, Charts, etc.
 
-**Planned Features (React Migration):**
-- Mobile-first responsive navigation with MegaNavbar, SidebarMobile, FloatingActionMenu
-- Animated Hero section with nautical video background
-- Real-time marine conditions display with NOAA API integration
+**Completed Features (React Migration - Nov 2, 2025):**
+- ✅ Mobile-first responsive navigation with Navbar, MobileSidebar, FloatingActionMenu using wouter's navigate() hook
+- ✅ ThemeProvider with dark/light/system modes and ThemeToggle component
+- ✅ Animated Hero section with Framer Motion, QuickSearch component, and WeatherBanner
+- ✅ Dashboard with MetricCards (Framer Motion animations), Recharts visualizations, React Query integration
+- ✅ React Query default fetcher with credentials: 'include' for authenticated API requests
+- ✅ Shared API utilities (src/lib/api.ts): fetcher() for GET, apiRequest() for mutations
+
+**In Progress (React Migration):**
 - Dynamic pricing intelligence dashboard with ML-powered insights
 - Comprehensive accounting interface with transaction management
 - Unified messaging center across 13 booking platforms
 - Boat maintenance tracking system with expense synchronization
+- Real-time marine conditions display with NOAA API integration
 
 **Legacy System:**
 The original Vanilla JavaScript application remains operational in the `public/` folder during the transition period. Backend Express APIs remain unchanged and compatible with both frontends.
@@ -59,7 +65,24 @@ Replit Auth with OpenID Connect (OIDC) is implemented using `passport.js` and `c
 
 ## System Design Patterns
 
-Key patterns include Chart.js lifecycle management for stable dashboards, a robust transaction type system for accounting, a priority-based auto-categorization engine with multiple operators, an alert system for financial monitoring, a smart matching algorithm for bank reconciliation supporting various import formats, and a data merging strategy for marine conditions that combines weather station air temperature with buoy water temperature to provide accurate safety assessments. The dynamic pricing system uses a dual-mode event filtering pattern: `activeOnly=false` for UI display (shows all events: past, present, future) and `activeOnly=true` for internal pricing calculations (only events where today falls within start_date and end_date range). This allows comprehensive event management while ensuring pricing accuracy. Demand forecasts use 24-hour PostgreSQL UPSERT-based caching with unique constraints on (forecast_date, region, boat_type) to prevent duplicates and enable daily refresh cycles. Error handling focuses on non-blocking failures with detailed logging and graceful degradation.
+Key patterns include:
+
+**Frontend (React):**
+- **React Query Default Fetcher Pattern**: Centralized API fetching via default queryFn in QueryClient configuration. All useQuery calls automatically include credentials: 'include' for session cookie authentication. Configured with 5-minute staleTime, retry: 1, and refetchOnWindowFocus: false for optimal performance.
+- **Shared API Utilities (src/lib/api.ts)**: Two core functions - fetcher() for GET requests (React Query), apiRequest() for mutations (POST/PUT/DELETE). Both include credentials and proper error handling.
+- **SPA Routing with wouter**: Lightweight routing using wouter's navigate() hook instead of nested anchor tags to avoid DOM nesting violations.
+- **Component Composition**: MetricCard with Framer Motion stagger animations, reusable UI components from shadcn/ui library.
+
+**Backend (Node.js/Express):**
+- Chart.js lifecycle management for stable dashboards
+- Robust transaction type system for accounting
+- Priority-based auto-categorization engine with multiple operators
+- Alert system for financial monitoring
+- Smart matching algorithm for bank reconciliation supporting various import formats
+- Data merging strategy for marine conditions that combines weather station air temperature with buoy water temperature to provide accurate safety assessments
+- Dual-mode event filtering pattern for dynamic pricing: `activeOnly=false` for UI display (shows all events: past, present, future) and `activeOnly=true` for internal pricing calculations (only events where today falls within start_date and end_date range)
+- Demand forecasts use 24-hour PostgreSQL UPSERT-based caching with unique constraints on (forecast_date, region, boat_type) to prevent duplicates and enable daily refresh cycles
+- Error handling focuses on non-blocking failures with detailed logging and graceful degradation
 
 # External Dependencies
 
@@ -69,7 +92,7 @@ Key patterns include Chart.js lifecycle management for stable dashboards, a robu
 -   **Routing**: Wouter (lightweight React router)
 -   **UI & Styling**: Tailwind CSS 4.1.16, @tailwindcss/postcss, class-variance-authority, clsx, tailwind-merge
 -   **Component Library**: Shadcn/ui (Radix UI primitives)
--   **State Management**: TanStack Query v5 (React Query)
+-   **State Management**: TanStack Query v5 (React Query) with default fetcher configured in App.tsx, credentials: 'include' for auth
 -   **Animations**: Framer Motion, Swiper.js
 -   **Data Visualization**: Recharts (React charts), D3.js ecosystem
 -   **Icons**: Lucide React (no emojis)
