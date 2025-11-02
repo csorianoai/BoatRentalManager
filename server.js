@@ -365,6 +365,13 @@ async function initializeDatabase() {
     `);
     
     await pool.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_demand_forecasts_unique 
+      ON demand_forecasts(forecast_date, region, boat_type)
+    `);
+    
+    console.log('✅ Demand forecasts unique index created');
+    
+    await pool.query(`
       CREATE TABLE IF NOT EXISTS pricing_recommendations (
         id TEXT PRIMARY KEY,
         boat_id TEXT,

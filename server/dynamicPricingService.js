@@ -9,6 +9,13 @@ const REGIONAL_MULTIPLIERS = {
   'default': 1.0
 };
 
+const PLATFORM_REGION_MAP = {
+  'Miami': ['Airbnb', 'GetMyBoat', 'Viator', 'Expedia', 'airbnb', 'viator'],
+  'Keys': ['BoatSetter', 'FareHarbor', 'Bokun', 'fareharbor'],
+  'Tampa': ['TripAdvisor', 'Booking.com', 'Rezdy'],
+  'Fort Lauderdale': ['Peek', 'Xola', 'Groupon', 'getmyboat']
+};
+
 class DynamicPricingService {
   constructor(pool, marineConditionsService) {
     this.pool = pool;
@@ -97,19 +104,77 @@ class DynamicPricingService {
   }
 
   async predictDemand(region, boatType, targetDate) {
-    const historicalBookings = await this.pool.query(
-      `SELECT 
+    const existingForecast = await this.pool.query(
+      `SELECT * FROM demand_forecasts 
+       WHERE forecast_date = $1 
+         AND region = $2 
+         AND boat_type IS NOT DISTINCT FROM $3
+         AND generated_at > NOW() - INTERVAL '24 hours'
+       ORDER BY generated_at DESC
+       LIMIT 1`,
+      [targetDate, region, boatType]
+    );
+
+    if (existingForecast.rows.length > 0) {
+      const forecast = existingForecast.rows[0];
+      const targetDOW = moment(targetDate).day();
+      const targetMonth = moment(targetDate).month() + 1;
+      const isWeekend = targetDOW === 0 || targetDOW === 6;
+      const isSummerMonth = targetMonth >= 6 && targetMonth <= 8;
+      
+      const events = await this.getActiveMarketEvents(region);
+      const eventMultiplier = events.length > 0 
+        ? Math.max(...events.map(e => parseFloat(e.price_multiplier) || 1.0))
+        : 1.0;
+      
+      return {
+        forecastDate: forecast.forecast_date,
+        region: forecast.region,
+        boatType: forecast.boat_type,
+        demandScore: forecast.predicted_demand_score,
+        recommendedMultiplier: parseFloat(forecast.recommended_price_multiplier),
+        confidence: parseFloat(forecast.confidence_level),
+        cached: true,
+        factors: {
+          regional: REGIONAL_MULTIPLIERS[region] || REGIONAL_MULTIPLIERS.default,
+          events: eventMultiplier,
+          weekend: isWeekend,
+          summer: isSummerMonth,
+          historicalData: 0
+        }
+      };
+    }
+
+    const platformsForRegion = PLATFORM_REGION_MAP[region] || [];
+    const allPlatforms = Object.values(PLATFORM_REGION_MAP).flat();
+    const relevantPlatforms = platformsForRegion.length > 0 ? platformsForRegion : allPlatforms;
+
+    let query = `
+      SELECT 
         COUNT(*) as booking_count,
         AVG(total_amount) as avg_amount,
         EXTRACT(DOW FROM booking_date::date) as day_of_week,
         EXTRACT(MONTH FROM booking_date::date) as month
-       FROM bookings 
-       WHERE booking_date::date >= $1
-         AND status IN ('confirmed', 'completed')
-       GROUP BY day_of_week, month
-       ORDER BY booking_count DESC`,
-      [moment().subtract(6, 'months').format('YYYY-MM-DD')]
-    );
+      FROM bookings 
+      WHERE booking_date::date >= $1
+        AND status IN ('confirmed', 'completed')
+    `;
+    
+    const params = [moment().subtract(6, 'months').format('YYYY-MM-DD')];
+    
+    if (platformsForRegion.length > 0) {
+      query += ` AND platform = ANY($${params.length + 1})`;
+      params.push(relevantPlatforms);
+    }
+    
+    if (boatType) {
+      query += ` AND boat_type = $${params.length + 1}`;
+      params.push(boatType);
+    }
+    
+    query += ` GROUP BY day_of_week, month ORDER BY booking_count DESC`;
+
+    const historicalBookings = await this.pool.query(query, params);
 
     const targetDOW = moment(targetDate).day();
     const targetMonth = moment(targetDate).month() + 1;
@@ -152,10 +217,18 @@ class DynamicPricingService {
     const recommendedMultiplier = this.calculatePriceMultiplier(demandScore);
 
     const id = `forecast_${nanoid(10)}`;
+    
     await this.pool.query(
       `INSERT INTO demand_forecasts 
        (id, forecast_date, region, boat_type, predicted_demand_score, recommended_price_multiplier, confidence_level)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (forecast_date, region, boat_type) 
+       DO UPDATE SET
+         predicted_demand_score = EXCLUDED.predicted_demand_score,
+         recommended_price_multiplier = EXCLUDED.recommended_price_multiplier,
+         confidence_level = EXCLUDED.confidence_level,
+         generated_at = NOW()
+       RETURNING *`,
       [id, targetDate, region, boatType, demandScore, recommendedMultiplier, confidence]
     );
 
@@ -166,6 +239,7 @@ class DynamicPricingService {
       demandScore: Math.min(100, demandScore),
       recommendedMultiplier,
       confidence,
+      cached: false,
       factors: {
         regional: regionalMultiplier,
         events: eventMultiplier,
