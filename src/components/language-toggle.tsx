@@ -1,4 +1,4 @@
-import { Languages } from 'lucide-react';
+import { Languages, Check } from 'lucide-react';
 import { Button } from './ui/button';
 import {
   DropdownMenu,
@@ -30,16 +30,20 @@ export function LanguageToggle() {
           className={language === 'es' ? 'bg-accent' : ''}
           data-testid="menu-item-spanish"
         >
-          <span className="mr-2">🇪🇸</span>
-          Español
+          <span className="flex items-center gap-2 w-full">
+            <span className="flex-1">ES - Español</span>
+            {language === 'es' && <Check className="h-4 w-4" />}
+          </span>
         </DropdownMenuItem>
         <DropdownMenuItem
           onClick={() => setLanguage('en')}
           className={language === 'en' ? 'bg-accent' : ''}
           data-testid="menu-item-english"
         >
-          <span className="mr-2">🇺🇸</span>
-          English
+          <span className="flex items-center gap-2 w-full">
+            <span className="flex-1">EN - English</span>
+            {language === 'en' && <Check className="h-4 w-4" />}
+          </span>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

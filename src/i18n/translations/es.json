@@ -39,8 +39,13 @@
     "recentBookings": "Reservas Recientes",
     "quickActions": "Acciones Rápidas",
     "newBooking": "Nueva Reserva",
+    "newBookingDesc": "Crear nueva reserva",
     "viewPricing": "Ver Pricing Dinámico",
+    "viewPricingDesc": "Inteligencia ML de mercado",
     "marineConditions": "Condiciones Marinas",
+    "marineConditionsDesc": "Datos NOAA en vivo",
+    "currentDistribution": "Distribución actual de ingresos",
+    "bookingsDistribution": "Distribución actual de reservas",
     "vsLastWeek": "vs semana pasada",
     "vsLastMonth": "vs mes pasado",
     "loading": "Cargando dashboard...",
@@ -71,7 +76,20 @@
     "addEvent": "Agregar Evento",
     "high": "Alta",
     "medium": "Media",
-    "low": "Baja"
+    "low": "Baja",
+    "boatTypes": {
+      "touring": "Tour Turístico",
+      "fishing": "Pesca Deportiva",
+      "vip": "Experiencia VIP"
+    },
+    "demandLevels": {
+      "high": "Alta Demanda",
+      "moderate": "Demanda Moderada",
+      "low": "Demanda Baja",
+      "veryLow": "Muy Baja"
+    },
+    "generateRecommendation": "Generar Recomendación",
+    "generating": "Generando..."
   },
   "marine": {
     "title": "Condiciones Marinas en Vivo",

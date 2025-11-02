@@ -150,7 +150,7 @@ export default function DashboardPage() {
                   </div>
                   <div className="flex-1">
                     <h3 className="font-semibold text-lg mb-1">{t('dashboard.newBooking')}</h3>
-                    <p className="text-sm text-muted-foreground">Crear nueva reserva</p>
+                    <p className="text-sm text-muted-foreground">{t('dashboard.newBookingDesc')}</p>
                   </div>
                 </div>
               </CardContent>
@@ -168,7 +168,7 @@ export default function DashboardPage() {
                   </div>
                   <div className="flex-1">
                     <h3 className="font-semibold text-lg mb-1">{t('dashboard.viewPricing')}</h3>
-                    <p className="text-sm text-muted-foreground">Inteligencia ML de mercado</p>
+                    <p className="text-sm text-muted-foreground">{t('dashboard.viewPricingDesc')}</p>
                   </div>
                 </div>
               </CardContent>
@@ -186,7 +186,7 @@ export default function DashboardPage() {
                   </div>
                   <div className="flex-1">
                     <h3 className="font-semibold text-lg mb-1">{t('dashboard.marineConditions')}</h3>
-                    <p className="text-sm text-muted-foreground">Datos NOAA en vivo</p>
+                    <p className="text-sm text-muted-foreground">{t('dashboard.marineConditionsDesc')}</p>
                   </div>
                 </div>
               </CardContent>
@@ -208,7 +208,7 @@ export default function DashboardPage() {
                 <DollarSignIcon className="w-5 h-5 text-[#D4AF37]" />
                 {t('dashboard.revenueByPlatform')}
               </CardTitle>
-              <CardDescription>Distribución actual de ingresos</CardDescription>
+              <CardDescription>{t('dashboard.currentDistribution')}</CardDescription>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={300}>
@@ -251,7 +251,7 @@ export default function DashboardPage() {
                 <Calendar className="w-5 h-5 text-secondary" />
                 {t('dashboard.bookingsByPlatform')}
               </CardTitle>
-              <CardDescription>Distribución actual de reservas</CardDescription>
+              <CardDescription>{t('dashboard.bookingsDistribution')}</CardDescription>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={300}>

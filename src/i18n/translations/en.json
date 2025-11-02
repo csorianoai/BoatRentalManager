@@ -39,8 +39,13 @@
     "recentBookings": "Recent Bookings",
     "quickActions": "Quick Actions",
     "newBooking": "New Booking",
+    "newBookingDesc": "Create new reservation",
     "viewPricing": "View Dynamic Pricing",
+    "viewPricingDesc": "ML market intelligence",
     "marineConditions": "Marine Conditions",
+    "marineConditionsDesc": "Live NOAA data",
+    "currentDistribution": "Current revenue distribution",
+    "bookingsDistribution": "Current bookings distribution",
     "vsLastWeek": "vs last week",
     "vsLastMonth": "vs last month",
     "loading": "Loading dashboard...",
@@ -71,7 +76,20 @@
     "addEvent": "Add Event",
     "high": "High",
     "medium": "Medium",
-    "low": "Low"
+    "low": "Low",
+    "boatTypes": {
+      "touring": "Sightseeing Tour",
+      "fishing": "Sport Fishing",
+      "vip": "VIP Experience"
+    },
+    "demandLevels": {
+      "high": "High Demand",
+      "moderate": "Moderate Demand",
+      "low": "Low Demand",
+      "veryLow": "Very Low"
+    },
+    "generateRecommendation": "Generate Recommendation",
+    "generating": "Generating..."
   },
   "marine": {
     "title": "Live Marine Conditions",

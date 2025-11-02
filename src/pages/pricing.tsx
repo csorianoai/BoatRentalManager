@@ -30,8 +30,10 @@ import {
 } from 'lucide-react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import moment from 'moment'
+import { useLanguage } from '@/i18n/LanguageContext'
 
 export default function PricingPage() {
+  const { t } = useLanguage()
   const [activeTab, setActiveTab] = useState('overview')
   const [selectedRegion, setSelectedRegion] = useState('Miami')
   const [selectedBoatType, setSelectedBoatType] = useState('touring')
@@ -47,9 +49,9 @@ export default function PricingPage() {
 
   const regions = ['Miami', 'Keys', 'Tampa', 'Fort Lauderdale']
   const boatTypes = [
-    { value: 'touring', label: 'Tour Turístico' },
-    { value: 'fishing', label: 'Pesca Deportiva' },
-    { value: 'VIP', label: 'Experiencia VIP' },
+    { value: 'touring', label: t('pricing.boatTypes.touring') },
+    { value: 'fishing', label: t('pricing.boatTypes.fishing') },
+    { value: 'VIP', label: t('pricing.boatTypes.vip') },
   ]
 
   const handleGenerateRecommendation = () => {
@@ -68,10 +70,10 @@ export default function PricingPage() {
   }
 
   const getDemandBadge = (score: number) => {
-    if (score >= 80) return { label: 'Alta Demanda', variant: 'default' as const }
-    if (score >= 60) return { label: 'Demanda Moderada', variant: 'secondary' as const }
-    if (score >= 40) return { label: 'Demanda Baja', variant: 'outline' as const }
-    return { label: 'Muy Baja', variant: 'destructive' as const }
+    if (score >= 80) return { label: t('pricing.demandLevels.high'), variant: 'default' as const }
+    if (score >= 60) return { label: t('pricing.demandLevels.moderate'), variant: 'secondary' as const }
+    if (score >= 40) return { label: t('pricing.demandLevels.low'), variant: 'outline' as const }
+    return { label: t('pricing.demandLevels.veryLow'), variant: 'destructive' as const }
   }
 
   return (
@@ -87,21 +89,21 @@ export default function PricingPage() {
             <div>
               <h1 className="text-4xl font-bold text-foreground flex items-center gap-2" data-testid="text-page-title">
                 <Sparkles className="h-8 w-8 text-accent" />
-                Dynamic Pricing Intelligence
+                {t('pricing.title')}
               </h1>
               <p className="text-muted-foreground mt-2">
-                Optimización de precios basada en ML y análisis de mercado
+                {t('pricing.subtitle')}
               </p>
             </div>
             <div className="flex gap-3">
               <LoadingButton
                 onClick={handleGenerateRecommendation}
                 loading={generating}
-                loadingText="Generando..."
+                loadingText={t('pricing.generating')}
                 data-testid="button-generate-recommendation"
               >
                 <Sparkles className="h-4 w-4 mr-2" />
-                Generar Recomendación
+                {t('pricing.generateRecommendation')}
               </LoadingButton>
             </div>
           </div>

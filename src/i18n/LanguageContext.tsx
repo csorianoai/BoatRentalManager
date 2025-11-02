@@ -17,11 +17,13 @@ const LanguageContext = createContext<LanguageContextType | undefined>(undefined
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
   const [language, setLanguageState] = useState<Language>(() => {
+    if (typeof window === 'undefined') return 'es';
     const saved = localStorage.getItem('nadaki-language');
     return (saved === 'en' || saved === 'es') ? saved : 'es';
   });
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
     localStorage.setItem('nadaki-language', language);
     document.documentElement.lang = language;
   }, [language]);
