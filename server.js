@@ -1165,8 +1165,8 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Servir archivos estáticos del dashboard
-app.use(express.static('public'));
+// React SPA served via Vite - Old public/ folder disabled
+// app.use(express.static('public'));
 
 // Configure multer for file uploads (in-memory storage)
 const upload = multer({ 
@@ -1184,10 +1184,11 @@ const upload = multer({
 //   }
 // })();
 
-// 🏠 RUTA RAÍZ - Redirect to dashboard (no authentication)
-app.get('/', (req, res) => {
-  res.redirect('/dashboard.html');
-});
+// 🏠 RUTA RAÍZ - Served by Vite middleware (see bottom of file)
+// Old redirect to dashboard.html removed - React SPA handles all routes
+// app.get('/', (req, res) => {
+//   res.redirect('/dashboard.html');
+// });
 
 // Configuración para tu dominio WordPress
 const WORDPRESS_DOMAIN = 'https://www.nadakiexcursions.com';
@@ -7533,15 +7534,26 @@ app.post('/api/work-orders/:id/complete', async (req, res) => {
 });
 
 // ============================================================================
-// 🚀 INICIAR SERVIDOR
+// 🚀 INICIAR SERVIDOR CON VITE
 // ============================================================================
 
 const PORT = process.env.PORT || 5000;
 const HOST = '0.0.0.0'; // Required for deployment
 
-app.listen(PORT, HOST, () => {
-  console.log(`🚀 Nadaki Excursions Backend running on ${HOST}:${PORT}`);
-  console.log(`🌐 WordPress: ${WORDPRESS_DOMAIN}`);
-  console.log(`📧 Webhooks disponibles para ${PLATFORMS.length} plataformas`);
-  console.log(`🔗 Dashboard: http://localhost:${PORT}/api/dashboard-data`);
-});
+// Setup Vite middleware (React SPA)
+const { setupVite } = require('./server/vite');
+(async () => {
+  try {
+    await setupVite(app);
+    
+    app.listen(PORT, HOST, () => {
+      console.log(`🚀 Nadaki Excursions Backend running on ${HOST}:${PORT}`);
+      console.log(`🌐 WordPress: ${WORDPRESS_DOMAIN}`);
+      console.log(`📧 Webhooks disponibles para ${PLATFORMS.length} plataformas`);
+      console.log(`🔗 Dashboard: http://localhost:${PORT}/api/dashboard-data`);
+    });
+  } catch (error) {
+    console.error('❌ Error setting up Vite:', error);
+    process.exit(1);
+  }
+})();
