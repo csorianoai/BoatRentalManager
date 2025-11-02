@@ -29,6 +29,10 @@ async function setupVite(app) {
     const { createServer } = await import('vite');
     
     const vite = await createServer({
+      configFile: false, // Ignora vite.config.ts para evitar conflictos con allowedHosts
+      plugins: [
+        (await import('@vitejs/plugin-react')).default(),
+      ],
       resolve: {
         alias: {
           '@': path.resolve(__dirname, '../src'),
