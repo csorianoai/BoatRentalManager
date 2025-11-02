@@ -3364,6 +3364,28 @@ cron.schedule('0 8 * * *', async () => {
   }
 });
 
+// ⏰ DEMAND FORECAST REFRESH SCHEDULER
+// Runs daily at midnight to refresh demand forecasts for all regions
+console.log('🤖 Scheduling daily demand forecast refresh...');
+cron.schedule('0 0 * * *', async () => {
+  console.log('🤖 Executing daily demand forecast refresh...');
+  const regions = ['Miami', 'Keys', 'Tampa', 'Fort Lauderdale'];
+  
+  for (const region of regions) {
+    try {
+      // Generate forecasts for the next 7 days
+      for (let i = 0; i < 7; i++) {
+        const forecastDate = moment().add(i, 'days').format('YYYY-MM-DD');
+        await dynamicPricingService.predictDemand(region, null, forecastDate);
+      }
+      console.log(`✅ Refreshed demand forecast for ${region}`);
+    } catch (error) {
+      console.error(`❌ Error refreshing forecast for ${region}:`, error.message);
+    }
+  }
+  console.log('🤖 Daily demand forecast refresh completed');
+});
+
 // ========================================
 // ⚡ FASE 7: PRICING MANAGEMENT ENDPOINTS
 // ========================================
