@@ -10,59 +10,7 @@ Preferred communication style: Simple, everyday language.
 
 ## Frontend Architecture
 
-**[MAJOR REDESIGN IN PROGRESS - Nov 2025]** The frontend is undergoing a complete migration from Vanilla JavaScript to **React 18 + TypeScript** for improved maintainability, developer experience, and UI capabilities. 
-
-**New Stack:**
-- **React 18.3.1** with TypeScript for type-safe component development
-- **Wouter** for lightweight client-side routing (not react-router-dom)
-- **Tailwind CSS 4.1.16** with custom nautical color palette:
-  * Primary (Ocean Blue Navy): #0A2E52 (HSL 210 70% 18%)
-  * Secondary (Ocean Blue Bright): #1E90FF (HSL 210 100% 56%)
-  * Accent (Premium Gold): #D4AF37 (HSL 45 75% 53%)
-  * Destructive (Alert Red): #DC2626 (HSL 0 72% 51%)
-- **Shadcn/ui** component library with class-variance-authority (CVA) for consistent UI patterns
-- **Framer Motion** for smooth animations and microinteractions
-- **TanStack Query (React Query v5)** for API state management and caching
-- **Recharts** for data visualization (replacing Chart.js)
-- **Lucide React** for icons (no emojis per design guidelines)
-- **Vite 7.x** as build tool and dev server
-
-**Theme System:**
-Custom ThemeProvider with dark/light/system modes, localStorage persistence, and automatic document.documentElement class toggling.
-
-**UI Components:**
-Building a comprehensive component library following shadcn patterns:
-- **Base Components** (src/components/ui/): Button (CVA variants), Card, Form controls, Badge, Input, etc.
-- **Premium Components** (src/components/):
-  - BoatCard: Display boats with hover animations, dynamic badges, pricing, features, status indicators
-  - PricingCard: Animated pricing plans with highlighted variants, ribbon badges, staggered feature reveals
-  - FeatureCard: Module cards with Lucide icons, stagger entrance animations, hover elevation
-  - MetricCard: Dashboard metrics with Framer Motion stagger effects
-
-**Completed Features (React Migration - Nov 2, 2025):**
-- ✅ Mobile-first responsive navigation with Navbar, MobileSidebar, FloatingActionMenu using wouter's navigate() hook
-- ✅ ThemeProvider with dark/light/system modes and ThemeToggle component
-- ✅ Animated Hero section with Framer Motion, QuickSearch component, and WeatherBanner
-- ✅ Dashboard with MetricCards (Framer Motion animations), Recharts visualizations, React Query integration
-- ✅ React Query default fetcher with credentials: 'include' for authenticated API requests
-- ✅ Shared API utilities (src/lib/api.ts): fetcher() for GET, apiRequest() for mutations
-- ✅ Premium UI Components: BoatCard (glow hover effects), PricingCard (animated with ribbons), FeatureCard (Lucide iconography)
-- ✅ Complete Loading State System: Skeleton component base, 7 specialized skeletons (BoatCard, PricingCard, FeatureCard, MetricCard, Table, Dashboard, Form), LoadingButton with spinner, integration in premium components
-- ✅ Demo Loading Page (/demo-loading): Interactive showcase of all loading states with button microinteractions, skeleton components, and async operation simulations
-- ✅ Comprehensive API Integration Layer (src/hooks/): 6 custom hook modules with 50+ hooks total covering all backend APIs (bookings, marine, pricing, accounting, maintenance, messages). All hooks follow React Query v5 best practices with hierarchical query keys for efficient cache invalidation, proper TypeScript typing, and strategic staleTime configuration.
-- ✅ Dynamic Pricing Intelligence Page (/pricing): 4 animated tabs (Overview, Demand Forecast, Competitors, Market Events), Recharts AreaChart for 14-day ML demand forecasting, region + boat type filters (Miami/Keys/Tampa/Fort Lauderdale), competitor analysis grid, market event tracking, LoadingButton for AI recommendations, comprehensive loading states with DashboardSkeleton and TableRowSkeleton.
-- ✅ Marine Conditions Real-Time Page (/marine): Live NOAA data integration with safety score indicator (dynamic color coding), 4 current conditions cards (temperature, wind, waves, visibility), weather forecast display (6 periods), tide chart (AreaChart with gradient), NDBC Buoy 41009 real-time data, alert banners for dangerous conditions, refresh functionality with cache clearing using React Query prefix-based invalidation.
-- ✅ Mobile Optimization Complete: Touch targets upgraded to 44px minimum (Button min-h-11, Input min-h-11), Swiper.js integration with MobileCarousel reusable component, viewport meta tags configured for mobile-first responsiveness.
-- ✅ PWA Configuration Complete: Updated manifest.json with Nadaki branding (theme colors, app shortcuts to dashboard/pricing/marine), service worker configured with network-first caching strategy for React app assets, PWA meta tags for iOS/Android (apple-mobile-web-app-capable, theme-color), registerServiceWorker() in production mode, app is installable from browser.
-- ✅ E2E Testing Validated: Playwright testing completed successfully with 20 test scenarios covering navigation (home→pricing→marine→dashboard), pricing tabs/charts/filters functionality, marine conditions safety score and refresh button, responsive mobile/desktop viewports, touch targets, and React Query integration. All critical user flows verified.
-
-**In Progress (React Migration):**
-- Comprehensive accounting interface with transaction management
-- Unified messaging center across 13 booking platforms
-- Boat maintenance tracking system with expense synchronization
-
-**Legacy System:**
-The original Vanilla JavaScript application remains operational in the `public/` folder during the transition period. Backend Express APIs remain unchanged and compatible with both frontends.
+The frontend uses Vanilla JavaScript (HTML/CSS/JS) for a lightweight and fast user experience. It features a business intelligence dashboard with real-time metrics, an ocean/nautical themed custom CSS, and Chart.js for data visualization. A WhatsApp/Intercom-style AI chat widget provides real-time customer interaction with conversation history. The accounting dashboard includes financial metrics, Chart.js visualizations (with critical lifecycle management to prevent errors), transaction management, bank reconciliation, and categorization rules. The messaging center (FASE 9) provides a unified inbox with thread-based conversations, manual message ingestion, quick reply templates, and performance analytics across all 13 booking platforms. The boat maintenance system (FASE 10) features a comprehensive 6-tab interface for tracking expenses, maintenance records, work orders, parts inventory, mechanics, and analytics with automatic accounting synchronization. The marine conditions monitoring module displays real-time NOAA data including weather, tides, alerts, and buoy observations with a safety scoring system and auto-refresh every 5 minutes.
 
 ## Backend Architecture
 
@@ -78,41 +26,16 @@ Replit Auth with OpenID Connect (OIDC) is implemented using `passport.js` and `c
 
 ## System Design Patterns
 
-Key patterns include:
-
-**Frontend (React):**
-- **React Query Default Fetcher Pattern**: Centralized API fetching via default queryFn in QueryClient configuration. All useQuery calls automatically include credentials: 'include' for session cookie authentication. Configured with 5-minute staleTime, retry: 1, and refetchOnWindowFocus: false for optimal performance.
-- **Shared API Utilities (src/lib/api.ts)**: Two core functions - fetcher() for GET requests (React Query), apiRequest() for mutations (POST/PUT/DELETE). Both include credentials and proper error handling.
-- **Custom Hooks Architecture (src/hooks/)**: Organized into 6 modules (use-bookings, use-marine, use-pricing, use-accounting, use-maintenance, use-messages) with barrel export via index.ts. Query keys use hierarchical arrays (e.g., ['/api/marine', 'summary']) enabling efficient prefix-based cache invalidation. Mutations include automatic queryClient.invalidateQueries for affected caches. Strategic staleTime configuration: 5-10 minutes for frequently updated data, 30-60 minutes for stable data, 24 hours for ML forecasts.
-- **SPA Routing with wouter**: Lightweight routing using wouter's navigate() hook via useLocation() instead of nested anchor tags to avoid DOM nesting violations.
-- **Component Composition**: Premium cards (BoatCard, PricingCard, FeatureCard) with Framer Motion stagger animations, reusable UI components from shadcn/ui library, dynamic theming with boat-type badges, price formatting helpers, interactive callbacks.
-
-**Backend (Node.js/Express):**
-- Chart.js lifecycle management for stable dashboards
-- Robust transaction type system for accounting
-- Priority-based auto-categorization engine with multiple operators
-- Alert system for financial monitoring
-- Smart matching algorithm for bank reconciliation supporting various import formats
-- Data merging strategy for marine conditions that combines weather station air temperature with buoy water temperature to provide accurate safety assessments
-- Dual-mode event filtering pattern for dynamic pricing: `activeOnly=false` for UI display (shows all events: past, present, future) and `activeOnly=true` for internal pricing calculations (only events where today falls within start_date and end_date range)
-- Demand forecasts use 24-hour PostgreSQL UPSERT-based caching with unique constraints on (forecast_date, region, boat_type) to prevent duplicates and enable daily refresh cycles
-- Error handling focuses on non-blocking failures with detailed logging and graceful degradation
+Key patterns include Chart.js lifecycle management for stable dashboards, a robust transaction type system for accounting, a priority-based auto-categorization engine with multiple operators, an alert system for financial monitoring, a smart matching algorithm for bank reconciliation supporting various import formats, and a data merging strategy for marine conditions that combines weather station air temperature with buoy water temperature to provide accurate safety assessments. The dynamic pricing system uses a dual-mode event filtering pattern: `activeOnly=false` for UI display (shows all events: past, present, future) and `activeOnly=true` for internal pricing calculations (only events where today falls within start_date and end_date range). This allows comprehensive event management while ensuring pricing accuracy. Demand forecasts use 24-hour PostgreSQL UPSERT-based caching with unique constraints on (forecast_date, region, boat_type) to prevent duplicates and enable daily refresh cycles. Error handling focuses on non-blocking failures with detailed logging and graceful degradation.
 
 # External Dependencies
 
 ## Third-Party Libraries
 
--   **Frontend Framework**: React 18.3.1, TypeScript 5.x
--   **Routing**: Wouter (lightweight React router)
--   **UI & Styling**: Tailwind CSS 4.1.16, @tailwindcss/postcss, class-variance-authority, clsx, tailwind-merge
--   **Component Library**: Shadcn/ui (Radix UI primitives)
--   **State Management**: TanStack Query v5 (React Query) with default fetcher configured in App.tsx, credentials: 'include' for auth
--   **Animations**: Framer Motion, Swiper.js
--   **Data Visualization**: Recharts (React charts), D3.js ecosystem
--   **Icons**: Lucide React (no emojis)
--   **Forms**: React Hook Form, Zod validation
--   **Build Tool**: Vite 7.x
--   **File Processing**: csv-parse, ofx-js
+-   **UI & Styling**: Tailwind CSS, `class-variance-authority`, `clsx`, `aria-hidden`.
+-   **Data Visualization**: D3.js ecosystem, Chart.js.
+-   **Command Interface**: `cmdk`.
+-   **File Processing**: `csv-parse`, `ofx-js`.
 
 ## External Services & Integrations
 

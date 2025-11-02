@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Calendario y Horarios - Nadaki Excursions</title>
+  <link rel="stylesheet" href="schedule.css">
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="header-left">
+        <h1 data-testid="text-title">📅 Nadaki Excursions</h1>
+        <p class="subtitle">Calendario y Optimizador de Horarios</p>
+      </div>
+      <div class="header-right">
+        <a href="/dashboard.html" class="btn btn-secondary" data-testid="link-dashboard">← Dashboard</a>
+        <a href="/commissions.html" class="btn btn-secondary" data-testid="link-commissions">💰 Comisiones</a>
+        <a href="/pricing.html" class="btn btn-secondary" data-testid="link-pricing">💵 Precios</a>
+        <a href="/api/logout" class="btn btn-secondary" data-testid="button-logout">🚪 Cerrar Sesión</a>
+      </div>
+    </header>
+
+    <!-- Controls -->
+    <div class="controls-bar">
+      <div class="control-group">
+        <label for="captain-select">Capitán:</label>
+        <select id="captain-select" data-testid="select-captain">
+          <option value="">Todos los capitanes</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <label for="date-from">Desde:</label>
+        <input type="date" id="date-from" data-testid="input-date-from">
+      </div>
+
+      <div class="control-group">
+        <label for="date-to">Hasta:</label>
+        <input type="date" id="date-to" data-testid="input-date-to">
+      </div>
+
+      <button id="btn-refresh" class="btn btn-primary" data-testid="button-refresh">🔄 Actualizar</button>
+      <button id="btn-add-block" class="btn btn-primary" data-testid="button-add-block">+ Bloquear Fecha</button>
+    </div>
+
+    <!-- Week View -->
+    <div class="week-view" id="week-view">
+      <div class="week-header" id="week-header"></div>
+      <div class="week-grid" id="week-grid"></div>
+    </div>
+
+    <!-- Schedule Table -->
+    <div class="schedule-section">
+      <h2>📋 Asignaciones y Disponibilidad</h2>
+      
+      <div class="tabs">
+        <button class="tab-btn active" data-tab="bookings" data-testid="tab-bookings">Reservas</button>
+        <button class="tab-btn" data-tab="availability" data-testid="tab-availability">Disponibilidad</button>
+      </div>
+
+      <div class="tab-content active" id="bookings-tab">
+        <h3>Reservas Asignadas (<span id="bookings-count" data-testid="text-bookings-count">0</span>)</h3>
+        <div class="table-wrapper">
+          <table class="schedule-table">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Hora</th>
+                <th>Duración</th>
+                <th>Capitán</th>
+                <th>Cliente</th>
+                <th>Plataforma</th>
+                <th>Barco</th>
+                <th>Estado</th>
+              </tr>
+            </thead>
+            <tbody id="bookings-table-body">
+              <tr>
+                <td colspan="8" class="loading">Cargando...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="tab-content" id="availability-tab">
+        <h3>Bloques de Disponibilidad (<span id="availability-count" data-testid="text-availability-count">0</span>)</h3>
+        <div class="table-wrapper">
+          <table class="schedule-table">
+            <thead>
+              <tr>
+                <th>Capitán</th>
+                <th>Fecha</th>
+                <th>Horario</th>
+                <th>Disponible</th>
+                <th>Razón</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="availability-table-body">
+              <tr>
+                <td colspan="6" class="loading">Cargando...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Conflict Checker -->
+    <div class="conflict-checker">
+      <h2>🔍 Verificar Conflictos</h2>
+      <div class="conflict-form">
+        <div class="form-group">
+          <label for="check-captain">Capitán:</label>
+          <select id="check-captain" data-testid="select-check-captain">
+            <option value="">Seleccionar...</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="check-date">Fecha:</label>
+          <input type="date" id="check-date" data-testid="input-check-date">
+        </div>
+        <div class="form-group">
+          <label for="check-time">Hora:</label>
+          <input type="time" id="check-time" value="09:00" data-testid="input-check-time">
+        </div>
+        <div class="form-group">
+          <label for="check-duration">Duración (hrs):</label>
+          <input type="number" id="check-duration" value="4" min="1" max="12" data-testid="input-check-duration">
+        </div>
+        <button id="btn-check-conflict" class="btn btn-primary" data-testid="button-check-conflict">Verificar</button>
+      </div>
+      <div id="conflict-result" class="conflict-result" data-testid="div-conflict-result"></div>
+    </div>
+  </div>
+
+  <!-- Add/Edit Availability Modal -->
+  <div id="availability-modal" class="modal" data-testid="modal-availability">
+    <div class="modal-content">
+      <span class="close" data-testid="button-close-modal">&times;</span>
+      <h2 id="modal-title">Bloquear Disponibilidad</h2>
+      <form id="availability-form">
+        <div class="form-group">
+          <label for="modal-captain">Capitán:</label>
+          <select id="modal-captain" required data-testid="select-modal-captain">
+            <option value="">Seleccionar...</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="modal-date">Fecha:</label>
+          <input type="date" id="modal-date" required data-testid="input-modal-date">
+        </div>
+        <div class="form-group">
+          <label for="modal-reason">Razón:</label>
+          <input type="text" id="modal-reason" placeholder="Ej: Vacaciones, día libre..." data-testid="input-modal-reason">
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary" data-testid="button-save-availability">Guardar</button>
+          <button type="button" class="btn btn-secondary" id="btn-cancel" data-testid="button-cancel">Cancelar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="schedule.js"></script>
+</body>
+</html>
