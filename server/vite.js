@@ -44,6 +44,8 @@ async function setupVite(app) {
         allowedHosts: [
           '.replit.dev',
           '.repl.co',
+          '.replit.app',
+          'gestion.nadakiexcursions.com',
         ],
       },
       appType: 'spa',
