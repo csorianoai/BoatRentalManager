@@ -10,7 +10,40 @@ Preferred communication style: Simple, everyday language.
 
 ## Frontend Architecture
 
-The frontend uses Vanilla JavaScript (HTML/CSS/JS) for a lightweight and fast user experience. It features a business intelligence dashboard with real-time metrics, an ocean/nautical themed custom CSS, and Chart.js for data visualization. A WhatsApp/Intercom-style AI chat widget provides real-time customer interaction with conversation history. The accounting dashboard includes financial metrics, Chart.js visualizations (with critical lifecycle management to prevent errors), transaction management, bank reconciliation, and categorization rules. The messaging center (FASE 9) provides a unified inbox with thread-based conversations, manual message ingestion, quick reply templates, and performance analytics across all 13 booking platforms. The boat maintenance system (FASE 10) features a comprehensive 6-tab interface for tracking expenses, maintenance records, work orders, parts inventory, mechanics, and analytics with automatic accounting synchronization. The marine conditions monitoring module displays real-time NOAA data including weather, tides, alerts, and buoy observations with a safety scoring system and auto-refresh every 5 minutes.
+**[MAJOR REDESIGN IN PROGRESS - Nov 2025]** The frontend is undergoing a complete migration from Vanilla JavaScript to **React 18 + TypeScript** for improved maintainability, developer experience, and UI capabilities. 
+
+**New Stack:**
+- **React 18.3.1** with TypeScript for type-safe component development
+- **Wouter** for lightweight client-side routing (not react-router-dom)
+- **Tailwind CSS 4.1.16** with custom nautical color palette:
+  * Primary (Ocean Blue Navy): #0A2E52 (HSL 210 70% 18%)
+  * Secondary (Ocean Blue Bright): #1E90FF (HSL 210 100% 56%)
+  * Accent (Premium Gold): #D4AF37 (HSL 45 75% 53%)
+  * Destructive (Alert Red): #DC2626 (HSL 0 72% 51%)
+- **Shadcn/ui** component library with class-variance-authority (CVA) for consistent UI patterns
+- **Framer Motion** for smooth animations and microinteractions
+- **TanStack Query (React Query v5)** for API state management and caching
+- **Recharts** for data visualization (replacing Chart.js)
+- **Lucide React** for icons (no emojis per design guidelines)
+- **Vite 7.x** as build tool and dev server
+
+**Theme System:**
+Custom ThemeProvider with dark/light/system modes, localStorage persistence, and automatic document.documentElement class toggling.
+
+**UI Components:**
+Building a comprehensive component library in `src/components/ui/` following shadcn patterns: Button (with CVA variants), Card, Form controls, Charts, etc.
+
+**Planned Features (React Migration):**
+- Mobile-first responsive navigation with MegaNavbar, SidebarMobile, FloatingActionMenu
+- Animated Hero section with nautical video background
+- Real-time marine conditions display with NOAA API integration
+- Dynamic pricing intelligence dashboard with ML-powered insights
+- Comprehensive accounting interface with transaction management
+- Unified messaging center across 13 booking platforms
+- Boat maintenance tracking system with expense synchronization
+
+**Legacy System:**
+The original Vanilla JavaScript application remains operational in the `public/` folder during the transition period. Backend Express APIs remain unchanged and compatible with both frontends.
 
 ## Backend Architecture
 
@@ -32,10 +65,17 @@ Key patterns include Chart.js lifecycle management for stable dashboards, a robu
 
 ## Third-Party Libraries
 
--   **UI & Styling**: Tailwind CSS, `class-variance-authority`, `clsx`, `aria-hidden`.
--   **Data Visualization**: D3.js ecosystem, Chart.js.
--   **Command Interface**: `cmdk`.
--   **File Processing**: `csv-parse`, `ofx-js`.
+-   **Frontend Framework**: React 18.3.1, TypeScript 5.x
+-   **Routing**: Wouter (lightweight React router)
+-   **UI & Styling**: Tailwind CSS 4.1.16, @tailwindcss/postcss, class-variance-authority, clsx, tailwind-merge
+-   **Component Library**: Shadcn/ui (Radix UI primitives)
+-   **State Management**: TanStack Query v5 (React Query)
+-   **Animations**: Framer Motion, Swiper.js
+-   **Data Visualization**: Recharts (React charts), D3.js ecosystem
+-   **Icons**: Lucide React (no emojis)
+-   **Forms**: React Hook Form, Zod validation
+-   **Build Tool**: Vite 7.x
+-   **File Processing**: csv-parse, ofx-js
 
 ## External Services & Integrations
 
