@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestión de Flotilla - Nadaki Excursions</title>
+    <link rel="stylesheet" href="commissions.css">
+    <style>
+        .fleet-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 24px;
+            margin-top: 20px;
+        }
+        .boat-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transition: transform 0.2s;
+        }
+        .boat-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+        }
+        .boat-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 16px;
+        }
+        .boat-name {
+            font-size: 20px;
+            font-weight: 700;
+            color: #1a1a1a;
+            margin-bottom: 4px;
+        }
+        .boat-type {
+            font-size: 14px;
+            color: #666;
+            text-transform: capitalize;
+        }
+        .boat-photo {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            background: #f0f0f0;
+        }
+        .boat-info {
+            display: grid;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+        .boat-info-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 14px;
+        }
+        .boat-info-label {
+            color: #666;
+        }
+        .boat-info-value {
+            font-weight: 600;
+            color: #1a1a1a;
+        }
+        .boat-actions {
+            display: flex;
+            gap: 8px;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .modal.active {
+            display: flex;
+        }
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            padding: 32px;
+            max-width: 800px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+        .modal-title {
+            font-size: 24px;
+            font-weight: 700;
+            color: #1a1a1a;
+        }
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+        .form-group label {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        .form-group textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+        .form-section {
+            grid-column: 1 / -1;
+            margin-top: 20px;
+        }
+        .form-section-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #1a1a1a;
+            margin-bottom: 16px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+        .calendar-container {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .calendar-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+        .calendar-nav {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+        }
+        .calendar-month {
+            font-size: 20px;
+            font-weight: 700;
+            color: #1a1a1a;
+        }
+        .platform-matrix {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .platform-row {
+            display: grid;
+            grid-template-columns: 200px 1fr auto;
+            gap: 16px;
+            align-items: center;
+            padding: 16px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        .platform-row:last-child {
+            border-bottom: none;
+        }
+        .platform-name {
+            font-weight: 600;
+            color: #1a1a1a;
+        }
+        .platform-id-input {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        .quick-search {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-bottom: 24px;
+        }
+        .search-form {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            align-items: end;
+        }
+        .results-grid {
+            display: grid;
+            gap: 16px;
+            margin-top: 24px;
+        }
+        .result-card {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            border-left: 4px solid #28a745;
+        }
+        .result-card.unavailable {
+            border-left-color: #dc3545;
+            opacity: 0.7;
+        }
+    </style>
+</head>
+<body>
+    <!-- Navegación -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-brand">
+                <h1>⛵ Nadaki Excursions</h1>
+            </div>
+            <div class="nav-links">
+                <a href="/dashboard.html">📊 Dashboard</a>
+                <a href="/sync.html">🔄 Sincronización</a>
+                <a href="/fleet.html" class="active">🚤 Flotilla</a>
+                <a href="/messages.html">💬 Mensajes</a>
+                <a href="/pricing.html">💵 Precios</a>
+                <button id="logout-btn" data-testid="button-logout" class="logout-btn">🚪 Cerrar Sesión</button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <!-- Tabs Navigation -->
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="boats" data-testid="tab-boats">
+                🚤 Gestión de Barcos
+            </button>
+            <button class="tab-btn" data-tab="calendar" data-testid="tab-calendar">
+                📅 Calendario de Disponibilidad
+            </button>
+            <button class="tab-btn" data-tab="platforms" data-testid="tab-platforms">
+                🔗 Vinculación de Plataformas
+            </button>
+            <button class="tab-btn" data-tab="quick-search" data-testid="tab-quick-search">
+                🔍 Consulta Rápida
+            </button>
+        </div>
+
+        <!-- Tab 1: Boats Management -->
+        <div class="tab-content active" id="boats-tab">
+            <div class="header-actions">
+                <h2>🚤 Gestión de Barcos</h2>
+                <button id="add-boat-btn" data-testid="button-add-boat" class="btn btn-primary">➕ Agregar Barco</button>
+            </div>
+
+            <div class="fleet-grid" id="fleet-grid">
+                <p class="loading">Cargando flotilla...</p>
+            </div>
+        </div>
+
+        <!-- Tab 2: Availability Calendar -->
+        <div class="tab-content" id="calendar-tab">
+            <div class="calendar-container">
+                <div class="calendar-header">
+                    <h2>📅 Calendario de Disponibilidad</h2>
+                    <div class="calendar-nav">
+                        <button id="prev-month-btn" data-testid="button-prev-month" class="btn btn-secondary">← Mes Anterior</button>
+                        <span class="calendar-month" id="calendar-month">Noviembre 2025</span>
+                        <button id="next-month-btn" data-testid="button-next-month" class="btn btn-secondary">Mes Siguiente →</button>
+                    </div>
+                </div>
+                
+                <div class="form-group" style="max-width: 300px; margin-bottom: 24px;">
+                    <label for="calendar-boat-filter">Filtrar por Barco:</label>
+                    <select id="calendar-boat-filter" data-testid="select-calendar-boat">
+                        <option value="">Todos los barcos</option>
+                    </select>
+                </div>
+
+                <div id="calendar-view"></div>
+            </div>
+        </div>
+
+        <!-- Tab 3: Platform Linking -->
+        <div class="tab-content" id="platforms-tab">
+            <div class="platform-matrix">
+                <h2 style="margin-bottom: 24px;">🔗 Vinculación de Plataformas</h2>
+                
+                <div class="form-group" style="max-width: 400px; margin-bottom: 24px;">
+                    <label for="platform-boat-select">Seleccionar Barco:</label>
+                    <select id="platform-boat-select" data-testid="select-platform-boat">
+                        <option value="">Seleccionar...</option>
+                    </select>
+                </div>
+
+                <div id="platform-ids-container">
+                    <p class="loading">Selecciona un barco para vincular plataformas...</p>
+                </div>
+
+                <button id="save-platform-ids-btn" data-testid="button-save-platform-ids" class="btn btn-primary" style="margin-top: 24px;">💾 Guardar Vinculaciones</button>
+            </div>
+        </div>
+
+        <!-- Tab 4: Quick Search -->
+        <div class="tab-content" id="quick-search-tab">
+            <div class="quick-search">
+                <h2 style="margin-bottom: 20px;">🔍 Consulta Rápida de Disponibilidad</h2>
+                
+                <div class="search-form">
+                    <div class="form-group">
+                        <label for="search-date">Fecha:</label>
+                        <input type="date" id="search-date" data-testid="input-search-date">
+                    </div>
+                    <div class="form-group">
+                        <label for="search-capacity">Capacidad (personas):</label>
+                        <input type="number" id="search-capacity" data-testid="input-search-capacity" min="1" placeholder="Ej: 8">
+                    </div>
+                    <div class="form-group">
+                        <label for="search-type">Tipo de Barco:</label>
+                        <select id="search-type" data-testid="select-search-type">
+                            <option value="">Todos</option>
+                            <option value="fishing">Fishing</option>
+                            <option value="touring">Touring</option>
+                            <option value="VIP">VIP</option>
+                            <option value="standard">Standard</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <button id="search-btn" data-testid="button-search" class="btn btn-primary" style="width: 100%;">🔍 Buscar</button>
+                    </div>
+                </div>
+
+                <div class="results-grid" id="search-results"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Add/Edit Boat -->
+    <div id="boat-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title" id="modal-title">➕ Agregar Barco</h2>
+                <button id="close-modal-btn" data-testid="button-close-modal" class="btn btn-secondary">✕</button>
+            </div>
+
+            <form id="boat-form" data-testid="form-boat">
+                <!-- Basic Information -->
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="boat-name">Nombre del Barco *</label>
+                        <input type="text" id="boat-name" data-testid="input-boat-name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="boat-capacity">Capacidad (personas) *</label>
+                        <input type="number" id="boat-capacity" data-testid="input-boat-capacity" min="1" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="boat-type">Tipo de Barco *</label>
+                        <select id="boat-type" data-testid="select-boat-type" required>
+                            <option value="">Seleccionar...</option>
+                            <option value="fishing">Fishing</option>
+                            <option value="touring">Touring</option>
+                            <option value="VIP">VIP</option>
+                            <option value="standard">Standard</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="boat-status">Estado *</label>
+                        <select id="boat-status" data-testid="select-boat-status" required>
+                            <option value="active">Activo</option>
+                            <option value="maintenance">Mantenimiento</option>
+                            <option value="retired">Retirado</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Boat Details -->
+                <div class="form-section">
+                    <h3 class="form-section-title">Detalles del Barco</h3>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="boat-make">Fabricante</label>
+                            <input type="text" id="boat-make" data-testid="input-boat-make" placeholder="Ej: Sea Ray">
+                        </div>
+                        <div class="form-group">
+                            <label for="boat-model">Modelo</label>
+                            <input type="text" id="boat-model" data-testid="input-boat-model" placeholder="Ej: Sundancer 280">
+                        </div>
+                        <div class="form-group">
+                            <label for="boat-year">Año</label>
+                            <input type="number" id="boat-year" data-testid="input-boat-year" min="1950" max="2030">
+                        </div>
+                        <div class="form-group">
+                            <label for="boat-length">Eslora (pies)</label>
+                            <input type="number" id="boat-length" data-testid="input-boat-length" min="10" max="200">
+                        </div>
+                        <div class="form-group">
+                            <label for="boat-location">Marina/Puerto</label>
+                            <input type="text" id="boat-location" data-testid="input-boat-location" placeholder="Ej: Crandon Park Marina">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Descriptions -->
+                <div class="form-section">
+                    <h3 class="form-section-title">Descripciones</h3>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="boat-description">Descripción Corta</label>
+                            <textarea id="boat-description" data-testid="input-boat-description" placeholder="Descripción breve para listados..."></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="boat-full-description">Descripción Completa para Plataformas</label>
+                            <textarea id="boat-full-description" data-testid="input-boat-full-description" placeholder="Descripción detallada con todos los detalles para OTAs..."></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pricing -->
+                <div class="form-section">
+                    <h3 class="form-section-title">Precios Base</h3>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="boat-hourly-rate">Tarifa por Hora (USD)</label>
+                            <input type="number" id="boat-hourly-rate" data-testid="input-boat-hourly-rate" min="0" step="0.01" placeholder="Ej: 150.00">
+                        </div>
+                        <div class="form-group">
+                            <label for="boat-daily-rate">Tarifa por Día (USD)</label>
+                            <input type="number" id="boat-daily-rate" data-testid="input-boat-daily-rate" min="0" step="0.01" placeholder="Ej: 800.00">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Features & Amenities -->
+                <div class="form-section">
+                    <h3 class="form-section-title">Características y Amenidades</h3>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="boat-features">Features (separadas por coma)</label>
+                            <input type="text" id="boat-features" data-testid="input-boat-features" placeholder="Ej: Captain Included, Fuel Included, Snorkeling">
+                        </div>
+                        <div class="form-group">
+                            <label for="boat-amenities">Amenidades (separadas por coma)</label>
+                            <input type="text" id="boat-amenities" data-testid="input-boat-amenities" placeholder="Ej: GPS, Bluetooth, Cooler, Snorkel Gear">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Photos -->
+                <div class="form-section">
+                    <h3 class="form-section-title">Fotos</h3>
+                    <div class="form-group">
+                        <label for="boat-photos">URLs de Fotos (una por línea)</label>
+                        <textarea id="boat-photos" data-testid="input-boat-photos" placeholder="https://example.com/photo1.jpg&#10;https://example.com/photo2.jpg" rows="4"></textarea>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 32px;">
+                    <button type="button" id="cancel-btn" data-testid="button-cancel" class="btn btn-secondary">Cancelar</button>
+                    <button type="submit" data-testid="button-submit-boat" class="btn btn-primary">💾 Guardar Barco</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="fleet.js"></script>
+</body>
+</html>

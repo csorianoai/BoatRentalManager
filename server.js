@@ -2234,6 +2234,7 @@ const syncService = require('./server/syncService');
 const PricingService = require('./server/pricingService');
 const DynamicPricingService = require('./server/dynamicPricingService');
 const AvailabilityService = require('./server/availabilityService');
+const fleetService = require('./server/fleetService');
 const SyncJobsWorker = require('./server/syncJobsWorker');
 
 const pricingService = new PricingService(pool);
@@ -3745,6 +3746,97 @@ app.post('/api/sync/jobs/process', isAuthenticated, async (req, res) => {
   } catch (error) {
     console.error('Error processing jobs:', error);
     res.status(500).json({ error: 'Failed to process jobs' });
+  }
+});
+
+// ========================================
+// 🚤 FASE 11: FLEET MANAGEMENT ENDPOINTS
+// ========================================
+
+// Get all boats
+app.get('/api/fleet/boats', async (req, res) => {
+  try {
+    const boats = await fleetService.getAllBoats();
+    res.json(boats);
+  } catch (error) {
+    console.error('Error getting boats:', error);
+    res.status(500).json({ error: 'Failed to get boats' });
+  }
+});
+
+// Create boat
+app.post('/api/fleet/boats', isAuthenticated, async (req, res) => {
+  try {
+    const boat = await fleetService.createBoat(req.body);
+    res.json(boat);
+  } catch (error) {
+    console.error('Error creating boat:', error);
+    res.status(500).json({ error: 'Failed to create boat' });
+  }
+});
+
+// Update boat
+app.put('/api/fleet/boats/:id', isAuthenticated, async (req, res) => {
+  try {
+    const boat = await fleetService.updateBoat(req.params.id, req.body);
+    res.json(boat);
+  } catch (error) {
+    console.error('Error updating boat:', error);
+    res.status(500).json({ error: 'Failed to update boat' });
+  }
+});
+
+// Delete boat
+app.delete('/api/fleet/boats/:id', isAuthenticated, async (req, res) => {
+  try {
+    await fleetService.deleteBoat(req.params.id);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting boat:', error);
+    res.status(500).json({ error: 'Failed to delete boat' });
+  }
+});
+
+// Update platform IDs
+app.put('/api/fleet/boats/:id/platform-ids', isAuthenticated, async (req, res) => {
+  try {
+    const boat = await fleetService.updatePlatformIds(req.params.id, req.body.platformIds);
+    res.json(boat);
+  } catch (error) {
+    console.error('Error updating platform IDs:', error);
+    res.status(500).json({ error: 'Failed to update platform IDs' });
+  }
+});
+
+// Get availability calendar
+app.get('/api/fleet/availability', async (req, res) => {
+  try {
+    const { year, month, boatId } = req.query;
+    const availability = await fleetService.getAvailability(
+      parseInt(year),
+      parseInt(month),
+      boatId || null
+    );
+    res.json(availability);
+  } catch (error) {
+    console.error('Error getting availability:', error);
+    res.status(500).json({ error: 'Failed to get availability' });
+  }
+});
+
+// Search available boats
+app.get('/api/fleet/search', async (req, res) => {
+  try {
+    const { date, capacity, type } = req.query;
+    const boats = await fleetService.searchAvailableBoats(
+      date,
+      capacity ? parseInt(capacity) : null,
+      type || null
+    );
+    res.json(boats);
+  } catch (error) {
+    console.error('Error searching boats:', error);
+    res.status(500).json({ error: 'Failed to search boats' });
   }
 });
 

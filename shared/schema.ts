@@ -201,14 +201,44 @@ export const boats = pgTable("boats", {
   capacity: integer("capacity").notNull(),
   boatType: text("boat_type").notNull(), // fishing, touring, VIP, standard
   status: text("status").notNull(), // active, maintenance, retired
-  description: text("description"),
+  description: text("description"), // short description
+  fullDescription: text("full_description"), // detailed description for platforms
   features: json("features").$type<string[]>(),
-  createdAt: timestamp("created_at").defaultNow().notNull()
+  amenities: json("amenities").$type<string[]>(), // GPS, Bluetooth, Cooler, Snorkel gear, etc
+  photos: json("photos").$type<string[]>(), // array of photo URLs
+  platformIds: jsonb("platform_ids").$type<{
+    boatsetter?: string,
+    getmyboat?: string,
+    airbnb?: string,
+    viator?: string,
+    expedia?: string,
+    tripadvisor?: string,
+    groupon?: string,
+    bookingcom?: string,
+    fareharbor?: string,
+    bokun?: string,
+    rezdy?: string,
+    peek?: string,
+    xola?: string
+  }>(), // IDs en cada plataforma externa
+  hourlyRateBase: integer("hourly_rate_base"), // precio base por hora en cents
+  dailyRateBase: integer("daily_rate_base"), // precio base por día en cents
+  location: text("location"), // marina/puerto donde está el barco
+  year: integer("year"), // año del barco
+  make: text("make"), // fabricante
+  model: text("model"), // modelo
+  length: integer("length"), // eslora en pies
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull()
 });
 
 export type Boat = typeof boats.$inferSelect;
 export type InsertBoat = typeof boats.$inferInsert;
-export const insertBoatSchema = createInsertSchema(boats);
+export const insertBoatSchema = createInsertSchema(boats).omit({ 
+  id: true, 
+  createdAt: true, 
+  updatedAt: true 
+});
 
 // FASE 7: Platform pricing policies (precio base por plataforma)
 export const platformPricingPolicies = pgTable("platform_pricing_policies", {
@@ -269,6 +299,29 @@ export const availabilityBlocks = pgTable("availability_blocks", {
 export type AvailabilityBlock = typeof availabilityBlocks.$inferSelect;
 export type InsertAvailabilityBlock = typeof availabilityBlocks.$inferInsert;
 export const insertAvailabilityBlockSchema = createInsertSchema(availabilityBlocks);
+
+// FASE 11: Boat availability calendar (calendario maestro de disponibilidad)
+export const boatAvailability = pgTable("boat_availability", {
+  id: text("id").primaryKey(),
+  boatId: text("boat_id").notNull(),
+  date: text("date").notNull(), // YYYY-MM-DD
+  isAvailable: integer("is_available").default(1), // 1 = available, 0 = blocked
+  blockReason: text("block_reason"), // booking, maintenance, weather, other
+  bookingId: text("booking_id"), // reference to booking if blocked by booking
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull()
+}, (table) => ({
+  dateIdx: index("idx_boat_availability_date").on(table.boatId, table.date)
+}));
+
+export type BoatAvailability = typeof boatAvailability.$inferSelect;
+export type InsertBoatAvailability = typeof boatAvailability.$inferInsert;
+export const insertBoatAvailabilitySchema = createInsertSchema(boatAvailability).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
 
 // FASE 7: Sync jobs (cola de sincronización bidireccional)
 export const syncJobs = pgTable("sync_jobs", {

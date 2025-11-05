@@ -1,0 +1,579 @@
+// Fleet Management JavaScript
+
+let boats = [];
+let currentBoat = null;
+let currentMonth = new Date();
+
+const PLATFORMS = [
+  { id: 'boatsetter', name: 'BoatSetter' },
+  { id: 'getmyboat', name: 'GetMyBoat' },
+  { id: 'airbnb', name: 'Airbnb Experiences' },
+  { id: 'viator', name: 'Viator' },
+  { id: 'expedia', name: 'Expedia' },
+  { id: 'tripadvisor', name: 'TripAdvisor' },
+  { id: 'groupon', name: 'Groupon' },
+  { id: 'bookingcom', name: 'Booking.com' },
+  { id: 'fareharbor', name: 'FareHarbor' },
+  { id: 'bokun', name: 'Bokun' },
+  { id: 'rezdy', name: 'Rezdy' },
+  { id: 'peek', name: 'Peek' },
+  { id: 'xola', name: 'Xola' }
+];
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', () => {
+  initTabs();
+  loadBoats();
+  setupEventListeners();
+  setTodayDate();
+});
+
+// Authentication helper
+function getCookie(name) {
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return parts.pop().split(';').shift();
+}
+
+async function authFetch(url, options = {}) {
+  const response = await fetch(url, {
+    ...options,
+    credentials: 'include'
+  });
+  
+  if (response.status === 401) {
+    window.location.href = '/';
+    throw new Error('Unauthorized');
+  }
+  
+  return response;
+}
+
+// Tab Navigation
+function initTabs() {
+  const tabButtons = document.querySelectorAll('.tab-btn');
+  const tabContents = document.querySelectorAll('.tab-content');
+
+  tabButtons.forEach(button => {
+    button.addEventListener('click', () => {
+      const tabName = button.dataset.tab;
+      
+      tabButtons.forEach(btn => btn.classList.remove('active'));
+      tabContents.forEach(content => content.classList.remove('active'));
+      
+      button.classList.add('active');
+      document.getElementById(`${tabName}-tab`).classList.add('active');
+
+      if (tabName === 'calendar') {
+        renderCalendar();
+      } else if (tabName === 'platforms') {
+        loadPlatformBoatSelect();
+      }
+    });
+  });
+}
+
+// Event Listeners
+function setupEventListeners() {
+  document.getElementById('add-boat-btn').addEventListener('click', () => {
+    currentBoat = null;
+    openBoatModal();
+  });
+
+  document.getElementById('close-modal-btn').addEventListener('click', closeBoatModal);
+  document.getElementById('cancel-btn').addEventListener('click', closeBoatModal);
+  document.getElementById('boat-form').addEventListener('submit', saveBoat);
+  document.getElementById('logout-btn').addEventListener('click', logout);
+
+  // Calendar navigation
+  document.getElementById('prev-month-btn').addEventListener('click', () => {
+    currentMonth.setMonth(currentMonth.getMonth() - 1);
+    renderCalendar();
+  });
+  document.getElementById('next-month-btn').addEventListener('click', () => {
+    currentMonth.setMonth(currentMonth.getMonth() + 1);
+    renderCalendar();
+  });
+  document.getElementById('calendar-boat-filter').addEventListener('change', renderCalendar);
+
+  // Platform linking
+  document.getElementById('platform-boat-select').addEventListener('change', loadPlatformIds);
+  document.getElementById('save-platform-ids-btn').addEventListener('click', savePlatformIds);
+
+  // Quick search
+  document.getElementById('search-btn').addEventListener('click', performQuickSearch);
+}
+
+function setTodayDate() {
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('search-date').value = today;
+}
+
+// Load Boats
+async function loadBoats() {
+  try {
+    const response = await authFetch('/api/fleet/boats');
+    boats = await response.json();
+    renderBoatsGrid();
+    populateBoatSelects();
+  } catch (error) {
+    console.error('Error loading boats:', error);
+    document.getElementById('fleet-grid').innerHTML = '<p class="error">❌ Error al cargar la flotilla</p>';
+  }
+}
+
+function renderBoatsGrid() {
+  const grid = document.getElementById('fleet-grid');
+  
+  if (boats.length === 0) {
+    grid.innerHTML = '<p style="grid-column: 1/-1; text-align: center; color: #666;">No hay barcos registrados. Agrega tu primer barco.</p>';
+    return;
+  }
+
+  grid.innerHTML = boats.map(boat => {
+    const mainPhoto = boat.photos && boat.photos.length > 0 ? boat.photos[0] : '';
+    const statusBadge = boat.status === 'active' ? '🟢 Activo' : boat.status === 'maintenance' ? '🟡 Mantenimiento' : '🔴 Retirado';
+    
+    return `
+      <div class="boat-card" data-testid="card-boat-${boat.id}">
+        <div class="boat-header">
+          <div>
+            <div class="boat-name">${boat.name}</div>
+            <div class="boat-type">${boat.boatType}</div>
+          </div>
+          <span style="font-size: 12px;">${statusBadge}</span>
+        </div>
+        
+        ${mainPhoto ? `<img src="${mainPhoto}" class="boat-photo" alt="${boat.name}">` : '<div class="boat-photo" style="display: flex; align-items: center; justify-content: center; color: #999;">📷 Sin foto</div>'}
+        
+        <div class="boat-info">
+          <div class="boat-info-row">
+            <span class="boat-info-label">👥 Capacidad:</span>
+            <span class="boat-info-value">${boat.capacity} personas</span>
+          </div>
+          ${boat.make || boat.model ? `
+            <div class="boat-info-row">
+              <span class="boat-info-label">🚤 Modelo:</span>
+              <span class="boat-info-value">${[boat.make, boat.model].filter(Boolean).join(' ')}</span>
+            </div>
+          ` : ''}
+          ${boat.year ? `
+            <div class="boat-info-row">
+              <span class="boat-info-label">📅 Año:</span>
+              <span class="boat-info-value">${boat.year}</span>
+            </div>
+          ` : ''}
+          ${boat.location ? `
+            <div class="boat-info-row">
+              <span class="boat-info-label">📍 Ubicación:</span>
+              <span class="boat-info-value">${boat.location}</span>
+            </div>
+          ` : ''}
+          ${boat.hourlyRateBase ? `
+            <div class="boat-info-row">
+              <span class="boat-info-label">💵 Por hora:</span>
+              <span class="boat-info-value">$${(boat.hourlyRateBase / 100).toFixed(2)}</span>
+            </div>
+          ` : ''}
+          ${boat.dailyRateBase ? `
+            <div class="boat-info-row">
+              <span class="boat-info-label">💰 Por día:</span>
+              <span class="boat-info-value">$${(boat.dailyRateBase / 100).toFixed(2)}</span>
+            </div>
+          ` : ''}
+        </div>
+        
+        <div class="boat-actions">
+          <button class="btn btn-secondary" data-testid="button-edit-boat-${boat.id}" onclick="editBoat('${boat.id}')" style="flex: 1;">✏️ Editar</button>
+          <button class="btn btn-danger" data-testid="button-delete-boat-${boat.id}" onclick="deleteBoat('${boat.id}')" style="flex: 1;">🗑️ Eliminar</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function populateBoatSelects() {
+  const selects = [
+    document.getElementById('calendar-boat-filter'),
+    document.getElementById('platform-boat-select')
+  ];
+
+  selects.forEach(select => {
+    const currentValue = select.value;
+    const hasAllOption = select.querySelector('option[value=""]');
+    
+    select.innerHTML = hasAllOption ? '<option value="">Todos los barcos</option>' : '<option value="">Seleccionar...</option>';
+    
+    boats.forEach(boat => {
+      const option = document.createElement('option');
+      option.value = boat.id;
+      option.textContent = `${boat.name} (${boat.boatType})`;
+      select.appendChild(option);
+    });
+    
+    if (currentValue) select.value = currentValue;
+  });
+}
+
+// Boat Modal Functions
+function openBoatModal() {
+  const modal = document.getElementById('boat-modal');
+  const form = document.getElementById('boat-form');
+  const title = document.getElementById('modal-title');
+  
+  form.reset();
+  
+  if (currentBoat) {
+    title.textContent = '✏️ Editar Barco';
+    fillBoatForm(currentBoat);
+  } else {
+    title.textContent = '➕ Agregar Barco';
+  }
+  
+  modal.classList.add('active');
+}
+
+function closeBoatModal() {
+  document.getElementById('boat-modal').classList.remove('active');
+  currentBoat = null;
+}
+
+function fillBoatForm(boat) {
+  document.getElementById('boat-name').value = boat.name || '';
+  document.getElementById('boat-capacity').value = boat.capacity || '';
+  document.getElementById('boat-type').value = boat.boatType || '';
+  document.getElementById('boat-status').value = boat.status || 'active';
+  document.getElementById('boat-make').value = boat.make || '';
+  document.getElementById('boat-model').value = boat.model || '';
+  document.getElementById('boat-year').value = boat.year || '';
+  document.getElementById('boat-length').value = boat.length || '';
+  document.getElementById('boat-location').value = boat.location || '';
+  document.getElementById('boat-description').value = boat.description || '';
+  document.getElementById('boat-full-description').value = boat.fullDescription || '';
+  document.getElementById('boat-hourly-rate').value = boat.hourlyRateBase ? (boat.hourlyRateBase / 100).toFixed(2) : '';
+  document.getElementById('boat-daily-rate').value = boat.dailyRateBase ? (boat.dailyRateBase / 100).toFixed(2) : '';
+  document.getElementById('boat-features').value = boat.features ? boat.features.join(', ') : '';
+  document.getElementById('boat-amenities').value = boat.amenities ? boat.amenities.join(', ') : '';
+  document.getElementById('boat-photos').value = boat.photos ? boat.photos.join('\n') : '';
+}
+
+async function saveBoat(e) {
+  e.preventDefault();
+  
+  const features = document.getElementById('boat-features').value
+    .split(',')
+    .map(f => f.trim())
+    .filter(Boolean);
+    
+  const amenities = document.getElementById('boat-amenities').value
+    .split(',')
+    .map(a => a.trim())
+    .filter(Boolean);
+    
+  const photos = document.getElementById('boat-photos').value
+    .split('\n')
+    .map(p => p.trim())
+    .filter(Boolean);
+
+  const hourlyRate = parseFloat(document.getElementById('boat-hourly-rate').value);
+  const dailyRate = parseFloat(document.getElementById('boat-daily-rate').value);
+
+  const boatData = {
+    name: document.getElementById('boat-name').value,
+    capacity: parseInt(document.getElementById('boat-capacity').value),
+    boatType: document.getElementById('boat-type').value,
+    status: document.getElementById('boat-status').value,
+    make: document.getElementById('boat-make').value || null,
+    model: document.getElementById('boat-model').value || null,
+    year: parseInt(document.getElementById('boat-year').value) || null,
+    length: parseInt(document.getElementById('boat-length').value) || null,
+    location: document.getElementById('boat-location').value || null,
+    description: document.getElementById('boat-description').value || null,
+    fullDescription: document.getElementById('boat-full-description').value || null,
+    hourlyRateBase: hourlyRate ? Math.round(hourlyRate * 100) : null,
+    dailyRateBase: dailyRate ? Math.round(dailyRate * 100) : null,
+    features: features.length > 0 ? features : null,
+    amenities: amenities.length > 0 ? amenities : null,
+    photos: photos.length > 0 ? photos : null
+  };
+
+  try {
+    const url = currentBoat ? `/api/fleet/boats/${currentBoat.id}` : '/api/fleet/boats';
+    const method = currentBoat ? 'PUT' : 'POST';
+    
+    const response = await authFetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(boatData)
+    });
+
+    if (response.ok) {
+      closeBoatModal();
+      await loadBoats();
+      alert(`✅ Barco ${currentBoat ? 'actualizado' : 'agregado'} correctamente`);
+    } else {
+      const error = await response.json();
+      alert(`❌ Error: ${error.message || 'Error al guardar el barco'}`);
+    }
+  } catch (error) {
+    console.error('Error saving boat:', error);
+    alert('❌ Error al guardar el barco');
+  }
+}
+
+function editBoat(boatId) {
+  currentBoat = boats.find(b => b.id === boatId);
+  if (currentBoat) {
+    openBoatModal();
+  }
+}
+
+async function deleteBoat(boatId) {
+  const boat = boats.find(b => b.id === boatId);
+  if (!boat) return;
+
+  if (!confirm(`¿Estás seguro de eliminar el barco "${boat.name}"?`)) return;
+
+  try {
+    const response = await authFetch(`/api/fleet/boats/${boatId}`, {
+      method: 'DELETE'
+    });
+
+    if (response.ok) {
+      await loadBoats();
+      alert('✅ Barco eliminado correctamente');
+    } else {
+      alert('❌ Error al eliminar el barco');
+    }
+  } catch (error) {
+    console.error('Error deleting boat:', error);
+    alert('❌ Error al eliminar el barco');
+  }
+}
+
+// Calendar Functions
+async function renderCalendar() {
+  const boatId = document.getElementById('calendar-boat-filter').value;
+  const monthElement = document.getElementById('calendar-month');
+  const calendarView = document.getElementById('calendar-view');
+
+  const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+  monthElement.textContent = `${monthNames[currentMonth.getMonth()]} ${currentMonth.getFullYear()}`;
+
+  try {
+    const year = currentMonth.getFullYear();
+    const month = currentMonth.getMonth() + 1;
+    const url = `/api/fleet/availability?year=${year}&month=${month}${boatId ? `&boatId=${boatId}` : ''}`;
+    
+    const response = await authFetch(url);
+    const availability = await response.json();
+
+    renderCalendarGrid(availability, boatId);
+  } catch (error) {
+    console.error('Error loading calendar:', error);
+    calendarView.innerHTML = '<p class="error">❌ Error al cargar el calendario</p>';
+  }
+}
+
+function renderCalendarGrid(availability, boatId) {
+  const calendarView = document.getElementById('calendar-view');
+  const firstDay = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+  const lastDay = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
+  
+  const daysInMonth = lastDay.getDate();
+  const startingDayOfWeek = firstDay.getDay();
+
+  let html = '<div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; margin-top: 16px;">';
+  
+  // Day headers
+  const dayNames = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+  dayNames.forEach(day => {
+    html += `<div style="font-weight: 700; text-align: center; padding: 8px; background: #f0f0f0; border-radius: 4px;">${day}</div>`;
+  });
+
+  // Empty cells before first day
+  for (let i = 0; i < startingDayOfWeek; i++) {
+    html += '<div></div>';
+  }
+
+  // Days of month
+  for (let day = 1; day <= daysInMonth; day++) {
+    const date = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const dayAvailability = availability.filter(a => a.date === date);
+    
+    const isAvailable = dayAvailability.length === 0 || dayAvailability.every(a => a.isAvailable);
+    const bgColor = isAvailable ? '#d4edda' : '#f8d7da';
+    const textColor = isAvailable ? '#155724' : '#721c24';
+    
+    html += `
+      <div style="
+        background: ${bgColor};
+        border: 1px solid ${textColor}33;
+        border-radius: 6px;
+        padding: 12px;
+        min-height: 80px;
+        cursor: pointer;
+        transition: transform 0.2s;
+      " onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+        <div style="font-weight: 700; color: ${textColor}; margin-bottom: 4px;">${day}</div>
+        <div style="font-size: 12px; color: ${textColor};">
+          ${isAvailable ? '✅ Disponible' : '🚫 Bloqueado'}
+        </div>
+        ${dayAvailability.length > 0 ? `
+          <div style="font-size: 11px; color: ${textColor}; margin-top: 4px;">
+            ${dayAvailability.map(a => a.blockReason || 'Bloqueado').join(', ')}
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }
+
+  html += '</div>';
+  calendarView.innerHTML = html;
+}
+
+// Platform Linking Functions
+function loadPlatformBoatSelect() {
+  // This is already populated by populateBoatSelects()
+}
+
+async function loadPlatformIds() {
+  const boatId = document.getElementById('platform-boat-select').value;
+  const container = document.getElementById('platform-ids-container');
+
+  if (!boatId) {
+    container.innerHTML = '<p class="loading">Selecciona un barco para vincular plataformas...</p>';
+    return;
+  }
+
+  const boat = boats.find(b => b.id === boatId);
+  const platformIds = boat?.platformIds || {};
+
+  let html = '';
+  PLATFORMS.forEach(platform => {
+    html += `
+      <div class="platform-row">
+        <div class="platform-name">${platform.name}</div>
+        <input 
+          type="text" 
+          class="platform-id-input" 
+          data-platform="${platform.id}" 
+          data-testid="input-platform-${platform.id}"
+          value="${platformIds[platform.id] || ''}" 
+          placeholder="ID del barco en ${platform.name}">
+        <button class="btn btn-secondary btn-small" onclick="clearPlatformId('${platform.id}')">🗑️</button>
+      </div>
+    `;
+  });
+
+  container.innerHTML = html;
+}
+
+function clearPlatformId(platformId) {
+  const input = document.querySelector(`input[data-platform="${platformId}"]`);
+  if (input) input.value = '';
+}
+
+async function savePlatformIds() {
+  const boatId = document.getElementById('platform-boat-select').value;
+  
+  if (!boatId) {
+    alert('❌ Selecciona un barco primero');
+    return;
+  }
+
+  const platformIds = {};
+  PLATFORMS.forEach(platform => {
+    const input = document.querySelector(`input[data-platform="${platform.id}"]`);
+    if (input && input.value.trim()) {
+      platformIds[platform.id] = input.value.trim();
+    }
+  });
+
+  try {
+    const response = await authFetch(`/api/fleet/boats/${boatId}/platform-ids`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ platformIds })
+    });
+
+    if (response.ok) {
+      await loadBoats();
+      alert('✅ Vinculaciones guardadas correctamente');
+    } else {
+      alert('❌ Error al guardar las vinculaciones');
+    }
+  } catch (error) {
+    console.error('Error saving platform IDs:', error);
+    alert('❌ Error al guardar las vinculaciones');
+  }
+}
+
+// Quick Search Functions
+async function performQuickSearch() {
+  const date = document.getElementById('search-date').value;
+  const capacity = parseInt(document.getElementById('search-capacity').value);
+  const type = document.getElementById('search-type').value;
+  const resultsContainer = document.getElementById('search-results');
+
+  if (!date) {
+    alert('❌ Selecciona una fecha');
+    return;
+  }
+
+  try {
+    let url = `/api/fleet/search?date=${date}`;
+    if (capacity) url += `&capacity=${capacity}`;
+    if (type) url += `&type=${type}`;
+
+    const response = await authFetch(url);
+    const results = await response.json();
+
+    if (results.length === 0) {
+      resultsContainer.innerHTML = '<p style="text-align: center; color: #666;">No se encontraron barcos disponibles con estos criterios.</p>';
+      return;
+    }
+
+    resultsContainer.innerHTML = results.map(boat => {
+      const statusClass = boat.available ? '' : 'unavailable';
+      
+      return `
+        <div class="result-card ${statusClass}" data-testid="result-${boat.id}">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
+            <div>
+              <h3 style="margin: 0 0 4px 0; font-size: 18px;">${boat.name}</h3>
+              <p style="margin: 0; color: #666; font-size: 14px;">${boat.boatType} • ${boat.capacity} personas</p>
+            </div>
+            <div style="text-align: right;">
+              <div style="font-size: 24px; font-weight: 700; color: ${boat.available ? '#28a745' : '#dc3545'};">
+                ${boat.available ? '✅' : '❌'}
+              </div>
+              <div style="font-size: 12px; color: #666;">
+                ${boat.available ? 'Disponible' : 'No Disponible'}
+              </div>
+            </div>
+          </div>
+          
+          ${boat.location ? `<p style="margin: 8px 0; font-size: 14px;">📍 ${boat.location}</p>` : ''}
+          ${boat.hourlyRateBase ? `<p style="margin: 8px 0; font-size: 14px;">💵 $${(boat.hourlyRateBase / 100).toFixed(2)}/hora</p>` : ''}
+          ${boat.dailyRateBase ? `<p style="margin: 8px 0; font-size: 14px;">💰 $${(boat.dailyRateBase / 100).toFixed(2)}/día</p>` : ''}
+          ${boat.blockReason ? `<p style="margin: 8px 0; font-size: 13px; color: #721c24;"><strong>Razón:</strong> ${boat.blockReason}</p>` : ''}
+        </div>
+      `;
+    }).join('');
+  } catch (error) {
+    console.error('Error performing search:', error);
+    resultsContainer.innerHTML = '<p class="error">❌ Error al realizar la búsqueda</p>';
+  }
+}
+
+// Logout
+async function logout() {
+  try {
+    await authFetch('/auth/logout', { method: 'POST' });
+    window.location.href = '/';
+  } catch (error) {
+    console.error('Logout error:', error);
+    window.location.href = '/';
+  }
+}
