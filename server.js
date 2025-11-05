@@ -2236,10 +2236,12 @@ const DynamicPricingService = require('./server/dynamicPricingService');
 const AvailabilityService = require('./server/availabilityService');
 const fleetService = require('./server/fleetService');
 const SyncJobsWorker = require('./server/syncJobsWorker');
+const EmailService = require('./server/emailService');
 
 const pricingService = new PricingService(pool);
 const dynamicPricingService = new DynamicPricingService(pool, marineConditionsService);
 const availabilityService = new AvailabilityService(pool);
+const emailService = new EmailService(pool);
 const syncJobsWorker = new SyncJobsWorker(pool);
 
 // Start sync jobs worker
@@ -3366,6 +3368,20 @@ cron.schedule('0 8 * * *', async () => {
 });
 
 // ⏰ DEMAND FORECAST REFRESH SCHEDULER
+// Runs every 2 minutes to sync emails from sales@nadakiexcursions.com
+console.log('📧 Scheduling email sync every 2 minutes...');
+cron.schedule('*/2 * * * *', async () => {
+  console.log('📬 Running email sync...');
+  try {
+    const result = await emailService.syncUnreadEmails();
+    if (result.synced > 0) {
+      console.log(`✅ Email sync completed: ${result.synced} emails ingested`);
+    }
+  } catch (error) {
+    console.error('❌ Email sync error:', error.message);
+  }
+});
+
 // Runs daily at midnight to refresh demand forecasts for all regions
 console.log('🤖 Scheduling daily demand forecast refresh...');
 cron.schedule('0 0 * * *', async () => {
@@ -3837,6 +3853,69 @@ app.get('/api/fleet/search', async (req, res) => {
   } catch (error) {
     console.error('Error searching boats:', error);
     res.status(500).json({ error: 'Failed to search boats' });
+  }
+});
+
+// ========================================
+// 📧 EMAIL SYNCHRONIZATION ENDPOINTS
+// ========================================
+
+// Manual trigger to sync emails
+app.post('/api/email/sync', isAuthenticated, async (req, res) => {
+  try {
+    const result = await emailService.syncUnreadEmails();
+    res.json({
+      success: true,
+      synced: result.synced,
+      emails: result.emails || []
+    });
+  } catch (error) {
+    console.error('Error syncing emails:', error);
+    res.status(500).json({ error: 'Failed to sync emails', message: error.message });
+  }
+});
+
+// Manual email ingestion
+app.post('/api/email/ingest', isAuthenticated, async (req, res) => {
+  try {
+    const { platform, customerName, customerEmail, customerPhone, subject, messageText } = req.body;
+    
+    const result = await emailService.manualIngest({
+      platform,
+      customerName,
+      customerEmail,
+      customerPhone,
+      subject,
+      messageText
+    });
+    
+    res.json({ success: true, threadId: result.threadId, messageId: result.messageId });
+  } catch (error) {
+    console.error('Error ingesting email:', error);
+    res.status(500).json({ error: 'Failed to ingest email' });
+  }
+});
+
+// Get email sync stats
+app.get('/api/email/stats', isAuthenticated, async (req, res) => {
+  try {
+    const stats = await pool.query(`
+      SELECT 
+        COUNT(DISTINCT mt.id) as total_threads,
+        COUNT(CASE WHEN mt.status = 'open' THEN 1 END) as open_threads,
+        SUM(mt.unread_count) as total_unread,
+        COUNT(pm.id) as total_messages,
+        COUNT(CASE WHEN pm.direction = 'inbound' THEN 1 END) as inbound_messages,
+        COUNT(CASE WHEN pm.direction = 'outbound' THEN 1 END) as outbound_messages
+      FROM message_threads mt
+      LEFT JOIN platform_messages pm ON pm.thread_id = mt.id
+      WHERE mt.platform = 'email' OR pm.sender_email LIKE '%@%'
+    `);
+    
+    res.json(stats.rows[0]);
+  } catch (error) {
+    console.error('Error getting email stats:', error);
+    res.status(500).json({ error: 'Failed to get email stats' });
   }
 });
 
