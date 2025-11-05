@@ -206,6 +206,39 @@
             margin-top: 10px;
         }
         
+        /* Template Preview */
+        .template-preview {
+            background: #f8f9fa;
+            border: 2px solid #0066cc;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        .preview-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #ddd;
+        }
+        .preview-content {
+            background: white;
+            padding: 16px;
+            border-radius: 6px;
+            margin-bottom: 12px;
+            white-space: pre-wrap;
+            font-size: 14px;
+            line-height: 1.6;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .preview-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+        
         /* Customer Sidebar */
         .customer-sidebar {
             background: white;
@@ -432,6 +465,121 @@
             font-size: 18px;
             margin-bottom: 8px;
         }
+        
+        /* AI Suggestions */
+        .suggestions-container {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 12px;
+        }
+        .inquiry-summary {
+            background: white;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 12px;
+            border-left: 3px solid #0066cc;
+        }
+        .inquiry-summary h5 {
+            font-size: 13px;
+            color: #666;
+            margin: 0 0 8px 0;
+            text-transform: uppercase;
+        }
+        .inquiry-detail {
+            font-size: 14px;
+            color: #333;
+            margin: 4px 0;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .confidence-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-top: 8px;
+        }
+        .confidence-high { background: #d4edda; color: #155724; }
+        .confidence-medium { background: #fff3cd; color: #856404; }
+        .confidence-low { background: #f8d7da; color: #721c24; }
+        
+        .boat-suggestion {
+            background: white;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 10px;
+            border: 1px solid #e0e0e0;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .boat-suggestion:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,102,204,0.2);
+            border-color: #0066cc;
+        }
+        .boat-suggestion-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 8px;
+        }
+        .boat-name {
+            font-weight: 600;
+            color: #333;
+            font-size: 14px;
+        }
+        .boat-type {
+            font-size: 12px;
+            color: #666;
+        }
+        .boat-price {
+            font-size: 18px;
+            font-weight: bold;
+            color: #0066cc;
+        }
+        .boat-details {
+            font-size: 12px;
+            color: #666;
+            margin-top: 8px;
+        }
+        .boat-detail-item {
+            display: inline-block;
+            margin-right: 12px;
+            margin-bottom: 4px;
+        }
+        .availability-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-top: 4px;
+        }
+        .available { background: #d4edda; color: #155724; }
+        .unavailable { background: #f8d7da; color: #721c24; }
+        .unknown { background: #e2e3e5; color: #383d41; }
+        
+        .suggestions-loading {
+            text-align: center;
+            padding: 20px;
+            color: #999;
+        }
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #0066cc;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 8px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
@@ -510,10 +658,24 @@
                             </div>
                         </div>
                         <div class="conversation-composer">
+                            <div id="template-preview" class="template-preview" style="display: none;">
+                                <div class="preview-header">
+                                    <strong>Vista Previa del Mensaje</strong>
+                                    <button class="btn btn-ghost btn-small" onclick="closePreview()" data-testid="button-close-preview">✕</button>
+                                </div>
+                                <div id="preview-content" class="preview-content"></div>
+                                <div class="preview-actions">
+                                    <button class="btn btn-secondary" onclick="closePreview()" data-testid="button-cancel-preview">Cancelar</button>
+                                    <button class="btn btn-primary" onclick="usePreviewedTemplate()" data-testid="button-use-template">Usar Este Mensaje</button>
+                                </div>
+                            </div>
                             <div class="composer-tools">
                                 <select id="template-selector" onchange="applyTemplate()" data-testid="select-template">
                                     <option value="">-- Usar Plantilla --</option>
                                 </select>
+                                <button class="btn btn-secondary btn-small" onclick="showTemplatePreview()" data-testid="button-preview-template">
+                                    👁️ Preview
+                                </button>
                                 <button class="btn btn-secondary btn-small" onclick="copyToClipboard()" data-testid="button-copy">
                                     📋 Copiar
                                 </button>
@@ -549,6 +711,14 @@
                             <p id="sidebar-platform">Plataforma: -</p>
                             <p id="sidebar-status">Estado: -</p>
                             <p id="sidebar-booking">Reserva: -</p>
+                        </div>
+                        
+                        <!-- AI-Powered Suggestions Section -->
+                        <div class="sidebar-section" id="suggestions-section" style="display: none;">
+                            <h4>🤖 Sugerencias Automáticas</h4>
+                            <div id="suggestions-content">
+                                <!-- Suggestions will be loaded here -->
+                            </div>
                         </div>
                     </div>
                 </div>

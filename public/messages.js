@@ -217,6 +217,9 @@ function renderConversation(data) {
     
     // Scroll to bottom
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    
+    // Load AI suggestions for this thread
+    loadSuggestions(thread.id);
 }
 
 // Mark message as read
@@ -659,9 +662,270 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+// ===================================================================
+// AI-POWERED SUGGESTIONS
+// ===================================================================
+
+// Load AI-powered boat suggestions for current thread
+async function loadSuggestions(threadId) {
+    if (!threadId) return;
+    
+    const suggestionsSection = document.getElementById('suggestions-section');
+    const suggestionsContent = document.getElementById('suggestions-content');
+    
+    // Show loading state
+    suggestionsSection.style.display = 'block';
+    suggestionsContent.innerHTML = `
+        <div class="suggestions-loading">
+            <div class="spinner"></div>
+            <p>Analizando conversación...</p>
+        </div>
+    `;
+    
+    try {
+        const response = await fetch(`/api/messages/suggestions/${threadId}`);
+        const data = await response.json();
+        
+        renderSuggestions(data);
+    } catch (error) {
+        console.error('Error loading suggestions:', error);
+        suggestionsContent.innerHTML = `
+            <p style="color: #999; font-size: 13px; text-align: center;">
+                No se pudieron cargar las sugerencias
+            </p>
+        `;
+    }
+}
+
+// Render suggestions in sidebar (using DOM APIs for security)
+function renderSuggestions(data) {
+    const { inquiry, suggestions, confidence, message } = data;
+    const suggestionsContent = document.getElementById('suggestions-content');
+    
+    // Clear existing content
+    suggestionsContent.innerHTML = '';
+    
+    if (!inquiry || confidence === 0) {
+        const msgEl = document.createElement('p');
+        msgEl.style.cssText = 'color: #999; font-size: 13px; text-align: center; padding: 12px;';
+        msgEl.textContent = message || 'No se detectaron detalles de reserva en la conversación';
+        suggestionsContent.appendChild(msgEl);
+        return;
+    }
+    
+    // Show inquiry summary
+    if (inquiry.summary) {
+        const summaryDiv = document.createElement('div');
+        summaryDiv.className = 'inquiry-summary';
+        
+        const heading = document.createElement('h5');
+        heading.textContent = '📋 Detalles Detectados';
+        summaryDiv.appendChild(heading);
+        
+        inquiry.summary.split('\n').forEach(line => {
+            const detailDiv = document.createElement('div');
+            detailDiv.className = 'inquiry-detail';
+            detailDiv.textContent = line;
+            summaryDiv.appendChild(detailDiv);
+        });
+        
+        const confidenceBadge = document.createElement('div');
+        const confidenceClass = confidence >= 0.7 ? 'confidence-high' : 
+                               confidence >= 0.4 ? 'confidence-medium' : 'confidence-low';
+        const confidenceText = confidence >= 0.7 ? 'Alta' : 
+                              confidence >= 0.4 ? 'Media' : 'Baja';
+        confidenceBadge.className = `confidence-badge ${confidenceClass}`;
+        confidenceBadge.textContent = `Confianza: ${confidenceText} (${Math.round(confidence * 100)}%)`;
+        summaryDiv.appendChild(confidenceBadge);
+        
+        suggestionsContent.appendChild(summaryDiv);
+    }
+    
+    // Show boat suggestions
+    if (suggestions && suggestions.length > 0) {
+        const container = document.createElement('div');
+        container.className = 'suggestions-container';
+        
+        suggestions.slice(0, 5).forEach((boat) => {
+            const boatDiv = document.createElement('div');
+            boatDiv.className = 'boat-suggestion';
+            
+            // Store data using dataset (safe from XSS)
+            boatDiv.dataset.boatId = boat.boatId || '';
+            boatDiv.dataset.boatName = boat.boatName || '';
+            boatDiv.dataset.boatPrice = String(boat.finalPrice || 0);
+            boatDiv.dataset.boatDate = boat.date || '';
+            
+            // Header
+            const header = document.createElement('div');
+            header.className = 'boat-suggestion-header';
+            
+            const nameTypeDiv = document.createElement('div');
+            
+            const nameDiv = document.createElement('div');
+            nameDiv.className = 'boat-name';
+            nameDiv.textContent = boat.boatName || '';
+            nameTypeDiv.appendChild(nameDiv);
+            
+            const typeDiv = document.createElement('div');
+            typeDiv.className = 'boat-type';
+            typeDiv.textContent = boat.boatType || '';
+            nameTypeDiv.appendChild(typeDiv);
+            
+            header.appendChild(nameTypeDiv);
+            
+            const priceDiv = document.createElement('div');
+            priceDiv.className = 'boat-price';
+            priceDiv.textContent = `$${(boat.finalPrice || 0).toLocaleString()}`;
+            header.appendChild(priceDiv);
+            
+            boatDiv.appendChild(header);
+            
+            // Details
+            const details = document.createElement('div');
+            details.className = 'boat-details';
+            
+            const capacityItem = document.createElement('div');
+            capacityItem.className = 'boat-detail-item';
+            capacityItem.textContent = `👥 ${boat.capacity || 0} personas`;
+            details.appendChild(capacityItem);
+            
+            if (boat.date) {
+                const dateItem = document.createElement('div');
+                dateItem.className = 'boat-detail-item';
+                dateItem.textContent = `📅 ${formatDate(boat.date)}`;
+                details.appendChild(dateItem);
+            }
+            
+            if (boat.duration) {
+                const durationItem = document.createElement('div');
+                durationItem.className = 'boat-detail-item';
+                durationItem.textContent = `⏱️ ${boat.duration}h`;
+                details.appendChild(durationItem);
+            }
+            
+            boatDiv.appendChild(details);
+            
+            // Availability badge
+            const availabilityBadge = document.createElement('div');
+            const availabilityClass = boat.isAvailable === true ? 'available' : 
+                                     boat.isAvailable === false ? 'unavailable' : 'unknown';
+            const availabilityText = boat.isAvailable === true ? '✅ Disponible' : 
+                                    boat.isAvailable === false ? '❌ No disponible' : '❓ Verificar';
+            availabilityBadge.className = `availability-badge ${availabilityClass}`;
+            availabilityBadge.textContent = availabilityText;
+            boatDiv.appendChild(availabilityBadge);
+            
+            // Add click handler
+            boatDiv.addEventListener('click', function() {
+                const boatId = this.dataset.boatId;
+                const boatName = this.dataset.boatName;
+                const price = parseFloat(this.dataset.boatPrice || 0);
+                const date = this.dataset.boatDate;
+                insertBoatIntoMessage(boatId, boatName, price, date);
+            });
+            
+            container.appendChild(boatDiv);
+        });
+        
+        suggestionsContent.appendChild(container);
+    } else {
+        const msgEl = document.createElement('p');
+        msgEl.style.cssText = 'color: #999; font-size: 13px; text-align: center; margin-top: 12px;';
+        msgEl.textContent = message || 'No se encontraron barcos disponibles para los criterios detectados';
+        suggestionsContent.appendChild(msgEl);
+    }
+}
+
+// Insert boat details into message composer
+function insertBoatIntoMessage(boatId, boatName, price, date) {
+    const composer = document.getElementById('message-composer');
+    const dateStr = date ? ` para el ${formatDate(date)}` : '';
+    
+    const suggestion = `\n\n✅ Tenemos disponible el ${boatName}${dateStr} por $${price.toLocaleString()}.\n\n¿Te gustaría reservarlo?`;
+    
+    composer.value += suggestion;
+    composer.focus();
+}
+
+// Format date for display
+function formatDate(dateStr) {
+    if (!dateStr) return '';
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('es-ES', { 
+        day: 'numeric', 
+        month: 'long', 
+        year: 'numeric' 
+    });
+}
+
 // Load analytics on tab switch
 document.addEventListener('DOMContentLoaded', () => {
     document.querySelector('[data-tab="analytics"]').addEventListener('click', () => {
         loadAnalytics();
     });
 });
+
+// Template Preview Functions
+let previewedTemplateContent = '';
+
+async function showTemplatePreview() {
+    const composer = document.getElementById('message-composer');
+    const templateContent = composer.value.trim();
+    
+    if (!templateContent) {
+        alert('Escribe o selecciona un template primero');
+        return;
+    }
+    
+    if (!currentThread) {
+        alert('Selecciona una conversación primero');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/messages/templates/preview', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                template_content: templateContent,
+                thread_id: currentThread.id
+            })
+        });
+        
+        if (!response.ok) throw new Error('Error al generar preview');
+        
+        const result = await response.json();
+        
+        // Store the rendered content
+        previewedTemplateContent = result.rendered;
+        
+        // Show preview
+        const previewDiv = document.getElementById('template-preview');
+        const previewContent = document.getElementById('preview-content');
+        
+        previewContent.textContent = result.rendered;
+        previewDiv.style.display = 'block';
+        
+        // Scroll to preview
+        previewDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Error al generar vista previa');
+    }
+}
+
+function closePreview() {
+    const previewDiv = document.getElementById('template-preview');
+    previewDiv.style.display = 'none';
+    previewedTemplateContent = '';
+}
+
+function usePreviewedTemplate() {
+    const composer = document.getElementById('message-composer');
+    composer.value = previewedTemplateContent;
+    closePreview();
+    
+    // Focus on composer
+    composer.focus();
+}

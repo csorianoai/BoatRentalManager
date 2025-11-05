@@ -736,6 +736,12 @@ async function initializeDatabase() {
       )
     `);
     
+    // Add dynamic_placeholders column if it doesn't exist
+    await pool.query(`
+      ALTER TABLE message_templates 
+      ADD COLUMN IF NOT EXISTS dynamic_placeholders JSONB DEFAULT '[]'::jsonb
+    `);
+    
     console.log('✅ FASE 9 tables created (messaging center, platform configs, templates)');
     
     // =============================================================================
@@ -1111,9 +1117,165 @@ async function initializeDatabase() {
     }
     
     console.log('✅ Database schema initialized successfully (all 10 phases + authentication)');
+    
+    // Insert default message templates if they don't exist
+    await insertDefaultTemplates();
   } catch (error) {
     console.error('❌ Error initializing database schema:', error);
     throw error;
+  }
+}
+
+// Insert default intelligent message templates
+async function insertDefaultTemplates() {
+  try {
+    const checkResult = await pool.query('SELECT COUNT(*) as count FROM message_templates');
+    const templateCount = parseInt(checkResult.rows[0].count);
+    
+    if (templateCount > 0) {
+      console.log('✅ Message templates already exist');
+      return;
+    }
+    
+    const { nanoid } = await import('nanoid');
+    
+    const defaultTemplates = [
+      {
+        id: nanoid(),
+        name: 'Respuesta con Disponibilidad',
+        category: 'availability',
+        content: `Hola {{customer_name}},
+
+¡Gracias por contactarnos!
+
+Me da mucho gusto informarte que tenemos disponibilidad para {{booking_date}}. Basándome en tu consulta de {{booking_people}} personas, estas son nuestras opciones disponibles:
+
+{{available_boats_with_prices}}
+
+Todos nuestros barcos incluyen:
+- Capitán profesional certificado
+- Equipo de seguridad completo
+- Agua y refrescos
+- Sistema de sonido Bluetooth
+
+¿Te gustaría reservar alguna de estas opciones? Puedo enviarte el enlace de pago de inmediato.
+
+Saludos,
+{{company_name}}
+{{company_phone}}`,
+        platform: null,
+        dynamic_placeholders: JSON.stringify(['customer_name', 'booking_date', 'booking_people', 'available_boats_with_prices', 'company_name', 'company_phone'])
+      },
+      {
+        id: nanoid(),
+        name: 'Confirmación de Reserva',
+        category: 'general',
+        content: `¡Hola {{customer_name}}!
+
+Tu reserva ha sido confirmada exitosamente. Aquí están los detalles:
+
+📅 Fecha: {{booking_date}}
+⏰ Hora: {{booking_time}}
+🚤 Barco: {{boat_name}} ({{boat_type}})
+👥 Capacidad: {{boat_capacity}} personas
+📍 Ubicación: {{boat_location}}
+💰 Total: {{total_price}}
+
+Información importante:
+- Por favor llega 15 minutos antes
+- Trae ropa cómoda y protector solar
+- No olvides una identificación válida
+
+Si necesitas hacer algún cambio, contáctanos lo antes posible.
+
+¡Nos vemos pronto!
+
+{{company_name}}
+{{company_phone}}
+{{company_website}}`,
+        platform: null,
+        dynamic_placeholders: JSON.stringify(['customer_name', 'booking_date', 'booking_time', 'boat_name', 'boat_type', 'boat_capacity', 'boat_location', 'total_price', 'company_name', 'company_phone', 'company_website'])
+      },
+      {
+        id: nanoid(),
+        name: 'Alternativas Sugeridas',
+        category: 'availability',
+        content: `Hola {{customer_name}},
+
+Gracias por tu interés en nuestros servicios.
+
+Lamentablemente {{boat_name}} no está disponible para {{booking_date}}, pero tengo excelentes alternativas para ti:
+
+{{available_boats_with_prices}}
+
+Todas estas opciones cumplen con tus requisitos de {{booking_people}} personas{{#if preferences}} y tus preferencias de {{preferences}}{{/if}}.
+
+¿Te gustaría reservar alguna de estas opciones alternativas? También podemos buscar disponibilidad para otras fechas si prefieres.
+
+Quedo atento a tu respuesta.
+
+Saludos,
+{{company_name}}
+{{company_phone}}`,
+        platform: null,
+        dynamic_placeholders: JSON.stringify(['customer_name', 'boat_name', 'booking_date', 'booking_people', 'preferences', 'available_boats_with_prices', 'company_name', 'company_phone'])
+      },
+      {
+        id: nanoid(),
+        name: 'Respuesta Rápida - Precio',
+        category: 'pricing',
+        content: `Hola {{customer_name}},
+
+El precio para {{boat_name}} es de {{final_price}} por {{booking_duration}} horas{{#if discount}} (precio especial, ahorras {{discount}}){{/if}}.
+
+Este precio incluye:
+✅ Capitán certificado
+✅ Combustible
+✅ Equipo de seguridad
+✅ Agua y refrescos
+
+¿Te gustaría reservar? Puedo enviarte el enlace de pago de inmediato.
+
+{{company_name}}
+{{company_phone}}`,
+        platform: null,
+        dynamic_placeholders: JSON.stringify(['customer_name', 'boat_name', 'final_price', 'booking_duration', 'discount', 'company_name', 'company_phone'])
+      },
+      {
+        id: nanoid(),
+        name: 'Seguimiento Post-Consulta',
+        category: 'general',
+        content: `Hola {{customer_name}},
+
+Te escribo para dar seguimiento a tu consulta sobre nuestros servicios de excursiones.
+
+¿Aún estás interesado en reservar para {{booking_date}}? Tengo disponibilidad confirmada y puedo ofrecerte un precio especial si reservas hoy.
+
+Opciones disponibles:
+{{available_boats}}
+
+No dudes en contactarme si tienes alguna pregunta o si prefieres otras fechas.
+
+Saludos,
+{{company_name}}
+{{company_phone}}`,
+        platform: null,
+        dynamic_placeholders: JSON.stringify(['customer_name', 'booking_date', 'available_boats', 'company_name', 'company_phone'])
+      }
+    ];
+    
+    for (const template of defaultTemplates) {
+      await pool.query(
+        `INSERT INTO message_templates (id, name, category, content, platform, dynamic_placeholders)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [template.id, template.name, template.category, template.content, template.platform, template.dynamic_placeholders]
+      );
+    }
+    
+    console.log(`✅ Inserted ${defaultTemplates.length} default message templates`);
+  } catch (error) {
+    console.error('Error inserting default templates:', error);
+    // Non-fatal error, continue initialization
   }
 }
 
@@ -6641,6 +6803,128 @@ app.post('/api/messages/templates', async (req, res) => {
   }
 });
 
+// Preview template with rendered data
+app.post('/api/messages/templates/preview', async (req, res) => {
+  try {
+    const templateEngine = require('./server/templateEngine');
+    const { template_content, thread_id } = req.body;
+    
+    if (!template_content) {
+      return res.status(400).json({ error: 'Template content is required' });
+    }
+    
+    let renderData = {};
+    
+    // If thread_id provided, get actual data from the thread
+    if (thread_id) {
+      // Get thread info
+      const threadResult = await pool.query(
+        'SELECT * FROM message_threads WHERE id = $1',
+        [thread_id]
+      );
+      
+      if (threadResult.rows.length > 0) {
+        const thread = threadResult.rows[0];
+        
+        // Get latest message from thread for analysis
+        const messageResult = await pool.query(
+          `SELECT * FROM platform_messages 
+           WHERE thread_id = $1 
+           ORDER BY received_at DESC 
+           LIMIT 1`,
+          [thread_id]
+        );
+        
+        if (messageResult.rows.length > 0) {
+          const message = messageResult.rows[0];
+          
+          // Parse customer inquiry
+          const messageAnalysis = require('./server/messageAnalysisService');
+          const inquiry = messageAnalysis.parseCustomerInquiry(message.message_content);
+          
+          // Get available boats if dates detected
+          const fleetService = require('./server/fleetService');
+          let availableBoats = [];
+          
+          if (inquiry.dates && inquiry.dates.length > 0) {
+            const searchParams = {
+              date: inquiry.dates[0],
+              min_capacity: inquiry.peopleCount || 1
+            };
+            
+            availableBoats = await fleetService.searchBoats(searchParams);
+          }
+          
+          // Build render data from actual thread data
+          renderData = {
+            customerName: thread.customer_name || 'Guest',
+            customerEmail: thread.customer_email || '',
+            bookingDate: inquiry.dates && inquiry.dates.length > 0 ? inquiry.dates[0] : '',
+            bookingPeople: inquiry.peopleCount || '',
+            preferences: inquiry.preferences || [],
+            availableBoats: availableBoats,
+            companyName: 'Nadaki Excursions',
+            companyPhone: '+1 (XXX) XXX-XXXX',
+            companyEmail: 'sales@nadakiexcursions.com',
+            companyWebsite: 'https://www.nadakiexcursions.com'
+          };
+          
+          // If only one boat, add boat-specific data
+          if (availableBoats.length > 0) {
+            const firstBoat = availableBoats[0];
+            renderData.boatName = firstBoat.name;
+            renderData.boatType = firstBoat.type || '';
+            renderData.capacity = firstBoat.capacity || '';
+            renderData.location = firstBoat.location || '';
+            renderData.basePrice = firstBoat.hourly_base_rate || firstBoat.daily_base_rate || 0;
+            renderData.finalPrice = firstBoat.price || firstBoat.hourly_base_rate || 0;
+          }
+        }
+      }
+    } else {
+      // Use sample data for preview
+      renderData = {
+        customerName: 'Juan Pérez',
+        customerEmail: 'juan@example.com',
+        bookingDate: 'December 15, 2024',
+        bookingTime: '2:00 PM',
+        bookingDuration: '4',
+        bookingPeople: '8',
+        boatName: 'Ocean Dream',
+        boatType: 'Yacht',
+        capacity: '12',
+        location: 'Miami Marina',
+        basePrice: 600,
+        finalPrice: 540,
+        discount: 60,
+        discountPercentage: 10,
+        availableBoats: [
+          { name: 'Ocean Dream', type: 'Yacht', capacity: 12, price: 540 },
+          { name: 'Sunset Breeze', type: 'Catamaran', capacity: 10, price: 480 }
+        ],
+        preferences: ['Sunset Cruise', 'Snorkeling'],
+        companyName: 'Nadaki Excursions',
+        companyPhone: '+1 (305) 123-4567',
+        companyEmail: 'sales@nadakiexcursions.com',
+        companyWebsite: 'https://www.nadakiexcursions.com',
+        bookingLink: 'https://www.nadakiexcursions.com/book'
+      };
+    }
+    
+    // Render template
+    const rendered = templateEngine.render(template_content, renderData);
+    
+    res.json({
+      rendered,
+      data: renderData,
+      placeholders: templateEngine.extractPlaceholders(template_content)
+    });
+  } catch (error) {
+    console.error('Error previewing template:', error);
+    res.status(500).json({ error: 'Failed to preview template' });
+  }
+});
+
 // Get messaging analytics
 app.get('/api/messages/analytics', async (req, res) => {
   try {
@@ -6844,6 +7128,149 @@ app.get('/api/messages/unread-count', async (req, res) => {
   } catch (error) {
     console.error('Error fetching unread count:', error);
     res.status(500).json({ error: 'Failed to fetch unread count' });
+  }
+});
+
+// Get AI-powered boat suggestions for a message thread
+app.get('/api/messages/suggestions/:threadId', async (req, res) => {
+  try {
+    const { threadId } = req.params;
+    const messageAnalysisService = require('./server/messageAnalysisService');
+    const fleetService = require('./server/fleetService');
+    const dynamicPricingService = require('./server/dynamicPricingService');
+    
+    // Get thread messages
+    const messagesResult = await pool.query(
+      `SELECT id, message_content, sender_name, received_at, direction
+       FROM platform_messages 
+       WHERE thread_id = $1 AND direction = 'inbound'
+       ORDER BY received_at DESC 
+       LIMIT 5`,
+      [threadId]
+    );
+    
+    if (messagesResult.rows.length === 0) {
+      return res.json({
+        inquiry: null,
+        suggestions: [],
+        confidence: 0,
+        message: 'No messages found in this thread'
+      });
+    }
+    
+    // Combine all inbound messages for analysis
+    const combinedContent = messagesResult.rows
+      .map(msg => msg.message_content)
+      .join('\n\n');
+    
+    // Parse customer inquiry
+    const inquiry = messageAnalysisService.parseCustomerInquiry(combinedContent);
+    const summary = messageAnalysisService.generateSummary(inquiry);
+    
+    // Get thread details for customer name
+    const threadResult = await pool.query(
+      'SELECT customer_name, customer_email FROM message_threads WHERE id = $1',
+      [threadId]
+    );
+    const customerName = threadResult.rows[0]?.customer_name || 'Guest';
+    
+    // Search for available boats based on detected criteria
+    const suggestions = [];
+    
+    if (inquiry.dates && inquiry.dates.length > 0 && inquiry.peopleCount) {
+      // Search using detected criteria
+      for (const date of inquiry.dates.slice(0, 2)) { // Max 2 dates
+        const searchResult = await fleetService.searchBoats({
+          date,
+          capacity: inquiry.peopleCount,
+          boatType: inquiry.boatType || undefined,
+          duration: inquiry.duration || 4
+        });
+        
+        // Add pricing for each available boat
+        for (const boat of searchResult.availableBoats || []) {
+          // Calculate price using dynamic pricing service
+          const pricing = await dynamicPricingService.calculatePriceForBooking({
+            boatId: boat.id,
+            date,
+            duration: inquiry.duration || 4,
+            peopleCount: inquiry.peopleCount
+          });
+          
+          suggestions.push({
+            boatId: boat.id,
+            boatName: boat.name,
+            boatType: boat.boatType,
+            capacity: boat.capacity,
+            date,
+            duration: inquiry.duration || 4,
+            basePrice: pricing?.recommendedPrice || boat.hourlyRate * (inquiry.duration || 4),
+            finalPrice: pricing?.recommendedPrice || boat.hourlyRate * (inquiry.duration || 4),
+            pricingFactors: pricing?.factors || [],
+            features: boat.features || [],
+            amenities: boat.amenities || [],
+            photos: boat.photos || [],
+            location: boat.location,
+            isAvailable: true,
+            confidence: inquiry.confidence
+          });
+        }
+      }
+    } else if (inquiry.peopleCount) {
+      // If no date detected, show boats by capacity without availability check
+      const allBoats = await fleetService.getAllBoats();
+      const matchingBoats = allBoats.filter(b => 
+        b.capacity >= inquiry.peopleCount &&
+        (!inquiry.boatType || b.boatType.toLowerCase() === inquiry.boatType.toLowerCase())
+      ).slice(0, 5);
+      
+      for (const boat of matchingBoats) {
+        suggestions.push({
+          boatId: boat.id,
+          boatName: boat.name,
+          boatType: boat.boatType,
+          capacity: boat.capacity,
+          date: null,
+          duration: inquiry.duration || 4,
+          basePrice: boat.hourlyRate * (inquiry.duration || 4),
+          finalPrice: boat.hourlyRate * (inquiry.duration || 4),
+          pricingFactors: [],
+          features: boat.features || [],
+          amenities: boat.amenities || [],
+          photos: boat.photos || [],
+          location: boat.location,
+          isAvailable: null, // Unknown without date
+          confidence: inquiry.confidence * 0.7 // Lower confidence without date
+        });
+      }
+    }
+    
+    // Sort by confidence and price
+    suggestions.sort((a, b) => {
+      if (a.isAvailable && !b.isAvailable) return -1;
+      if (!a.isAvailable && b.isAvailable) return 1;
+      return (b.confidence || 0) - (a.confidence || 0);
+    });
+    
+    res.json({
+      inquiry: {
+        ...inquiry,
+        customerName,
+        summary
+      },
+      suggestions: suggestions.slice(0, 10), // Top 10 suggestions
+      confidence: inquiry.confidence,
+      message: suggestions.length > 0 
+        ? `Found ${suggestions.length} boat suggestions based on customer inquiry` 
+        : 'Could not generate suggestions - please add more details about dates and party size'
+    });
+    
+  } catch (error) {
+    console.error('Error generating suggestions:', error);
+    res.status(500).json({ 
+      error: 'Failed to generate suggestions',
+      details: error.message 
+    });
   }
 });
 
