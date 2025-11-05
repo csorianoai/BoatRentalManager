@@ -1,6 +1,6 @@
 # Overview
 
-This project is a comprehensive multi-platform boat rental management system developed for Nadaki Excursions. It automates booking management, payment processing, customer communication, captain scheduling, dynamic pricing, and accounting across 13 different booking platforms. The system aims to streamline operations, enhance customer experience through an AI assistant, and provide robust financial oversight.
+This project is a comprehensive multi-platform boat rental management system developed for Nadaki Excursions. It automates booking management, payment processing, customer communication, captain scheduling, dynamic pricing, and accounting across 13 different booking platforms. The system aims to streamline operations, enhance customer experience through an AI assistant, and provide robust financial oversight. The portal is accessible via gestion.nadakiexcursions.com.
 
 # User Preferences
 
