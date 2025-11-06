@@ -30,12 +30,19 @@ class EmailService {
       });
     }
 
-    // Remove tracking URLs and long parameter strings
+    // Remove tracking URLs and long parameter strings (both http and https)
     content = content
-      .replace(/<http:\/\/[^>]+>/g, '') // Remove <http://...> tracking links
-      .replace(/http:\/\/click\.[^\s]+/g, '') // Remove click tracking links
-      .replace(/\?p=[a-zA-Z0-9=]+/g, '') // Remove tracking parameters
+      .replace(/<https?:\/\/[^>]+>/g, '') // Remove <http://...> and <https://...> tracking links
+      .replace(/https?:\/\/click\.[^\s]+/g, '') // Remove click tracking links (http/https)
+      .replace(/https?:\/\/[^\s]*track[^\s]*/gi, '') // Remove tracking URLs containing 'track'
+      .replace(/https?:\/\/[^\s]*redirect[^\s]*/gi, '') // Remove redirect URLs
+      .replace(/[?&]utm_[^&\s]+/g, '') // Remove UTM parameters only (preserve other params)
+      .replace(/[?&]trk=[^&\s]+/g, '') // Remove LinkedIn tracking only
+      .replace(/[?&]ref=[^&\s]+/g, '') // Remove ref tracking only
+      .replace(/[?&]p=[a-zA-Z0-9=]+/g, '') // Remove generic tracking parameters only
+      .replace(/\[image:[^\]]*\]/g, '') // Remove [image: ...] placeholders
       .replace(/\n{3,}/g, '\n\n') // Remove excessive newlines
+      .replace(/[ \t]{2,}/g, ' ') // Normalize multiple spaces/tabs only (preserve line breaks)
       .trim();
 
     return content;
