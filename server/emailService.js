@@ -146,6 +146,25 @@ class EmailService {
         mail.html || ''
       );
 
+      // Extract unique message identifier (message-id header or date + subject)
+      const messageDate = mail.date ? new Date(mail.date) : new Date();
+      const messageContent = mail.text || mail.html || '';
+
+      // Check if this exact message already exists (prevent duplicates)
+      const duplicateCheck = await this.pool.query(
+        `SELECT id FROM platform_messages 
+         WHERE sender_contact = $1 
+         AND message_content = $2
+         AND DATE(received_at) = DATE($3)
+         LIMIT 1`,
+        [customerEmail, messageContent, messageDate]
+      );
+
+      if (duplicateCheck.rows.length > 0) {
+        console.log(`⏭️  Email already processed (duplicate): ${customerEmail} - ${mail.subject}`);
+        return null; // Skip duplicate
+      }
+
       // Check if thread exists for this email
       let threadResult = await this.pool.query(
         `SELECT id FROM message_threads 
@@ -232,28 +251,28 @@ class EmailService {
           return reject(err);
         }
 
-        // Search for unseen emails
-        this.imap.search(['UNSEEN'], async (err, results) => {
-          if (err) {
-            console.error('Error searching emails:', err);
-            return reject(err);
-          }
+        // Get the most recent 50 emails (both read and unread)
+        const totalMessages = box.messages.total;
+        if (totalMessages === 0) {
+          console.log('📭 No emails in inbox');
+          return resolve({ synced: 0 });
+        }
 
-          if (!results || results.length === 0) {
-            console.log('📭 No new emails to sync');
-            return resolve({ synced: 0 });
-          }
+        const startSeq = Math.max(1, totalMessages - 49); // Last 50 emails
+        const endSeq = totalMessages;
+        const searchRange = `${startSeq}:${endSeq}`;
 
-          console.log(`📬 Found ${results.length} unread email(s)`);
-          
-          const fetch = this.imap.fetch(results, {
-            bodies: '',
-            markSeen: false // Don't mark as read yet
-          });
+        console.log(`🔍 Checking last ${endSeq - startSeq + 1} emails in inbox`);
 
-          const processedEmails = [];
+        // Fetch recent emails (read or unread)
+        const fetch = this.imap.seq.fetch(searchRange, {
+          bodies: '',
+          markSeen: false // Don't mark as read
+        });
 
-          fetch.on('message', (msg, seqno) => {
+        const processedEmails = [];
+
+        fetch.on('message', (msg, seqno) => {
             msg.on('body', (stream, info) => {
               simpleParser(stream, async (err, mail) => {
                 if (err) {
@@ -276,15 +295,14 @@ class EmailService {
             });
           });
 
-          fetch.once('error', (err) => {
-            console.error('Fetch error:', err);
-            reject(err);
-          });
+        fetch.once('error', (err) => {
+          console.error('Fetch error:', err);
+          reject(err);
+        });
 
-          fetch.once('end', () => {
-            console.log(`✅ Email sync completed: ${processedEmails.length} emails processed`);
-            resolve({ synced: processedEmails.length, emails: processedEmails });
-          });
+        fetch.once('end', () => {
+          console.log(`✅ Email sync completed: ${processedEmails.length} emails processed`);
+          resolve({ synced: processedEmails.length, emails: processedEmails });
         });
       });
     });
