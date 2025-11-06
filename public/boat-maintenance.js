@@ -274,6 +274,7 @@ function renderExpenses() {
         </div>
       </div>
       <div class="card-actions">
+        <button class="btn btn-primary btn-sm" onclick="editExpense('${expense.id}')" data-testid="button-edit-expense-${expense.id}">Editar</button>
         <button class="btn btn-danger btn-sm" onclick="deleteExpense('${expense.id}')" data-testid="button-delete-expense-${expense.id}">Eliminar</button>
       </div>
     </div>
