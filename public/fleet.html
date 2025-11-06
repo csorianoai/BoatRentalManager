@@ -4,71 +4,330 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gestión de Flotilla - Nadaki Excursions</title>
-    <link rel="stylesheet" href="commissions.css">
     <style>
-        .fleet-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-            gap: 24px;
-            margin-top: 20px;
+        /* ===== RESET & BASE STYLES ===== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
-        .boat-card {
-            background: white;
-            border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            transition: transform 0.2s;
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #F7F7F7;
+            color: #222222;
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
         }
-        .boat-card:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+
+        /* ===== HEADER & NAVIGATION ===== */
+        .navbar {
+            background: #FFFFFF;
+            border-bottom: 1px solid #EBEBEB;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
         }
-        .boat-header {
+
+        .nav-container {
+            max-width: 1440px;
+            margin: 0 auto;
+            padding: 0 40px;
             display: flex;
             justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 16px;
+            align-items: center;
+            height: 72px;
         }
-        .boat-name {
+
+        .nav-brand h1 {
             font-size: 20px;
-            font-weight: 700;
-            color: #1a1a1a;
-            margin-bottom: 4px;
+            font-weight: 600;
+            color: #FF5A5F;
+            letter-spacing: -0.3px;
         }
-        .boat-type {
+
+        .nav-links {
+            display: flex;
+            align-items: center;
+            gap: 32px;
+        }
+
+        .nav-links a {
             font-size: 14px;
-            color: #666;
-            text-transform: capitalize;
+            font-weight: 500;
+            color: #717171;
+            text-decoration: none;
+            transition: color 0.2s ease;
+            position: relative;
         }
+
+        .nav-links a:hover {
+            color: #222222;
+        }
+
+        .nav-links a.active {
+            color: #222222;
+        }
+
+        .nav-links a.active::after {
+            content: '';
+            position: absolute;
+            bottom: -24px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: #222222;
+        }
+
+        .logout-btn {
+            padding: 10px 20px;
+            background: #FFFFFF;
+            border: 1px solid #DDDDDD;
+            border-radius: 24px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #222222;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .logout-btn:hover {
+            background: #F7F7F7;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+        }
+
+        /* ===== CONTAINER ===== */
+        .container {
+            max-width: 1440px;
+            margin: 0 auto;
+            padding: 48px 40px;
+        }
+
+        /* ===== TABS NAVIGATION (Modern Airbnb Style) ===== */
+        .tabs {
+            display: flex;
+            gap: 48px;
+            border-bottom: 1px solid #EBEBEB;
+            margin-bottom: 48px;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .tab-btn {
+            padding: 16px 0;
+            background: none;
+            border: none;
+            font-size: 15px;
+            font-weight: 500;
+            color: #717171;
+            cursor: pointer;
+            position: relative;
+            white-space: nowrap;
+            transition: color 0.2s ease;
+            border-bottom: 2px solid transparent;
+        }
+
+        .tab-btn:hover {
+            color: #222222;
+        }
+
+        .tab-btn.active {
+            color: #222222;
+            border-bottom-color: #222222;
+        }
+
+        /* ===== TAB CONTENT ===== */
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* ===== HEADER ACTIONS ===== */
+        .header-actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 32px;
+        }
+
+        .header-actions h2 {
+            font-size: 28px;
+            font-weight: 600;
+            color: #222222;
+            letter-spacing: -0.5px;
+        }
+
+        /* ===== BUTTONS (Airbnb Style) ===== */
+        .btn {
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            white-space: nowrap;
+        }
+
+        .btn-primary {
+            background: linear-gradient(to right, #008489, #00A699);
+            color: #FFFFFF;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+        }
+
+        .btn-primary:hover {
+            background: linear-gradient(to right, #007378, #009688);
+            box-shadow: 0 2px 8px rgba(0, 132, 137, 0.25);
+            transform: translateY(-1px);
+        }
+
+        .btn-secondary {
+            background: #FFFFFF;
+            color: #222222;
+            border: 1px solid #DDDDDD;
+        }
+
+        .btn-secondary:hover {
+            background: #F7F7F7;
+            border-color: #B0B0B0;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+        }
+
+        .btn-danger {
+            background: #FFFFFF;
+            color: #C13515;
+            border: 1px solid #DDDDDD;
+        }
+
+        .btn-danger:hover {
+            background: #FFF5F5;
+            border-color: #C13515;
+        }
+
+        /* ===== FLEET GRID ===== */
+        .fleet-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+            gap: 32px;
+        }
+
+        /* ===== BOAT CARDS (Airbnb Style) ===== */
+        .boat-card {
+            background: #FFFFFF;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08), 0 4px 12px rgba(0, 0, 0, 0.05);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+        }
+
+        .boat-card:hover {
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08), 0 8px 24px rgba(0, 0, 0, 0.12);
+            transform: translateY(-2px);
+        }
+
         .boat-photo {
             width: 100%;
-            height: 200px;
+            height: 280px;
             object-fit: cover;
-            border-radius: 8px;
-            margin-bottom: 16px;
-            background: #f0f0f0;
+            background: linear-gradient(135deg, #E8F5F5 0%, #D4EDEC 100%);
+            display: block;
         }
+
+        .boat-card-content {
+            padding: 24px;
+        }
+
+        .boat-header {
+            margin-bottom: 16px;
+        }
+
+        .boat-type {
+            font-size: 12px;
+            font-weight: 600;
+            color: #008489;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+        }
+
+        .boat-name {
+            font-size: 22px;
+            font-weight: 600;
+            color: #222222;
+            line-height: 1.3;
+            margin-bottom: 4px;
+            letter-spacing: -0.3px;
+        }
+
         .boat-info {
-            display: grid;
-            gap: 8px;
-            margin-bottom: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 20px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #F0F0F0;
         }
+
         .boat-info-row {
             display: flex;
             justify-content: space-between;
+            align-items: center;
             font-size: 14px;
         }
+
         .boat-info-label {
-            color: #666;
+            color: #717171;
+            font-weight: 400;
         }
+
         .boat-info-value {
-            font-weight: 600;
-            color: #1a1a1a;
+            font-weight: 500;
+            color: #222222;
         }
+
+        .boat-price {
+            font-size: 20px;
+            font-weight: 600;
+            color: #222222;
+            margin-bottom: 20px;
+        }
+
+        .boat-price span {
+            font-size: 14px;
+            font-weight: 400;
+            color: #717171;
+        }
+
         .boat-actions {
             display: flex;
-            gap: 8px;
+            gap: 10px;
         }
+
+        .boat-actions .btn {
+            flex: 1;
+            justify-content: center;
+            padding: 10px 16px;
+            font-size: 13px;
+        }
+
+        /* ===== LOADING STATE ===== */
+        .loading {
+            text-align: center;
+            color: #717171;
+            font-size: 15px;
+            padding: 60px 20px;
+        }
+
+        /* ===== MODAL ===== */
         .modal {
             display: none;
             position: fixed;
@@ -76,150 +335,349 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0,0,0,0.5);
+            background: rgba(0, 0, 0, 0.48);
             z-index: 1000;
             justify-content: center;
             align-items: center;
-            padding: 20px;
+            padding: 40px;
+            overflow-y: auto;
         }
+
         .modal.active {
             display: flex;
         }
+
         .modal-content {
-            background: white;
-            border-radius: 12px;
-            padding: 32px;
-            max-width: 800px;
+            background: #FFFFFF;
+            border-radius: 16px;
+            padding: 40px;
+            max-width: 840px;
             width: 100%;
             max-height: 90vh;
             overflow-y: auto;
+            box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
         }
+
         .modal-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 24px;
+            margin-bottom: 32px;
+            padding-bottom: 24px;
+            border-bottom: 1px solid #EBEBEB;
         }
+
         .modal-title {
-            font-size: 24px;
-            font-weight: 700;
-            color: #1a1a1a;
+            font-size: 26px;
+            font-weight: 600;
+            color: #222222;
+            letter-spacing: -0.5px;
         }
+
+        /* ===== FORMS ===== */
         .form-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 20px;
+            gap: 24px;
         }
+
         .form-group {
             display: flex;
             flex-direction: column;
         }
+
         .form-group label {
-            font-weight: 600;
-            color: #333;
-            margin-bottom: 8px;
+            font-weight: 500;
+            color: #222222;
+            margin-bottom: 10px;
             font-size: 14px;
         }
+
         .form-group input,
         .form-group select,
         .form-group textarea {
-            padding: 12px;
-            border: 1px solid #ddd;
+            padding: 14px 16px;
+            border: 1px solid #DDDDDD;
             border-radius: 8px;
-            font-size: 14px;
+            font-size: 15px;
+            font-family: inherit;
+            color: #222222;
+            background: #FFFFFF;
+            transition: all 0.2s ease;
         }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #222222;
+            box-shadow: 0 0 0 2px rgba(34, 34, 34, 0.1);
+        }
+
+        .form-group input::placeholder,
+        .form-group textarea::placeholder {
+            color: #B0B0B0;
+        }
+
         .form-group textarea {
             min-height: 100px;
             resize: vertical;
+            line-height: 1.6;
         }
+
         .form-section {
             grid-column: 1 / -1;
-            margin-top: 20px;
+            margin-top: 32px;
         }
+
+        .form-section:first-child {
+            margin-top: 0;
+        }
+
         .form-section-title {
-            font-size: 18px;
-            font-weight: 700;
-            color: #1a1a1a;
-            margin-bottom: 16px;
-            padding-bottom: 8px;
-            border-bottom: 2px solid #e0e0e0;
+            font-size: 20px;
+            font-weight: 600;
+            color: #222222;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #EBEBEB;
+            letter-spacing: -0.3px;
         }
+
+        /* ===== CALENDAR CONTAINER ===== */
         .calendar-container {
-            background: white;
+            background: #FFFFFF;
             border-radius: 12px;
-            padding: 24px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            padding: 32px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08), 0 4px 12px rgba(0, 0, 0, 0.05);
         }
+
         .calendar-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 24px;
+            margin-bottom: 32px;
+            flex-wrap: wrap;
+            gap: 20px;
         }
+
+        .calendar-header h2 {
+            font-size: 26px;
+            font-weight: 600;
+            color: #222222;
+            letter-spacing: -0.5px;
+        }
+
         .calendar-nav {
             display: flex;
             gap: 16px;
             align-items: center;
         }
+
         .calendar-month {
-            font-size: 20px;
-            font-weight: 700;
-            color: #1a1a1a;
+            font-size: 18px;
+            font-weight: 600;
+            color: #222222;
+            min-width: 180px;
+            text-align: center;
         }
+
+        /* ===== PLATFORM MATRIX ===== */
         .platform-matrix {
-            background: white;
+            background: #FFFFFF;
             border-radius: 12px;
-            padding: 24px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            padding: 32px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08), 0 4px 12px rgba(0, 0, 0, 0.05);
         }
+
+        .platform-matrix h2 {
+            font-size: 26px;
+            font-weight: 600;
+            color: #222222;
+            margin-bottom: 32px;
+            letter-spacing: -0.5px;
+        }
+
         .platform-row {
             display: grid;
             grid-template-columns: 200px 1fr auto;
-            gap: 16px;
+            gap: 20px;
             align-items: center;
-            padding: 16px;
-            border-bottom: 1px solid #e0e0e0;
+            padding: 20px 0;
+            border-bottom: 1px solid #F0F0F0;
         }
+
         .platform-row:last-child {
             border-bottom: none;
         }
+
         .platform-name {
             font-weight: 600;
-            color: #1a1a1a;
+            color: #222222;
+            font-size: 15px;
         }
+
         .platform-id-input {
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
+            padding: 12px 16px;
+            border: 1px solid #DDDDDD;
+            border-radius: 8px;
             font-size: 14px;
+            font-family: inherit;
+            transition: all 0.2s ease;
         }
+
+        .platform-id-input:focus {
+            outline: none;
+            border-color: #222222;
+            box-shadow: 0 0 0 2px rgba(34, 34, 34, 0.1);
+        }
+
+        /* ===== QUICK SEARCH ===== */
         .quick-search {
-            background: white;
+            background: #FFFFFF;
             border-radius: 12px;
-            padding: 24px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            margin-bottom: 24px;
+            padding: 32px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08), 0 4px 12px rgba(0, 0, 0, 0.05);
+            margin-bottom: 32px;
         }
+
+        .quick-search h2 {
+            font-size: 26px;
+            font-weight: 600;
+            color: #222222;
+            margin-bottom: 28px;
+            letter-spacing: -0.5px;
+        }
+
         .search-form {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 16px;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 20px;
             align-items: end;
         }
+
         .results-grid {
             display: grid;
-            gap: 16px;
-            margin-top: 24px;
+            gap: 20px;
+            margin-top: 32px;
         }
+
         .result-card {
-            background: #f8f9fa;
-            border-radius: 8px;
-            padding: 20px;
-            border-left: 4px solid #28a745;
+            background: #F7F7F7;
+            border-radius: 12px;
+            padding: 24px;
+            border-left: 4px solid #00A699;
+            transition: all 0.2s ease;
         }
+
+        .result-card:hover {
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        }
+
         .result-card.unavailable {
-            border-left-color: #dc3545;
-            opacity: 0.7;
+            border-left-color: #C13515;
+            opacity: 0.65;
+        }
+
+        /* ===== RESPONSIVE ===== */
+        @media (max-width: 768px) {
+            .nav-container {
+                padding: 0 20px;
+                flex-direction: column;
+                height: auto;
+                padding-top: 16px;
+                padding-bottom: 16px;
+            }
+
+            .nav-links {
+                flex-wrap: wrap;
+                gap: 16px;
+                justify-content: center;
+            }
+
+            .container {
+                padding: 24px 20px;
+            }
+
+            .tabs {
+                gap: 24px;
+                margin-bottom: 32px;
+            }
+
+            .tab-btn {
+                font-size: 14px;
+                padding: 12px 0;
+            }
+
+            .header-actions {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 16px;
+            }
+
+            .header-actions h2 {
+                font-size: 24px;
+            }
+
+            .fleet-grid {
+                grid-template-columns: 1fr;
+                gap: 24px;
+            }
+
+            .modal {
+                padding: 20px;
+            }
+
+            .modal-content {
+                padding: 24px;
+            }
+
+            .modal-title {
+                font-size: 22px;
+            }
+
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .calendar-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .calendar-nav {
+                flex-wrap: wrap;
+            }
+
+            .platform-row {
+                grid-template-columns: 1fr;
+                gap: 12px;
+                padding: 16px 0;
+            }
+
+            .search-form {
+                grid-template-columns: 1fr;
+            }
+
+            .boat-actions {
+                flex-direction: column;
+            }
+
+            .boat-actions .btn {
+                width: 100%;
+            }
+        }
+
+        @media (min-width: 769px) and (max-width: 1200px) {
+            .fleet-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (min-width: 1201px) {
+            .fleet-grid {
+                grid-template-columns: repeat(3, 1fr);
+            }
         }
     </style>
 </head>
@@ -231,12 +689,12 @@
                 <h1>⛵ Nadaki Excursions</h1>
             </div>
             <div class="nav-links">
-                <a href="/dashboard.html">📊 Dashboard</a>
-                <a href="/sync.html">🔄 Sincronización</a>
-                <a href="/fleet.html" class="active">🚤 Flotilla</a>
-                <a href="/messages.html">💬 Mensajes</a>
-                <a href="/pricing.html">💵 Precios</a>
-                <button id="logout-btn" data-testid="button-logout" class="logout-btn">🚪 Cerrar Sesión</button>
+                <a href="/dashboard.html">Dashboard</a>
+                <a href="/sync.html">Sincronización</a>
+                <a href="/fleet.html" class="active">Flotilla</a>
+                <a href="/messages.html">Mensajes</a>
+                <a href="/pricing.html">Precios</a>
+                <button id="logout-btn" data-testid="button-logout" class="logout-btn">Cerrar Sesión</button>
             </div>
         </div>
     </nav>
@@ -245,24 +703,24 @@
         <!-- Tabs Navigation -->
         <div class="tabs">
             <button class="tab-btn active" data-tab="boats" data-testid="tab-boats">
-                🚤 Gestión de Barcos
+                Gestión de Barcos
             </button>
             <button class="tab-btn" data-tab="calendar" data-testid="tab-calendar">
-                📅 Calendario de Disponibilidad
+                Calendario de Disponibilidad
             </button>
             <button class="tab-btn" data-tab="platforms" data-testid="tab-platforms">
-                🔗 Vinculación de Plataformas
+                Vinculación de Plataformas
             </button>
             <button class="tab-btn" data-tab="quick-search" data-testid="tab-quick-search">
-                🔍 Consulta Rápida
+                Consulta Rápida
             </button>
         </div>
 
         <!-- Tab 1: Boats Management -->
         <div class="tab-content active" id="boats-tab">
             <div class="header-actions">
-                <h2>🚤 Gestión de Barcos</h2>
-                <button id="add-boat-btn" data-testid="button-add-boat" class="btn btn-primary">➕ Agregar Barco</button>
+                <h2>Gestión de Barcos</h2>
+                <button id="add-boat-btn" data-testid="button-add-boat" class="btn btn-primary">Agregar Barco</button>
             </div>
 
             <div class="fleet-grid" id="fleet-grid">
@@ -274,16 +732,16 @@
         <div class="tab-content" id="calendar-tab">
             <div class="calendar-container">
                 <div class="calendar-header">
-                    <h2>📅 Calendario de Disponibilidad</h2>
+                    <h2>Calendario de Disponibilidad</h2>
                     <div class="calendar-nav">
-                        <button id="prev-month-btn" data-testid="button-prev-month" class="btn btn-secondary">← Mes Anterior</button>
+                        <button id="prev-month-btn" data-testid="button-prev-month" class="btn btn-secondary">← Anterior</button>
                         <span class="calendar-month" id="calendar-month">Noviembre 2025</span>
-                        <button id="next-month-btn" data-testid="button-next-month" class="btn btn-secondary">Mes Siguiente →</button>
+                        <button id="next-month-btn" data-testid="button-next-month" class="btn btn-secondary">Siguiente →</button>
                     </div>
                 </div>
                 
-                <div class="form-group" style="max-width: 300px; margin-bottom: 24px;">
-                    <label for="calendar-boat-filter">Filtrar por Barco:</label>
+                <div class="form-group" style="max-width: 340px; margin-bottom: 32px;">
+                    <label for="calendar-boat-filter">Filtrar por Barco</label>
                     <select id="calendar-boat-filter" data-testid="select-calendar-boat">
                         <option value="">Todos los barcos</option>
                     </select>
@@ -296,10 +754,10 @@
         <!-- Tab 3: Platform Linking -->
         <div class="tab-content" id="platforms-tab">
             <div class="platform-matrix">
-                <h2 style="margin-bottom: 24px;">🔗 Vinculación de Plataformas</h2>
+                <h2>Vinculación de Plataformas</h2>
                 
-                <div class="form-group" style="max-width: 400px; margin-bottom: 24px;">
-                    <label for="platform-boat-select">Seleccionar Barco:</label>
+                <div class="form-group" style="max-width: 420px; margin-bottom: 32px;">
+                    <label for="platform-boat-select">Seleccionar Barco</label>
                     <select id="platform-boat-select" data-testid="select-platform-boat">
                         <option value="">Seleccionar...</option>
                     </select>
@@ -309,26 +767,26 @@
                     <p class="loading">Selecciona un barco para vincular plataformas...</p>
                 </div>
 
-                <button id="save-platform-ids-btn" data-testid="button-save-platform-ids" class="btn btn-primary" style="margin-top: 24px;">💾 Guardar Vinculaciones</button>
+                <button id="save-platform-ids-btn" data-testid="button-save-platform-ids" class="btn btn-primary" style="margin-top: 32px;">Guardar Vinculaciones</button>
             </div>
         </div>
 
         <!-- Tab 4: Quick Search -->
         <div class="tab-content" id="quick-search-tab">
             <div class="quick-search">
-                <h2 style="margin-bottom: 20px;">🔍 Consulta Rápida de Disponibilidad</h2>
+                <h2>Consulta Rápida de Disponibilidad</h2>
                 
                 <div class="search-form">
                     <div class="form-group">
-                        <label for="search-date">Fecha:</label>
+                        <label for="search-date">Fecha</label>
                         <input type="date" id="search-date" data-testid="input-search-date">
                     </div>
                     <div class="form-group">
-                        <label for="search-capacity">Capacidad (personas):</label>
+                        <label for="search-capacity">Capacidad (personas)</label>
                         <input type="number" id="search-capacity" data-testid="input-search-capacity" min="1" placeholder="Ej: 8">
                     </div>
                     <div class="form-group">
-                        <label for="search-type">Tipo de Barco:</label>
+                        <label for="search-type">Tipo de Barco</label>
                         <select id="search-type" data-testid="select-search-type">
                             <option value="">Todos</option>
                             <option value="fishing">Fishing</option>
@@ -338,7 +796,7 @@
                         </select>
                     </div>
                     <div class="form-group">
-                        <button id="search-btn" data-testid="button-search" class="btn btn-primary" style="width: 100%;">🔍 Buscar</button>
+                        <button id="search-btn" data-testid="button-search" class="btn btn-primary" style="width: 100%;">Buscar</button>
                     </div>
                 </div>
 
@@ -351,7 +809,7 @@
     <div id="boat-modal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2 class="modal-title" id="modal-title">➕ Agregar Barco</h2>
+                <h2 class="modal-title" id="modal-title">Agregar Barco</h2>
                 <button id="close-modal-btn" data-testid="button-close-modal" class="btn btn-secondary">✕</button>
             </div>
 
@@ -467,9 +925,9 @@
                     </div>
                 </div>
 
-                <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 32px;">
+                <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 40px;">
                     <button type="button" id="cancel-btn" data-testid="button-cancel" class="btn btn-secondary">Cancelar</button>
-                    <button type="submit" data-testid="button-submit-boat" class="btn btn-primary">💾 Guardar Barco</button>
+                    <button type="submit" data-testid="button-submit-boat" class="btn btn-primary">Guardar Barco</button>
                 </div>
             </form>
         </div>

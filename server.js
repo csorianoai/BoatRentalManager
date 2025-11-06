@@ -232,9 +232,87 @@ async function initializeDatabase() {
         boat_type TEXT NOT NULL,
         status TEXT NOT NULL,
         description TEXT,
+        full_description TEXT,
         features JSONB,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+        amenities JSONB,
+        photos JSONB,
+        platform_ids JSONB,
+        hourly_rate_base INTEGER,
+        daily_rate_base INTEGER,
+        location TEXT,
+        year INTEGER,
+        make TEXT,
+        model TEXT,
+        length INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
       )
+    `);
+    
+    // Migration: Add missing columns to existing boats tables
+    await pool.query(`
+      DO $$ 
+      BEGIN
+        -- Add full_description if not exists
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='boats' AND column_name='full_description') THEN
+          ALTER TABLE boats ADD COLUMN full_description TEXT;
+        END IF;
+        
+        -- Add amenities if not exists
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='boats' AND column_name='amenities') THEN
+          ALTER TABLE boats ADD COLUMN amenities JSONB;
+        END IF;
+        
+        -- Add photos if not exists
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='boats' AND column_name='photos') THEN
+          ALTER TABLE boats ADD COLUMN photos JSONB;
+        END IF;
+        
+        -- Add platform_ids if not exists
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='boats' AND column_name='platform_ids') THEN
+          ALTER TABLE boats ADD COLUMN platform_ids JSONB;
+        END IF;
+        
+        -- Add hourly_rate_base if not exists
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='boats' AND column_name='hourly_rate_base') THEN
+          ALTER TABLE boats ADD COLUMN hourly_rate_base INTEGER;
+        END IF;
+        
+        -- Add daily_rate_base if not exists
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='boats' AND column_name='daily_rate_base') THEN
+          ALTER TABLE boats ADD COLUMN daily_rate_base INTEGER;
+        END IF;
+        
+        -- Add location if not exists
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='boats' AND column_name='location') THEN
+          ALTER TABLE boats ADD COLUMN location TEXT;
+        END IF;
+        
+        -- Add year if not exists
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='boats' AND column_name='year') THEN
+          ALTER TABLE boats ADD COLUMN year INTEGER;
+        END IF;
+        
+        -- Add make if not exists
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='boats' AND column_name='make') THEN
+          ALTER TABLE boats ADD COLUMN make TEXT;
+        END IF;
+        
+        -- Add model if not exists
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='boats' AND column_name='model') THEN
+          ALTER TABLE boats ADD COLUMN model TEXT;
+        END IF;
+        
+        -- Add length if not exists
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='boats' AND column_name='length') THEN
+          ALTER TABLE boats ADD COLUMN length INTEGER;
+        END IF;
+        
+        -- Add updated_at if not exists
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='boats' AND column_name='updated_at') THEN
+          ALTER TABLE boats ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL;
+        END IF;
+      END $$;
     `);
     
     // FASE 7: Create platform_pricing_policies table (precios base por plataforma)
