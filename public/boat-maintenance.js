@@ -224,6 +224,9 @@ async function loadAnalytics() {
     renderExpensesTrendChart();
     renderExpensesByBoatChart();
     renderExpensesByCategoryAndBoatChart();
+    
+    // Render upcoming scheduled expenses summary
+    renderUpcomingScheduledSummary();
   } catch (error) {
     console.error('Error loading analytics:', error);
   }
@@ -1431,4 +1434,71 @@ async function markScheduledExpenseAsPaid(id) {
     console.error('Error marking as paid:', error);
     alert('Error al marcar como pagado');
   }
+}
+
+function renderUpcomingScheduledSummary() {
+  const container = document.getElementById('upcoming-scheduled-summary');
+  if (!container) return;
+  
+  // Filter for pending expenses in the next 30 days
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const thirtyDaysFromNow = new Date(today);
+  thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+  
+  const upcomingExpenses = scheduledExpenses
+    .filter(expense => {
+      if (expense.status !== 'pending') return false;
+      const scheduledDate = new Date(expense.scheduled_date);
+      scheduledDate.setHours(0, 0, 0, 0);
+      return scheduledDate >= today && scheduledDate <= thirtyDaysFromNow;
+    })
+    .sort((a, b) => new Date(a.scheduled_date) - new Date(b.scheduled_date));
+  
+  if (upcomingExpenses.length === 0) {
+    container.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">No hay gastos programados en los próximos 30 días</p>';
+    return;
+  }
+  
+  const totalEstimated = upcomingExpenses.reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
+  
+  container.innerHTML = `
+    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+      <div style="font-size: 14px; opacity: 0.9; margin-bottom: 8px;">Total Estimado (30 días)</div>
+      <div style="font-size: 32px; font-weight: 700;">$${totalEstimated.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+      <div style="font-size: 14px; opacity: 0.9; margin-top: 8px;">${upcomingExpenses.length} gasto${upcomingExpenses.length !== 1 ? 's' : ''} programado${upcomingExpenses.length !== 1 ? 's' : ''}</div>
+    </div>
+    
+    <div style="display: grid; gap: 12px;">
+      ${upcomingExpenses.map(expense => {
+        const urgency = getUrgencyInfo(expense.scheduled_date, expense.status);
+        const recurrenceLabel = getRecurrenceLabel(expense.recurrence_type, expense.recurrence_interval);
+        
+        return `
+          <div style="border-left: 4px solid ${urgency.color}; padding: 12px; background: #f8f9fa; border-radius: 4px;">
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+              <div>
+                <div style="font-weight: 600; font-size: 16px; margin-bottom: 4px;">${expense.boat_name || 'Barco Desconocido'}</div>
+                <div style="color: #666; font-size: 14px;">${expense.description}</div>
+              </div>
+              <div style="text-align: right;">
+                <div style="font-weight: 700; font-size: 18px; color: #dc3545;">$${parseFloat(expense.amount).toFixed(2)}</div>
+                <span style="background: ${urgency.color}; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">
+                  ${getCategoryLabel(expense.category)}
+                </span>
+              </div>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: #666;">
+              <div>
+                <span style="font-weight: 600; color: ${urgency.color};">
+                  ${formatDate(expense.scheduled_date)} ${urgency.label}
+                </span>
+              </div>
+              <div>${recurrenceLabel}</div>
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
 }
