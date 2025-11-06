@@ -10,6 +10,7 @@ let maintenanceRecords = [];
 let workOrders = [];
 let partsInventory = [];
 let charts = {};
+let editingExpenseId = null;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
@@ -679,9 +680,11 @@ function renderExpensesByCategoryAndBoatChart() {
 // ===========================================================================
 
 function openExpenseModal() {
+  editingExpenseId = null;
   document.getElementById('modal-expense').classList.add('active');
   document.getElementById('form-expense').reset();
   document.getElementById('expense-date').valueAsDate = new Date();
+  document.querySelector('#modal-expense .modal-title').textContent = 'Nuevo Gasto';
 }
 
 function closeExpenseModal() {
@@ -924,6 +927,32 @@ async function deleteExpense(id) {
     console.error('Error deleting expense:', error);
     alert('Error al eliminar el gasto');
   }
+}
+
+async function editExpense(id) {
+  // Find the expense in the current expenses array
+  const expense = expenses.find(e => e.id === id);
+  if (!expense) {
+    alert('Gasto no encontrado');
+    return;
+  }
+  
+  // Set editing mode
+  editingExpenseId = id;
+  
+  // Open modal and populate form
+  document.getElementById('modal-expense').classList.add('active');
+  document.querySelector('#modal-expense .modal-title').textContent = 'Editar Gasto';
+  
+  // Populate form fields
+  document.getElementById('expense-boat').value = expense.boat_id || '';
+  document.getElementById('expense-category').value = expense.category || '';
+  document.getElementById('expense-amount').value = expense.amount || '';
+  document.getElementById('expense-date').value = expense.expense_date || '';
+  document.getElementById('expense-description').value = expense.description || '';
+  document.getElementById('expense-mechanic').value = expense.mechanic_id || '';
+  document.getElementById('expense-fuel-gallons').value = expense.fuel_gallons || '';
+  document.getElementById('expense-fuel-station').value = expense.fuel_station || '';
 }
 
 async function deleteWorkOrder(id) {
