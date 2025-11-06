@@ -3622,6 +3622,110 @@ cron.schedule('*/2 * * * *', async () => {
   }
 });
 
+// ⏰ SCHEDULED EXPENSES AUTO-CONVERSION (FASE 10)
+// Runs daily at 3:00 AM to convert due scheduled expenses to real expenses
+console.log('💰 Scheduling daily scheduled expenses auto-conversion...');
+cron.schedule('0 3 * * *', async () => {
+  console.log('💰 Processing scheduled expenses...');
+  try {
+    // Get all pending scheduled expenses that are due (scheduled_date <= today) and auto_convert = 1
+    const today = new Date().toISOString().split('T')[0];
+    const dueExpenses = await pool.query(`
+      SELECT * FROM scheduled_expenses 
+      WHERE status = 'pending' 
+      AND auto_convert = 1 
+      AND scheduled_date <= $1
+      ORDER BY scheduled_date ASC
+    `, [today]);
+    
+    console.log(`  Found ${dueExpenses.rows.length} due expenses to process`);
+    
+    for (const scheduledExpense of dueExpenses.rows) {
+      try {
+        // Import nanoid dynamically
+        const { nanoid } = await import('nanoid');
+        
+        // Get boat name for accounting sync
+        const boatResult = await pool.query('SELECT name FROM boats WHERE id = $1', [scheduledExpense.boat_id]);
+        const boatName = boatResult.rows.length > 0 ? boatResult.rows[0].name : 'Unknown Boat';
+        
+        // Create the actual expense
+        const expenseId = nanoid();
+        await pool.query(`
+          INSERT INTO boat_expenses 
+          (id, boat_id, category, amount, expense_date, description)
+          VALUES ($1, $2, $3, $4, $5, $6)
+        `, [
+          expenseId, 
+          scheduledExpense.boat_id, 
+          scheduledExpense.category, 
+          scheduledExpense.amount, 
+          today, 
+          `${scheduledExpense.description} (Auto-generado)`
+        ]);
+        
+        // Sync to accounting
+        await syncBoatExpenseToAccounting(
+          expenseId, 
+          scheduledExpense.category, 
+          scheduledExpense.amount, 
+          today, 
+          scheduledExpense.description, 
+          boatName
+        );
+        
+        // Handle recurrence if applicable
+        if (scheduledExpense.recurrence_type !== 'once') {
+          const currentDate = new Date(scheduledExpense.scheduled_date);
+          let nextDate = new Date(currentDate);
+          
+          switch (scheduledExpense.recurrence_type) {
+            case 'monthly':
+              nextDate.setMonth(nextDate.getMonth() + (scheduledExpense.recurrence_interval || 1));
+              break;
+            case 'yearly':
+              nextDate.setFullYear(nextDate.getFullYear() + (scheduledExpense.recurrence_interval || 1));
+              break;
+            case 'weekly':
+              nextDate.setDate(nextDate.getDate() + (7 * (scheduledExpense.recurrence_interval || 1)));
+              break;
+          }
+          
+          // Create next scheduled expense
+          const nextId = nanoid();
+          await pool.query(`
+            INSERT INTO scheduled_expenses 
+            (id, boat_id, category, amount, scheduled_date, description, 
+             recurrence_type, recurrence_interval, auto_convert, notes, last_generated_date)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          `, [
+            nextId, scheduledExpense.boat_id, scheduledExpense.category, 
+            scheduledExpense.amount, nextDate.toISOString().split('T')[0], 
+            scheduledExpense.description, scheduledExpense.recurrence_type, 
+            scheduledExpense.recurrence_interval, scheduledExpense.auto_convert, 
+            scheduledExpense.notes, today
+          ]);
+        }
+        
+        // Mark original as converted
+        await pool.query(`
+          UPDATE scheduled_expenses 
+          SET status = 'paid', updated_at = CURRENT_TIMESTAMP 
+          WHERE id = $1
+        `, [scheduledExpense.id]);
+        
+        console.log(`  ✅ Converted: ${scheduledExpense.description} ($${scheduledExpense.amount})`);
+      } catch (error) {
+        console.error(`  ❌ Error processing expense ${scheduledExpense.id}:`, error.message);
+      }
+    }
+    
+    console.log('💰 Scheduled expenses processing complete');
+  } catch (error) {
+    console.error('❌ Scheduled expenses cron error:', error);
+  }
+});
+
 // Runs daily at midnight to refresh demand forecasts for all regions
 console.log('🤖 Scheduling daily demand forecast refresh...');
 cron.schedule('0 0 * * *', async () => {
