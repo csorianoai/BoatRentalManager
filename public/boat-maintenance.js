@@ -688,6 +688,7 @@ function openExpenseModal() {
 }
 
 function closeExpenseModal() {
+  editingExpenseId = null;
   document.getElementById('modal-expense').classList.remove('active');
 }
 
@@ -935,8 +936,8 @@ async function deleteExpense(id) {
 }
 
 async function editExpense(id) {
-  // Find the expense in the current expenses array
-  const expense = expenses.find(e => e.id === id);
+  // Find the expense in the current expenses array (coerce to string for comparison)
+  const expense = expenses.find(e => String(e.id) === String(id));
   if (!expense) {
     alert('Gasto no encontrado');
     return;
