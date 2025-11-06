@@ -747,17 +747,22 @@ async function saveExpense(event) {
   };
   
   try {
-    const response = await fetch('/api/boat-expenses', {
-      method: 'POST',
+    const isEditing = editingExpenseId !== null;
+    const url = isEditing ? `/api/boat-expenses/${editingExpenseId}` : '/api/boat-expenses';
+    const method = isEditing ? 'PATCH' : 'POST';
+    
+    const response = await fetch(url, {
+      method: method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
     });
     
     if (response.ok) {
       closeExpenseModal();
+      editingExpenseId = null;
       await loadExpenses();
       await loadAnalytics();
-      alert('Gasto guardado exitosamente y sincronizado con contabilidad');
+      alert(isEditing ? 'Gasto actualizado exitosamente' : 'Gasto guardado exitosamente y sincronizado con contabilidad');
     } else {
       alert('Error al guardar el gasto');
     }
