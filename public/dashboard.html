@@ -39,38 +39,83 @@
 
     <!-- Filters Panel -->
     <section class="filters-panel">
-        <div class="filter-group">
-            <label data-i18n="date-range">Rango de Fecha:</label>
-            <select id="dateRange" class="filter-select">
-                <option value="today" data-i18n="today">Hoy</option>
-                <option value="week" data-i18n="this-week" selected>Esta Semana</option>
-                <option value="month" data-i18n="this-month">Este Mes</option>
-                <option value="quarter" data-i18n="quarter">Trimestre</option>
-                <option value="custom" data-i18n="custom">Personalizado</option>
-            </select>
+        <div class="filters-header">
+            <div class="filter-group">
+                <label data-i18n="date-range">Rango de Fecha:</label>
+                <select id="dateRange" class="filter-select">
+                    <option value="today" data-i18n="today">Hoy</option>
+                    <option value="week" data-i18n="this-week" selected>Esta Semana</option>
+                    <option value="month" data-i18n="this-month">Este Mes</option>
+                    <option value="quarter" data-i18n="quarter">Trimestre</option>
+                    <option value="custom" data-i18n="custom">Personalizado</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label data-i18n="platform">Plataforma:</label>
+                <select id="platformFilter" class="filter-select">
+                    <option value="all" data-i18n="all-platforms">Todas las Plataformas</option>
+                </select>
+            </div>
+            <div class="export-actions">
+                <button class="export-btn" id="exportPDF" data-testid="button-export-pdf" data-i18n="export-pdf">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                        <line x1="12" y1="18" x2="12" y2="12"></line>
+                        <line x1="9" y1="15" x2="15" y2="15"></line>
+                    </svg>
+                    <span>PDF</span>
+                </button>
+                <button class="export-btn" id="exportExcel" data-testid="button-export-excel" data-i18n="export-excel">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                        <line x1="9" y1="15" x2="15" y2="15"></line>
+                        <line x1="9" y1="11" x2="15" y2="11"></line>
+                    </svg>
+                    <span>Excel</span>
+                </button>
+            </div>
         </div>
-        <div class="filter-group">
-            <label data-i18n="platform">Plataforma:</label>
-            <select id="platformFilter" class="filter-select">
-                <option value="all" data-i18n="all-platforms">Todas las Plataformas</option>
-            </select>
-        </div>
-        <div class="filter-group">
-            <a href="/schedule.html" class="btn-secondary" data-testid="link-schedule">📅 Calendario</a>
-            <a href="/commissions.html" class="btn-secondary" data-testid="link-commissions">💰 Comisiones</a>
-            <a href="/pricing.html" class="btn-secondary" data-testid="link-pricing">💵 Precios</a>
-            <a href="/dynamic-pricing.html" class="btn-secondary" data-testid="link-dynamic-pricing">🧠 Pricing Dinámico</a>
-            <a href="/accounting.html" class="btn-secondary" data-testid="link-accounting">📊 Contabilidad</a>
-            <a href="/messages.html" class="btn-secondary" data-testid="link-messages">💬 Mensajes <span id="unread-badge" style="display:none; background:#FF3B30; color:white; padding:2px 6px; border-radius:10px; font-size:12px; margin-left:4px;">0</span></a>
-            <a href="/boat-maintenance.html" class="btn-secondary" data-testid="link-boat-maintenance">🔧 Mantenimiento</a>
-            <a href="/marine-conditions.html" class="btn-secondary" data-testid="link-marine-conditions">🌊 Condiciones Marítimas</a>
-            <a href="/fleet.html" class="btn-secondary" data-testid="link-fleet">🚤 Flotilla</a>
-            <button class="btn-secondary" id="exportPDF" data-i18n="export-pdf">
-                📄 Exportar PDF
-            </button>
-            <button class="btn-secondary" id="exportExcel" data-i18n="export-excel">
-                📊 Exportar Excel
-            </button>
+        
+        <div class="nav-grid">
+            <a href="/schedule.html" class="nav-card" data-testid="link-schedule">
+                <div class="nav-icon">📅</div>
+                <span class="nav-label">Calendario</span>
+            </a>
+            <a href="/commissions.html" class="nav-card" data-testid="link-commissions">
+                <div class="nav-icon">💰</div>
+                <span class="nav-label">Comisiones</span>
+            </a>
+            <a href="/pricing.html" class="nav-card" data-testid="link-pricing">
+                <div class="nav-icon">💵</div>
+                <span class="nav-label">Precios</span>
+            </a>
+            <a href="/dynamic-pricing.html" class="nav-card" data-testid="link-dynamic-pricing">
+                <div class="nav-icon">🧠</div>
+                <span class="nav-label">Pricing Dinámico</span>
+            </a>
+            <a href="/accounting.html" class="nav-card" data-testid="link-accounting">
+                <div class="nav-icon">📊</div>
+                <span class="nav-label">Contabilidad</span>
+            </a>
+            <a href="/messages.html" class="nav-card" data-testid="link-messages">
+                <div class="nav-icon">💬</div>
+                <span class="nav-label">Mensajes</span>
+                <span id="unread-badge" class="badge-notification" style="display:none;">0</span>
+            </a>
+            <a href="/boat-maintenance.html" class="nav-card" data-testid="link-boat-maintenance">
+                <div class="nav-icon">🔧</div>
+                <span class="nav-label">Mantenimiento</span>
+            </a>
+            <a href="/marine-conditions.html" class="nav-card" data-testid="link-marine-conditions">
+                <div class="nav-icon">🌊</div>
+                <span class="nav-label">Condiciones</span>
+            </a>
+            <a href="/fleet.html" class="nav-card" data-testid="link-fleet">
+                <div class="nav-icon">🚤</div>
+                <span class="nav-label">Flotilla</span>
+            </a>
         </div>
     </section>
 
