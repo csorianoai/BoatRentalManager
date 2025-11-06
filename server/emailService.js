@@ -185,23 +185,16 @@ class EmailService {
       const messageId = `msg_${nanoid(10)}`;
       await this.pool.query(
         `INSERT INTO platform_messages (
-          id, thread_id, direction, message_text, sender_name, sender_email,
-          platform_message_id, raw_data, created_at
-        ) VALUES ($1, $2, 'inbound', $3, $4, $5, $6, $7, NOW())`,
+          id, thread_id, platform, direction, message_content, sender_name, sender_contact,
+          status, received_at, created_at
+        ) VALUES ($1, $2, $3, 'inbound', $4, $5, $6, 'new', NOW(), NOW())`,
         [
           messageId,
           threadId,
+          platform,
           mail.text || mail.html || '',
           customerName,
-          customerEmail,
-          mail.messageId,
-          JSON.stringify({
-            subject: mail.subject,
-            from: mail.from.text,
-            to: mail.to?.text,
-            date: mail.date,
-            html: mail.html ? mail.html.substring(0, 1000) : null // Store first 1000 chars
-          })
+          customerEmail
         ]
       );
 
