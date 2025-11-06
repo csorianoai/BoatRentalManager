@@ -44,5 +44,6 @@ Key patterns include Chart.js lifecycle management for stable dashboards, a robu
 -   **Messaging**: Twilio for WhatsApp notifications.
 -   **Database**: PostgreSQL (Neon via Replit).
 -   **Booking Platforms (13 total)**: Airbnb, GetMyBoat, BoatSetter, Viator, Expedia, TripAdvisor, Groupon, Booking.com, FareHarbor, Bokun, Rezdy, Peek, Xola.
+-   **GetMyBoat Integration**: Email-based notification system with automatic detection and ingestion. All emails from @getmyboat.com sent to sales@nadakiexcursions.com are automatically captured every 2 minutes, parsed for booking details (customer name, email, phone, booking dates, payment info), and organized into threaded conversations in the messaging center. GetMyBoat does not provide a public API, so email monitoring provides complete notification coverage for inquiries, booking confirmations, payment notifications, and customer messages. See GUIA_GETMYBOAT.md for complete setup instructions.
 -   **WordPress Integration**: Webhook endpoints for receiving bookings from WordPress forms on `nadakiexcursions.com`.
 -   **Marine Data**: NOAA Weather API (free, no key), NOAA Tides & Currents API (free, no key), NOAA NDBC Buoy 41009 for Biscayne Bay real-time conditions.
