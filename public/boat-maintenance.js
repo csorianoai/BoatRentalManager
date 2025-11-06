@@ -6,11 +6,13 @@
 let boats = [];
 let mechanics = [];
 let expenses = [];
+let scheduledExpenses = [];
 let maintenanceRecords = [];
 let workOrders = [];
 let partsInventory = [];
 let charts = {};
 let editingExpenseId = null;
+let editingScheduledExpenseId = null;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
@@ -18,6 +20,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadBoats();
   await loadMechanics();
   await loadExpenses();
+  await loadScheduledExpenses();
   await loadMaintenanceRecords();
   await loadWorkOrders();
   await loadPartsInventory();
@@ -1145,4 +1148,287 @@ function getSpecialtyLabel(specialty) {
     general: 'General'
   };
   return labels[specialty] || specialty;
+}
+
+// ===========================================================================
+// SCHEDULED EXPENSES FUNCTIONS
+// ===========================================================================
+
+async function loadScheduledExpenses() {
+  try {
+    const boatFilter = document.getElementById('filter-boat-scheduled')?.value || '';
+    const statusFilter = document.getElementById('filter-status-scheduled')?.value || '';
+    const recurrenceFilter = document.getElementById('filter-recurrence-type')?.value || '';
+    
+    let url = '/api/scheduled-expenses?';
+    if (boatFilter) url += `boat_id=${boatFilter}&`;
+    if (statusFilter) url += `status=${statusFilter}&`;
+    if (recurrenceFilter) url += `recurrence_type=${recurrenceFilter}&`;
+    
+    const response = await fetch(url);
+    scheduledExpenses = await response.json();
+    renderScheduledExpenses();
+    
+    // Populate filter dropdowns with boats
+    const boatSelect = document.getElementById('filter-boat-scheduled');
+    if (boatSelect) {
+      boatSelect.innerHTML = '<option value="">Todos los barcos</option>' +
+        boats.map(boat => `<option value="${boat.id}">${boat.name}</option>`).join('');
+    }
+    const modalBoatSelect = document.getElementById('scheduled-expense-boat');
+    if (modalBoatSelect) {
+      modalBoatSelect.innerHTML = '<option value="">Seleccionar barco</option>' +
+        boats.map(boat => `<option value="${boat.id}">${boat.name}</option>`).join('');
+    }
+  } catch (error) {
+    console.error('Error loading scheduled expenses:', error);
+  }
+}
+
+function renderScheduledExpenses() {
+  const container = document.getElementById('scheduled-expenses-container');
+  
+  if (scheduledExpenses.length === 0) {
+    container.innerHTML = '<p style="text-align: center; color: #666; padding: 40px;">No se encontraron gastos programados</p>';
+    return;
+  }
+  
+  container.innerHTML = scheduledExpenses.map(expense => {
+    const urgency = getUrgencyInfo(expense.scheduled_date, expense.status);
+    const recurrenceLabel = getRecurrenceLabel(expense.recurrence_type, expense.recurrence_interval);
+    
+    return `
+    <div class="card" data-testid="card-scheduled-expense-${expense.id}" style="border-left: 4px solid ${urgency.color};">
+      <div class="card-header">
+        <div class="card-title">${expense.boat_name || 'Barco Desconocido'}</div>
+        <span class="card-badge badge-${expense.category}">${getCategoryLabel(expense.category)}</span>
+      </div>
+      <div class="card-body">
+        <div class="card-row">
+          <span class="card-label">Monto:</span>
+          <span class="card-value" style="color: #dc3545; font-size: 18px;">$${parseFloat(expense.amount).toFixed(2)}</span>
+        </div>
+        <div class="card-row">
+          <span class="card-label">Fecha Programada:</span>
+          <span class="card-value" style="font-weight: 600; color: ${urgency.color};">
+            ${formatDate(expense.scheduled_date)} ${urgency.label}
+          </span>
+        </div>
+        <div class="card-row">
+          <span class="card-label">Descripción:</span>
+          <span class="card-value">${expense.description}</span>
+        </div>
+        <div class="card-row">
+          <span class="card-label">Recurrencia:</span>
+          <span class="card-value">${recurrenceLabel}</span>
+        </div>
+        <div class="card-row">
+          <span class="card-label">Estado:</span>
+          <span class="card-value" style="font-weight: 600; color: ${getStatusColor(expense.status)};">
+            ${getScheduledStatusLabel(expense.status)}
+          </span>
+        </div>
+        ${expense.notes ? `
+        <div class="card-row">
+          <span class="card-label">Notas:</span>
+          <span class="card-value">${expense.notes}</span>
+        </div>
+        ` : ''}
+      </div>
+      <div class="card-actions">
+        ${expense.status === 'pending' ? `
+          <button class="btn btn-success btn-sm" onclick="markScheduledExpenseAsPaid('${expense.id}')" data-testid="button-mark-paid-${expense.id}">
+            ✓ Marcar como Pagado
+          </button>
+        ` : ''}
+        <button class="btn btn-primary btn-sm" onclick="editScheduledExpense('${expense.id}')" data-testid="button-edit-scheduled-${expense.id}">Editar</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteScheduledExpense('${expense.id}')" data-testid="button-delete-scheduled-${expense.id}">Eliminar</button>
+      </div>
+    </div>
+  `}).join('');
+}
+
+function getDaysUntilDue(scheduledDate) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dueDate = new Date(scheduledDate);
+  dueDate.setHours(0, 0, 0, 0);
+  const diffTime = dueDate - today;
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  return diffDays;
+}
+
+function getUrgencyInfo(scheduledDate, status) {
+  if (status !== 'pending') {
+    return { color: '#666', label: '', days: 0 };
+  }
+  
+  const daysUntil = getDaysUntilDue(scheduledDate);
+  
+  if (daysUntil < 0) {
+    return { color: '#dc3545', label: `(Vencido hace ${Math.abs(daysUntil)} días)`, days: daysUntil };
+  } else if (daysUntil === 0) {
+    return { color: '#dc3545', label: '(Vence HOY)', days: daysUntil };
+  } else if (daysUntil <= 3) {
+    return { color: '#dc3545', label: `(${daysUntil} días)`, days: daysUntil };
+  } else if (daysUntil <= 7) {
+    return { color: '#ffc107', label: `(${daysUntil} días)`, days: daysUntil };
+  } else {
+    return { color: '#28a745', label: `(${daysUntil} días)`, days: daysUntil };
+  }
+}
+
+function getRecurrenceLabel(type, interval) {
+  const typeLabels = {
+    once: 'Único',
+    weekly: 'Semanal',
+    monthly: 'Mensual',
+    yearly: 'Anual'
+  };
+  
+  const baseLabel = typeLabels[type] || type;
+  if (type === 'once') return baseLabel;
+  if (interval > 1) return `${baseLabel} (cada ${interval})`;
+  return baseLabel;
+}
+
+function getScheduledStatusLabel(status) {
+  const labels = {
+    pending: 'Pendiente',
+    paid: 'Pagado',
+    cancelled: 'Cancelado'
+  };
+  return labels[status] || status;
+}
+
+function getStatusColor(status) {
+  const colors = {
+    pending: '#ffc107',
+    paid: '#28a745',
+    cancelled: '#666'
+  };
+  return colors[status] || '#666';
+}
+
+function openScheduledExpenseModal() {
+  editingScheduledExpenseId = null;
+  document.getElementById('modal-scheduled-expense').classList.add('active');
+  document.getElementById('form-scheduled-expense').reset();
+  document.getElementById('scheduled-expense-interval').value = 1;
+  document.getElementById('scheduled-expense-auto-convert').checked = true;
+  document.querySelector('#modal-scheduled-expense .modal-title').textContent = 'Nuevo Gasto Programado';
+}
+
+function closeScheduledExpenseModal() {
+  editingScheduledExpenseId = null;
+  document.getElementById('modal-scheduled-expense').classList.remove('active');
+}
+
+async function saveScheduledExpense(event) {
+  event.preventDefault();
+  
+  const data = {
+    boat_id: document.getElementById('scheduled-expense-boat').value,
+    category: document.getElementById('scheduled-expense-category').value,
+    amount: parseFloat(document.getElementById('scheduled-expense-amount').value),
+    scheduled_date: document.getElementById('scheduled-expense-date').value,
+    description: document.getElementById('scheduled-expense-description').value,
+    recurrence_type: document.getElementById('scheduled-expense-recurrence-type').value,
+    recurrence_interval: parseInt(document.getElementById('scheduled-expense-interval').value) || 1,
+    auto_convert: document.getElementById('scheduled-expense-auto-convert').checked ? 1 : 0,
+    notes: document.getElementById('scheduled-expense-notes').value || null
+  };
+  
+  try {
+    const isEditing = editingScheduledExpenseId !== null;
+    const url = isEditing ? `/api/scheduled-expenses/${editingScheduledExpenseId}` : '/api/scheduled-expenses';
+    const method = isEditing ? 'PATCH' : 'POST';
+    
+    const response = await fetch(url, {
+      method: method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    
+    if (response.ok) {
+      closeScheduledExpenseModal();
+      editingScheduledExpenseId = null;
+      await loadScheduledExpenses();
+      alert(isEditing ? 'Gasto programado actualizado exitosamente' : 'Gasto programado creado exitosamente');
+    } else {
+      alert('Error al guardar el gasto programado');
+    }
+  } catch (error) {
+    console.error('Error saving scheduled expense:', error);
+    alert('Error al guardar el gasto programado');
+  }
+}
+
+async function editScheduledExpense(id) {
+  const expense = scheduledExpenses.find(e => String(e.id) === String(id));
+  if (!expense) {
+    alert('Gasto programado no encontrado');
+    return;
+  }
+  
+  editingScheduledExpenseId = id;
+  
+  document.getElementById('modal-scheduled-expense').classList.add('active');
+  document.querySelector('#modal-scheduled-expense .modal-title').textContent = 'Editar Gasto Programado';
+  
+  document.getElementById('scheduled-expense-boat').value = expense.boat_id || '';
+  document.getElementById('scheduled-expense-category').value = expense.category || '';
+  document.getElementById('scheduled-expense-amount').value = expense.amount || '';
+  document.getElementById('scheduled-expense-date').value = expense.scheduled_date || '';
+  document.getElementById('scheduled-expense-description').value = expense.description || '';
+  document.getElementById('scheduled-expense-recurrence-type').value = expense.recurrence_type || 'once';
+  document.getElementById('scheduled-expense-interval').value = expense.recurrence_interval || 1;
+  document.getElementById('scheduled-expense-auto-convert').checked = expense.auto_convert === 1;
+  document.getElementById('scheduled-expense-notes').value = expense.notes || '';
+}
+
+async function deleteScheduledExpense(id) {
+  if (!confirm('¿Está seguro de eliminar este gasto programado?')) return;
+  
+  try {
+    const response = await fetch(`/api/scheduled-expenses/${id}`, { method: 'DELETE' });
+    if (response.ok) {
+      await loadScheduledExpenses();
+      alert('Gasto programado eliminado exitosamente');
+    } else {
+      alert('Error al eliminar el gasto programado');
+    }
+  } catch (error) {
+    console.error('Error deleting scheduled expense:', error);
+    alert('Error al eliminar el gasto programado');
+  }
+}
+
+async function markScheduledExpenseAsPaid(id) {
+  if (!confirm('¿Marcar este gasto como pagado? Esto creará un gasto real y, si es recurrente, programará el próximo.')) return;
+  
+  try {
+    const response = await fetch(`/api/scheduled-expenses/${id}/mark-paid`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    });
+    
+    if (response.ok) {
+      const result = await response.json();
+      await loadScheduledExpenses();
+      await loadExpenses();
+      
+      let message = 'Gasto marcado como pagado y creado en gastos reales.';
+      if (result.next_scheduled) {
+        message += ` Próximo gasto programado para ${formatDate(result.next_scheduled.scheduled_date)}.`;
+      }
+      alert(message);
+    } else {
+      alert('Error al marcar como pagado');
+    }
+  } catch (error) {
+    console.error('Error marking as paid:', error);
+    alert('Error al marcar como pagado');
+  }
 }
