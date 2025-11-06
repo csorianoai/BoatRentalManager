@@ -225,7 +225,8 @@ async function loadAnalytics() {
     renderExpensesByBoatChart();
     renderExpensesByCategoryAndBoatChart();
     
-    // Render upcoming scheduled expenses summary
+    // Load scheduled expenses and render upcoming summary
+    await loadScheduledExpenses();
     renderUpcomingScheduledSummary();
   } catch (error) {
     console.error('Error loading analytics:', error);
