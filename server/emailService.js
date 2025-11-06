@@ -17,14 +17,32 @@ class EmailService {
         return resolve(false);
       }
 
-      this.imap = new Imap({
+      const imapHost = process.env.EMAIL_IMAP_HOST || 'outlook.office365.com';
+      const isGmail = imapHost.includes('gmail.com');
+
+      // Gmail-specific configuration
+      const imapConfig = {
         user: process.env.EMAIL_USER,
         password: process.env.EMAIL_PASSWORD,
-        host: process.env.EMAIL_IMAP_HOST || 'outlook.office365.com',
+        host: imapHost,
         port: parseInt(process.env.EMAIL_IMAP_PORT) || 993,
         tls: true,
-        tlsOptions: { rejectUnauthorized: false }
-      });
+        authTimeout: 30000
+      };
+
+      // Gmail requires stricter TLS, Outlook needs relaxed
+      if (isGmail) {
+        imapConfig.tlsOptions = { 
+          servername: imapHost,
+          rejectUnauthorized: true
+        };
+      } else {
+        imapConfig.tlsOptions = { 
+          rejectUnauthorized: false 
+        };
+      }
+
+      this.imap = new Imap(imapConfig);
 
       this.imap.once('ready', () => {
         console.log('✅ Email IMAP connection established');
