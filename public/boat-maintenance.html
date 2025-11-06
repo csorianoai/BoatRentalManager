@@ -373,6 +373,7 @@
         <!-- Tabs Navigation -->
         <div class="tabs">
             <button class="tab active" data-tab="expenses" data-testid="tab-expenses">💰 Gastos</button>
+            <button class="tab" data-tab="scheduled-expenses" data-testid="tab-scheduled-expenses">📅 Gastos Programados</button>
             <button class="tab" data-tab="maintenance" data-testid="tab-maintenance">🔧 Mantenimiento</button>
             <button class="tab" data-tab="work-orders" data-testid="tab-work-orders">📋 Órdenes de Trabajo</button>
             <button class="tab" data-tab="parts" data-testid="tab-parts">📦 Inventario</button>
@@ -424,7 +425,48 @@
             <div id="expenses-container" class="cards-grid"></div>
         </div>
 
-        <!-- Tab 2: Maintenance Records -->
+        <!-- Tab 2: Scheduled Expenses -->
+        <div class="tab-content" data-tab-content="scheduled-expenses">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2>Gastos Programados y Recurrentes</h2>
+                <button class="btn btn-primary" onclick="openScheduledExpenseModal()" data-testid="button-add-scheduled-expense">+ Nuevo Gasto Programado</button>
+            </div>
+
+            <div class="filters-bar">
+                <div class="filter-group">
+                    <label>Barco</label>
+                    <select id="filter-boat-scheduled" data-testid="select-filter-boat-scheduled">
+                        <option value="">Todos los barcos</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Estado</label>
+                    <select id="filter-status-scheduled" data-testid="select-filter-status-scheduled">
+                        <option value="">Todos</option>
+                        <option value="pending">Pendiente</option>
+                        <option value="paid">Pagado</option>
+                        <option value="cancelled">Cancelado</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Tipo</label>
+                    <select id="filter-recurrence-type" data-testid="select-filter-recurrence">
+                        <option value="">Todos</option>
+                        <option value="once">Único</option>
+                        <option value="weekly">Semanal</option>
+                        <option value="monthly">Mensual</option>
+                        <option value="yearly">Anual</option>
+                    </select>
+                </div>
+                <div class="filter-group" style="justify-content: end;">
+                    <button class="btn btn-primary" onclick="loadScheduledExpenses()" data-testid="button-apply-scheduled-filters">Aplicar Filtros</button>
+                </div>
+            </div>
+
+            <div id="scheduled-expenses-container" class="cards-grid"></div>
+        </div>
+
+        <!-- Tab 3: Maintenance Records -->
         <div class="tab-content" data-tab-content="maintenance">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                 <h2>Historial de Mantenimiento</h2>
@@ -682,6 +724,77 @@
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" onclick="closeExpenseModal()" data-testid="button-cancel-expense">Cancelar</button>
                     <button type="submit" class="btn btn-primary" data-testid="button-save-expense">Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Add/Edit Scheduled Expense -->
+    <div id="modal-scheduled-expense" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Nuevo Gasto Programado</h2>
+                <button class="close-btn" onclick="closeScheduledExpenseModal()" data-testid="button-close-scheduled-expense-modal">&times;</button>
+            </div>
+            <form id="form-scheduled-expense" onsubmit="saveScheduledExpense(event)">
+                <div class="form-group">
+                    <label>Barco *</label>
+                    <select id="scheduled-expense-boat" required data-testid="select-scheduled-expense-boat">
+                        <option value="">Seleccionar barco</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Categoría *</label>
+                    <select id="scheduled-expense-category" required data-testid="select-scheduled-expense-category">
+                        <option value="fuel">Combustible</option>
+                        <option value="maintenance_parts">Partes de Mantenimiento</option>
+                        <option value="labor">Mano de Obra</option>
+                        <option value="cleaning">Limpieza</option>
+                        <option value="marina_fees">Tarifas de Marina</option>
+                        <option value="insurance">Seguro</option>
+                        <option value="emergency_repairs">Reparaciones de Emergencia</option>
+                        <option value="operational">Operacional</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Monto Estimado *</label>
+                    <input type="number" step="0.01" id="scheduled-expense-amount" required data-testid="input-scheduled-expense-amount">
+                </div>
+                <div class="form-group">
+                    <label>Fecha Programada *</label>
+                    <input type="date" id="scheduled-expense-date" required data-testid="input-scheduled-expense-date">
+                </div>
+                <div class="form-group">
+                    <label>Tipo de Recurrencia *</label>
+                    <select id="scheduled-expense-recurrence-type" required data-testid="select-recurrence-type">
+                        <option value="once">Único (no se repite)</option>
+                        <option value="weekly">Semanal</option>
+                        <option value="monthly">Mensual</option>
+                        <option value="yearly">Anual</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Intervalo (cada X períodos)</label>
+                    <input type="number" min="1" id="scheduled-expense-interval" value="1" data-testid="input-recurrence-interval">
+                    <small style="color: #666; font-size: 13px;">Ej: 1 = cada mes, 2 = cada 2 meses, 3 = cada 3 meses</small>
+                </div>
+                <div class="form-group">
+                    <label>Descripción *</label>
+                    <textarea id="scheduled-expense-description" required data-testid="textarea-scheduled-expense-description"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="scheduled-expense-auto-convert" checked data-testid="checkbox-auto-convert">
+                        Convertir automáticamente a gasto real cuando llegue la fecha
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label>Notas (opcional)</label>
+                    <textarea id="scheduled-expense-notes" data-testid="textarea-scheduled-expense-notes"></textarea>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeScheduledExpenseModal()" data-testid="button-cancel-scheduled-expense">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" data-testid="button-save-scheduled-expense">Guardar</button>
                 </div>
             </form>
         </div>
