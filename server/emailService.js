@@ -33,9 +33,11 @@ class EmailService {
     // Remove tracking URLs and long parameter strings (both http and https)
     content = content
       .replace(/<https?:\/\/[^>]+>/g, '') // Remove <http://...> and <https://...> tracking links
+      .replace(/\[https?:\/\/[^\]]+\]/g, '') // Remove [https://...] style asset links
       .replace(/https?:\/\/click\.[^\s]+/g, '') // Remove click tracking links (http/https)
       .replace(/https?:\/\/[^\s]*track[^\s]*/gi, '') // Remove tracking URLs containing 'track'
       .replace(/https?:\/\/[^\s]*redirect[^\s]*/gi, '') // Remove redirect URLs
+      .replace(/https?:\/\/assets\.[^\s]+/g, '') // Remove asset URLs
       .replace(/[?&]utm_[^&\s]+/g, '') // Remove UTM parameters only (preserve other params)
       .replace(/[?&]trk=[^&\s]+/g, '') // Remove LinkedIn tracking only
       .replace(/[?&]ref=[^&\s]+/g, '') // Remove ref tracking only
@@ -187,6 +189,18 @@ class EmailService {
 
       // Clean email content - convert HTML to readable text and remove tracking
       const cleanContent = this.cleanEmailContent(mail.text, mail.html);
+      
+      // Debug logging to verify cleaning is working
+      const hasAssets = cleanContent.includes('assets.getmyboat.com') || cleanContent.includes('assets.');
+      const hasBrackets = cleanContent.includes('[https://');
+      if (hasAssets || hasBrackets) {
+        console.log('⚠️ Email cleaning may have failed:', {
+          from: customerEmail,
+          hasAssets,
+          hasBrackets,
+          contentPreview: cleanContent.substring(0, 200)
+        });
+      }
 
       // Extract unique message identifier (message-id header or date + subject)
       const messageDate = mail.date ? new Date(mail.date) : new Date();
