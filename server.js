@@ -7749,6 +7749,255 @@ app.get('/api/mechanics/performance', async (req, res) => {
   }
 });
 
+// ========== SCHEDULED EXPENSES APIs ==========
+
+// Get all scheduled expenses with filters
+app.get('/api/scheduled-expenses', async (req, res) => {
+  try {
+    const { boat_id, category, status, start_date, end_date } = req.query;
+    
+    let query = `
+      SELECT se.*, b.name as boat_name
+      FROM scheduled_expenses se
+      LEFT JOIN boats b ON se.boat_id = b.id
+      WHERE 1=1
+    `;
+    const params = [];
+    let paramIndex = 1;
+    
+    if (boat_id) {
+      query += ` AND se.boat_id = $${paramIndex++}`;
+      params.push(boat_id);
+    }
+    
+    if (category) {
+      query += ` AND se.category = $${paramIndex++}`;
+      params.push(category);
+    }
+    
+    if (status) {
+      query += ` AND se.status = $${paramIndex++}`;
+      params.push(status);
+    }
+    
+    if (start_date) {
+      query += ` AND se.scheduled_date >= $${paramIndex++}`;
+      params.push(start_date);
+    }
+    
+    if (end_date) {
+      query += ` AND se.scheduled_date <= $${paramIndex++}`;
+      params.push(end_date);
+    }
+    
+    query += ' ORDER BY se.scheduled_date ASC, se.created_at DESC';
+    
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching scheduled expenses:', error);
+    res.status(500).json({ error: 'Failed to fetch scheduled expenses' });
+  }
+});
+
+// Create scheduled expense
+app.post('/api/scheduled-expenses', async (req, res) => {
+  try {
+    const { nanoid } = await import('nanoid');
+    const {
+      boat_id, category, amount, scheduled_date, description,
+      recurrence_type, recurrence_interval, auto_convert, notes
+    } = req.body;
+    
+    if (!boat_id || !category || !amount || !scheduled_date || !description) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    
+    const id = nanoid();
+    const result = await pool.query(`
+      INSERT INTO scheduled_expenses 
+      (id, boat_id, category, amount, scheduled_date, description, 
+       recurrence_type, recurrence_interval, auto_convert, notes)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      RETURNING *
+    `, [
+      id, boat_id, category, amount, scheduled_date, description,
+      recurrence_type || 'once', recurrence_interval || 1, 
+      auto_convert !== undefined ? auto_convert : 1, notes || null
+    ]);
+    
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Error creating scheduled expense:', error);
+    res.status(500).json({ error: 'Failed to create scheduled expense' });
+  }
+});
+
+// Update scheduled expense
+app.patch('/api/scheduled-expenses/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body;
+    
+    const allowedFields = [
+      'boat_id', 'category', 'amount', 'scheduled_date', 'description',
+      'recurrence_type', 'recurrence_interval', 'status', 'auto_convert', 'notes'
+    ];
+    
+    const setClause = [];
+    const values = [];
+    let paramIndex = 1;
+    
+    Object.keys(updates).forEach(key => {
+      if (allowedFields.includes(key)) {
+        setClause.push(`${key} = $${paramIndex++}`);
+        values.push(updates[key]);
+      }
+    });
+    
+    if (setClause.length === 0) {
+      return res.status(400).json({ error: 'No valid fields to update' });
+    }
+    
+    setClause.push(`updated_at = CURRENT_TIMESTAMP`);
+    values.push(id);
+    
+    const result = await pool.query(`
+      UPDATE scheduled_expenses 
+      SET ${setClause.join(', ')}
+      WHERE id = $${paramIndex}
+      RETURNING *
+    `, values);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Scheduled expense not found' });
+    }
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating scheduled expense:', error);
+    res.status(500).json({ error: 'Failed to update scheduled expense' });
+  }
+});
+
+// Delete scheduled expense
+app.delete('/api/scheduled-expenses/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const result = await pool.query('DELETE FROM scheduled_expenses WHERE id = $1 RETURNING *', [id]);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Scheduled expense not found' });
+    }
+    
+    res.json({ success: true, deleted: result.rows[0] });
+  } catch (error) {
+    console.error('Error deleting scheduled expense:', error);
+    res.status(500).json({ error: 'Failed to delete scheduled expense' });
+  }
+});
+
+// Mark scheduled expense as paid (convert to real expense + create next recurrence)
+app.post('/api/scheduled-expenses/:id/mark-paid', async (req, res) => {
+  try {
+    const { nanoid } = await import('nanoid');
+    const { id } = req.params;
+    const { actual_amount, actual_date, notes: paymentNotes } = req.body;
+    
+    // Get the scheduled expense
+    const scheduledResult = await pool.query(
+      'SELECT * FROM scheduled_expenses WHERE id = $1',
+      [id]
+    );
+    
+    if (scheduledResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Scheduled expense not found' });
+    }
+    
+    const scheduledExpense = scheduledResult.rows[0];
+    
+    // Get boat name for accounting sync
+    const boatResult = await pool.query('SELECT name FROM boats WHERE id = $1', [scheduledExpense.boat_id]);
+    const boatName = boatResult.rows.length > 0 ? boatResult.rows[0].name : 'Unknown Boat';
+    
+    // Create the actual expense in boat_expenses table
+    const expenseId = nanoid();
+    const finalAmount = actual_amount || scheduledExpense.amount;
+    const finalDate = actual_date || new Date().toISOString().split('T')[0];
+    const finalDescription = paymentNotes 
+      ? `${scheduledExpense.description} - ${paymentNotes}` 
+      : scheduledExpense.description;
+    
+    const expenseResult = await pool.query(`
+      INSERT INTO boat_expenses 
+      (id, boat_id, category, amount, expense_date, description)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING *
+    `, [expenseId, scheduledExpense.boat_id, scheduledExpense.category, finalAmount, finalDate, finalDescription]);
+    
+    // Sync to accounting
+    const transactionId = await syncBoatExpenseToAccounting(
+      expenseId, scheduledExpense.category, finalAmount, finalDate, finalDescription, boatName
+    );
+    
+    // Handle recurrence if applicable
+    let nextScheduledExpense = null;
+    if (scheduledExpense.recurrence_type !== 'once') {
+      const currentDate = new Date(scheduledExpense.scheduled_date);
+      let nextDate = new Date(currentDate);
+      
+      // Calculate next date based on recurrence type
+      switch (scheduledExpense.recurrence_type) {
+        case 'monthly':
+          nextDate.setMonth(nextDate.getMonth() + (scheduledExpense.recurrence_interval || 1));
+          break;
+        case 'yearly':
+          nextDate.setFullYear(nextDate.getFullYear() + (scheduledExpense.recurrence_interval || 1));
+          break;
+        case 'weekly':
+          nextDate.setDate(nextDate.getDate() + (7 * (scheduledExpense.recurrence_interval || 1)));
+          break;
+      }
+      
+      // Create next scheduled expense
+      const nextId = nanoid();
+      const nextScheduledResult = await pool.query(`
+        INSERT INTO scheduled_expenses 
+        (id, boat_id, category, amount, scheduled_date, description, 
+         recurrence_type, recurrence_interval, auto_convert, notes, last_generated_date)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        RETURNING *
+      `, [
+        nextId, scheduledExpense.boat_id, scheduledExpense.category, 
+        scheduledExpense.amount, nextDate.toISOString().split('T')[0], 
+        scheduledExpense.description, scheduledExpense.recurrence_type, 
+        scheduledExpense.recurrence_interval, scheduledExpense.auto_convert, 
+        scheduledExpense.notes, finalDate
+      ]);
+      
+      nextScheduledExpense = nextScheduledResult.rows[0];
+    }
+    
+    // Mark original as paid
+    await pool.query(`
+      UPDATE scheduled_expenses 
+      SET status = 'paid', updated_at = CURRENT_TIMESTAMP 
+      WHERE id = $1
+    `, [id]);
+    
+    res.json({
+      success: true,
+      expense: expenseResult.rows[0],
+      accounting_synced: !!transactionId,
+      next_scheduled: nextScheduledExpense
+    });
+  } catch (error) {
+    console.error('Error marking scheduled expense as paid:', error);
+    res.status(500).json({ error: 'Failed to mark as paid' });
+  }
+});
+
 // ========== MAINTENANCE RECORDS APIs ==========
 
 // Get maintenance records
