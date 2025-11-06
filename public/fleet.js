@@ -132,60 +132,81 @@ function renderBoatsGrid() {
 
   grid.innerHTML = boats.map(boat => {
     const mainPhoto = boat.photos && boat.photos.length > 0 ? boat.photos[0] : '';
-    const statusBadge = boat.status === 'active' ? '🟢 Activo' : boat.status === 'maintenance' ? '🟡 Mantenimiento' : '🔴 Retirado';
+    
+    const statusClass = boat.status === 'active' ? 'status-active' : 
+                        boat.status === 'maintenance' ? 'status-maintenance' : 'status-retired';
+    const statusText = boat.status === 'active' ? 'Activo' : 
+                       boat.status === 'maintenance' ? 'Mantenimiento' : 'Retirado';
+    
+    const photoHTML = mainPhoto ? 
+      `<img src="${mainPhoto}" class="boat-photo" alt="${boat.name}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+       <div class="boat-photo-placeholder" style="display:none;">
+         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+         </svg>
+         <span>Sin foto disponible</span>
+       </div>` :
+      `<div class="boat-photo-placeholder">
+         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+         </svg>
+         <span>Sin foto disponible</span>
+       </div>`;
     
     return `
       <div class="boat-card" data-testid="card-boat-${boat.id}">
-        <div class="boat-header">
-          <div>
-            <div class="boat-name">${boat.name}</div>
-            <div class="boat-type">${boat.boatType}</div>
+        ${photoHTML}
+        
+        <div class="boat-card-content">
+          <div class="boat-header">
+            <div>
+              <div class="boat-type">${boat.boatType}</div>
+              <div class="boat-name">${boat.name}</div>
+            </div>
+            <span class="boat-status-badge ${statusClass}">${statusText}</span>
           </div>
-          <span style="font-size: 12px;">${statusBadge}</span>
-        </div>
-        
-        ${mainPhoto ? `<img src="${mainPhoto}" class="boat-photo" alt="${boat.name}">` : '<div class="boat-photo" style="display: flex; align-items: center; justify-content: center; color: #999;">📷 Sin foto</div>'}
-        
-        <div class="boat-info">
-          <div class="boat-info-row">
-            <span class="boat-info-label">👥 Capacidad:</span>
-            <span class="boat-info-value">${boat.capacity} personas</span>
+          
+          <div class="boat-info">
+            <div class="boat-info-row">
+              <span class="boat-info-label">Capacidad</span>
+              <span class="boat-info-value">${boat.capacity} personas</span>
+            </div>
+            ${boat.make || boat.model ? `
+              <div class="boat-info-row">
+                <span class="boat-info-label">Modelo</span>
+                <span class="boat-info-value">${[boat.make, boat.model].filter(Boolean).join(' ')}</span>
+              </div>
+            ` : ''}
+            ${boat.year ? `
+              <div class="boat-info-row">
+                <span class="boat-info-label">Año</span>
+                <span class="boat-info-value">${boat.year}</span>
+              </div>
+            ` : ''}
+            ${boat.location ? `
+              <div class="boat-info-row">
+                <span class="boat-info-label">Ubicación</span>
+                <span class="boat-info-value">${boat.location}</span>
+              </div>
+            ` : ''}
+            ${boat.hourlyRateBase ? `
+              <div class="boat-info-row">
+                <span class="boat-info-label">Tarifa por hora</span>
+                <span class="boat-info-value">$${(boat.hourlyRateBase / 100).toFixed(2)}</span>
+              </div>
+            ` : ''}
+            ${boat.dailyRateBase ? `
+              <div class="boat-info-row">
+                <span class="boat-info-label">Tarifa por día</span>
+                <span class="boat-info-value">$${(boat.dailyRateBase / 100).toFixed(2)}</span>
+              </div>
+            ` : ''}
           </div>
-          ${boat.make || boat.model ? `
-            <div class="boat-info-row">
-              <span class="boat-info-label">🚤 Modelo:</span>
-              <span class="boat-info-value">${[boat.make, boat.model].filter(Boolean).join(' ')}</span>
-            </div>
-          ` : ''}
-          ${boat.year ? `
-            <div class="boat-info-row">
-              <span class="boat-info-label">📅 Año:</span>
-              <span class="boat-info-value">${boat.year}</span>
-            </div>
-          ` : ''}
-          ${boat.location ? `
-            <div class="boat-info-row">
-              <span class="boat-info-label">📍 Ubicación:</span>
-              <span class="boat-info-value">${boat.location}</span>
-            </div>
-          ` : ''}
-          ${boat.hourlyRateBase ? `
-            <div class="boat-info-row">
-              <span class="boat-info-label">💵 Por hora:</span>
-              <span class="boat-info-value">$${(boat.hourlyRateBase / 100).toFixed(2)}</span>
-            </div>
-          ` : ''}
-          ${boat.dailyRateBase ? `
-            <div class="boat-info-row">
-              <span class="boat-info-label">💰 Por día:</span>
-              <span class="boat-info-value">$${(boat.dailyRateBase / 100).toFixed(2)}</span>
-            </div>
-          ` : ''}
-        </div>
-        
-        <div class="boat-actions">
-          <button class="btn btn-secondary" data-testid="button-edit-boat-${boat.id}" onclick="editBoat('${boat.id}')" style="flex: 1;">✏️ Editar</button>
-          <button class="btn btn-danger" data-testid="button-delete-boat-${boat.id}" onclick="deleteBoat('${boat.id}')" style="flex: 1;">🗑️ Eliminar</button>
+          
+          <div class="boat-actions">
+            <button class="btn btn-secondary" data-testid="button-edit-boat-${boat.id}" onclick="editBoat('${boat.id}')" style="flex: 1;">Editar</button>
+            <button class="btn btn-danger" data-testid="button-delete-boat-${boat.id}" onclick="deleteBoat('${boat.id}')" style="flex: 1;">Eliminar</button>
+          </div>
         </div>
       </div>
     `;
