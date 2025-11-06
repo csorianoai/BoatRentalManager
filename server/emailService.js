@@ -1,12 +1,44 @@
 const Imap = require('imap');
 const { simpleParser } = require('mailparser');
 const { nanoid } = require('nanoid');
+const { convert } = require('html-to-text');
 
 class EmailService {
   constructor(pool) {
     this.pool = pool;
     this.imap = null;
     this.isConnected = false;
+  }
+
+  // Clean email content - convert HTML to readable text and remove tracking links
+  cleanEmailContent(text, html) {
+    let content = '';
+
+    // Prefer plain text if available
+    if (text && text.trim()) {
+      content = text;
+    } else if (html) {
+      // Convert HTML to clean text
+      content = convert(html, {
+        wordwrap: 130,
+        selectors: [
+          { selector: 'a', options: { ignoreHref: true } }, // Remove URLs
+          { selector: 'img', format: 'skip' }, // Skip images
+          { selector: 'style', format: 'skip' }, // Skip style tags
+          { selector: 'script', format: 'skip' } // Skip scripts
+        ]
+      });
+    }
+
+    // Remove tracking URLs and long parameter strings
+    content = content
+      .replace(/<http:\/\/[^>]+>/g, '') // Remove <http://...> tracking links
+      .replace(/http:\/\/click\.[^\s]+/g, '') // Remove click tracking links
+      .replace(/\?p=[a-zA-Z0-9=]+/g, '') // Remove tracking parameters
+      .replace(/\n{3,}/g, '\n\n') // Remove excessive newlines
+      .trim();
+
+    return content;
   }
 
   // Initialize IMAP connection
@@ -146,9 +178,12 @@ class EmailService {
         mail.html || ''
       );
 
+      // Clean email content - convert HTML to readable text and remove tracking
+      const cleanContent = this.cleanEmailContent(mail.text, mail.html);
+
       // Extract unique message identifier (message-id header or date + subject)
       const messageDate = mail.date ? new Date(mail.date) : new Date();
-      const messageContent = mail.text || mail.html || '';
+      const messageContent = cleanContent;
 
       // Check if this exact message already exists (prevent duplicates)
       const duplicateCheck = await this.pool.query(
@@ -211,7 +246,7 @@ class EmailService {
           messageId,
           threadId,
           platform,
-          mail.text || mail.html || '',
+          cleanContent,
           customerName,
           customerEmail
         ]
