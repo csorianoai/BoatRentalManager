@@ -77,15 +77,15 @@ class EmailService {
         return resolve(false);
       }
 
-      const imapHost = process.env.EMAIL_IMAP_HOST || 'outlook.office365.com';
+      const imapHost = (process.env.EMAIL_IMAP_HOST || 'outlook.office365.com').trim();
       const isGmail = imapHost.includes('gmail.com');
 
       // Gmail-specific configuration
       const imapConfig = {
-        user: process.env.EMAIL_USER,
-        password: process.env.EMAIL_PASSWORD,
+        user: (process.env.EMAIL_USER || '').trim(),
+        password: (process.env.EMAIL_PASSWORD || '').trim(),
         host: imapHost,
-        port: parseInt(process.env.EMAIL_IMAP_PORT) || 993,
+        port: parseInt((process.env.EMAIL_IMAP_PORT || '993').trim()) || 993,
         tls: true,
         authTimeout: 30000
       };
