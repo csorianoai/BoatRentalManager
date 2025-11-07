@@ -14,6 +14,15 @@ class EmailService {
   cleanEmailContent(text, html) {
     let content = '';
 
+    // Debug logging
+    console.log('🧹 cleanEmailContent called with:', {
+      hasText: !!text,
+      textLength: text ? text.length : 0,
+      textPreview: text ? text.substring(0, 100) : 'none',
+      hasHtml: !!html,
+      htmlLength: html ? html.length : 0
+    });
+
     // Prefer plain text if available
     if (text && text.trim()) {
       content = text;
@@ -28,6 +37,11 @@ class EmailService {
           { selector: 'script', format: 'skip' } // Skip scripts
         ]
       });
+    }
+
+    if (!content || !content.trim()) {
+      console.log('⚠️ cleanEmailContent returning empty content');
+      return '';
     }
 
     // Remove tracking URLs and long parameter strings (both http and https)
@@ -46,6 +60,11 @@ class EmailService {
       .replace(/\n{3,}/g, '\n\n') // Remove excessive newlines
       .replace(/[ \t]{2,}/g, ' ') // Normalize multiple spaces/tabs only (preserve line breaks)
       .trim();
+
+    console.log('✅ cleanEmailContent result:', {
+      finalLength: content.length,
+      finalPreview: content.substring(0, 100)
+    });
 
     return content;
   }
@@ -188,7 +207,13 @@ class EmailService {
       );
 
       // Clean email content - convert HTML to readable text and remove tracking
-      const cleanContent = this.cleanEmailContent(mail.text, mail.html);
+      let cleanContent = this.cleanEmailContent(mail.text, mail.html);
+      
+      // Fallback: If content is empty, use the subject as content
+      if (!cleanContent || cleanContent.trim().length === 0) {
+        console.log('⚠️ Email content is empty, using subject as fallback');
+        cleanContent = `Asunto: ${mail.subject || '(sin asunto)'}`;
+      }
       
       // Debug logging to verify cleaning is working
       const hasAssets = cleanContent.includes('assets.getmyboat.com') || cleanContent.includes('assets.');
