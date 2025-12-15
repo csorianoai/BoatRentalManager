@@ -7801,6 +7801,37 @@ app.patch('/api/mechanics/:id', async (req, res) => {
   }
 });
 
+// Delete mechanic
+app.delete('/api/mechanics/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Check if mechanic has associated records
+    const checkRecords = await pool.query(`
+      SELECT COUNT(*) as count FROM maintenance_records WHERE mechanic_id = $1
+    `, [id]);
+    
+    if (parseInt(checkRecords.rows[0].count) > 0) {
+      return res.status(400).json({ 
+        error: 'No se puede eliminar: Este mecánico tiene registros de mantenimiento asociados. Considere desactivarlo en su lugar.' 
+      });
+    }
+    
+    const result = await pool.query(`
+      DELETE FROM mechanics WHERE id = $1 RETURNING *
+    `, [id]);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Mecánico no encontrado' });
+    }
+    
+    res.json({ message: 'Mecánico eliminado exitosamente', deleted: result.rows[0] });
+  } catch (error) {
+    console.error('Error deleting mechanic:', error);
+    res.status(500).json({ error: 'Error al eliminar el mecánico' });
+  }
+});
+
 // Get mechanic work history
 app.get('/api/mechanics/:id/work-history', async (req, res) => {
   try {

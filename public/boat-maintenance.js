@@ -13,6 +13,7 @@ let partsInventory = [];
 let charts = {};
 let editingExpenseId = null;
 let editingScheduledExpenseId = null;
+let editingMechanicId = null;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
@@ -447,7 +448,9 @@ function renderMechanicsTable() {
           <span class="card-badge badge-${mechanic.status}">${mechanic.status === 'active' ? 'Activo' : 'Inactivo'}</span>
         </td>
         <td>
-          <button class="btn btn-primary btn-sm" onclick="viewMechanicHistory('${mechanic.id}')" data-testid="button-view-history-${mechanic.id}">Historial</button>
+          <button class="btn btn-primary btn-sm" onclick="editMechanic('${mechanic.id}')" data-testid="button-edit-mechanic-${mechanic.id}">Editar</button>
+          <button class="btn btn-secondary btn-sm" onclick="viewMechanicHistory('${mechanic.id}')" data-testid="button-view-history-${mechanic.id}">Historial</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteMechanic('${mechanic.id}')" data-testid="button-delete-mechanic-${mechanic.id}">Eliminar</button>
         </td>
       </tr>
     `;
@@ -728,12 +731,58 @@ function closePartModal() {
 }
 
 function openMechanicModal() {
+  editingMechanicId = null;
   document.getElementById('modal-mechanic').classList.add('active');
   document.getElementById('form-mechanic').reset();
+  document.getElementById('mechanic-modal-title').textContent = 'Agregar Mecánico';
 }
 
 function closeMechanicModal() {
   document.getElementById('modal-mechanic').classList.remove('active');
+  editingMechanicId = null;
+}
+
+function editMechanic(id) {
+  const mechanic = mechanics.find(m => m.id == id || m.id === id);
+  if (!mechanic) {
+    alert('Mecánico no encontrado');
+    return;
+  }
+  
+  editingMechanicId = id;
+  document.getElementById('modal-mechanic').classList.add('active');
+  document.getElementById('mechanic-modal-title').textContent = 'Editar Mecánico';
+  
+  document.getElementById('mechanic-name').value = mechanic.name || '';
+  document.getElementById('mechanic-phone').value = mechanic.phone || '';
+  document.getElementById('mechanic-email').value = mechanic.email || '';
+  document.getElementById('mechanic-specialty').value = mechanic.specialty || 'general';
+  document.getElementById('mechanic-hourly-rate').value = mechanic.hourly_rate || '';
+  document.getElementById('mechanic-status').value = mechanic.status || 'active';
+  document.getElementById('mechanic-notes').value = mechanic.notes || '';
+}
+
+async function deleteMechanic(id) {
+  if (!confirm('¿Estás seguro de que deseas eliminar este mecánico?')) {
+    return;
+  }
+  
+  try {
+    const response = await fetch(`/api/mechanics/${id}`, {
+      method: 'DELETE'
+    });
+    
+    if (response.ok) {
+      await loadMechanics();
+      alert('Mecánico eliminado exitosamente');
+    } else {
+      const error = await response.json();
+      alert('Error al eliminar: ' + (error.error || 'Error desconocido'));
+    }
+  } catch (error) {
+    console.error('Error deleting mechanic:', error);
+    alert('Error al eliminar el mecánico');
+  }
 }
 
 // ===========================================================================
@@ -897,26 +946,33 @@ async function saveMechanic(event) {
     email: document.getElementById('mechanic-email').value || null,
     specialty: document.getElementById('mechanic-specialty').value,
     hourly_rate: parseFloat(document.getElementById('mechanic-hourly-rate').value),
+    status: document.getElementById('mechanic-status').value || 'active',
     notes: document.getElementById('mechanic-notes').value || null
   };
   
   try {
-    const response = await fetch('/api/mechanics', {
-      method: 'POST',
+    const isEditing = editingMechanicId !== null;
+    const url = isEditing ? `/api/mechanics/${editingMechanicId}` : '/api/mechanics';
+    const method = isEditing ? 'PATCH' : 'POST';
+    
+    const response = await fetch(url, {
+      method: method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
     });
     
     if (response.ok) {
       closeMechanicModal();
+      editingMechanicId = null;
       await loadMechanics();
-      alert('Mecánico agregado exitosamente');
+      alert(isEditing ? 'Mecánico actualizado exitosamente' : 'Mecánico agregado exitosamente');
     } else {
-      alert('Error al agregar el mecánico');
+      const error = await response.json();
+      alert('Error: ' + (error.error || 'Error al guardar el mecánico'));
     }
   } catch (error) {
     console.error('Error saving mechanic:', error);
-    alert('Error al agregar el mecánico');
+    alert('Error al guardar el mecánico');
   }
 }
 

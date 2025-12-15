@@ -1005,7 +1005,7 @@
     <div id="modal-mechanic" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2 class="modal-title">Nuevo Mecánico</h2>
+                <h2 class="modal-title" id="mechanic-modal-title">Nuevo Mecánico</h2>
                 <button class="close-btn" onclick="closeMechanicModal()" data-testid="button-close-mechanic-modal">&times;</button>
             </div>
             <form id="form-mechanic" onsubmit="saveMechanic(event)">
@@ -1035,6 +1035,13 @@
                 <div class="form-group">
                     <label>Tarifa por Hora *</label>
                     <input type="number" step="0.01" id="mechanic-hourly-rate" required data-testid="input-mechanic-hourly-rate">
+                </div>
+                <div class="form-group">
+                    <label>Estado</label>
+                    <select id="mechanic-status" data-testid="select-mechanic-status">
+                        <option value="active">Activo</option>
+                        <option value="inactive">Inactivo</option>
+                    </select>
                 </div>
                 <div class="form-group">
                     <label>Notas</label>
