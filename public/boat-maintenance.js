@@ -440,7 +440,7 @@ function renderMechanicsTable() {
       <tr data-testid="row-mechanic-${mechanic.id}">
         <td><strong>${mechanic.name}</strong></td>
         <td>${getSpecialtyLabel(mechanic.specialty)}</td>
-        <td>${mechanic.phone}</td>
+        <td><a href="tel:${mechanic.phone}" class="phone-link" data-testid="link-phone-${mechanic.id}">${mechanic.phone}</a></td>
         <td>$${parseFloat(mechanic.hourly_rate).toFixed(2)}/hr</td>
         <td>${ratingDisplay}</td>
         <td>${mechanic.total_jobs || 0}</td>
