@@ -611,7 +611,10 @@ function initPhotoUpload() {
   dropZone.addEventListener('click', () => fileInput.click());
 
   fileInput.addEventListener('change', (e) => {
-    if (e.target.files.length > 0) handleFiles(Array.from(e.target.files));
+    if (e.target.files.length > 0) {
+      handleFiles(Array.from(e.target.files));
+      e.target.value = ''; // Reset input to allow re-selecting same files
+    }
   });
 
   dropZone.addEventListener('dragover', (e) => {
