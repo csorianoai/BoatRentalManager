@@ -499,6 +499,134 @@
             letter-spacing: -0.3px;
         }
 
+        /* ===== PHOTO UPLOAD ZONE ===== */
+        .photo-upload-zone {
+            border: 2px dashed #DDDDDD;
+            border-radius: 12px;
+            padding: 40px 24px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background: #FAFAFA;
+            margin-bottom: 16px;
+        }
+
+        .photo-upload-zone:hover,
+        .photo-upload-zone.drag-over {
+            border-color: #008489;
+            background: #F0FAFA;
+        }
+
+        .photo-upload-zone.drag-over {
+            border-style: solid;
+            background: #E6F7F7;
+        }
+
+        .photo-upload-zone svg {
+            width: 48px;
+            height: 48px;
+            color: #B0B0B0;
+            margin-bottom: 12px;
+        }
+
+        .photo-upload-zone .upload-title {
+            font-size: 16px;
+            font-weight: 500;
+            color: #484848;
+            margin-bottom: 4px;
+        }
+
+        .photo-upload-zone .upload-subtitle {
+            font-size: 13px;
+            color: #717171;
+        }
+
+        .photo-upload-progress {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .progress-bar {
+            flex: 1;
+            height: 6px;
+            background: #EBEBEB;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: #008489;
+            border-radius: 3px;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        #progress-text {
+            font-size: 13px;
+            color: #717171;
+            white-space: nowrap;
+        }
+
+        .photo-gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 12px;
+        }
+
+        .photo-thumb {
+            position: relative;
+            border-radius: 8px;
+            overflow: hidden;
+            aspect-ratio: 1;
+            background: #EBEBEB;
+        }
+
+        .photo-thumb img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .photo-thumb .photo-remove {
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: rgba(0,0,0,0.6);
+            color: white;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            line-height: 1;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .photo-thumb:hover .photo-remove {
+            opacity: 1;
+        }
+
+        .photo-thumb .photo-order {
+            position: absolute;
+            bottom: 6px;
+            left: 6px;
+            background: rgba(0,0,0,0.6);
+            color: white;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 10px;
+        }
+
         /* ===== CALENDAR CONTAINER ===== */
         .calendar-container {
             background: #FFFFFF;
@@ -974,9 +1102,22 @@
                 <!-- Photos -->
                 <div class="form-section">
                     <h3 class="form-section-title">Fotos</h3>
-                    <div class="form-group">
-                        <label for="boat-photos">URLs de Fotos (una por línea)</label>
-                        <textarea id="boat-photos" data-testid="input-boat-photos" placeholder="https://example.com/photo1.jpg&#10;https://example.com/photo2.jpg" rows="4"></textarea>
+                    <div class="photo-upload-zone" id="photo-drop-zone" data-testid="photo-drop-zone">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                        </svg>
+                        <p class="upload-title">Arrastra imagenes aqui, pega desde el portapapeles, o haz clic para seleccionar</p>
+                        <p class="upload-subtitle">Soporta JPEG, PNG, WebP, GIF - Maximo 10MB por imagen - Multiples imagenes a la vez</p>
+                        <input type="file" id="photo-file-input" data-testid="input-photo-file" accept="image/jpeg,image/png,image/webp,image/gif" multiple style="display:none">
+                    </div>
+                    <div class="photo-upload-progress" id="photo-upload-progress" style="display:none">
+                        <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+                        <span id="progress-text">Subiendo...</span>
+                    </div>
+                    <div class="photo-gallery" id="photo-gallery" data-testid="photo-gallery"></div>
+                    <div class="form-group" style="margin-top:12px">
+                        <label for="boat-photos">URLs de Fotos adicionales (una por linea)</label>
+                        <textarea id="boat-photos" data-testid="input-boat-photos" placeholder="https://example.com/photo1.jpg&#10;https://example.com/photo2.jpg" rows="3"></textarea>
                     </div>
                 </div>
 

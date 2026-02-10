@@ -26,6 +26,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadBoats();
   setupEventListeners();
   setTodayDate();
+  initPhotoUpload();
 });
 
 // Authentication helper
@@ -237,15 +238,24 @@ function populateBoatSelects() {
 }
 
 // Boat Modal Functions
-function openBoatModal() {
+async function openBoatModal() {
   const modal = document.getElementById('boat-modal');
   const form = document.getElementById('boat-form');
   const title = document.getElementById('modal-title');
   
   form.reset();
+  renderPhotoGallery([]);
   
   if (currentBoat) {
     title.textContent = '✏️ Editar Barco';
+    try {
+      const res = await fetch(`/api/fleet/boats`);
+      if (res.ok) {
+        const allBoats = await res.json();
+        const fresh = allBoats.find(b => b.id === currentBoat.id);
+        if (fresh) currentBoat = fresh;
+      }
+    } catch (e) { /* use cached data */ }
     fillBoatForm(currentBoat);
   } else {
     title.textContent = '➕ Agregar Barco';
@@ -275,7 +285,9 @@ function fillBoatForm(boat) {
   document.getElementById('boat-daily-rate').value = boat.dailyRateBase ? (boat.dailyRateBase / 100).toFixed(2) : '';
   document.getElementById('boat-features').value = boat.features ? boat.features.join(', ') : '';
   document.getElementById('boat-amenities').value = boat.amenities ? boat.amenities.join(', ') : '';
-  document.getElementById('boat-photos').value = boat.photos ? boat.photos.join('\n') : '';
+  const urlPhotos = (boat.photos || []).filter(p => !p.startsWith('/uploads/'));
+  document.getElementById('boat-photos').value = urlPhotos.join('\n');
+  renderPhotoGallery(boat.photos || []);
 }
 
 async function saveBoat(e) {
@@ -585,6 +597,181 @@ async function performQuickSearch() {
   } catch (error) {
     console.error('Error performing search:', error);
     resultsContainer.innerHTML = '<p class="error">❌ Error al realizar la búsqueda</p>';
+  }
+}
+
+// ===== PHOTO UPLOAD SYSTEM =====
+let uploadedPhotos = [];
+
+function initPhotoUpload() {
+  const dropZone = document.getElementById('photo-drop-zone');
+  const fileInput = document.getElementById('photo-file-input');
+  if (!dropZone || !fileInput) return;
+
+  dropZone.addEventListener('click', () => fileInput.click());
+
+  fileInput.addEventListener('change', (e) => {
+    if (e.target.files.length > 0) handleFiles(Array.from(e.target.files));
+  });
+
+  dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dropZone.classList.add('drag-over');
+  });
+
+  dropZone.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dropZone.classList.remove('drag-over');
+  });
+
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dropZone.classList.remove('drag-over');
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+    if (files.length > 0) handleFiles(files);
+  });
+
+  document.addEventListener('paste', (e) => {
+    const modal = document.getElementById('boat-modal');
+    if (!modal || !modal.classList.contains('active')) return;
+    const items = Array.from(e.clipboardData.items);
+    const imageFiles = [];
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) imageFiles.push(file);
+      }
+    }
+    if (imageFiles.length > 0) {
+      e.preventDefault();
+      handleFiles(imageFiles);
+    }
+  });
+}
+
+async function handleFiles(files) {
+  if (!currentBoat) {
+    alert('Primero guarda el barco antes de subir fotos. Completa la informacion basica y guarda.');
+    return;
+  }
+
+  const validFiles = files.filter(f => {
+    if (!f.type.startsWith('image/')) return false;
+    if (f.size > 10 * 1024 * 1024) {
+      alert(`La imagen "${f.name}" excede 10MB y fue omitida.`);
+      return false;
+    }
+    return true;
+  });
+
+  if (validFiles.length === 0) return;
+
+  const progressEl = document.getElementById('photo-upload-progress');
+  const progressFill = document.getElementById('progress-fill');
+  const progressText = document.getElementById('progress-text');
+  progressEl.style.display = 'flex';
+  progressFill.style.width = '0%';
+  progressText.textContent = `Subiendo 0/${validFiles.length}...`;
+
+  const formData = new FormData();
+  validFiles.forEach(f => formData.append('photos', f));
+
+  try {
+    const response = await fetch(`/api/fleet/boats/${currentBoat.id}/photos`, {
+      method: 'POST',
+      body: formData
+    });
+
+    if (response.ok) {
+      const result = await response.json();
+      progressFill.style.width = '100%';
+      progressText.textContent = `${validFiles.length} foto(s) subidas`;
+
+      const boat = boats.find(b => b.id === currentBoat.id);
+      if (boat) {
+        boat.photos = [...(boat.photos || []), ...result.urls];
+        currentBoat = boat;
+      }
+      renderPhotoGallery(currentBoat.photos || []);
+
+      setTimeout(() => { progressEl.style.display = 'none'; }, 2000);
+    } else {
+      const err = await response.json();
+      alert('Error al subir fotos: ' + (err.error || 'Error desconocido'));
+      progressEl.style.display = 'none';
+    }
+  } catch (error) {
+    console.error('Upload error:', error);
+    alert('Error de conexion al subir fotos');
+    progressEl.style.display = 'none';
+  }
+}
+
+function renderPhotoGallery(photos) {
+  const gallery = document.getElementById('photo-gallery');
+  if (!gallery) return;
+  gallery.innerHTML = '';
+  if (!photos || photos.length === 0) return;
+
+  photos.forEach((url, index) => {
+    const thumb = document.createElement('div');
+    thumb.className = 'photo-thumb';
+    thumb.setAttribute('data-testid', `photo-thumb-${index}`);
+
+    const img = document.createElement('img');
+    img.src = url;
+    img.alt = `Foto ${index + 1}`;
+    img.onerror = function() {
+      this.src = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect fill="%23EBEBEB" width="100" height="100"/><text x="50" y="55" text-anchor="middle" fill="%23999" font-size="12">Error</text></svg>');
+    };
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'photo-remove';
+    removeBtn.setAttribute('data-testid', `button-remove-photo-${index}`);
+    removeBtn.type = 'button';
+    removeBtn.innerHTML = '&times;';
+    removeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      removePhoto(url, index);
+    });
+
+    const order = document.createElement('span');
+    order.className = 'photo-order';
+    order.textContent = index + 1;
+
+    thumb.appendChild(img);
+    thumb.appendChild(removeBtn);
+    thumb.appendChild(order);
+    gallery.appendChild(thumb);
+  });
+}
+
+async function removePhoto(photoUrl, index) {
+  if (!currentBoat) return;
+  if (!confirm('Eliminar esta foto?')) return;
+
+  try {
+    const response = await fetch(`/api/fleet/boats/${currentBoat.id}/photos`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ photoUrl })
+    });
+
+    if (response.ok) {
+      const updatedPhotos = (currentBoat.photos || []).filter(p => p !== photoUrl);
+      currentBoat.photos = updatedPhotos;
+      const idx = boats.findIndex(b => b.id === currentBoat.id);
+      if (idx >= 0) boats[idx].photos = updatedPhotos;
+      renderPhotoGallery(updatedPhotos);
+    } else {
+      alert('Error al eliminar la foto');
+    }
+  } catch (error) {
+    console.error('Remove photo error:', error);
+    alert('Error de conexion al eliminar foto');
   }
 }
 

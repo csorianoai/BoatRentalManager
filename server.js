@@ -1,3 +1,4 @@
+const path = require('path');
 const express = require('express');
 const twilio = require('twilio');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
@@ -4154,6 +4155,71 @@ app.delete('/api/fleet/boats/:id', isAuthenticated, async (req, res) => {
   } catch (error) {
     console.error('Error deleting boat:', error);
     res.status(500).json({ error: 'Failed to delete boat' });
+  }
+});
+
+// Upload boat photos (supports multiple files)
+const boatPhotoUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      const dir = path.join(__dirname, 'public', 'uploads', 'boats');
+      require('fs').mkdirSync(dir, { recursive: true });
+      cb(null, dir);
+    },
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname) || '.jpg';
+      const name = `${req.params.id}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}${ext}`;
+      cb(null, name);
+    }
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    cb(null, allowed.includes(file.mimetype));
+  }
+});
+
+app.post('/api/fleet/boats/:id/photos', (req, res, next) => {
+  boatPhotoUpload.array('photos', 20)(req, res, (err) => {
+    if (err) {
+      console.error('Multer error:', err);
+      return res.status(400).json({ error: err.message || 'Upload error' });
+    }
+    next();
+  });
+}, async (req, res) => {
+  try {
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: 'No images uploaded' });
+    }
+    const urls = req.files.map(f => `/uploads/boats/${f.filename}`);
+    const boat = await fleetService.getBoatById(req.params.id);
+    if (!boat) return res.status(404).json({ error: 'Boat not found' });
+    const existingPhotos = boat.photos || [];
+    const updatedPhotos = [...existingPhotos, ...urls];
+    await pool.query('UPDATE boats SET photos = $1, updated_at = NOW() WHERE id = $2', [JSON.stringify(updatedPhotos), req.params.id]);
+    res.json({ urls, total: updatedPhotos.length });
+  } catch (error) {
+    console.error('Error uploading boat photos:', error);
+    res.status(500).json({ error: 'Failed to upload photos' });
+  }
+});
+
+app.delete('/api/fleet/boats/:id/photos', async (req, res) => {
+  try {
+    const { photoUrl } = req.body;
+    const boat = await fleetService.getBoatById(req.params.id);
+    if (!boat) return res.status(404).json({ error: 'Boat not found' });
+    const updatedPhotos = (boat.photos || []).filter(p => p !== photoUrl);
+    await pool.query('UPDATE boats SET photos = $1, updated_at = NOW() WHERE id = $2', [JSON.stringify(updatedPhotos), req.params.id]);
+    if (photoUrl.startsWith('/uploads/boats/')) {
+      const filePath = path.join(__dirname, 'public', photoUrl);
+      require('fs').unlink(filePath, () => {});
+    }
+    res.json({ success: true, remaining: updatedPhotos.length });
+  } catch (error) {
+    console.error('Error removing boat photo:', error);
+    res.status(500).json({ error: 'Failed to remove photo' });
   }
 });
 
