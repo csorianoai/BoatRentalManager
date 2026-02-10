@@ -693,22 +693,28 @@ async function handleFiles(files) {
       progressFill.style.width = '100%';
       progressText.textContent = `${validFiles.length} foto(s) subidas`;
 
-      const boat = boats.find(b => b.id === currentBoat.id);
-      if (boat) {
-        boat.photos = [...(boat.photos || []), ...result.urls];
-        currentBoat = boat;
+      // Actualizar la lista local de barcos
+      const boatIndex = boats.findIndex(b => b.id === currentBoat.id);
+      if (boatIndex !== -1) {
+        boats[boatIndex].photos = [...(boats[boatIndex].photos || []), ...result.urls];
+        currentBoat = boats[boatIndex];
       }
+      
+      // Renderizar galería y actualizar el campo oculto si existe
       renderPhotoGallery(currentBoat.photos || []);
-
-      setTimeout(() => { progressEl.style.display = 'none'; }, 2000);
+      
+      // Opcional: limpiar mensaje después de 3 segundos
+      setTimeout(() => {
+        progressEl.style.display = 'none';
+      }, 3000);
     } else {
-      const err = await response.json();
-      alert('Error al subir fotos: ' + (err.error || 'Error desconocido'));
+      const error = await response.json();
+      alert(`❌ Error al subir: ${error.error || 'Error desconocido'}`);
       progressEl.style.display = 'none';
     }
   } catch (error) {
-    console.error('Upload error:', error);
-    alert('Error de conexion al subir fotos');
+    console.error('Error uploading photos:', error);
+    alert('❌ Error de red al subir fotos');
     progressEl.style.display = 'none';
   }
 }
