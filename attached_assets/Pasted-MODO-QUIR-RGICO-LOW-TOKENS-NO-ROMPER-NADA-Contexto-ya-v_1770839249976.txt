@@ -1,0 +1,57 @@
+MODO QUIRÚRGICO / LOW TOKENS / NO ROMPER NADA.
+
+Contexto ya verificado:
+- El bulk upload YA llega (COUNT=3).
+- La DB inserta en boat_photos (SQL count(*) sube).
+Problema real:
+- Al recargar, las fotos “se pierden” en UI (no aparecen).
+- Falta un modo “VER” (read-only) en el módulo (solo Edit/Delete).
+
+REGLAS:
+1) NO refactor. NO reestructurar. NO cambiar rutas existentes salvo que sea estrictamente necesario.
+2) Solo puedes editar: server.js, public/fleet.js, public/fleet.html (y 1 archivo SQL si se requiere).
+3) Mantén compatibilidad con lo que ya funciona. Cambios mínimos.
+4) Salida: solo (a) lista de archivos cambiados + (b) diff corto + (c) pruebas obligatorias (logs + SQL) + (d) 1 URL de foto que abra 200.
+
+FASE 1 — DIAGNÓSTICO (OBLIGATORIO, antes de tocar nada)
+A) Pega aquí EXACTO (sin resumir):
+- De public/fleet.js: la función completa que renderiza la galería o refreshBoatGallery() (la que corre tras recargar o abrir modal).
+- De server.js: el GET que entrega un boat (ej /api/fleet/boats/:id) y cualquier GET de photos si existe.
+- De server.js: el bloque app.use("/uploads", ...) si existe.
+B) Ejecuta y pega resultado:
+- Subir 1 foto y luego abrirla en navegador: /uploads/<filename> (debe ser 200).
+- Si da 404, marca "STORAGE FAIL".
+
+FASE 2 — FIX DE PERSISTENCIA (elige el camino correcto según diagnóstico)
+CASO 1: UI NO LEE boat_photos
+- Implementar GET /api/fleet/boats/:id/photos que lea de boat_photos (SELECT url ORDER BY created_at DESC).
+- Cambiar refreshBoatGallery() para consumir ese GET y renderizar con esas URLs.
+- No depender de boats.photos JSONB para renderizar.
+
+CASO 2: STORAGE FAIL (archivos no existen / uploads 404 / filesystem efímero)
+- Implementar persistencia en PostgreSQL:
+  1) SQL: agregar columnas data BYTEA y mime TEXT a boat_photos (si no existen).
+  2) Al subir fotos: guardar data y mime en boat_photos además de url (o reemplazar url si no sirve).
+  3) Crear GET /api/fleet/photos/:photoId que devuelva binary con Content-Type correcto.
+  4) Hacer que el GET /api/fleet/boats/:id/photos devuelva URLs tipo /api/fleet/photos/<id> para la galería.
+- Mantener lo ya existente: no rompas el POST actual.
+
+FASE 3 — “MODO VER” (read-only) SIN ROMPER EL MODAL
+- En public/fleet.html agrega botón “Ver” junto a Edit/Delete en cada barco.
+- En public/fleet.js agrega handler:
+  - fetch boat por /api/fleet/boats/:id
+  - llena modal
+  - setViewMode(true): disable inputs + ocultar Save/Delete + título “Ver barco”
+- No cambies el flujo de Edit existente, solo agrega view.
+
+PRUEBAS OBLIGATORIAS (SIN ESTO NO TERMINAS)
+1) Upload 3 fotos => server log COUNT: 3 (real).
+2) SQL: SELECT count(*) FROM boat_photos WHERE boat_id = '<ID>'; debe aumentar +3.
+3) Refresh página, abrir el mismo barco => fotos siguen.
+4) Proveer 1 URL que abra 200 (una imagen visible).
+
+ENTREGA FINAL:
+- Archivos modificados + diff corto.
+- Log COUNT:3 real.
+- Resultado SQL real.
+- URL 200.

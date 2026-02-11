@@ -205,7 +205,10 @@ function renderBoatsGrid() {
           </div>
           
           <div class="boat-actions">
-            <button class="btn btn-secondary" data-testid="button-edit-boat-${boat.id}" onclick="editBoat('${boat.id}')" style="flex: 1;">Editar</button>
+            <div style="display: flex; gap: 8px;">
+              <button class="btn btn-secondary" data-testid="button-view-boat-${boat.id}" onclick="viewBoat('${boat.id}')" style="flex: 1;">Ver</button>
+              <button class="btn btn-secondary" data-testid="button-edit-boat-${boat.id}" onclick="editBoat('${boat.id}')" style="flex: 1;">Editar</button>
+            </div>
             <button class="btn btn-danger" data-testid="button-delete-boat-${boat.id}" onclick="deleteBoat('${boat.id}')" style="flex: 1;">Eliminar</button>
           </div>
         </div>
@@ -239,55 +242,92 @@ function populateBoatSelects() {
 
 // Boat Modal Functions
 async function openBoatModal() {
-  const modal = document.getElementById('boat-modal');
-  const form = document.getElementById('boat-form');
-  const title = document.getElementById('modal-title');
-  
-  form.reset();
-  renderPhotoGallery([]);
+  const modalEl = document.getElementById('boat-modal');
+  if (!modalEl) return;
   
   if (currentBoat) {
-    title.textContent = '✏️ Editar Barco';
+    // Cargar fotos desde la tabla dedicada para asegurar persistencia
     try {
-      const res = await fetch(`/api/fleet/boats`);
-      if (res.ok) {
-        const allBoats = await res.json();
-        const fresh = allBoats.find(b => b.id === currentBoat.id);
-        if (fresh) currentBoat = fresh;
+      const photosResponse = await fetch(`/api/fleet/boats/${currentBoat.id}/photos`);
+      if (photosResponse.ok) {
+        const photos = await photosResponse.json();
+        currentBoat.photos = photos;
       }
-    } catch (e) { /* use cached data */ }
-    fillBoatForm(currentBoat);
+    } catch (error) {
+      console.error('Error loading boat photos:', error);
+    }
+  }
+
+  // Llenar campos
+  document.getElementById('boat-name').value = currentBoat?.name || '';
+  document.getElementById('boat-capacity').value = currentBoat?.capacity || '';
+  document.getElementById('boat-type').value = currentBoat?.boatType || '';
+  document.getElementById('boat-status').value = currentBoat?.status || 'active';
+  document.getElementById('boat-make').value = currentBoat?.make || '';
+  document.getElementById('boat-model').value = currentBoat?.model || '';
+  document.getElementById('boat-year').value = currentBoat?.year || '';
+  document.getElementById('boat-length').value = currentBoat?.length || '';
+  document.getElementById('boat-location').value = currentBoat?.location || '';
+  document.getElementById('boat-description').value = currentBoat?.description || '';
+  document.getElementById('boat-full-description').value = currentBoat?.fullDescription || '';
+  document.getElementById('boat-hourly-rate').value = currentBoat?.hourlyRateBase ? (currentBoat.hourlyRateBase / 100).toFixed(2) : '';
+  document.getElementById('boat-daily-rate').value = currentBoat?.dailyRateBase ? (currentBoat.dailyRateBase / 100).toFixed(2) : '';
+  document.getElementById('boat-features').value = currentBoat?.features ? currentBoat.features.join(', ') : '';
+  document.getElementById('boat-amenities').value = currentBoat?.amenities ? currentBoat.amenities.join(', ') : '';
+  
+  const urlPhotos = (currentBoat?.photos || []).filter(p => !p.startsWith('/uploads/'));
+  document.getElementById('boat-photos').value = urlPhotos.join('\n');
+  
+  // Renderizar galería
+  renderPhotoGallery(currentBoat?.photos || []);
+  
+  // MODO VER (Read-only)
+  const modalTitle = document.getElementById('modal-title');
+  const footer = document.querySelector('.modal-footer');
+  const inputs = document.querySelectorAll('#boat-form input, #boat-form select, #boat-form textarea');
+  const uploadZone = document.getElementById('photo-drop-zone');
+  const saveBtn = document.getElementById('save-boat-btn');
+  
+  if (isViewMode) {
+    if (modalTitle) modalTitle.textContent = '👁️ Ver Barco';
+    if (saveBtn) saveBtn.style.display = 'none';
+    if (uploadZone) uploadZone.style.display = 'none';
+    inputs.forEach(input => input.disabled = true);
   } else {
-    title.textContent = '➕ Agregar Barco';
+    if (modalTitle) modalTitle.textContent = currentBoat ? '✏️ Editar Barco' : '➕ Agregar Barco';
+    if (saveBtn) saveBtn.style.display = 'inline-block';
+    if (uploadZone) uploadZone.style.display = 'block';
+    inputs.forEach(input => input.disabled = false);
   }
   
-  modal.classList.add('active');
+  modalEl.classList.add('active');
+}
+
+function viewBoat(boatId) {
+  isViewMode = true;
+  currentBoat = boats.find(b => b.id === boatId);
+  if (currentBoat) {
+    openBoatModal();
+  }
+}
+
+function editBoat(boatId) {
+  isViewMode = false;
+  currentBoat = boats.find(b => b.id === boatId);
+  if (currentBoat) {
+    openBoatModal();
+  }
+}
+
+function createNewBoat() {
+  isViewMode = false;
+  currentBoat = null;
+  openBoatModal();
 }
 
 function closeBoatModal() {
   document.getElementById('boat-modal').classList.remove('active');
   currentBoat = null;
-}
-
-function fillBoatForm(boat) {
-  document.getElementById('boat-name').value = boat.name || '';
-  document.getElementById('boat-capacity').value = boat.capacity || '';
-  document.getElementById('boat-type').value = boat.boatType || '';
-  document.getElementById('boat-status').value = boat.status || 'active';
-  document.getElementById('boat-make').value = boat.make || '';
-  document.getElementById('boat-model').value = boat.model || '';
-  document.getElementById('boat-year').value = boat.year || '';
-  document.getElementById('boat-length').value = boat.length || '';
-  document.getElementById('boat-location').value = boat.location || '';
-  document.getElementById('boat-description').value = boat.description || '';
-  document.getElementById('boat-full-description').value = boat.fullDescription || '';
-  document.getElementById('boat-hourly-rate').value = boat.hourlyRateBase ? (boat.hourlyRateBase / 100).toFixed(2) : '';
-  document.getElementById('boat-daily-rate').value = boat.dailyRateBase ? (boat.dailyRateBase / 100).toFixed(2) : '';
-  document.getElementById('boat-features').value = boat.features ? boat.features.join(', ') : '';
-  document.getElementById('boat-amenities').value = boat.amenities ? boat.amenities.join(', ') : '';
-  const urlPhotos = (boat.photos || []).filter(p => !p.startsWith('/uploads/'));
-  document.getElementById('boat-photos').value = urlPhotos.join('\n');
-  renderPhotoGallery(boat.photos || []);
 }
 
 async function saveBoat(e) {
@@ -354,10 +394,97 @@ async function saveBoat(e) {
   }
 }
 
-function editBoat(boatId) {
+// Variables globales para el estado del modal
+let isViewMode = false;
+
+async function openBoatModal() {
+  const modalEl = document.getElementById('boat-modal');
+  if (!modalEl) return;
+  
+  if (currentBoat) {
+    // Cargar fotos desde la tabla dedicada para asegurar persistencia
+    try {
+      const photosResponse = await fetch(`/api/fleet/boats/${currentBoat.id}/photos`);
+      if (photosResponse.ok) {
+        const photos = await photosResponse.json();
+        currentBoat.photos = photos;
+      }
+    } catch (error) {
+      console.error('Error loading boat photos:', error);
+    }
+  }
+
+  // Llenar campos
+  document.getElementById('boat-id').value = currentBoat?.id || '';
+  document.getElementById('boat-name').value = currentBoat?.name || '';
+  document.getElementById('boat-type').value = currentBoat?.boatType || '';
+  document.getElementById('boat-capacity').value = currentBoat?.capacity || '';
+  document.getElementById('boat-status').value = currentBoat?.status || 'active';
+  document.getElementById('boat-make').value = currentBoat?.make || '';
+  document.getElementById('boat-model').value = currentBoat?.model || '';
+  document.getElementById('boat-year').value = currentBoat?.year || '';
+  document.getElementById('boat-length').value = currentBoat?.length || '';
+  document.getElementById('boat-location').value = currentBoat?.location || '';
+  document.getElementById('boat-description').value = currentBoat?.description || '';
+  document.getElementById('boat-full-description').value = currentBoat?.fullDescription || '';
+  document.getElementById('boat-hourly-rate').value = currentBoat?.hourlyRateBase ? (currentBoat.hourlyRateBase / 100).toFixed(2) : '';
+  document.getElementById('boat-daily-rate').value = currentBoat?.dailyRateBase ? (currentBoat.dailyRateBase / 100).toFixed(2) : '';
+  document.getElementById('boat-features').value = currentBoat?.features ? currentBoat.features.join(', ') : '';
+  document.getElementById('boat-amenities').value = currentBoat?.amenities ? currentBoat.amenities.join(', ') : '';
+  document.getElementById('boat-photos').value = currentBoat?.photos ? currentBoat.photos.join('\n') : '';
+  
+  // Renderizar galería
+  renderPhotoGallery(currentBoat?.photos || []);
+  
+  // MODO VER (Read-only)
+  const modalTitle = modalEl.querySelector('.modal-title');
+  const footer = modalEl.querySelector('.modal-footer');
+  const inputs = modalEl.querySelectorAll('input, select, textarea');
+  const uploadZone = document.getElementById('photo-drop-zone');
+  
+  if (isViewMode) {
+    if (modalTitle) modalTitle.textContent = 'Ver Barco';
+    if (footer) footer.style.display = 'none';
+    if (uploadZone) uploadZone.style.visibility = 'hidden';
+    inputs.forEach(input => input.disabled = true);
+  } else {
+    if (modalTitle) modalTitle.textContent = currentBoat ? 'Editar Barco' : 'Nuevo Barco';
+    if (footer) footer.style.display = 'flex';
+    if (uploadZone) uploadZone.style.visibility = 'visible';
+    inputs.forEach(input => input.disabled = false);
+  }
+  
+  const bootstrapModal = bootstrap.Modal.getOrCreateInstance(modalEl);
+  bootstrapModal.show();
+}
+
+function viewBoat(boatId) {
+  isViewMode = true;
   currentBoat = boats.find(b => b.id === boatId);
   if (currentBoat) {
     openBoatModal();
+  }
+}
+
+function editBoat(boatId) {
+  isViewMode = false;
+  currentBoat = boats.find(b => b.id === boatId);
+  if (currentBoat) {
+    openBoatModal();
+  }
+}
+
+function createNewBoat() {
+  isViewMode = false;
+  currentBoat = null;
+  openBoatModal();
+}
+
+function closeBoatModal() {
+  const modalEl = document.getElementById('boat-modal');
+  if (modalEl) {
+    const bootstrapModal = bootstrap.Modal.getInstance(modalEl);
+    if (bootstrapModal) bootstrapModal.hide();
   }
 }
 

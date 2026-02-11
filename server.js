@@ -4240,6 +4240,28 @@ app.delete('/api/fleet/boats/:id/photos', async (req, res) => {
   }
 });
 
+// Get boat photos
+app.get('/api/fleet/boats/:id/photos', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT url FROM boat_photos WHERE boat_id = $1 ORDER BY created_at DESC', [req.params.id]);
+    res.json(result.rows.map(r => r.url));
+  } catch (error) {
+    console.error('Error fetching boat photos:', error);
+    res.status(500).json({ error: 'Failed to fetch photos' });
+  }
+});
+
+// Get boat photos
+app.get('/api/fleet/boats/:id/photos', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT url FROM boat_photos WHERE boat_id = $1 ORDER BY created_at DESC', [req.params.id]);
+    res.json(result.rows.map(r => r.url));
+  } catch (error) {
+    console.error('Error fetching boat photos:', error);
+    res.status(500).json({ error: 'Failed to fetch photos' });
+  }
+});
+
 // Update platform IDs
 app.put('/api/fleet/boats/:id/platform-ids', isAuthenticated, async (req, res) => {
   try {
