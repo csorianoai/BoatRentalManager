@@ -4195,7 +4195,7 @@ app.post('/api/fleet/boats/:id/photos', (req, res, next) => {
       return res.status(400).json({ error: 'No images uploaded' });
     }
     
-    console.log(`Received ${req.files.length} photos for boat ${boatId}`);
+    console.log("FILES:", (req.files||[]).map(x=>x.originalname), "COUNT:", (req.files||[]).length);
     const urls = req.files.map(f => `/uploads/boats/${f.filename}`);
     
     // 1. Insert into boat_photos for persistence
@@ -4226,6 +4226,9 @@ app.delete('/api/fleet/boats/:id/photos', async (req, res) => {
     if (!boat) return res.status(404).json({ error: 'Boat not found' });
     const updatedPhotos = (boat.photos || []).filter(p => p !== photoUrl);
     await pool.query('UPDATE boats SET photos = $1, updated_at = NOW() WHERE id = $2', [JSON.stringify(updatedPhotos), req.params.id]);
+    // 3. Delete from boat_photos table too
+    await pool.query('DELETE FROM boat_photos WHERE boat_id = $1 AND url = $2', [req.params.id, photoUrl]);
+
     if (photoUrl.startsWith('/uploads/boats/')) {
       const filePath = path.join(__dirname, 'public', photoUrl);
       require('fs').unlink(filePath, () => {});
