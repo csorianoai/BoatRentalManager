@@ -4179,6 +4179,7 @@ const boatPhotoUpload = multer({
   }
 });
 
+// Photo Upload Endpoint
 app.post('/api/fleet/boats/:id/photos', (req, res, next) => {
   boatPhotoUpload.array('photos', 20)(req, res, (err) => {
     if (err) {
@@ -4189,29 +4190,29 @@ app.post('/api/fleet/boats/:id/photos', (req, res, next) => {
   });
 }, async (req, res) => {
   try {
+    const boatId = req.params.id;
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ error: 'No images uploaded' });
     }
     
+    console.log(`Received ${req.files.length} photos for boat ${boatId}`);
     const urls = req.files.map(f => `/uploads/boats/${f.filename}`);
     
-    // Obtener el barco para asegurar que existe y obtener fotos actuales
-    const boatResult = await pool.query('SELECT id, photos FROM boats WHERE id = $1', [req.params.id]);
-    if (boatResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Boat not found' });
+    // 1. Insert into boat_photos for persistence
+    const insertPromises = urls.map(url => 
+      pool.query('INSERT INTO boat_photos (boat_id, url) VALUES ($1, $2)', [boatId, url])
+    );
+    await Promise.all(insertPromises);
+    
+    // 2. Also update boats table for backward compatibility with UI
+    const boatResult = await pool.query('SELECT photos FROM boats WHERE id = $1', [boatId]);
+    if (boatResult.rows.length > 0) {
+      const existingPhotos = boatResult.rows[0].photos || [];
+      const updatedPhotos = [...existingPhotos, ...urls];
+      await pool.query('UPDATE boats SET photos = $1, updated_at = NOW() WHERE id = $2', [JSON.stringify(updatedPhotos), boatId]);
     }
     
-    const boat = boatResult.rows[0];
-    const existingPhotos = boat.photos || [];
-    const updatedPhotos = [...existingPhotos, ...urls];
-    
-    // Actualizar la base de datos con la nueva lista de fotos
-    await pool.query(
-      'UPDATE boats SET photos = $1, updated_at = NOW() WHERE id = $2', 
-      [JSON.stringify(updatedPhotos), req.params.id]
-    );
-    
-    res.json({ urls, total: updatedPhotos.length });
+    res.json({ urls, total: urls.length });
   } catch (error) {
     console.error('Error uploading boat photos:', error);
     res.status(500).json({ error: 'Failed to upload photos' });

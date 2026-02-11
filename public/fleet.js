@@ -680,7 +680,10 @@ async function handleFiles(files) {
   progressText.textContent = `Subiendo 0/${validFiles.length}...`;
 
   const formData = new FormData();
-  validFiles.forEach(f => formData.append('photos', f));
+  validFiles.forEach(f => {
+    console.log('Appending photo:', f.name);
+    formData.append('photos', f);
+  });
 
   try {
     const response = await fetch(`/api/fleet/boats/${currentBoat.id}/photos`, {
