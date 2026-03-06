@@ -76,15 +76,26 @@ function initTabs() {
 
 // Event Listeners
 function setupEventListeners() {
-  document.getElementById('add-boat-btn').addEventListener('click', () => {
-    currentBoat = null;
-    openBoatModal();
-  });
+  const addBtn = document.getElementById('add-boat-btn');
+  if (addBtn) {
+    addBtn.addEventListener('click', () => {
+      isViewMode = false;
+      currentBoat = null;
+      openBoatModal();
+    });
+  }
 
-  document.getElementById('close-modal-btn').addEventListener('click', closeBoatModal);
-  document.getElementById('cancel-btn').addEventListener('click', closeBoatModal);
-  document.getElementById('boat-form').addEventListener('submit', saveBoat);
-  document.getElementById('logout-btn').addEventListener('click', logout);
+  const closeBtn = document.getElementById('close-modal-btn');
+  if (closeBtn) closeBtn.addEventListener('click', closeBoatModal);
+  
+  const cancelBtn = document.getElementById('cancel-btn');
+  if (cancelBtn) cancelBtn.addEventListener('click', closeBoatModal);
+
+  const form = document.getElementById('boat-form');
+  if (form) form.addEventListener('submit', saveBoat);
+
+  const logoutBtn = document.getElementById('logout-btn');
+  if (logoutBtn) logoutBtn.addEventListener('click', logout);
 
   // Calendar navigation
   document.getElementById('prev-month-btn').addEventListener('click', () => {
@@ -276,31 +287,35 @@ async function openBoatModal() {
   document.getElementById('boat-amenities').value = currentBoat?.amenities ? currentBoat.amenities.join(', ') : '';
   
   const urlPhotos = (currentBoat?.photos || []).filter(p => !p.startsWith('/uploads/'));
-  document.getElementById('boat-photos').value = urlPhotos.join('\n');
+  const photosInput = document.getElementById('boat-photos');
+  if (photosInput) photosInput.value = urlPhotos.join('\n');
   
   // Renderizar galería
   renderPhotoGallery(currentBoat?.photos || []);
   
   // MODO VER (Read-only)
-  const modalTitle = document.getElementById('modal-title');
-  const footer = document.querySelector('.modal-footer');
-  const inputs = document.querySelectorAll('#boat-form input, #boat-form select, #boat-form textarea');
+  const modalTitle = modalEl.querySelector('.modal-title') || document.getElementById('modal-title');
+  const footer = modalEl.querySelector('.modal-footer') || document.querySelector('.modal-footer');
+  const inputs = modalEl.querySelectorAll('input, select, textarea');
   const uploadZone = document.getElementById('photo-drop-zone');
   const saveBtn = document.getElementById('save-boat-btn');
   
   if (isViewMode) {
     if (modalTitle) modalTitle.textContent = '👁️ Ver Barco';
     if (saveBtn) saveBtn.style.display = 'none';
+    if (footer) footer.style.display = 'none';
     if (uploadZone) uploadZone.style.display = 'none';
     inputs.forEach(input => input.disabled = true);
   } else {
     if (modalTitle) modalTitle.textContent = currentBoat ? '✏️ Editar Barco' : '➕ Agregar Barco';
     if (saveBtn) saveBtn.style.display = 'inline-block';
+    if (footer) footer.style.display = 'flex';
     if (uploadZone) uploadZone.style.display = 'block';
     inputs.forEach(input => input.disabled = false);
   }
   
-  modalEl.classList.add('active');
+  const bootstrapModal = bootstrap.Modal.getOrCreateInstance(modalEl);
+  bootstrapModal.show();
 }
 
 function viewBoat(boatId) {
@@ -333,6 +348,12 @@ function closeBoatModal() {
 async function saveBoat(e) {
   e.preventDefault();
   
+  const boatName = document.getElementById('boat-name').value;
+  if (!boatName) {
+    alert('❌ El nombre del barco es obligatorio');
+    return;
+  }
+
   const features = document.getElementById('boat-features').value
     .split(',')
     .map(f => f.trim())
@@ -352,10 +373,10 @@ async function saveBoat(e) {
   const dailyRate = parseFloat(document.getElementById('boat-daily-rate').value);
 
   const boatData = {
-    name: document.getElementById('boat-name').value,
-    capacity: parseInt(document.getElementById('boat-capacity').value),
+    name: boatName,
+    capacity: parseInt(document.getElementById('boat-capacity').value) || 0,
     boatType: document.getElementById('boat-type').value,
-    status: document.getElementById('boat-status').value,
+    status: document.getElementById('boat-status').value || 'active',
     make: document.getElementById('boat-make').value || null,
     model: document.getElementById('boat-model').value || null,
     year: parseInt(document.getElementById('boat-year').value) || null,
@@ -373,6 +394,8 @@ async function saveBoat(e) {
   try {
     const url = currentBoat ? `/api/fleet/boats/${currentBoat.id}` : '/api/fleet/boats';
     const method = currentBoat ? 'PUT' : 'POST';
+    
+    console.log(`Saving boat to ${url} with method ${method}`, boatData);
     
     const response = await authFetch(url, {
       method,
@@ -396,120 +419,6 @@ async function saveBoat(e) {
 
 // Variables globales para el estado del modal
 let isViewMode = false;
-
-async function openBoatModal() {
-  const modalEl = document.getElementById('boat-modal');
-  if (!modalEl) return;
-  
-  if (currentBoat) {
-    // Cargar fotos desde la tabla dedicada para asegurar persistencia
-    try {
-      const photosResponse = await fetch(`/api/fleet/boats/${currentBoat.id}/photos`);
-      if (photosResponse.ok) {
-        const photos = await photosResponse.json();
-        currentBoat.photos = photos;
-      }
-    } catch (error) {
-      console.error('Error loading boat photos:', error);
-    }
-  }
-
-  // Llenar campos
-  document.getElementById('boat-id').value = currentBoat?.id || '';
-  document.getElementById('boat-name').value = currentBoat?.name || '';
-  document.getElementById('boat-type').value = currentBoat?.boatType || '';
-  document.getElementById('boat-capacity').value = currentBoat?.capacity || '';
-  document.getElementById('boat-status').value = currentBoat?.status || 'active';
-  document.getElementById('boat-make').value = currentBoat?.make || '';
-  document.getElementById('boat-model').value = currentBoat?.model || '';
-  document.getElementById('boat-year').value = currentBoat?.year || '';
-  document.getElementById('boat-length').value = currentBoat?.length || '';
-  document.getElementById('boat-location').value = currentBoat?.location || '';
-  document.getElementById('boat-description').value = currentBoat?.description || '';
-  document.getElementById('boat-full-description').value = currentBoat?.fullDescription || '';
-  document.getElementById('boat-hourly-rate').value = currentBoat?.hourlyRateBase ? (currentBoat.hourlyRateBase / 100).toFixed(2) : '';
-  document.getElementById('boat-daily-rate').value = currentBoat?.dailyRateBase ? (currentBoat.dailyRateBase / 100).toFixed(2) : '';
-  document.getElementById('boat-features').value = currentBoat?.features ? currentBoat.features.join(', ') : '';
-  document.getElementById('boat-amenities').value = currentBoat?.amenities ? currentBoat.amenities.join(', ') : '';
-  document.getElementById('boat-photos').value = currentBoat?.photos ? currentBoat.photos.join('\n') : '';
-  
-  // Renderizar galería
-  renderPhotoGallery(currentBoat?.photos || []);
-  
-  // MODO VER (Read-only)
-  const modalTitle = modalEl.querySelector('.modal-title');
-  const footer = modalEl.querySelector('.modal-footer');
-  const inputs = modalEl.querySelectorAll('input, select, textarea');
-  const uploadZone = document.getElementById('photo-drop-zone');
-  
-  if (isViewMode) {
-    if (modalTitle) modalTitle.textContent = 'Ver Barco';
-    if (footer) footer.style.display = 'none';
-    if (uploadZone) uploadZone.style.visibility = 'hidden';
-    inputs.forEach(input => input.disabled = true);
-  } else {
-    if (modalTitle) modalTitle.textContent = currentBoat ? 'Editar Barco' : 'Nuevo Barco';
-    if (footer) footer.style.display = 'flex';
-    if (uploadZone) uploadZone.style.visibility = 'visible';
-    inputs.forEach(input => input.disabled = false);
-  }
-  
-  const bootstrapModal = bootstrap.Modal.getOrCreateInstance(modalEl);
-  bootstrapModal.show();
-}
-
-function viewBoat(boatId) {
-  isViewMode = true;
-  currentBoat = boats.find(b => b.id === boatId);
-  if (currentBoat) {
-    openBoatModal();
-  }
-}
-
-function editBoat(boatId) {
-  isViewMode = false;
-  currentBoat = boats.find(b => b.id === boatId);
-  if (currentBoat) {
-    openBoatModal();
-  }
-}
-
-function createNewBoat() {
-  isViewMode = false;
-  currentBoat = null;
-  openBoatModal();
-}
-
-function closeBoatModal() {
-  const modalEl = document.getElementById('boat-modal');
-  if (modalEl) {
-    const bootstrapModal = bootstrap.Modal.getInstance(modalEl);
-    if (bootstrapModal) bootstrapModal.hide();
-  }
-}
-
-async function deleteBoat(boatId) {
-  const boat = boats.find(b => b.id === boatId);
-  if (!boat) return;
-
-  if (!confirm(`¿Estás seguro de eliminar el barco "${boat.name}"?`)) return;
-
-  try {
-    const response = await authFetch(`/api/fleet/boats/${boatId}`, {
-      method: 'DELETE'
-    });
-
-    if (response.ok) {
-      await loadBoats();
-      alert('✅ Barco eliminado correctamente');
-    } else {
-      alert('❌ Error al eliminar el barco');
-    }
-  } catch (error) {
-    console.error('Error deleting boat:', error);
-    alert('❌ Error al eliminar el barco');
-  }
-}
 
 // Calendar Functions
 async function renderCalendar() {
@@ -769,7 +678,7 @@ function initPhotoUpload() {
 
   document.addEventListener('paste', (e) => {
     const modal = document.getElementById('boat-modal');
-    if (!modal || !modal.classList.contains('active')) return;
+    if (!modal) return;
     const items = Array.from(e.clipboardData.items);
     const imageFiles = [];
     for (const item of items) {
