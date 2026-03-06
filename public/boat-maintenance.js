@@ -50,6 +50,8 @@ function setupTabs() {
       // Refresh data for the active tab
       if (tabName === 'analytics') {
         loadAnalytics();
+      } else if (tabName === 'scheduled-expenses') {
+        loadScheduledExpenses();
       }
     });
   });
@@ -1296,14 +1298,21 @@ function renderScheduledExpenses() {
         </div>
         ` : ''}
       </div>
-      <div class="card-actions">
+      <div class="card-actions" style="flex-direction: column; gap: 8px;">
         ${expense.status === 'pending' ? `
-          <button class="btn btn-success btn-sm" onclick="markScheduledExpenseAsPaid('${expense.id}')" data-testid="button-mark-paid-${expense.id}">
-            ✓ Marcar como Pagado
+          <button class="btn-confirm-payment" onclick="markScheduledExpenseAsPaid('${expense.id}')" data-testid="button-mark-paid-${expense.id}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            Confirmar Pago
           </button>
-        ` : ''}
-        <button class="btn btn-primary btn-sm" onclick="editScheduledExpense('${expense.id}')" data-testid="button-edit-scheduled-${expense.id}">Editar</button>
-        <button class="btn btn-danger btn-sm" onclick="deleteScheduledExpense('${expense.id}')" data-testid="button-delete-scheduled-${expense.id}">Eliminar</button>
+        ` : `
+          <div style="text-align:center; padding: 10px 0; color: #28a745; font-weight: 600; font-size: 14px;">
+            Pagado
+          </div>
+        `}
+        <div class="card-secondary-actions">
+          <button class="btn btn-primary btn-sm" onclick="editScheduledExpense('${expense.id}')" data-testid="button-edit-scheduled-${expense.id}">Editar</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteScheduledExpense('${expense.id}')" data-testid="button-delete-scheduled-${expense.id}">Eliminar</button>
+        </div>
       </div>
     </div>
   `}).join('');
@@ -1440,7 +1449,9 @@ async function editScheduledExpense(id) {
   document.getElementById('scheduled-expense-boat').value = expense.boat_id || '';
   document.getElementById('scheduled-expense-category').value = expense.category || '';
   document.getElementById('scheduled-expense-amount').value = expense.amount || '';
-  document.getElementById('scheduled-expense-date').value = expense.scheduled_date || '';
+  // Strip time portion from ISO timestamp so date input shows correctly
+  const rawDate = expense.scheduled_date || '';
+  document.getElementById('scheduled-expense-date').value = rawDate.includes('T') ? rawDate.split('T')[0] : rawDate;
   document.getElementById('scheduled-expense-description').value = expense.description || '';
   document.getElementById('scheduled-expense-recurrence-type').value = expense.recurrence_type || 'once';
   document.getElementById('scheduled-expense-interval').value = expense.recurrence_interval || 1;
@@ -1475,7 +1486,11 @@ async function deleteScheduledExpense(id) {
 }
 
 async function markScheduledExpenseAsPaid(id) {
-  if (!confirm('¿Marcar este gasto como pagado? Esto creará un gasto real y, si es recurrente, programará el próximo.')) return;
+  const expense = scheduledExpenses.find(e => String(e.id) === String(id));
+  const recurrenceMsg = expense && expense.recurrence_type !== 'once'
+    ? `\n\nAl confirmar, se programara automaticamente el proximo pago (${getRecurrenceLabel(expense.recurrence_type, expense.recurrence_interval)}).`
+    : '';
+  if (!confirm(`Confirmar pago de $${expense ? parseFloat(expense.amount).toFixed(2) : ''}?${recurrenceMsg}`)) return;
   
   try {
     const response = await fetch(`/api/scheduled-expenses/${id}/mark-paid`, {

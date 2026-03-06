@@ -95,6 +95,47 @@
             background: #28a745;
             color: white;
         }
+        .btn-success:hover {
+            background: #218838;
+        }
+        .btn-confirm-payment {
+            width: 100%;
+            padding: 14px 20px !important;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: background 0.2s, transform 0.1s;
+            box-shadow: 0 2px 8px rgba(40,167,69,0.35);
+            margin-bottom: 10px;
+        }
+        .btn-confirm-payment:hover {
+            background: #218838;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(40,167,69,0.45);
+        }
+        .btn-confirm-payment:active {
+            transform: translateY(0);
+        }
+        .btn-confirm-payment svg {
+            width: 18px;
+            height: 18px;
+            flex-shrink: 0;
+        }
+        .card-secondary-actions {
+            display: flex;
+            gap: 8px;
+        }
+        .card-secondary-actions button {
+            flex: 1;
+        }
         .btn-danger {
             background: #dc3545;
             color: white;
