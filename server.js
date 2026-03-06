@@ -3677,26 +3677,22 @@ cron.schedule('0 3 * * *', async () => {
         
         // Handle recurrence if applicable
         if (scheduledExpense.recurrence_type !== 'once') {
-          const currentDate = new Date(scheduledExpense.scheduled_date);
-          let nextDate = new Date(currentDate);
+          const interval = scheduledExpense.recurrence_interval || 1;
+          let nextDate;
           
           switch (scheduledExpense.recurrence_type) {
             case 'monthly':
-              nextDate.setMonth(nextDate.getMonth() + (scheduledExpense.recurrence_interval || 1));
-              // Forzar que sea el día 1 para gastos de marina
-              if (scheduledExpense.description.toLowerCase().includes('marina') || scheduledExpense.category === 'marina_fees') {
-                nextDate.setDate(1);
-              }
+              nextDate = addMonthsSafe(scheduledExpense.scheduled_date, interval);
               break;
             case 'yearly':
-              nextDate.setFullYear(nextDate.getFullYear() + (scheduledExpense.recurrence_interval || 1));
-              if (scheduledExpense.description.toLowerCase().includes('marina') || scheduledExpense.category === 'marina_fees') {
-                nextDate.setDate(1);
-              }
+              nextDate = addMonthsSafe(scheduledExpense.scheduled_date, interval * 12);
               break;
             case 'weekly':
-              nextDate.setDate(nextDate.getDate() + (7 * (scheduledExpense.recurrence_interval || 1)));
+              nextDate = new Date(scheduledExpense.scheduled_date);
+              nextDate.setDate(nextDate.getDate() + (7 * interval));
               break;
+            default:
+              nextDate = addMonthsSafe(scheduledExpense.scheduled_date, 1);
           }
           
           // Create next scheduled expense
@@ -3715,7 +3711,7 @@ cron.schedule('0 3 * * *', async () => {
             scheduledExpense.description, 
             scheduledExpense.recurrence_type, 
             scheduledExpense.recurrence_interval, 
-            0, // Requerir confirmación manual
+            0,
             scheduledExpense.notes, 
             today
           ]);
@@ -4509,6 +4505,17 @@ async function createFuelExpenseFromTripReport(tripReportId, fuelUsed, estimated
     console.error('❌ Error creating fuel expense:', error);
     return null;
   }
+}
+
+// Helper: add months without day-of-month overflow (e.g. Jan 31 + 1 month = Feb 28, not Mar 3)
+function addMonthsSafe(date, months) {
+  const d = new Date(date);
+  const originalDay = d.getDate();
+  d.setDate(1);
+  d.setMonth(d.getMonth() + months);
+  const lastDayOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  d.setDate(Math.min(originalDay, lastDayOfMonth));
+  return d;
 }
 
 // FASE 10: Auto-create accounting transaction from boat expense
@@ -8002,7 +8009,7 @@ app.get('/api/mechanics/performance', async (req, res) => {
 // Get all scheduled expenses with filters
 app.get('/api/scheduled-expenses', async (req, res) => {
   try {
-    const { boat_id, category, status, start_date, end_date } = req.query;
+    const { boat_id, category, status, recurrence_type, start_date, end_date } = req.query;
     
     let query = `
       SELECT se.*, b.name as boat_name
@@ -8026,6 +8033,11 @@ app.get('/api/scheduled-expenses', async (req, res) => {
     if (status) {
       query += ` AND se.status = $${paramIndex++}`;
       params.push(status);
+    }
+
+    if (recurrence_type) {
+      query += ` AND se.recurrence_type = $${paramIndex++}`;
+      params.push(recurrence_type);
     }
     
     if (start_date) {
@@ -8172,6 +8184,7 @@ app.post('/api/scheduled-expenses/:id/mark-paid', async (req, res) => {
     }
     
     const scheduledExpense = scheduledResult.rows[0];
+    console.log(`💰 mark-paid: id=${id} boat_id=${scheduledExpense.boat_id} recurrence=${scheduledExpense.recurrence_type} date=${scheduledExpense.scheduled_date}`);
     
     // Get boat name for accounting sync
     const boatResult = await pool.query('SELECT name FROM boats WHERE id = $1', [scheduledExpense.boat_id]);
@@ -8191,6 +8204,7 @@ app.post('/api/scheduled-expenses/:id/mark-paid', async (req, res) => {
       VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING *
     `, [expenseId, scheduledExpense.boat_id, scheduledExpense.category, finalAmount, finalDate, finalDescription]);
+    console.log(`  ✅ boat_expense created: ${expenseId}`);
     
     // Sync to accounting
     const transactionId = await syncBoatExpenseToAccounting(
@@ -8200,27 +8214,23 @@ app.post('/api/scheduled-expenses/:id/mark-paid', async (req, res) => {
     // Handle recurrence if applicable
     let nextScheduledExpense = null;
     if (scheduledExpense.recurrence_type !== 'once') {
-      const currentDate = new Date(scheduledExpense.scheduled_date);
-      let nextDate = new Date(currentDate);
-      
-      // Calculate next date based on recurrence type
+      const interval = scheduledExpense.recurrence_interval || 1;
+      let nextDate;
+
+      // Calculate next date using safe month addition (prevents day-of-month overflow)
       switch (scheduledExpense.recurrence_type) {
         case 'monthly':
-          nextDate.setMonth(nextDate.getMonth() + (scheduledExpense.recurrence_interval || 1));
-          // Forzar que sea el día 1 si el usuario lo prefiere para estos gastos recurrentes
-          if (scheduledExpense.description.toLowerCase().includes('marina') || scheduledExpense.category === 'marina_fees') {
-            nextDate.setDate(1);
-          }
+          nextDate = addMonthsSafe(scheduledExpense.scheduled_date, interval);
           break;
         case 'yearly':
-          nextDate.setFullYear(nextDate.getFullYear() + (scheduledExpense.recurrence_interval || 1));
-          if (scheduledExpense.description.toLowerCase().includes('marina') || scheduledExpense.category === 'marina_fees') {
-            nextDate.setDate(1);
-          }
+          nextDate = addMonthsSafe(scheduledExpense.scheduled_date, interval * 12);
           break;
         case 'weekly':
-          nextDate.setDate(nextDate.getDate() + (7 * (scheduledExpense.recurrence_interval || 1)));
+          nextDate = new Date(scheduledExpense.scheduled_date);
+          nextDate.setDate(nextDate.getDate() + (7 * interval));
           break;
+        default:
+          nextDate = addMonthsSafe(scheduledExpense.scheduled_date, 1);
       }
       
       // Create next scheduled expense
@@ -8235,11 +8245,14 @@ app.post('/api/scheduled-expenses/:id/mark-paid', async (req, res) => {
         nextId, scheduledExpense.boat_id, scheduledExpense.category, 
         scheduledExpense.amount, nextDate.toISOString().split('T')[0], 
         scheduledExpense.description, scheduledExpense.recurrence_type, 
-        scheduledExpense.recurrence_interval, 0, // auto_convert = 0 para requerir confirmación manual
+        scheduledExpense.recurrence_interval, 0,
         scheduledExpense.notes, finalDate
       ]);
       
       nextScheduledExpense = nextScheduledResult.rows[0];
+      console.log(`  ✅ next recurrence created for ${nextDate.toISOString().split('T')[0]}`);
+    } else {
+      console.log(`  ℹ️ recurrence_type=once, no next expense created`);
     }
     
     // Mark original as paid
@@ -8256,8 +8269,8 @@ app.post('/api/scheduled-expenses/:id/mark-paid', async (req, res) => {
       next_scheduled: nextScheduledExpense
     });
   } catch (error) {
-    console.error('Error marking scheduled expense as paid:', error);
-    res.status(500).json({ error: 'Failed to mark as paid' });
+    console.error('❌ Error marking scheduled expense as paid:', error.message, error.detail || '');
+    res.status(500).json({ error: 'Failed to mark as paid', details: error.message });
   }
 });
 
