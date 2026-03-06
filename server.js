@@ -8124,17 +8124,25 @@ app.patch('/api/scheduled-expenses/:id', async (req, res) => {
 app.delete('/api/scheduled-expenses/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    console.log(`Attempting to delete scheduled expense: ${id}`);
     
-    const result = await pool.query('DELETE FROM scheduled_expenses WHERE id = $1 RETURNING *', [id]);
-    
-    if (result.rows.length === 0) {
+    // Check if it exists first
+    const check = await pool.query('SELECT id FROM scheduled_expenses WHERE id = $1', [id]);
+    if (check.rows.length === 0) {
+      console.log(`Scheduled expense ${id} not found`);
       return res.status(404).json({ error: 'Scheduled expense not found' });
     }
+
+    const result = await pool.query('DELETE FROM scheduled_expenses WHERE id = $1 RETURNING *', [id]);
     
+    console.log(`Successfully deleted scheduled expense: ${id}`);
     res.json({ success: true, deleted: result.rows[0] });
   } catch (error) {
     console.error('Error deleting scheduled expense:', error);
-    res.status(500).json({ error: 'Failed to delete scheduled expense' });
+    res.status(500).json({ 
+      error: 'Failed to delete scheduled expense',
+      details: error.message 
+    });
   }
 });
 

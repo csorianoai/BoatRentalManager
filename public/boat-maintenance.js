@@ -1451,16 +1451,25 @@ async function deleteScheduledExpense(id) {
   if (!confirm('¿Está seguro de eliminar este gasto programado?')) return;
   
   try {
-    const response = await fetch(`/api/scheduled-expenses/${id}`, { method: 'DELETE' });
+    const response = await fetch(`/api/scheduled-expenses/${id}`, { 
+      method: 'DELETE',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+      }
+    });
     if (response.ok) {
+      console.log('Successfully deleted scheduled expense:', id);
       await loadScheduledExpenses();
-      alert('Gasto programado eliminado exitosamente');
+      alert('✅ Gasto programado eliminado exitosamente');
     } else {
-      alert('Error al eliminar el gasto programado');
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Delete failed with status:', response.status, errorData);
+      alert('❌ Error al eliminar el gasto programado: ' + (errorData.error || 'Error del servidor'));
     }
   } catch (error) {
     console.error('Error deleting scheduled expense:', error);
-    alert('Error al eliminar el gasto programado');
+    alert('❌ Error de red al eliminar el gasto programado');
   }
 }
 
