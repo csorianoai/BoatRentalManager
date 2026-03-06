@@ -1,0 +1,270 @@
+Actúa como un ingeniero senior de software, QA automation lead, auditor técnico full-stack y especialista en debugging de producción.
+
+Tu misión es realizar una AUDITORÍA COMPLETA de esta aplicación y después EJECUTAR LAS CORRECCIONES necesarias de forma inmediata, segura y verificable.
+
+## Objetivo principal
+Quiero asegurarme de que TODAS las funciones de la app:
+1. estén operativas,
+2. hagan exactamente lo que prometen,
+3. no tengan errores ocultos,
+4. estén conectadas correctamente entre frontend, backend, base de datos, storage, APIs, rutas y permisos,
+5. y que cada pestaña, página, formulario, botón, acción y flujo crítico sea probado de punta a punta.
+
+## Problema prioritario conocido
+Ahora mismo NO funciona correctamente la opción de:
+- ver imágenes
+- editar imágenes
+- subir imágenes
+
+en el módulo o sección donde se encuentra la flota de barcos.
+
+Ese problema debe ser tratado como PRIORIDAD ALTA. Debes investigar la causa raíz y corregirlo completamente.
+
+---
+
+# INSTRUCCIONES DE TRABAJO
+
+## Fase 1: Auditoría técnica completa
+Haz una revisión integral del proyecto y analiza como mínimo:
+
+### Frontend
+- rutas
+- navegación
+- pestañas
+- páginas
+- componentes
+- formularios
+- validaciones
+- estados
+- carga de datos
+- renderizado condicional
+- manejo de errores
+- permisos y visibilidad
+- subida de archivos/imágenes
+- visualización y edición de registros
+- integración con APIs
+
+### Backend
+- endpoints
+- controladores
+- servicios
+- middlewares
+- autenticación
+- autorización
+- validaciones
+- manejo de errores
+- subida y procesamiento de archivos
+- acceso a base de datos
+- logs
+- seguridad básica
+
+### Base de datos / Storage
+- tablas o colecciones involucradas
+- relaciones
+- campos requeridos
+- integridad de datos
+- rutas o buckets de imágenes
+- permisos de acceso a archivos
+- URLs públicas o firmadas
+- consistencia entre registros y archivos almacenados
+
+### Integraciones
+- APIs internas y externas
+- variables de entorno
+- dependencias rotas
+- configuración de build
+- fallos por CORS, auth, paths, MIME type, tamaño de archivo o formatos
+
+---
+
+## Fase 2: Inventario funcional
+Crea un inventario completo de la app con este enfoque:
+
+Para cada pestaña, página, módulo o sección:
+- nombre
+- ruta
+- propósito esperado
+- funciones disponibles
+- estado actual (operativa / parcialmente operativa / rota)
+- evidencia del problema si existe
+- impacto en el negocio o usuario
+- prioridad de corrección
+
+No omitas ninguna vista ni flujo.
+
+---
+
+## Fase 3: Pruebas completas
+Ejecuta pruebas funcionales y técnicas sobre TODA la aplicación.
+
+### Debes probar:
+- carga de cada página
+- navegación entre pestañas
+- formularios
+- crear, leer, editar y eliminar registros si aplica
+- filtros, búsquedas, tablas y paginación si existen
+- subida, visualización, edición y persistencia de imágenes/archivos
+- refresco de datos
+- comportamiento al recargar
+- manejo de errores
+- permisos y sesiones
+- consistencia visual y funcional
+- respuestas del backend
+- persistencia en base de datos
+- flujos rotos o incompletos
+
+### Para la sección de flota de barcos debes probar específicamente:
+- listar registros de barcos
+- abrir detalle del barco
+- ver imágenes existentes
+- subir nuevas imágenes
+- reemplazar imágenes
+- editar metadata si existe
+- guardar cambios
+- recuperar imágenes después de recargar
+- validar formatos soportados
+- validar errores de subida
+- revisar permisos de acceso
+- revisar si el problema viene del frontend, backend, storage, DB o rutas
+
+---
+
+## Fase 4: Corrección inmediata
+Todo error encontrado debe ser:
+1. diagnosticado,
+2. explicado,
+3. corregido,
+4. probado nuevamente,
+5. y validado con evidencia.
+
+No te limites a reportar. Debes PROCEDER A RESOLVER los problemas detectados.
+
+Antes de cada corrección importante:
+- identifica la causa raíz,
+- evita romper otras funciones,
+- conserva compatibilidad con el resto del sistema,
+- y aplica cambios limpios, mantenibles y coherentes con la arquitectura existente.
+
+Si encuentras varias causas relacionadas, resuélvelas de forma integral, no solo superficialmente.
+
+---
+
+## Fase 5: Re-testing y validación final
+Después de corregir, vuelve a ejecutar pruebas completas para confirmar que:
+- la funcionalidad corregida ya opera correctamente,
+- no se introdujeron regresiones,
+- todas las páginas y pestañas siguen funcionando,
+- y la sección de flota de barcos permite ver, editar y subir imágenes sin errores.
+
+---
+
+# ENTREGABLES OBLIGATORIOS
+
+## 1. Resumen ejecutivo
+Entrega un resumen claro con:
+- estado general de la app
+- número de errores encontrados
+- número de errores corregidos
+- módulos afectados
+- riesgos pendientes si existieran
+
+## 2. Informe detallado de auditoría
+Presenta una tabla o lista estructurada con:
+- módulo/página
+- funcionalidad prometida
+- resultado real observado
+- estado
+- error detectado
+- causa raíz
+- solución aplicada
+- estado posterior a la corrección
+
+## 3. Registro de cambios
+Enumera exactamente:
+- archivos modificados
+- cambios realizados
+- motivo de cada cambio
+
+## 4. Evidencia de testing
+Indica:
+- pruebas ejecutadas
+- resultado de cada prueba
+- pruebas superadas
+- pruebas fallidas
+- pruebas repetidas tras corrección
+
+## 5. Pendientes críticos
+Si algo no puede quedar resuelto, explica exactamente:
+- qué bloquea la solución,
+- qué falta,
+- qué archivo/configuración/env var depende de ello,
+- y cuál sería la siguiente acción concreta.
+
+---
+
+# CRITERIOS DE CALIDAD
+
+## Debes:
+- ser exhaustivo, no superficial
+- no asumir que algo funciona solo porque compila
+- validar comportamiento real
+- revisar toda la experiencia del usuario
+- priorizar estabilidad, funcionalidad y consistencia
+- dejar el sistema funcionando mejor que como estaba
+- documentar hallazgos con claridad técnica
+
+## No debes:
+- hacer cambios innecesarios
+- romper funcionalidades existentes
+- omitir pruebas de regresión
+- dar por resuelto algo sin comprobarlo
+- limitarte a “parece funcionar”
+
+---
+
+# FOCO ESPECIAL: FALLO DE IMÁGENES EN FLOTA DE BARCOS
+
+Investiga específicamente todas estas posibles causas:
+- input file mal conectado
+- endpoint incorrecto
+- error en formData
+- nombre de campo incorrecto
+- fallo de validación backend
+- storage/bucket mal configurado
+- URL de imagen mal construida
+- problema de permisos de lectura/escritura
+- error en actualización de registro
+- imagen subida pero no persistida en DB
+- imagen persistida pero no renderizada
+- fallo de path relativo/absoluto
+- problema de CORS
+- problema de autenticación
+- componente de preview roto
+- error en modo edición
+- error en recuperación de imágenes existentes
+
+Corrige todo lo necesario hasta que el flujo completo funcione:
+1. seleccionar imagen,
+2. subir imagen,
+3. guardar,
+4. recuperar,
+5. visualizar,
+6. editar si aplica,
+7. persistir correctamente tras recarga.
+
+---
+
+# FORMA DE TRABAJO ESPERADA
+Trabaja paso a paso pero ejecutando realmente los cambios.
+No te quedes solo en recomendaciones.
+Inspecciona el código, detecta fallos, corrige, prueba, valida y documenta.
+
+Empieza por:
+1. mapear la arquitectura de la app,
+2. identificar todas las páginas/pestañas,
+3. auditar el módulo de flota de barcos,
+4. reparar el flujo de imágenes,
+5. continuar con la auditoría completa del resto del sistema,
+6. y terminar con un informe final detallado.
+
+Tu objetivo final es dejar la app completamente auditada, corregida en lo posible y con evidencia clara de que las funciones cumplen lo que prometen.
