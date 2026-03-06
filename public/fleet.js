@@ -735,12 +735,14 @@ function initPhotoUpload() {
   const fileInput = document.getElementById('photo-file-input');
   if (!dropZone || !fileInput) return;
 
+  fileInput.multiple = true; // Habilitar selección múltiple
+  
   dropZone.addEventListener('click', () => fileInput.click());
 
   fileInput.addEventListener('change', (e) => {
     if (e.target.files.length > 0) {
       handleFiles(Array.from(e.target.files));
-      e.target.value = ''; // Reset input to allow re-selecting same files
+      e.target.value = ''; // Reset input value to allow re-uploading same files
     }
   });
 
@@ -760,6 +762,7 @@ function initPhotoUpload() {
     e.preventDefault();
     e.stopPropagation();
     dropZone.classList.remove('drag-over');
+    // Ensure all dropped files are processed
     const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
     if (files.length > 0) handleFiles(files);
   });
