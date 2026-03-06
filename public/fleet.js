@@ -3,6 +3,7 @@
 let boats = [];
 let currentBoat = null;
 let currentMonth = new Date();
+let isViewMode = false;
 
 const PLATFORMS = [
   { id: 'boatsetter', name: 'BoatSetter' },
@@ -294,28 +295,28 @@ async function openBoatModal() {
   renderPhotoGallery(currentBoat?.photos || []);
   
   // MODO VER (Read-only)
-  const modalTitle = modalEl.querySelector('.modal-title') || document.getElementById('modal-title');
-  const footer = modalEl.querySelector('.modal-footer') || document.querySelector('.modal-footer');
+  const modalTitle = document.getElementById('modal-title');
   const inputs = modalEl.querySelectorAll('input, select, textarea');
   const uploadZone = document.getElementById('photo-drop-zone');
   const saveBtn = document.getElementById('save-boat-btn');
+  const formActions = document.getElementById('form-actions');
   
   if (isViewMode) {
-    if (modalTitle) modalTitle.textContent = '👁️ Ver Barco';
+    if (modalTitle) modalTitle.textContent = 'Ver Barco';
     if (saveBtn) saveBtn.style.display = 'none';
-    if (footer) footer.style.display = 'none';
+    if (formActions) formActions.style.display = 'none';
     if (uploadZone) uploadZone.style.display = 'none';
     inputs.forEach(input => input.disabled = true);
   } else {
-    if (modalTitle) modalTitle.textContent = currentBoat ? '✏️ Editar Barco' : '➕ Agregar Barco';
+    if (modalTitle) modalTitle.textContent = currentBoat ? 'Editar Barco' : 'Agregar Barco';
     if (saveBtn) saveBtn.style.display = 'inline-block';
-    if (footer) footer.style.display = 'flex';
+    if (formActions) formActions.style.display = 'flex';
     if (uploadZone) uploadZone.style.display = 'block';
     inputs.forEach(input => input.disabled = false);
   }
   
-  const bootstrapModal = bootstrap.Modal.getOrCreateInstance(modalEl);
-  bootstrapModal.show();
+  // Open using CSS class (no Bootstrap — fleet.html uses custom modal)
+  modalEl.classList.add('active');
 }
 
 function viewBoat(boatId) {
@@ -341,8 +342,10 @@ function createNewBoat() {
 }
 
 function closeBoatModal() {
-  document.getElementById('boat-modal').classList.remove('active');
+  const modalEl = document.getElementById('boat-modal');
+  if (modalEl) modalEl.classList.remove('active');
   currentBoat = null;
+  isViewMode = false;
 }
 
 async function saveBoat(e) {
@@ -404,9 +407,10 @@ async function saveBoat(e) {
     });
 
     if (response.ok) {
+      const wasEditing = !!currentBoat;
       closeBoatModal();
       await loadBoats();
-      alert(`✅ Barco ${currentBoat ? 'actualizado' : 'agregado'} correctamente`);
+      alert(`✅ Barco ${wasEditing ? 'actualizado' : 'agregado'} correctamente`);
     } else {
       const error = await response.json();
       alert(`❌ Error: ${error.message || 'Error al guardar el barco'}`);
@@ -416,9 +420,6 @@ async function saveBoat(e) {
     alert('❌ Error al guardar el barco');
   }
 }
-
-// Variables globales para el estado del modal
-let isViewMode = false;
 
 // Calendar Functions
 async function renderCalendar() {
