@@ -69,7 +69,8 @@ async function loadBoats() {
     // Populate all boat dropdowns
     const boatSelects = [
       'filter-boat-expenses', 'filter-boat-maintenance', 
-      'expense-boat', 'maintenance-boat', 'work-order-boat'
+      'expense-boat', 'maintenance-boat', 'work-order-boat',
+      'filter-boat-scheduled', 'scheduled-expense-boat'
     ];
     boatSelects.forEach(selectId => {
       const select = document.getElementById(selectId);
