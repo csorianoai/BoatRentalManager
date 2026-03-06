@@ -988,13 +988,14 @@ async function deleteExpense(id) {
     if (response.ok) {
       await loadExpenses();
       await loadAnalytics();
-      alert('Gasto eliminado exitosamente');
+      alert('✅ Gasto eliminado exitosamente');
     } else {
-      alert('Error al eliminar el gasto');
+      const errorData = await response.json().catch(() => ({}));
+      alert('❌ Error al eliminar el gasto: ' + (errorData.error || 'Error desconocido'));
     }
   } catch (error) {
     console.error('Error deleting expense:', error);
-    alert('Error al eliminar el gasto');
+    alert('❌ Error de red al eliminar el gasto');
   }
 }
 
