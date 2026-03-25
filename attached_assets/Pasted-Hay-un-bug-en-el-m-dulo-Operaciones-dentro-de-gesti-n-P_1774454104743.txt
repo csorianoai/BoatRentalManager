@@ -1,0 +1,60 @@
+Hay un bug en el módulo “Operaciones” dentro de “gestión”.
+
+PROBLEMA
+El botón “Crear tarea” no abre el formulario o modal de creación. Necesito que revises y corrijas ese comportamiento primero, antes de seguir con cualquier otra mejora.
+
+OBJETIVO
+Hacer que el botón “Crear tarea” funcione correctamente y permita abrir el formulario/modal para crear una nueva tarea.
+
+TAREAS A REALIZAR
+1. Revisar el botón “Crear tarea”
+- validar que exista en el DOM
+- validar que tenga id, clase o selector correcto
+- validar que no esté deshabilitado
+- validar que no tenga un overlay encima bloqueando el click
+
+2. Revisar el JavaScript del módulo
+- confirmar que el listener de click esté bien enlazado
+- confirmar que el script cargue después del DOM
+- confirmar que no haya errores en consola deteniendo la ejecución
+- confirmar que si el contenido se renderiza dinámicamente, el evento use delegación o se vuelva a enlazar
+
+3. Revisar el formulario/modal
+- validar que el modal exista
+- validar que no esté con selector incorrecto
+- validar que abrirlo cambie correctamente clases o estilos
+- validar que tenga botón de cerrar y que no rompa el flujo
+
+4. Implementar solución robusta
+- usar una función clara como openTaskModal()
+- enlazar el botón “Crear tarea” a esa función
+- si no existe modal, crearlo de forma simple y nativa
+- si el sistema usa tabs o vistas internas, asegurar que siga funcionando al cambiar de sección
+
+5. Agregar validación mínima
+- si el botón no encuentra el modal, mostrar error claro en consola
+- evitar que falle silenciosamente
+
+6. Probar flujo completo
+- clic en “Crear tarea”
+- abrir modal o formulario
+- ingresar datos
+- guardar tarea
+- cerrar modal
+- refrescar lista de tareas
+
+REQUISITOS
+- no reestructurar todo el sistema
+- arreglar solo lo necesario
+- mantener coherencia con el estilo actual de “gestión”
+- solución ligera, simple y estable
+- no agregar librerías pesadas
+
+SI DETECTAS EL ERROR
+Corrígelo directamente y explica brevemente cuál era la causa:
+- selector incorrecto
+- listener no registrado
+- JS cargando antes del DOM
+- modal inexistente
+- conflicto de z-index
+- error de render dinámico

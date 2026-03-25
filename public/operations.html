@@ -157,6 +157,52 @@
         .status-pausada { background: #fff3cd; color: #856404; }
         .status-cancelada { background: #fde8ea; color: #842029; }
 
+        /* ===== PAGE HEADER ===== */
+        .page-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 12px;
+            padding: 24px 0 16px;
+        }
+        .header-content {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .page-title {
+            font-size: 24px;
+            font-weight: 700;
+            color: #1a1a2e;
+            margin: 0;
+        }
+        .page-subtitle {
+            font-size: 13px;
+            color: #666;
+            margin: 2px 0 0;
+        }
+        .back-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            background: #f0f4f8;
+            border-radius: 8px;
+            color: #0066cc;
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 600;
+            white-space: nowrap;
+            transition: background 0.2s;
+        }
+        .back-btn:hover { background: #dce8f5; }
+
         /* ===== MODAL ===== */
         .modal-overlay {
             display: none;
@@ -170,6 +216,7 @@
         }
         .modal-overlay.open { display: flex; }
         .modal {
+            display: block; /* override commissions.css .modal { display: none } */
             background: white;
             border-radius: 16px;
             width: 100%;
