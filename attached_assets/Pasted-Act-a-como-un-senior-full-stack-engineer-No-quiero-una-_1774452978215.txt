@@ -1,0 +1,509 @@
+Actúa como un senior full-stack engineer. No quiero una app separada. Quiero que agregues un nuevo módulo dentro de la herramienta existente llamada “gestión”, como una pestaña adicional del sistema actual.
+
+CONTEXTO DEL SISTEMA ACTUAL
+Ya existe una herramienta web llamada “gestión” con dashboard operativo. La nueva funcionalidad debe integrarse dentro de esta plataforma existente, manteniendo coherencia visual, estructura, navegación y estilo UI.
+
+IMPORTANTE
+- No crear una aplicación independiente
+- No romper la navegación actual
+- No cambiar la lógica existente si no es necesario
+- Agregar una nueva pestaña o sección dentro de “gestión”
+- Respetar el estilo visual actual del dashboard
+- Mantener el sistema liviano y optimizado para Replit
+
+OBJETIVO DEL NUEVO MÓDULO
+Crear dentro de “gestión” una pestaña nueva para administrar el trabajo operativo del negocio, incluyendo:
+- agenda de trabajo
+- tareas
+- timeline de ejecución
+- asignación de responsables
+- categorías de tareas
+- seguimiento de avance
+- relación con otros módulos del sistema
+- sincronización con Google Calendar
+- sincronización con Google Maps / ubicaciones
+
+NOMBRE DEL NUEVO MÓDULO
+Usa “Operaciones”.
+
+==================================================
+1. INTEGRACIÓN DENTRO DE GESTIÓN
+==================================================
+
+El módulo debe funcionar como una pestaña adicional dentro del panel existente.
+
+Debe integrarse a la navegación actual de “gestión” como una opción más del dashboard, junto a módulos como:
+- Calendario
+- Comisiones
+- Precios
+- Pricing Dinámico
+- Contabilidad
+- Mensajes
+- Mantenimiento
+- Condiciones
+- Flotilla
+
+Este nuevo módulo debe aparecer como:
+- una tarjeta o acceso adicional en el dashboard
+- una sección navegable interna
+- una parte nativa del sistema, no como herramienta externa
+
+==================================================
+2. FUNCIÓN DEL NUEVO MÓDULO
+==================================================
+
+Este módulo servirá para organizar y controlar pendientes operativos del negocio en distintas áreas:
+
+- Reparaciones de botes
+- Gestión de listings
+- Contratos de clientes
+- Publicaciones / marketing
+- Administración
+- Seguimiento comercial
+- Gastos
+- Ingresos
+- Logística / ubicaciones / puntos de encuentro
+
+Debe ser una combinación de:
+- agenda de trabajo
+- gestor de tareas
+- timeline de ejecución
+- tablero de seguimiento
+- centro de enlace con otros módulos
+
+==================================================
+3. MVP OBLIGATORIO
+==================================================
+
+A. LISTADO DE TAREAS
+Permitir:
+- crear tarea
+- editar tarea
+- eliminar tarea
+- cambiar estado
+- duplicar tarea
+- ver tareas en lista
+- búsqueda por texto
+- filtros
+- ordenamiento
+
+B. CAMPOS DE CADA TAREA
+Cada tarea debe tener:
+- id
+- título
+- descripción
+- categoría
+- prioridad: alta / media / baja
+- estado: pendiente / en progreso / completada / pausada / cancelada
+- responsable asignado
+- fecha de inicio
+- fecha límite
+- duración estimada
+- tiempo real invertido
+- comentarios internos
+- etiquetas opcionales
+- entidad relacionada opcional
+- tipo de entidad relacionada opcional: bote / listing / cliente / contrato / gasto / ingreso
+- fecha de creación
+- fecha de actualización
+- ubicación opcional
+- dirección opcional
+- coordenadas opcionales
+- enlace opcional de Google Maps
+- flag de sincronización con Google Calendar
+- flag de sincronización con módulo de gastos
+- flag de sincronización con módulo de ingresos
+
+C. CATEGORÍAS INICIALES
+Crear categorías editables:
+- Reparaciones
+- Listings
+- Contratos de clientes
+- Publicaciones
+- Administración
+- Seguimiento comercial
+- Gastos
+- Ingresos
+- Logística
+
+Permitir:
+- crear nuevas categorías
+- editar categorías
+- activar/desactivar categorías
+
+D. RESPONSABLES
+Crear estructura simple para responsables:
+- nombre
+- rol
+- email opcional
+- activo/inactivo
+
+Debe permitir:
+- asignar tareas a una persona específica
+- filtrar por responsable
+- ver tareas por responsable
+- ver carga de trabajo básica por persona
+
+E. TIMELINE / AGENDA
+Crear una vista visual simple y ligera que muestre:
+- tarea
+- responsable
+- fecha de inicio
+- fecha límite
+- duración estimada
+- estado
+- ubicación si existe
+
+La primera versión debe ser liviana:
+- vista semanal
+- vista mensual
+- tarjetas o barras simples por rango de fecha
+
+No usar librerías pesadas si no son necesarias.
+
+F. DASHBOARD DEL MÓDULO
+Dentro del módulo nuevo, crear un panel con:
+- tareas pendientes
+- tareas en progreso
+- tareas completadas
+- tareas vencidas
+- tareas por categoría
+- tareas por responsable
+- próximas fechas límite
+- resumen rápido por áreas: reparaciones, listings, contratos, publicaciones, gastos, ingresos
+
+==================================================
+4. CONEXIÓN CON OTROS MÓDULOS DE GESTIÓN
+==================================================
+
+Este punto es obligatorio.
+
+La pestaña “Operaciones” debe poder conectarse con otros módulos ya existentes o futuros dentro de “gestión”.
+
+A. CONEXIÓN CON GASTOS
+Si una tarea corresponde a un gasto, debe permitir:
+- marcarla como “relacionada con gasto”
+- reenviar o registrar la información relevante en el módulo de Gastos
+- crear un registro vinculado o prellenado en la sección de Gastos
+- mantener referencia cruzada entre tarea y gasto
+
+Datos mínimos para reenviar:
+- título
+- descripción
+- categoría
+- monto si aplica
+- fecha
+- responsable
+- barco o cliente relacionado si aplica
+- estado
+
+Ejemplos:
+- compra de repuesto
+- mantenimiento correctivo
+- combustible
+- marina / amarre
+- limpieza
+- insumos operativos
+
+B. CONEXIÓN CON INGRESOS
+Si una tarea corresponde a un ingreso, debe permitir:
+- marcarla como “relacionada con ingreso”
+- reenviar o registrar la información relevante en el módulo de Ingresos
+- crear un registro vinculado o prellenado en la sección de Ingresos
+- mantener referencia cruzada entre tarea e ingreso
+
+Datos mínimos para reenviar:
+- título
+- descripción
+- monto esperado o real
+- fecha
+- cliente relacionado
+- listing relacionado
+- contrato relacionado
+- estado
+
+Ejemplos:
+- pago pendiente de cliente
+- contrato cobrado
+- reserva confirmada
+- ingreso por charter
+- comisión recibida
+
+C. LÓGICA DE ENLACE ENTRE MÓDULOS
+Diseñar la estructura para que una tarea pueda:
+- existir sola
+- vincularse a un gasto
+- vincularse a un ingreso
+- generar un gasto o ingreso desde un botón o acción rápida
+- mostrar el estado del vínculo
+- abrir el registro relacionado desde la propia tarea
+
+La arquitectura debe dejar listo un sistema de relaciones internas entre módulos.
+
+==================================================
+5. GOOGLE CALENDAR
+==================================================
+
+Agregar sincronización con Google Calendar para que tareas con fecha puedan enviarse y mantenerse vinculadas con el calendario del usuario.
+
+REQUISITOS
+- usar integración segura con Google Calendar
+- permitir conectar una cuenta de Google
+- permitir desconectar la cuenta
+- guardar el vínculo del evento creado con la tarea
+- permitir crear evento al crear o editar una tarea
+- permitir actualizar el evento si cambia la tarea
+- permitir cancelar o eliminar el evento si se elimina la tarea o se desactiva la sincronización
+- permitir elegir si una tarea se sincroniza o no
+
+DATOS A ENVIAR A GOOGLE CALENDAR
+- título de la tarea
+- descripción
+- fecha inicio
+- fecha fin o vencimiento
+- responsable si aplica
+- ubicación si aplica
+- enlace interno a la tarea si existe
+- notas relevantes
+
+REGLAS
+- implementar de forma liviana
+- no sincronizar todo automáticamente sin control
+- usar una opción por tarea o por tipo de tarea
+- guardar el eventId del calendario en la base de datos
+- permitir resincronización si falla
+- diseñar la lógica para sincronización incremental y actualización eficiente
+
+==================================================
+6. GOOGLE MAPS / UBICACIONES
+==================================================
+
+Agregar sincronización o integración con Google Maps para manejar ubicaciones relacionadas con tareas.
+
+OBJETIVO
+Poder usar ubicaciones dentro de las tareas operativas, por ejemplo:
+- marina
+- muelle
+- punto de salida
+- dirección del cliente
+- taller
+- proveedor
+- punto de entrega
+- ubicación de reparación
+
+REQUISITOS
+- campo de ubicación con autocompletado
+- guardar dirección seleccionada
+- guardar coordenadas si están disponibles
+- guardar place id si aplica
+- mostrar enlace para abrir en Google Maps
+- permitir visualizar ubicación desde la tarea
+- permitir usar esa ubicación también al sincronizar con Google Calendar
+
+SI ES POSIBLE EN EL MVP
+- integrar autocompletado de lugares
+- permitir seleccionar una ubicación y rellenar dirección
+- dejar base preparada para mostrar mapa embebido más adelante
+- dejar preparada futura función de rutas o distancia
+
+==================================================
+7. RELACIONES OPCIONALES
+==================================================
+
+Cada tarea puede vincularse opcionalmente con:
+
+A. BARCOS
+Campos mínimos:
+- id
+- nombre
+- tipo
+- estado opcional
+
+B. LISTINGS
+Campos mínimos:
+- id
+- título
+- plataforma opcional
+- estado opcional
+
+C. CLIENTES
+Campos mínimos:
+- id
+- nombre
+- email opcional
+- teléfono opcional
+
+D. CONTRATOS
+Campos mínimos:
+- id
+- referencia o nombre
+- cliente relacionado opcional
+- estado opcional
+- fecha opcional
+
+E. GASTOS
+Campos mínimos:
+- id
+- concepto
+- monto
+- fecha
+- categoría
+- estado
+
+F. INGRESOS
+Campos mínimos:
+- id
+- concepto
+- monto
+- fecha
+- categoría
+- estado
+
+Estas entidades no necesitan lógica compleja en la primera fase, pero sí deben quedar listas para vinculación interna.
+
+==================================================
+8. EXPERIENCIA DE USUARIO
+==================================================
+
+El módulo debe verse como parte natural de “gestión”.
+
+REQUISITOS DE UI
+- mantener misma línea visual del dashboard actual
+- tarjetas limpias y simples
+- botones consistentes con el sistema actual
+- colores y espaciado coherentes con la plataforma
+- responsive
+- navegación clara
+- sin sobrecargar la pantalla
+
+ESTRUCTURA INTERNA RECOMENDADA DEL MÓDULO
+- Resumen
+- Tareas
+- Timeline
+- Categorías
+- Responsables
+- Integraciones
+
+Si hace falta simplificar, dejar todo en una sola pantalla con tabs internas:
+- Resumen
+- Tareas
+- Timeline
+- Integraciones
+
+==================================================
+9. RENDIMIENTO Y OPTIMIZACIÓN
+==================================================
+
+Este punto es crítico.
+
+Quiero que la implementación consuma lo menos posible en Replit.
+
+REGLAS
+- no crear una app separada
+- reutilizar la estructura actual
+- reutilizar componentes si ya existen
+- no agregar dependencias pesadas
+- no hacer arquitectura compleja
+- no agregar funciones secundarias todavía
+- mantener el código simple, claro y modular
+- construir primero una versión funcional del MVP
+- no usar librerías pesadas de calendario si puede resolverse con HTML/CSS/JS simple
+- no usar librerías pesadas de mapas si basta con integración liviana de lugares
+- minimizar consultas y lógica innecesaria
+
+==================================================
+10. IMPLEMENTACIÓN TÉCNICA
+==================================================
+
+Analiza la estructura actual del proyecto “gestión” y adapta el nuevo módulo a la arquitectura existente.
+
+Necesito que:
+1. identifiques cómo está organizado el dashboard actual
+2. agregues la nueva entrada del módulo en el panel principal
+3. crees la vista o pestaña del módulo
+4. implementes la base de datos o almacenamiento mínimo necesario
+5. construyas el CRUD de tareas
+6. agregues categorías y responsables
+7. construyas timeline básico
+8. conectes relaciones opcionales con barcos, listings, clientes, contratos, gastos e ingresos
+9. implementes integración con Google Calendar
+10. implementes integración básica con Google Maps / Places
+11. dejes el sistema listo para crecer después
+
+==================================================
+11. ORDEN DE TRABAJO
+==================================================
+
+FASE 1
+- revisar estructura actual de “gestión”
+- detectar navegación existente
+- integrar nueva pestaña “Operaciones”
+
+FASE 2
+- crear almacenamiento/modelos
+- crear CRUD de tareas
+- crear categorías
+- crear responsables
+
+FASE 3
+- crear dashboard del módulo
+- crear timeline básico
+- agregar filtros y búsqueda
+
+FASE 4
+- conectar tareas con gastos e ingresos
+- crear acciones para reenviar datos a módulos relacionados
+- agregar referencias cruzadas
+
+FASE 5
+- integrar Google Calendar
+- guardar credenciales/configuración necesarias
+- sincronizar tareas seleccionadas
+
+FASE 6
+- integrar Google Maps / Places para ubicaciones
+- permitir autocompletado de direcciones y lugares
+- guardar ubicación y reutilizarla en calendario
+
+FASE 7
+- pulir interfaz y flujo
+- optimizar rendimiento
+- validar errores de sincronización
+
+==================================================
+12. CRITERIOS DE ÉXITO
+==================================================
+
+El trabajo estará bien hecho si:
+- el nuevo módulo aparece dentro de “gestión” como una pestaña natural del sistema
+- se ve consistente con el dashboard actual
+- permite crear y organizar tareas reales
+- permite asignarlas a responsables
+- permite clasificarlas por categoría
+- permite ver fechas y vencimientos
+- permite visualizar el trabajo en lista y timeline
+- permite reenviar datos a gastos cuando aplica
+- permite reenviar datos a ingresos cuando aplica
+- permite guardar y usar ubicaciones
+- permite sincronizar tareas con Google Calendar
+- funciona sin volver pesada la plataforma
+
+==================================================
+13. ENTREGABLE FINAL
+==================================================
+
+Necesito que entregues:
+- integración del nuevo módulo dentro de “gestión”
+- acceso visual desde el dashboard actual
+- CRUD de tareas
+- categorías editables
+- responsables editables
+- dashboard del módulo
+- timeline básico
+- conexiones con gastos e ingresos
+- integración con Google Calendar
+- integración básica con Google Maps / Places
+- relaciones opcionales
+- instrucciones breves para mantenimiento o ampliación
+
+Empieza revisando la estructura actual del proyecto y construye el módulo como una extensión interna del sistema existente, no como una aplicación nueva.
