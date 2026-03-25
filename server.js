@@ -996,7 +996,106 @@ async function initializeDatabase() {
     `);
     
     console.log('✅ FASE 10 tables created (boat maintenance & expense tracking)');
-    
+
+    // FASE 12: OPERATIONS MODULE TABLES
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS op_categories (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        color TEXT DEFAULT '#0066cc',
+        icon TEXT DEFAULT 'tag',
+        active BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS op_assignees (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        role TEXT,
+        email TEXT,
+        active BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS op_tasks (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        description TEXT,
+        category_id TEXT REFERENCES op_categories(id) ON DELETE SET NULL,
+        priority TEXT DEFAULT 'media' CHECK (priority IN ('alta','media','baja')),
+        status TEXT DEFAULT 'pendiente' CHECK (status IN ('pendiente','en_progreso','completada','pausada','cancelada')),
+        assignee_id TEXT REFERENCES op_assignees(id) ON DELETE SET NULL,
+        start_date DATE,
+        due_date DATE,
+        estimated_hours NUMERIC(6,2),
+        actual_hours NUMERIC(6,2),
+        comments TEXT,
+        tags TEXT,
+        related_entity_id TEXT,
+        related_entity_type TEXT,
+        amount NUMERIC(12,2),
+        location_name TEXT,
+        location_address TEXT,
+        location_lat NUMERIC(10,7),
+        location_lng NUMERIC(10,7),
+        maps_url TEXT,
+        sync_calendar BOOLEAN DEFAULT false,
+        calendar_event_id TEXT,
+        sync_expenses BOOLEAN DEFAULT false,
+        expense_ref_id TEXT,
+        sync_income BOOLEAN DEFAULT false,
+        income_ref_id TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_op_tasks_status ON op_tasks(status);
+      CREATE INDEX IF NOT EXISTS idx_op_tasks_due_date ON op_tasks(due_date);
+      CREATE INDEX IF NOT EXISTS idx_op_tasks_assignee ON op_tasks(assignee_id);
+      CREATE INDEX IF NOT EXISTS idx_op_tasks_category ON op_tasks(category_id);
+    `);
+
+    // Seed op_categories if empty
+    const opCatCheck = await pool.query('SELECT COUNT(*) FROM op_categories');
+    if (parseInt(opCatCheck.rows[0].count) === 0) {
+      const { nanoid } = await import('nanoid');
+      await pool.query(`
+        INSERT INTO op_categories (id, name, color, icon) VALUES
+        ('${nanoid()}', 'Reparaciones', '#dc3545', 'wrench'),
+        ('${nanoid()}', 'Listings', '#fd7e14', 'list'),
+        ('${nanoid()}', 'Contratos de Clientes', '#6f42c1', 'file'),
+        ('${nanoid()}', 'Publicaciones', '#e83e8c', 'megaphone'),
+        ('${nanoid()}', 'Administración', '#6c757d', 'settings'),
+        ('${nanoid()}', 'Seguimiento Comercial', '#17a2b8', 'trending-up'),
+        ('${nanoid()}', 'Gastos', '#dc3545', 'credit-card'),
+        ('${nanoid()}', 'Ingresos', '#28a745', 'dollar-sign'),
+        ('${nanoid()}', 'Logística', '#0066cc', 'map-pin')
+      `);
+      console.log('✅ Operations categories seeded');
+    }
+
+    // Seed op_assignees if empty
+    const opAssCheck = await pool.query('SELECT COUNT(*) FROM op_assignees');
+    if (parseInt(opAssCheck.rows[0].count) === 0) {
+      const { nanoid } = await import('nanoid');
+      await pool.query(`
+        INSERT INTO op_assignees (id, name, role, email) VALUES
+        ('${nanoid()}', 'Administrador', 'Administración', 'admin@nadakiexcursions.com'),
+        ('${nanoid()}', 'Capitán Principal', 'Operaciones', 'capitan@nadakiexcursions.com')
+      `);
+      console.log('✅ Operations assignees seeded');
+    }
+
+    console.log('✅ FASE 12 tables created (operations module)');
+
     // Seed chart of accounts if empty
     const accountsCheck = await pool.query('SELECT COUNT(*) FROM chart_of_accounts');
     if (parseInt(accountsCheck.rows[0].count) === 0) {
@@ -8759,6 +8858,330 @@ async function processScheduledExpenses() {
     console.error('Error in scheduled expenses processing:', error);
   }
 }
+
+// ========== FASE 12: OPERATIONS MODULE APIS ==========
+
+// --- STATS ---
+app.get('/api/operations/stats', isAuthenticated, async (req, res) => {
+  try {
+    const stats = await pool.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE status='pendiente') AS pendiente,
+        COUNT(*) FILTER (WHERE status='en_progreso') AS en_progreso,
+        COUNT(*) FILTER (WHERE status='completada') AS completada,
+        COUNT(*) FILTER (WHERE status='pausada') AS pausada,
+        COUNT(*) FILTER (WHERE status='cancelada') AS cancelada,
+        COUNT(*) FILTER (WHERE due_date < CURRENT_DATE AND status NOT IN ('completada','cancelada')) AS vencidas,
+        COUNT(*) AS total
+      FROM op_tasks
+    `);
+    const byCategory = await pool.query(`
+      SELECT c.name, c.color, COUNT(t.id) AS total
+      FROM op_categories c
+      LEFT JOIN op_tasks t ON t.category_id = c.id
+      WHERE c.active = true
+      GROUP BY c.id, c.name, c.color
+      ORDER BY total DESC
+    `);
+    const byAssignee = await pool.query(`
+      SELECT a.name, COUNT(t.id) AS total,
+             COUNT(t.id) FILTER (WHERE t.status='pendiente') AS pendiente,
+             COUNT(t.id) FILTER (WHERE t.status='en_progreso') AS en_progreso
+      FROM op_assignees a
+      LEFT JOIN op_tasks t ON t.assignee_id = a.id
+      WHERE a.active = true
+      GROUP BY a.id, a.name
+      ORDER BY total DESC
+    `);
+    const upcoming = await pool.query(`
+      SELECT t.id, t.title, t.due_date, t.priority, t.status, a.name AS assignee_name
+      FROM op_tasks t
+      LEFT JOIN op_assignees a ON t.assignee_id = a.id
+      WHERE t.status NOT IN ('completada','cancelada') AND t.due_date IS NOT NULL
+      ORDER BY t.due_date ASC
+      LIMIT 5
+    `);
+    res.json({
+      summary: stats.rows[0],
+      byCategory: byCategory.rows,
+      byAssignee: byAssignee.rows,
+      upcoming: upcoming.rows
+    });
+  } catch (err) {
+    console.error('Error fetching operations stats:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- TASKS CRUD ---
+app.get('/api/operations/tasks', isAuthenticated, async (req, res) => {
+  try {
+    const { status, priority, category_id, assignee_id, search, start, end } = req.query;
+    let where = ['1=1'];
+    const params = [];
+    let idx = 1;
+    if (status) { where.push(`t.status = $${idx++}`); params.push(status); }
+    if (priority) { where.push(`t.priority = $${idx++}`); params.push(priority); }
+    if (category_id) { where.push(`t.category_id = $${idx++}`); params.push(category_id); }
+    if (assignee_id) { where.push(`t.assignee_id = $${idx++}`); params.push(assignee_id); }
+    if (search) { where.push(`(t.title ILIKE $${idx} OR t.description ILIKE $${idx})`); params.push(`%${search}%`); idx++; }
+    if (start) { where.push(`t.due_date >= $${idx++}`); params.push(start); }
+    if (end) { where.push(`t.due_date <= $${idx++}`); params.push(end); }
+    const result = await pool.query(`
+      SELECT t.*, c.name AS category_name, c.color AS category_color,
+             a.name AS assignee_name, a.role AS assignee_role
+      FROM op_tasks t
+      LEFT JOIN op_categories c ON t.category_id = c.id
+      LEFT JOIN op_assignees a ON t.assignee_id = a.id
+      WHERE ${where.join(' AND ')}
+      ORDER BY 
+        CASE t.priority WHEN 'alta' THEN 1 WHEN 'media' THEN 2 ELSE 3 END,
+        t.due_date ASC NULLS LAST,
+        t.created_at DESC
+    `, params);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching tasks:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/operations/tasks', isAuthenticated, async (req, res) => {
+  try {
+    const { nanoid } = await import('nanoid');
+    const id = nanoid();
+    const {
+      title, description, category_id, priority, status, assignee_id,
+      start_date, due_date, estimated_hours, actual_hours, comments, tags,
+      related_entity_id, related_entity_type, amount,
+      location_name, location_address, location_lat, location_lng, maps_url,
+      sync_calendar, sync_expenses, expense_ref_id, sync_income, income_ref_id
+    } = req.body;
+    if (!title) return res.status(400).json({ error: 'El título es obligatorio' });
+    const result = await pool.query(`
+      INSERT INTO op_tasks (id, title, description, category_id, priority, status, assignee_id,
+        start_date, due_date, estimated_hours, actual_hours, comments, tags,
+        related_entity_id, related_entity_type, amount,
+        location_name, location_address, location_lat, location_lng, maps_url,
+        sync_calendar, sync_expenses, expense_ref_id, sync_income, income_ref_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
+      RETURNING *
+    `, [id, title, description||null, category_id||null, priority||'media', status||'pendiente', assignee_id||null,
+        start_date||null, due_date||null, estimated_hours||null, actual_hours||null, comments||null, tags||null,
+        related_entity_id||null, related_entity_type||null, amount||null,
+        location_name||null, location_address||null, location_lat||null, location_lng||null, maps_url||null,
+        sync_calendar||false, sync_expenses||false, expense_ref_id||null, sync_income||false, income_ref_id||null]);
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error creating task:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch('/api/operations/tasks/:id', isAuthenticated, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const fields = req.body;
+    const allowed = ['title','description','category_id','priority','status','assignee_id',
+      'start_date','due_date','estimated_hours','actual_hours','comments','tags',
+      'related_entity_id','related_entity_type','amount',
+      'location_name','location_address','location_lat','location_lng','maps_url',
+      'sync_calendar','sync_expenses','expense_ref_id','sync_income','income_ref_id'];
+    const sets = [];
+    const params = [];
+    let idx = 1;
+    for (const key of allowed) {
+      if (key in fields) { sets.push(`${key} = $${idx++}`); params.push(fields[key]); }
+    }
+    if (sets.length === 0) return res.status(400).json({ error: 'No fields to update' });
+    sets.push(`updated_at = CURRENT_TIMESTAMP`);
+    params.push(id);
+    const result = await pool.query(
+      `UPDATE op_tasks SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`,
+      params
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Tarea no encontrada' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating task:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/operations/tasks/:id', isAuthenticated, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query('DELETE FROM op_tasks WHERE id = $1 RETURNING id', [id]);
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Tarea no encontrada' });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting task:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Duplicate task
+app.post('/api/operations/tasks/:id/duplicate', isAuthenticated, async (req, res) => {
+  try {
+    const { nanoid } = await import('nanoid');
+    const { id } = req.params;
+    const src = await pool.query('SELECT * FROM op_tasks WHERE id = $1', [id]);
+    if (src.rows.length === 0) return res.status(404).json({ error: 'Tarea no encontrada' });
+    const t = src.rows[0];
+    const newId = nanoid();
+    const result = await pool.query(`
+      INSERT INTO op_tasks (id, title, description, category_id, priority, status, assignee_id,
+        start_date, due_date, estimated_hours, actual_hours, comments, tags,
+        related_entity_id, related_entity_type, amount,
+        location_name, location_address, location_lat, location_lng, maps_url,
+        sync_calendar, sync_expenses, sync_income)
+      VALUES ($1,$2,$3,$4,$5,'pendiente',$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
+      RETURNING *
+    `, [newId, `${t.title} (copia)`, t.description, t.category_id, t.priority, t.assignee_id,
+        t.start_date, t.due_date, t.estimated_hours, null, t.comments, t.tags,
+        t.related_entity_id, t.related_entity_type, t.amount,
+        t.location_name, t.location_address, t.location_lat, t.location_lng, t.maps_url,
+        t.sync_calendar, t.sync_expenses, t.sync_income]);
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error duplicating task:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Send task to expenses module
+app.post('/api/operations/tasks/:id/send-to-expenses', isAuthenticated, async (req, res) => {
+  try {
+    const { nanoid } = await import('nanoid');
+    const { id } = req.params;
+    const taskResult = await pool.query(`
+      SELECT t.*, c.name AS category_name, a.name AS assignee_name
+      FROM op_tasks t
+      LEFT JOIN op_categories c ON t.category_id = c.id
+      LEFT JOIN op_assignees a ON t.assignee_id = a.id
+      WHERE t.id = $1`, [id]);
+    if (taskResult.rows.length === 0) return res.status(404).json({ error: 'Tarea no encontrada' });
+    const task = taskResult.rows[0];
+    const expenseId = nanoid();
+    const boatId = req.body.boat_id || null;
+    const expCategory = req.body.category || 'other';
+    await pool.query(`
+      INSERT INTO boat_expenses (id, boat_id, category, amount, expense_date, description)
+      VALUES ($1, $2, $3, $4, $5, $6)
+    `, [expenseId, boatId, expCategory, task.amount || 0, task.due_date || new Date().toISOString().split('T')[0],
+        `[Operaciones] ${task.title}${task.description ? ': ' + task.description.slice(0,200) : ''}`]);
+    await pool.query(`UPDATE op_tasks SET sync_expenses=true, expense_ref_id=$1, updated_at=CURRENT_TIMESTAMP WHERE id=$2`, [expenseId, id]);
+    res.json({ success: true, expense_id: expenseId });
+  } catch (err) {
+    console.error('Error sending to expenses:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- CATEGORIES CRUD ---
+app.get('/api/operations/categories', isAuthenticated, async (req, res) => {
+  try {
+    const { active } = req.query;
+    let query = 'SELECT * FROM op_categories';
+    const params = [];
+    if (active === 'true') { query += ' WHERE active = true'; }
+    query += ' ORDER BY name ASC';
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/operations/categories', isAuthenticated, async (req, res) => {
+  try {
+    const { nanoid } = await import('nanoid');
+    const { name, color, icon } = req.body;
+    if (!name) return res.status(400).json({ error: 'El nombre es obligatorio' });
+    const result = await pool.query(
+      'INSERT INTO op_categories (id, name, color, icon) VALUES ($1,$2,$3,$4) RETURNING *',
+      [nanoid(), name, color||'#0066cc', icon||'tag']
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch('/api/operations/categories/:id', isAuthenticated, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, color, icon, active } = req.body;
+    const result = await pool.query(
+      `UPDATE op_categories SET name=COALESCE($1,name), color=COALESCE($2,color), icon=COALESCE($3,icon),
+       active=COALESCE($4,active), updated_at=CURRENT_TIMESTAMP WHERE id=$5 RETURNING *`,
+      [name||null, color||null, icon||null, active!=null?active:null, id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Categoría no encontrada' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/operations/categories/:id', isAuthenticated, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM op_categories WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- ASSIGNEES CRUD ---
+app.get('/api/operations/assignees', isAuthenticated, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM op_assignees ORDER BY name ASC');
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/operations/assignees', isAuthenticated, async (req, res) => {
+  try {
+    const { nanoid } = await import('nanoid');
+    const { name, role, email } = req.body;
+    if (!name) return res.status(400).json({ error: 'El nombre es obligatorio' });
+    const result = await pool.query(
+      'INSERT INTO op_assignees (id, name, role, email) VALUES ($1,$2,$3,$4) RETURNING *',
+      [nanoid(), name, role||null, email||null]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch('/api/operations/assignees/:id', isAuthenticated, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, role, email, active } = req.body;
+    const result = await pool.query(
+      `UPDATE op_assignees SET name=COALESCE($1,name), role=COALESCE($2,role), email=COALESCE($3,email),
+       active=COALESCE($4,active), updated_at=CURRENT_TIMESTAMP WHERE id=$5 RETURNING *`,
+      [name||null, role||null, email||null, active!=null?active:null, id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Responsable no encontrado' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/operations/assignees/:id', isAuthenticated, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM op_assignees WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 const PORT = process.env.PORT || 5000;
 const HOST = '0.0.0.0'; // Required for deployment
