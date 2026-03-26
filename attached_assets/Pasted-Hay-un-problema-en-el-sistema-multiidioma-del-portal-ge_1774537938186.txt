@@ -1,0 +1,85 @@
+Hay un problema en el sistema multiidioma del portal “gestión”. No está funcionando correctamente y necesito que lo corrijas sin rehacer toda la aplicación.
+
+OBJETIVO
+Revisar y reparar el sistema de idiomas existente para que el cambio de idioma funcione de forma estable, inmediata y consistente en todo el portal.
+
+IMPORTANTE
+- no crear una solución nueva desde cero si la actual se puede corregir
+- no agregar librerías pesadas
+- no sobrearquitectar
+- mantener el sistema liviano para Replit
+- corregir primero el bug, luego refactorizar solo si es necesario
+
+PROBLEMAS A REVISAR
+1. el selector de idioma no cambia todos los textos
+2. algunos textos siguen en el idioma anterior
+3. algunos textos no cargan al recargar la página
+4. el idioma guardado en localStorage no siempre se aplica
+5. algunos elementos dinámicos, botones, tabs o modales no traducen
+6. puede haber claves faltantes o mal escritas
+7. puede haber fetch incorrecto de archivos JSON
+8. puede haber problemas por cargar el script antes del DOM
+9. puede haber elementos con data-i18n incorrecto o inexistente
+
+TAREAS
+1. auditar la implementación actual del sistema de idiomas
+2. identificar la causa exacta del fallo
+3. corregir la lógica sin romper la UI actual
+4. validar que el idioma seleccionado se guarde y reaplique correctamente
+5. validar que los textos con data-i18n se actualicen al cambiar idioma
+6. validar que modales, tabs, menús y formularios también se traduzcan
+7. validar que no existan claves faltantes entre los JSON y el HTML
+8. agregar fallbacks seguros si una clave no existe
+9. mostrar errores claros en consola si falta una traducción o un archivo
+
+REVISAR ESTOS PUNTOS TÉCNICOS
+- que initLanguage() se ejecute correctamente al cargar
+- que changeLanguage(lang) realmente recargue y aplique traducciones
+- que applyTranslations() recorra todo el DOM necesario
+- que los archivos /locales/*.json carguen bien
+- que las claves data-i18n coincidan exactamente con los JSON
+- que localStorage use una sola key consistente, por ejemplo app_lang
+- que el idioma por defecto sea “es” si no hay valor guardado
+- que no haya textos hardcodeados sobrescribiendo la traducción
+- que elementos renderizados dinámicamente vuelvan a traducirse después de renderizarse
+
+SOLUCIÓN ESPERADA
+Asegura esta estructura mínima:
+
+- initLanguage()
+  - lee localStorage
+  - usa “es” como fallback
+  - carga el JSON correcto
+  - aplica traducciones al DOM
+
+- changeLanguage(lang)
+  - guarda localStorage
+  - carga traducciones
+  - aplica traducciones
+  - actualiza el estado visual del selector
+
+- applyTranslations(root = document)
+  - traduce todos los elementos con data-i18n
+  - también soporta:
+    - data-i18n-placeholder
+    - data-i18n-title
+    - data-i18n-value
+  - no falla silenciosamente
+
+- translateDynamicContent(container)
+  - se ejecuta después de abrir modales, tabs o contenido dinámico
+
+REGLAS
+- no rehacer todo si basta con corregir la lógica actual
+- reutilizar estructura existente
+- no usar frameworks o librerías extra
+- mantener código limpio, corto y estable
+- optimizar para bajo consumo en Replit
+
+ENTREGABLE
+1. sistema de idiomas corregido
+2. selector funcionando bien
+3. persistencia correcta del idioma
+4. traducción correcta en menú, dashboard, botones, formularios y módulo Operaciones
+5. manejo de errores para claves o archivos faltantes
+6. breve explicación de la causa raíz y de la corrección aplicada

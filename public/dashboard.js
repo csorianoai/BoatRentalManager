@@ -18,86 +18,10 @@ async function authFetch(url, options = {}) {
     }
 }
 
-// Multi-language support
-const translations = {
-    es: {
-        'dashboard-title': 'Dashboard de Inteligencia de Negocio',
-        'refresh': '🔄 Actualizar',
-        'date-range': 'Rango de Fecha:',
-        'today': 'Hoy',
-        'this-week': 'Esta Semana',
-        'this-month': 'Este Mes',
-        'quarter': 'Trimestre',
-        'custom': 'Personalizado',
-        'platform': 'Plataforma:',
-        'all-platforms': 'Todas las Plataformas',
-        'export-pdf': '📄 Exportar PDF',
-        'export-excel': '📊 Exportar Excel',
-        'today-bookings': 'Reservas Hoy',
-        'today-revenue': 'Ingresos Hoy',
-        'active-captains': 'Capitanes Activos',
-        'satisfaction': 'Satisfacción',
-        'of-total': 'de {count} total',
-        'avg-rating': 'Promedio',
-        'revenue-by-platform': 'Ingresos por Plataforma',
-        'monthly-trends': 'Tendencias Mensuales',
-        'booking-distribution': 'Distribución de Reservas',
-        'platform-leaderboard': '🏆 Ranking de Plataformas',
-        'captain-performance': 'Rendimiento de Capitanes',
-        'recent-bookings': 'Reservas Recientes',
-        'bookings': 'Reservas',
-        'revenue': 'Ingresos',
-        'view-all': 'Ver Todas',
-        'booking-id': 'ID',
-        'customer': 'Cliente',
-        'boat': 'Barco',
-        'date': 'Fecha',
-        'amount': 'Monto',
-        'status': 'Estado',
-        'last-updated': 'Última actualización:',
-        'auto-refresh': 'Actualización automática cada 30s'
-    },
-    en: {
-        'dashboard-title': 'Business Intelligence Dashboard',
-        'refresh': '🔄 Refresh',
-        'date-range': 'Date Range:',
-        'today': 'Today',
-        'this-week': 'This Week',
-        'this-month': 'This Month',
-        'quarter': 'Quarter',
-        'custom': 'Custom',
-        'platform': 'Platform:',
-        'all-platforms': 'All Platforms',
-        'export-pdf': '📄 Export PDF',
-        'export-excel': '📊 Export Excel',
-        'today-bookings': "Today's Bookings",
-        'today-revenue': "Today's Revenue",
-        'active-captains': 'Active Captains',
-        'satisfaction': 'Satisfaction',
-        'of-total': 'of {count} total',
-        'avg-rating': 'Average',
-        'revenue-by-platform': 'Revenue by Platform',
-        'monthly-trends': 'Monthly Trends',
-        'booking-distribution': 'Booking Distribution',
-        'platform-leaderboard': '🏆 Platform Leaderboard',
-        'captain-performance': 'Captain Performance',
-        'recent-bookings': 'Recent Bookings',
-        'bookings': 'Bookings',
-        'revenue': 'Revenue',
-        'view-all': 'View All',
-        'booking-id': 'ID',
-        'customer': 'Customer',
-        'boat': 'Boat',
-        'date': 'Date',
-        'amount': 'Amount',
-        'status': 'Status',
-        'last-updated': 'Last updated:',
-        'auto-refresh': 'Auto-refresh every 30s'
-    }
-};
-
-// Global state
-let currentLang = 'es';
+// Global state — idioma gestionado por i18n.js
+function getCurrentLang() {
+    return (window.i18n && window.i18n.current) ? window.i18n.current() : 'es';
+}
 let currentTheme = 'light';
 let charts = {};
 let refreshInterval;
@@ -118,7 +42,6 @@ document.addEventListener('DOMContentLoaded', () => {
 function initializeEventListeners() {
     document.getElementById('refreshBtn').addEventListener('click', loadDashboardData);
     document.getElementById('themeToggle').addEventListener('click', toggleTheme);
-    document.getElementById('langToggle').addEventListener('click', toggleLanguage);
     document.getElementById('dateRange').addEventListener('change', loadDashboardData);
     document.getElementById('platformFilter').addEventListener('change', loadDashboardData);
     document.getElementById('exportPDF').addEventListener('click', exportToPDF);
@@ -159,7 +82,7 @@ async function loadDashboardData() {
         // Update timestamp
         const lastUpdate = document.getElementById('lastUpdate');
         if (lastUpdate) {
-            lastUpdate.textContent = new Date().toLocaleString(currentLang === 'es' ? 'es-ES' : 'en-US');
+            lastUpdate.textContent = new Date().toLocaleString(getCurrentLang() === 'es' ? 'es-ES' : 'en-US');
         }
         
         hideLoadingState();
@@ -294,7 +217,7 @@ function updateMonthlyTrendsChart(data) {
     for (let i = 5; i >= 0; i--) {
         const date = new Date();
         date.setMonth(date.getMonth() - i);
-        months.push(date.toLocaleDateString(currentLang === 'es' ? 'es-ES' : 'en-US', { month: 'short', year: 'numeric' }));
+        months.push(date.toLocaleDateString(getCurrentLang() === 'es' ? 'es-ES' : 'en-US', { month: 'short', year: 'numeric' }));
         
         // Simulated data - in real app, fetch from API
         bookingsData.push(Math.floor(Math.random() * 50) + 20);
@@ -502,28 +425,6 @@ function toggleTheme() {
     }
 }
 
-// Language Toggle
-function toggleLanguage() {
-    currentLang = currentLang === 'es' ? 'en' : 'es';
-    document.getElementById('currentLang').textContent = currentLang.toUpperCase();
-    
-    // Update all translatable elements
-    document.querySelectorAll('[data-i18n]').forEach(element => {
-        const key = element.getAttribute('data-i18n');
-        element.textContent = translate(key);
-    });
-    
-    // Reload data to update charts
-    if (dashboardData) {
-        updateCharts(dashboardData);
-        updateKPIs(dashboardData);
-        updatePlatformLeaderboard(dashboardData);
-    }
-}
-
-function translate(key) {
-    return translations[currentLang][key] || key;
-}
 
 // Export Functions
 function exportToPDF() {

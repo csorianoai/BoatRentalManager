@@ -39,6 +39,8 @@ function switchTab(name) {
   if (name === 'timeline') { renderTimeline(); }
   if (name === 'categorias') { renderCategories(); }
   if (name === 'responsables') { renderAssignees(); }
+
+  if (window.i18n) window.i18n.apply();
 }
 
 // =====================================================================
@@ -263,10 +265,15 @@ function closeDetailModal() {
 // ---- TASK MODAL ----
 function openTaskModal(prefill = {}) {
   editingTaskId = null;
-  document.getElementById('task-modal-title').textContent = 'Nueva Tarea';
+  const titleEl = document.getElementById('task-modal-title');
+  if (titleEl) {
+    titleEl.setAttribute('data-i18n', 'ops.modal.new_task');
+    titleEl.textContent = window.i18n ? window.i18n.t('ops.modal.new_task') : 'Nueva Tarea';
+  }
   clearTaskForm();
   if (Object.keys(prefill).length) setTaskForm(prefill);
   document.getElementById('task-modal').classList.add('open');
+  if (window.i18n) window.i18n.translateDynamicContent(document.getElementById('task-modal'));
 }
 
 function closeTaskModal() {
@@ -278,9 +285,14 @@ function editTask(id) {
   const t = tasks.find(x => x.id === id);
   if (!t) return;
   editingTaskId = id;
-  document.getElementById('task-modal-title').textContent = 'Editar Tarea';
+  const titleEl = document.getElementById('task-modal-title');
+  if (titleEl) {
+    titleEl.setAttribute('data-i18n', 'ops.modal.edit_task');
+    titleEl.textContent = window.i18n ? window.i18n.t('ops.modal.edit_task') : 'Editar Tarea';
+  }
   setTaskForm(t);
   document.getElementById('task-modal').classList.add('open');
+  if (window.i18n) window.i18n.translateDynamicContent(document.getElementById('task-modal'));
 }
 
 function clearTaskForm() {
@@ -583,10 +595,15 @@ function renderCategories() {
 
 function openCatModal() {
   editingCatId = null;
-  document.getElementById('cat-modal-title').textContent = 'Nueva Categoría';
+  const titleEl = document.getElementById('cat-modal-title');
+  if (titleEl) {
+    titleEl.setAttribute('data-i18n', 'ops.modal.new_cat');
+    titleEl.textContent = window.i18n ? window.i18n.t('ops.modal.new_cat') : 'Nueva Categoría';
+  }
   document.getElementById('cat-name').value = '';
   document.getElementById('cat-color').value = '#0066cc';
   document.getElementById('cat-modal').classList.add('open');
+  if (window.i18n) window.i18n.translateDynamicContent(document.getElementById('cat-modal'));
 }
 
 function closeCatModal() {
@@ -598,10 +615,15 @@ function editCategory(id) {
   const c = categories.find(x => x.id === id);
   if (!c) return;
   editingCatId = id;
-  document.getElementById('cat-modal-title').textContent = 'Editar Categoría';
+  const titleEl = document.getElementById('cat-modal-title');
+  if (titleEl) {
+    titleEl.setAttribute('data-i18n', 'ops.modal.edit_cat');
+    titleEl.textContent = window.i18n ? window.i18n.t('ops.modal.edit_cat') : 'Editar Categoría';
+  }
   document.getElementById('cat-name').value = c.name;
   document.getElementById('cat-color').value = c.color || '#0066cc';
   document.getElementById('cat-modal').classList.add('open');
+  if (window.i18n) window.i18n.translateDynamicContent(document.getElementById('cat-modal'));
 }
 
 async function saveCategory() {
@@ -684,11 +706,16 @@ function renderAssignees() {
 
 function openAssigneeModal() {
   editingAssigneeId = null;
-  document.getElementById('assignee-modal-title').textContent = 'Nuevo Responsable';
+  const titleEl = document.getElementById('assignee-modal-title');
+  if (titleEl) {
+    titleEl.setAttribute('data-i18n', 'ops.modal.new_assignee');
+    titleEl.textContent = window.i18n ? window.i18n.t('ops.modal.new_assignee') : 'Nuevo Responsable';
+  }
   document.getElementById('assignee-name').value = '';
   document.getElementById('assignee-role').value = '';
   document.getElementById('assignee-email').value = '';
   document.getElementById('assignee-modal').classList.add('open');
+  if (window.i18n) window.i18n.translateDynamicContent(document.getElementById('assignee-modal'));
 }
 
 function closeAssigneeModal() {
@@ -700,11 +727,16 @@ function editAssignee(id) {
   const a = assignees.find(x => x.id === id);
   if (!a) return;
   editingAssigneeId = id;
-  document.getElementById('assignee-modal-title').textContent = 'Editar Responsable';
+  const titleEl = document.getElementById('assignee-modal-title');
+  if (titleEl) {
+    titleEl.setAttribute('data-i18n', 'ops.modal.edit_assignee');
+    titleEl.textContent = window.i18n ? window.i18n.t('ops.modal.edit_assignee') : 'Editar Responsable';
+  }
   document.getElementById('assignee-name').value = a.name;
   document.getElementById('assignee-role').value = a.role || '';
   document.getElementById('assignee-email').value = a.email || '';
   document.getElementById('assignee-modal').classList.add('open');
+  if (window.i18n) window.i18n.translateDynamicContent(document.getElementById('assignee-modal'));
 }
 
 async function saveAssignee() {
