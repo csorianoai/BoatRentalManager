@@ -433,16 +433,16 @@
         <!-- Header -->
         <header class="page-header">
             <div class="header-content">
-                <a href="/dashboard.html" class="back-btn" data-testid="link-back-dashboard">
-                    <span>&#8592;</span> Dashboard
+                <a href="/dashboard.html" class="back-btn" data-testid="link-back-dashboard" data-i18n="ops.back">
+                    ← Dashboard
                 </a>
                 <div>
-                    <h1 class="page-title">Operaciones</h1>
-                    <p class="page-subtitle">Agenda, tareas y seguimiento del negocio</p>
+                    <h1 class="page-title" data-i18n="ops.title">Operaciones</h1>
+                    <p class="page-subtitle" data-i18n="ops.subtitle">Agenda, tareas y seguimiento del negocio</p>
                 </div>
             </div>
             <div class="header-actions">
-                <button class="btn btn-primary" onclick="openTaskModal()" data-testid="button-new-task">
+                <button class="btn btn-primary" onclick="openTaskModal()" data-testid="button-new-task" data-i18n="ops.btn.new_task">
                     + Nueva Tarea
                 </button>
             </div>
@@ -450,37 +450,37 @@
 
         <!-- Tabs -->
         <div class="tabs">
-            <button class="tab active" onclick="switchTab('resumen')" data-testid="tab-resumen">Resumen</button>
-            <button class="tab" onclick="switchTab('tareas')" data-testid="tab-tareas">Tareas</button>
-            <button class="tab" onclick="switchTab('timeline')" data-testid="tab-timeline">Timeline</button>
-            <button class="tab" onclick="switchTab('categorias')" data-testid="tab-categorias">Categorias</button>
-            <button class="tab" onclick="switchTab('responsables')" data-testid="tab-responsables">Responsables</button>
+            <button class="tab active" onclick="switchTab('resumen')" data-testid="tab-resumen" data-i18n="ops.tab.summary">Resumen</button>
+            <button class="tab" onclick="switchTab('tareas')" data-testid="tab-tareas" data-i18n="ops.tab.tasks">Tareas</button>
+            <button class="tab" onclick="switchTab('timeline')" data-testid="tab-timeline" data-i18n="ops.tab.timeline">Timeline</button>
+            <button class="tab" onclick="switchTab('categorias')" data-testid="tab-categorias" data-i18n="ops.tab.categories">Categorías</button>
+            <button class="tab" onclick="switchTab('responsables')" data-testid="tab-responsables" data-i18n="ops.tab.assignees">Responsables</button>
         </div>
 
         <!-- ===== TAB: RESUMEN ===== -->
         <div id="tab-resumen" class="tab-content active">
             <div class="stat-grid" id="stat-grid">
-                <div class="stat-card"><div class="stat-num" id="stat-pendiente">—</div><div class="stat-label">Pendientes</div></div>
-                <div class="stat-card warning"><div class="stat-num" id="stat-en_progreso">—</div><div class="stat-label">En Progreso</div></div>
-                <div class="stat-card success"><div class="stat-num" id="stat-completada">—</div><div class="stat-label">Completadas</div></div>
-                <div class="stat-card danger"><div class="stat-num" id="stat-vencidas">—</div><div class="stat-label">Vencidas</div></div>
-                <div class="stat-card"><div class="stat-num" id="stat-total">—</div><div class="stat-label">Total Tareas</div></div>
+                <div class="stat-card"><div class="stat-num" id="stat-pendiente">—</div><div class="stat-label" data-i18n="ops.stat.pending">Pendientes</div></div>
+                <div class="stat-card warning"><div class="stat-num" id="stat-en_progreso">—</div><div class="stat-label" data-i18n="ops.stat.in_progress">En Progreso</div></div>
+                <div class="stat-card success"><div class="stat-num" id="stat-completada">—</div><div class="stat-label" data-i18n="ops.stat.completed">Completadas</div></div>
+                <div class="stat-card danger"><div class="stat-num" id="stat-vencidas">—</div><div class="stat-label" data-i18n="ops.stat.overdue">Vencidas</div></div>
+                <div class="stat-card"><div class="stat-num" id="stat-total">—</div><div class="stat-label" data-i18n="ops.stat.total">Total Tareas</div></div>
             </div>
 
             <div class="summary-cols">
                 <!-- Próximas fechas límite -->
                 <div class="card">
-                    <h3 style="margin: 0 0 16px; font-size: 16px;">Próximas Fechas Límite</h3>
+                    <h3 style="margin: 0 0 16px; font-size: 16px;" data-i18n="ops.summary.upcoming">Próximas Fechas Límite</h3>
                     <div id="upcoming-list"><div class="empty-state" style="padding:30px"><p>Sin tareas próximas</p></div></div>
                 </div>
                 <!-- Por categoría -->
                 <div class="card">
-                    <h3 style="margin: 0 0 16px; font-size: 16px;">Por Categoría</h3>
+                    <h3 style="margin: 0 0 16px; font-size: 16px;" data-i18n="ops.summary.by_category">Por Categoría</h3>
                     <div id="by-category-list"><div class="empty-state" style="padding:30px"><p>Sin datos</p></div></div>
                 </div>
                 <!-- Por responsable -->
                 <div class="card" style="grid-column: 1/-1;">
-                    <h3 style="margin: 0 0 16px; font-size: 16px;">Carga por Responsable</h3>
+                    <h3 style="margin: 0 0 16px; font-size: 16px;" data-i18n="ops.summary.by_assignee">Carga por Responsable</h3>
                     <div id="by-assignee-list"></div>
                 </div>
             </div>
@@ -491,42 +491,42 @@
             <!-- Filters -->
             <div class="filters-bar">
                 <div class="filter-group" style="flex: 2; min-width: 180px;">
-                    <label>Buscar</label>
-                    <input type="text" id="filter-search" placeholder="Título o descripción..." data-testid="input-search-task" oninput="debouncedLoadTasks()">
+                    <label data-i18n="ops.filter.search">Buscar</label>
+                    <input type="text" id="filter-search" placeholder="Título o descripción..." data-i18n="ops.filter.search_ph" data-i18n-attr="placeholder" data-testid="input-search-task" oninput="debouncedLoadTasks()">
                 </div>
                 <div class="filter-group">
-                    <label>Estado</label>
+                    <label data-i18n="ops.filter.status">Estado</label>
                     <select id="filter-status" onchange="loadTasks()" data-testid="select-filter-status">
-                        <option value="">Todos</option>
-                        <option value="pendiente">Pendiente</option>
-                        <option value="en_progreso">En Progreso</option>
-                        <option value="completada">Completada</option>
-                        <option value="pausada">Pausada</option>
-                        <option value="cancelada">Cancelada</option>
+                        <option value="" data-i18n="ops.filter.all">Todos</option>
+                        <option value="pendiente" data-i18n="ops.status.pending">Pendiente</option>
+                        <option value="en_progreso" data-i18n="ops.status.in_progress">En Progreso</option>
+                        <option value="completada" data-i18n="ops.status.completed">Completada</option>
+                        <option value="pausada" data-i18n="ops.status.paused">Pausada</option>
+                        <option value="cancelada" data-i18n="ops.status.cancelled">Cancelada</option>
                     </select>
                 </div>
                 <div class="filter-group">
-                    <label>Prioridad</label>
+                    <label data-i18n="ops.filter.priority">Prioridad</label>
                     <select id="filter-priority" onchange="loadTasks()" data-testid="select-filter-priority">
-                        <option value="">Todas</option>
-                        <option value="alta">Alta</option>
-                        <option value="media">Media</option>
-                        <option value="baja">Baja</option>
+                        <option value="" data-i18n="ops.filter.all_f">Todas</option>
+                        <option value="alta" data-i18n="ops.priority.high">Alta</option>
+                        <option value="media" data-i18n="ops.priority.medium">Media</option>
+                        <option value="baja" data-i18n="ops.priority.low">Baja</option>
                     </select>
                 </div>
                 <div class="filter-group">
-                    <label>Categoría</label>
+                    <label data-i18n="ops.filter.category">Categoría</label>
                     <select id="filter-category" onchange="loadTasks()" data-testid="select-filter-category">
-                        <option value="">Todas</option>
+                        <option value="" data-i18n="ops.filter.all_f">Todas</option>
                     </select>
                 </div>
                 <div class="filter-group">
-                    <label>Responsable</label>
+                    <label data-i18n="ops.filter.assignee">Responsable</label>
                     <select id="filter-assignee" onchange="loadTasks()" data-testid="select-filter-assignee">
-                        <option value="">Todos</option>
+                        <option value="" data-i18n="ops.filter.all">Todos</option>
                     </select>
                 </div>
-                <button class="btn btn-secondary btn-sm" onclick="clearFilters()">Limpiar</button>
+                <button class="btn btn-secondary btn-sm" onclick="clearFilters()" data-i18n="ops.btn.clear">Limpiar</button>
             </div>
 
             <!-- Action row -->
@@ -534,7 +534,7 @@
                 <div class="action-row-left">
                     <span id="task-count" style="font-size:13px;color:#888;"></span>
                 </div>
-                <button class="btn btn-primary" onclick="openTaskModal()" data-testid="button-add-task">
+                <button class="btn btn-primary" onclick="openTaskModal()" data-testid="button-add-task" data-i18n="ops.btn.new_task">
                     + Nueva Tarea
                 </button>
             </div>
@@ -544,13 +544,13 @@
                 <table class="task-table" id="tasks-table">
                     <thead>
                         <tr>
-                            <th>Tarea</th>
-                            <th>Categoría</th>
-                            <th>Prioridad</th>
-                            <th>Estado</th>
-                            <th>Responsable</th>
-                            <th>Vencimiento</th>
-                            <th>Acciones</th>
+                            <th data-i18n="ops.table.task">Tarea</th>
+                            <th data-i18n="ops.table.category">Categoría</th>
+                            <th data-i18n="ops.table.priority">Prioridad</th>
+                            <th data-i18n="ops.table.status">Estado</th>
+                            <th data-i18n="ops.table.assignee">Responsable</th>
+                            <th data-i18n="ops.table.due">Vencimiento</th>
+                            <th data-i18n="ops.table.actions">Acciones</th>
                         </tr>
                     </thead>
                     <tbody id="tasks-tbody">
@@ -603,93 +603,93 @@
             <div class="modal-body">
                 <div class="form-grid">
                     <div class="form-group full">
-                        <label>Título *</label>
+                        <label data-i18n="ops.field.title">Título *</label>
                         <input type="text" id="task-title" placeholder="Ej: Reparar motor del CRANCHI" data-testid="input-task-title">
                     </div>
                     <div class="form-group full">
-                        <label>Descripción</label>
+                        <label data-i18n="ops.field.description">Descripción</label>
                         <textarea id="task-description" placeholder="Detalle de la tarea..." rows="3" data-testid="input-task-description"></textarea>
                     </div>
                     <div class="form-group">
-                        <label>Categoría</label>
+                        <label data-i18n="ops.field.category">Categoría</label>
                         <select id="task-category" data-testid="select-task-category">
                             <option value="">Sin categoría</option>
                         </select>
                     </div>
                     <div class="form-group">
-                        <label>Responsable</label>
+                        <label data-i18n="ops.field.assignee">Responsable</label>
                         <select id="task-assignee" data-testid="select-task-assignee">
                             <option value="">Sin asignar</option>
                         </select>
                     </div>
                     <div class="form-group">
-                        <label>Prioridad</label>
+                        <label data-i18n="ops.field.priority">Prioridad</label>
                         <select id="task-priority" data-testid="select-task-priority">
-                            <option value="alta">Alta</option>
-                            <option value="media" selected>Media</option>
-                            <option value="baja">Baja</option>
+                            <option value="alta" data-i18n="ops.priority.high">Alta</option>
+                            <option value="media" selected data-i18n="ops.priority.medium">Media</option>
+                            <option value="baja" data-i18n="ops.priority.low">Baja</option>
                         </select>
                     </div>
                     <div class="form-group">
-                        <label>Estado</label>
+                        <label data-i18n="ops.field.status">Estado</label>
                         <select id="task-status" data-testid="select-task-status">
-                            <option value="pendiente" selected>Pendiente</option>
-                            <option value="en_progreso">En Progreso</option>
-                            <option value="completada">Completada</option>
-                            <option value="pausada">Pausada</option>
-                            <option value="cancelada">Cancelada</option>
+                            <option value="pendiente" selected data-i18n="ops.status.pending">Pendiente</option>
+                            <option value="en_progreso" data-i18n="ops.status.in_progress">En Progreso</option>
+                            <option value="completada" data-i18n="ops.status.completed">Completada</option>
+                            <option value="pausada" data-i18n="ops.status.paused">Pausada</option>
+                            <option value="cancelada" data-i18n="ops.status.cancelled">Cancelada</option>
                         </select>
                     </div>
                     <div class="form-group">
-                        <label>Fecha de Inicio</label>
+                        <label data-i18n="ops.field.start_date">Fecha de Inicio</label>
                         <input type="date" id="task-start-date" data-testid="input-task-start-date">
                     </div>
                     <div class="form-group">
-                        <label>Fecha Límite</label>
+                        <label data-i18n="ops.field.due_date">Fecha Límite</label>
                         <input type="date" id="task-due-date" data-testid="input-task-due-date">
                     </div>
                     <div class="form-group">
-                        <label>Horas Estimadas</label>
+                        <label data-i18n="ops.field.est_hours">Horas Estimadas</label>
                         <input type="number" id="task-estimated-hours" step="0.5" min="0" placeholder="ej: 2.5" data-testid="input-task-estimated-hours">
                     </div>
                     <div class="form-group">
-                        <label>Monto Relacionado ($)</label>
+                        <label data-i18n="ops.field.amount">Monto Relacionado ($)</label>
                         <input type="number" id="task-amount" step="0.01" min="0" placeholder="0.00" data-testid="input-task-amount">
                     </div>
                     <div class="form-group full">
-                        <label>Comentarios Internos</label>
+                        <label data-i18n="ops.field.comments">Comentarios Internos</label>
                         <textarea id="task-comments" rows="2" placeholder="Notas internas..." data-testid="input-task-comments"></textarea>
                     </div>
                     <div class="form-group full">
-                        <label>Etiquetas (separadas por comas)</label>
+                        <label data-i18n="ops.field.tags">Etiquetas (separadas por comas)</label>
                         <input type="text" id="task-tags" placeholder="ej: urgente, cliente vip" data-testid="input-task-tags">
                     </div>
 
-                    <div class="form-section-title">Entidad Relacionada</div>
+                    <div class="form-section-title" data-i18n="ops.field.entity_type">Entidad Relacionada</div>
                     <div class="form-group">
-                        <label>Tipo de Entidad</label>
+                        <label data-i18n="ops.field.entity_type">Tipo de Entidad</label>
                         <select id="task-entity-type" data-testid="select-task-entity-type">
                             <option value="">Sin relación</option>
-                            <option value="bote">Bote</option>
-                            <option value="cliente">Cliente</option>
-                            <option value="contrato">Contrato</option>
+                            <option value="bote" data-i18n="ops.entity.boat">Bote</option>
+                            <option value="cliente" data-i18n="ops.entity.customer">Cliente</option>
+                            <option value="contrato" data-i18n="ops.entity.contract">Contrato</option>
                             <option value="gasto">Gasto</option>
                             <option value="ingreso">Ingreso</option>
                             <option value="listing">Listing</option>
                         </select>
                     </div>
                     <div class="form-group">
-                        <label>ID / Referencia de Entidad</label>
+                        <label data-i18n="ops.field.entity_id">ID / Referencia de Entidad</label>
                         <input type="text" id="task-entity-id" placeholder="ID del registro relacionado" data-testid="input-task-entity-id">
                     </div>
 
                     <div class="form-section-title">Ubicación</div>
                     <div class="form-group full">
-                        <label>Nombre del Lugar</label>
+                        <label data-i18n="ops.field.location">Nombre del Lugar</label>
                         <input type="text" id="task-location-name" placeholder="ej: Marina Capone, Muelle 3" data-testid="input-task-location-name">
                     </div>
                     <div class="form-group full">
-                        <label>Dirección</label>
+                        <label data-i18n="ops.field.address">Dirección</label>
                         <input type="text" id="task-location-address" placeholder="Dirección completa" data-testid="input-task-location-address">
                     </div>
 
@@ -711,8 +711,8 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeTaskModal()">Cancelar</button>
-                <button class="btn btn-primary" onclick="saveTask()" data-testid="button-save-task">Guardar Tarea</button>
+                <button class="btn btn-secondary" onclick="closeTaskModal()" data-i18n="ops.btn.cancel">Cancelar</button>
+                <button class="btn btn-primary" onclick="saveTask()" data-testid="button-save-task" data-i18n="ops.btn.save_task">Guardar Tarea</button>
             </div>
         </div>
     </div>
@@ -721,7 +721,7 @@
     <div class="modal-overlay" id="detail-modal">
         <div class="modal">
             <div class="modal-header">
-                <h3 id="detail-title">Detalle de Tarea</h3>
+                <h3 id="detail-title" data-i18n="ops.modal.task_detail">Detalle de Tarea</h3>
                 <button class="modal-close" onclick="closeDetailModal()">&times;</button>
             </div>
             <div class="modal-body" id="detail-body"></div>
@@ -733,22 +733,22 @@
     <div class="modal-overlay" id="cat-modal">
         <div class="modal" style="max-width:420px;">
             <div class="modal-header">
-                <h3 id="cat-modal-title">Nueva Categoría</h3>
+                <h3 id="cat-modal-title" data-i18n="ops.modal.new_cat">Nueva Categoría</h3>
                 <button class="modal-close" onclick="closeCatModal()">&times;</button>
             </div>
             <div class="modal-body">
                 <div class="form-group" style="margin-bottom:14px;">
-                    <label>Nombre *</label>
+                    <label data-i18n="ops.field.cat_name">Nombre *</label>
                     <input type="text" id="cat-name" placeholder="Nombre de la categoría" data-testid="input-cat-name">
                 </div>
                 <div class="form-group" style="margin-bottom:14px;">
-                    <label>Color</label>
+                    <label data-i18n="ops.field.cat_color">Color</label>
                     <input type="color" id="cat-color" value="#0066cc" data-testid="input-cat-color" style="height:38px;padding:2px;border-radius:6px;border:1px solid #ddd;cursor:pointer;width:100%;">
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeCatModal()">Cancelar</button>
-                <button class="btn btn-primary" onclick="saveCategory()" data-testid="button-save-category">Guardar</button>
+                <button class="btn btn-secondary" onclick="closeCatModal()" data-i18n="ops.btn.cancel">Cancelar</button>
+                <button class="btn btn-primary" onclick="saveCategory()" data-testid="button-save-category" data-i18n="ops.btn.save">Guardar</button>
             </div>
         </div>
     </div>
@@ -757,30 +757,31 @@
     <div class="modal-overlay" id="assignee-modal">
         <div class="modal" style="max-width:420px;">
             <div class="modal-header">
-                <h3 id="assignee-modal-title">Nuevo Responsable</h3>
+                <h3 id="assignee-modal-title" data-i18n="ops.modal.new_assignee">Nuevo Responsable</h3>
                 <button class="modal-close" onclick="closeAssigneeModal()">&times;</button>
             </div>
             <div class="modal-body">
                 <div class="form-group" style="margin-bottom:14px;">
-                    <label>Nombre *</label>
+                    <label data-i18n="ops.field.assignee_name">Nombre *</label>
                     <input type="text" id="assignee-name" placeholder="Nombre completo" data-testid="input-assignee-name">
                 </div>
                 <div class="form-group" style="margin-bottom:14px;">
-                    <label>Rol</label>
+                    <label data-i18n="ops.field.assignee_role">Rol</label>
                     <input type="text" id="assignee-role" placeholder="ej: Capitán, Administrador" data-testid="input-assignee-role">
                 </div>
                 <div class="form-group">
-                    <label>Email</label>
+                    <label data-i18n="ops.field.assignee_email">Email</label>
                     <input type="email" id="assignee-email" placeholder="email@ejemplo.com" data-testid="input-assignee-email">
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeAssigneeModal()">Cancelar</button>
-                <button class="btn btn-primary" onclick="saveAssignee()" data-testid="button-save-assignee">Guardar</button>
+                <button class="btn btn-secondary" onclick="closeAssigneeModal()" data-i18n="ops.btn.cancel">Cancelar</button>
+                <button class="btn btn-primary" onclick="saveAssignee()" data-testid="button-save-assignee" data-i18n="ops.btn.save">Guardar</button>
             </div>
         </div>
     </div>
 
+    <script src="/i18n.js"></script>
     <script src="operations.js"></script>
 </body>
 </html>

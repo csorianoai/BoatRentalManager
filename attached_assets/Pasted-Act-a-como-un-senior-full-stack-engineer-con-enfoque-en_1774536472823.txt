@@ -1,0 +1,210 @@
+Actúa como un senior full-stack engineer con enfoque en performance y simplicidad. No quiero una app nueva. Quiero agregar soporte multiidioma dentro del sistema existente “gestión”, integrado de forma nativa y con el menor consumo posible en Replit.
+
+OBJETIVO
+Implementar un sistema de internacionalización (i18n) ligero, escalable y sin dependencias pesadas, que permita cambiar el idioma del portal mediante un selector visual con banderas, manteniendo consistencia con la UI actual.
+
+PRINCIPIOS CLAVE
+- No usar librerías externas pesadas (i18next, etc.)
+- No usar APIs de traducción en tiempo real
+- No duplicar vistas ni componentes
+- No romper funcionalidades existentes
+- Mantener código simple, modular y extensible
+- Optimizar para bajo consumo en Replit
+- Preparar base para escalar a más idiomas sin refactor
+
+==================================================
+1. IDIOMAS SOPORTADOS (MVP)
+==================================================
+
+Implementar estos idiomas iniciales:
+- Español (es) [default]
+- Inglés (en)
+- Francés (fr)
+- Italiano (it)
+- Portugués (pt)
+
+Diseñar el sistema para agregar nuevos idiomas fácilmente sin cambiar lógica core.
+
+==================================================
+2. SELECTOR DE IDIOMA (UI)
+==================================================
+
+Agregar un selector visible en el header/topbar del sistema “gestión”.
+
+FORMATO:
+🇪🇸 ES | 🇺🇸 EN | 🇫🇷 FR | 🇮🇹 IT | 🇵🇹 PT
+
+REQUISITOS:
+- debe integrarse con el diseño actual (no crear UI nueva)
+- debe ser liviano (HTML/CSS simple)
+- cada opción cambia el idioma inmediatamente
+- indicar idioma activo visualmente
+- accesible desde cualquier pantalla
+
+==================================================
+3. PERSISTENCIA
+==================================================
+
+- guardar idioma seleccionado en localStorage (key: app_lang)
+- al cargar la app, aplicar automáticamente el idioma guardado
+- fallback a “es” si no hay selección
+
+==================================================
+4. ARQUITECTURA DE TRADUCCIONES
+==================================================
+
+Usar archivos JSON por idioma.
+
+ESTRUCTURA:
+- /locales/es.json
+- /locales/en.json
+- /locales/fr.json
+- /locales/it.json
+- /locales/pt.json
+
+FORMATO JSON (plano y simple):
+{
+  "menu.dashboard": "Dashboard",
+  "menu.operations": "Operaciones",
+  "button.create_task": "Crear tarea",
+  "task.status.pending": "Pendiente"
+}
+
+REGLAS:
+- usar claves consistentes y jerárquicas
+- no hardcodear textos en HTML
+- evitar nesting profundo para reducir complejidad
+
+==================================================
+5. INTEGRACIÓN CON UI
+==================================================
+
+Todos los textos visibles deben usar atributos:
+
+data-i18n="clave.traduccion"
+
+Ejemplo:
+<button data-i18n="button.create_task"></button>
+
+NO usar innerText fijo en HTML.
+
+==================================================
+6. MOTOR DE TRADUCCIÓN (CORE JS)
+==================================================
+
+Implementar una función global simple:
+
+changeLanguage(lang)
+
+FUNCIONES REQUERIDAS:
+
+1. loadLanguage(lang)
+- carga JSON correspondiente
+- guarda en memoria
+
+2. applyTranslations()
+- recorre DOM
+- busca elementos con data-i18n
+- reemplaza texto con traducción
+
+3. changeLanguage(lang)
+- guarda en localStorage
+- carga idioma
+- aplica traducciones
+
+4. initLanguage()
+- se ejecuta al cargar app
+- detecta idioma guardado
+- carga y aplica
+
+OPTIMIZACIÓN:
+- cachear traducciones en memoria
+- no recargar JSON innecesariamente
+- evitar re-render completo
+
+==================================================
+7. ALCANCE MVP (QUÉ TRADUCIR)
+==================================================
+
+Traducir inicialmente:
+
+A. Navegación
+- menú principal
+- sidebar
+- tabs
+
+B. Dashboard
+- títulos
+- métricas
+- labels
+
+C. Módulo Operaciones
+- botones (crear tarea, editar, etc.)
+- estados (pendiente, completado, etc.)
+- categorías
+- formularios
+
+D. Formularios principales
+- labels
+- placeholders
+- botones
+
+E. Mensajes comunes
+- errores básicos
+- estados vacíos
+
+NO traducir aún:
+- contenido dinámico complejo
+- datos de usuario
+- textos generados por backend (fase futura)
+
+==================================================
+8. COMPATIBILIDAD FUTURA
+==================================================
+
+Preparar estructura para:
+- traducción de modales dinámicos
+- tablas
+- notificaciones
+- validaciones
+- backend-driven text
+
+No implementarlo ahora, solo dejar arquitectura lista.
+
+==================================================
+9. RENDIMIENTO (CRÍTICO)
+==================================================
+
+- no usar frameworks adicionales
+- no usar librerías de i18n
+- no hacer múltiples fetch innecesarios
+- cargar solo 1 idioma activo
+- minimizar manipulación del DOM
+- reutilizar funciones existentes
+
+==================================================
+10. INTEGRACIÓN CON “GESTIÓN”
+==================================================
+
+- integrar sin modificar arquitectura principal
+- reutilizar layout actual
+- no duplicar componentes
+- no crear rutas nuevas innecesarias
+- mantener consistencia visual total
+
+==================================================
+11. ENTREGABLE
+==================================================
+
+- selector de idioma funcional con banderas
+- sistema de traducción basado en JSON
+- motor JS simple y eficiente
+- textos principales traducidos
+- persistencia de idioma
+- estructura lista para escalar
+
+==================================================
+12. REGLA FINAL
+==================================================
+
+Construir la solución más simple posible que funcione bien hoy, pero que no obligue a rehacer todo mañana.
