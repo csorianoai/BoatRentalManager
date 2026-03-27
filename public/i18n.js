@@ -85,6 +85,9 @@
     document.querySelectorAll('.i18n-option').forEach(function (btn) {
       btn.classList.toggle('i18n-active', btn.dataset.lang === currentLang);
     });
+    try {
+      document.dispatchEvent(new CustomEvent('i18n:applied', { detail: { lang: currentLang } }));
+    } catch (e) {}
   }
 
   /* ─── Traducir contenido dinámico (modales, tabs, etc.) ─── */

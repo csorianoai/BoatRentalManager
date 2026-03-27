@@ -14,7 +14,7 @@
   "today-bookings": "Réservations Aujourd'hui",
   "today-revenue": "Revenus Aujourd'hui",
   "active-captains": "Capitaines Actifs",
-  "of-total": "du total",
+  "of-total": "sur {count} au total",
   "satisfaction": "Satisfaction",
   "avg-rating": "Moyenne",
   "revenue-by-platform": "Revenus par Plateforme",
@@ -34,7 +34,6 @@
   "customer": "Client",
   "boat": "Bateau",
   "booking-id": "ID Réservation",
-
   "nav.dashboard": "Tableau de bord",
   "nav.calendar": "Calendrier",
   "nav.commissions": "Commissions",
@@ -47,7 +46,6 @@
   "nav.fleet": "Flotte",
   "nav.operations": "Opérations",
   "nav.logout": "🚪 Déconnexion",
-
   "ops.title": "Opérations",
   "ops.subtitle": "Agenda, tâches et suivi métier",
   "ops.back": "← Tableau de bord",
@@ -62,23 +60,19 @@
   "ops.btn.duplicate": "Dupliquer",
   "ops.btn.send_expense": "Envoyer aux Dépenses",
   "ops.btn.clear": "Effacer",
-
   "ops.tab.summary": "Résumé",
   "ops.tab.tasks": "Tâches",
   "ops.tab.timeline": "Chronologie",
   "ops.tab.categories": "Catégories",
   "ops.tab.assignees": "Responsables",
-
   "ops.stat.pending": "En attente",
   "ops.stat.in_progress": "En cours",
   "ops.stat.completed": "Terminées",
   "ops.stat.overdue": "En retard",
   "ops.stat.total": "Total Tâches",
-
   "ops.summary.upcoming": "Prochaines Échéances",
   "ops.summary.by_category": "Par Catégorie",
   "ops.summary.by_assignee": "Charge par Responsable",
-
   "ops.filter.search": "Rechercher",
   "ops.filter.search_ph": "Titre ou description...",
   "ops.filter.status": "Statut",
@@ -87,7 +81,6 @@
   "ops.filter.assignee": "Responsable",
   "ops.filter.all": "Tous",
   "ops.filter.all_f": "Toutes",
-
   "ops.table.task": "Tâche",
   "ops.table.category": "Catégorie",
   "ops.table.priority": "Priorité",
@@ -95,17 +88,14 @@
   "ops.table.assignee": "Responsable",
   "ops.table.due": "Échéance",
   "ops.table.actions": "Actions",
-
   "ops.status.pending": "En attente",
   "ops.status.in_progress": "En cours",
   "ops.status.completed": "Terminée",
   "ops.status.paused": "En pause",
   "ops.status.cancelled": "Annulée",
-
   "ops.priority.high": "Haute",
   "ops.priority.medium": "Moyenne",
   "ops.priority.low": "Basse",
-
   "ops.field.title": "Titre *",
   "ops.field.description": "Description",
   "ops.field.category": "Catégorie",
@@ -127,7 +117,6 @@
   "ops.field.assignee_name": "Nom *",
   "ops.field.assignee_role": "Rôle",
   "ops.field.assignee_email": "Email",
-
   "ops.modal.new_task": "Nouvelle Tâche",
   "ops.modal.edit_task": "Modifier la Tâche",
   "ops.modal.task_detail": "Détail de la Tâche",
@@ -135,19 +124,16 @@
   "ops.modal.edit_cat": "Modifier la Catégorie",
   "ops.modal.new_assignee": "Nouveau Responsable",
   "ops.modal.edit_assignee": "Modifier le Responsable",
-
   "ops.entity.boat": "Bateau",
   "ops.entity.customer": "Client",
   "ops.entity.contract": "Contrat",
   "ops.entity.booking": "Réservation",
   "ops.entity.supplier": "Fournisseur",
   "ops.entity.other": "Autre",
-
   "ops.tl.weekly": "Semaine",
   "ops.tl.monthly": "Mois",
   "ops.tl.prev": "← Précédent",
   "ops.tl.next": "Suivant →",
-
   "common.loading": "Chargement...",
   "common.error": "Erreur de chargement",
   "common.empty": "Aucune donnée",

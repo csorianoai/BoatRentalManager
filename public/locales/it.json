@@ -14,7 +14,7 @@
   "today-bookings": "Prenotazioni Oggi",
   "today-revenue": "Entrate Oggi",
   "active-captains": "Capitani Attivi",
-  "of-total": "del totale",
+  "of-total": "di {count} totali",
   "satisfaction": "Soddisfazione",
   "avg-rating": "Media",
   "revenue-by-platform": "Entrate per Piattaforma",
@@ -34,7 +34,6 @@
   "customer": "Cliente",
   "boat": "Imbarcazione",
   "booking-id": "ID Prenotazione",
-
   "nav.dashboard": "Dashboard",
   "nav.calendar": "Calendario",
   "nav.commissions": "Commissioni",
@@ -47,7 +46,6 @@
   "nav.fleet": "Flotta",
   "nav.operations": "Operazioni",
   "nav.logout": "🚪 Esci",
-
   "ops.title": "Operazioni",
   "ops.subtitle": "Agenda, compiti e monitoraggio aziendale",
   "ops.back": "← Dashboard",
@@ -62,23 +60,19 @@
   "ops.btn.duplicate": "Duplica",
   "ops.btn.send_expense": "Invia a Spese",
   "ops.btn.clear": "Cancella",
-
   "ops.tab.summary": "Riepilogo",
   "ops.tab.tasks": "Compiti",
   "ops.tab.timeline": "Cronologia",
   "ops.tab.categories": "Categorie",
   "ops.tab.assignees": "Responsabili",
-
   "ops.stat.pending": "In attesa",
   "ops.stat.in_progress": "In corso",
   "ops.stat.completed": "Completati",
   "ops.stat.overdue": "Scaduti",
   "ops.stat.total": "Totale Compiti",
-
   "ops.summary.upcoming": "Prossime Scadenze",
   "ops.summary.by_category": "Per Categoria",
   "ops.summary.by_assignee": "Carico per Responsabile",
-
   "ops.filter.search": "Cerca",
   "ops.filter.search_ph": "Titolo o descrizione...",
   "ops.filter.status": "Stato",
@@ -87,7 +81,6 @@
   "ops.filter.assignee": "Responsabile",
   "ops.filter.all": "Tutti",
   "ops.filter.all_f": "Tutte",
-
   "ops.table.task": "Compito",
   "ops.table.category": "Categoria",
   "ops.table.priority": "Priorità",
@@ -95,17 +88,14 @@
   "ops.table.assignee": "Responsabile",
   "ops.table.due": "Scadenza",
   "ops.table.actions": "Azioni",
-
   "ops.status.pending": "In attesa",
   "ops.status.in_progress": "In corso",
   "ops.status.completed": "Completata",
   "ops.status.paused": "In pausa",
   "ops.status.cancelled": "Annullata",
-
   "ops.priority.high": "Alta",
   "ops.priority.medium": "Media",
   "ops.priority.low": "Bassa",
-
   "ops.field.title": "Titolo *",
   "ops.field.description": "Descrizione",
   "ops.field.category": "Categoria",
@@ -127,7 +117,6 @@
   "ops.field.assignee_name": "Nome *",
   "ops.field.assignee_role": "Ruolo",
   "ops.field.assignee_email": "Email",
-
   "ops.modal.new_task": "Nuovo Compito",
   "ops.modal.edit_task": "Modifica Compito",
   "ops.modal.task_detail": "Dettaglio Compito",
@@ -135,19 +124,16 @@
   "ops.modal.edit_cat": "Modifica Categoria",
   "ops.modal.new_assignee": "Nuovo Responsabile",
   "ops.modal.edit_assignee": "Modifica Responsabile",
-
   "ops.entity.boat": "Imbarcazione",
   "ops.entity.customer": "Cliente",
   "ops.entity.contract": "Contratto",
   "ops.entity.booking": "Prenotazione",
   "ops.entity.supplier": "Fornitore",
   "ops.entity.other": "Altro",
-
   "ops.tl.weekly": "Settimana",
   "ops.tl.monthly": "Mese",
   "ops.tl.prev": "← Precedente",
   "ops.tl.next": "Successivo →",
-
   "common.loading": "Caricamento...",
   "common.error": "Errore nel caricamento",
   "common.empty": "Nessun dato",

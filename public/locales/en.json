@@ -14,7 +14,7 @@
   "today-bookings": "Today's Bookings",
   "today-revenue": "Today's Revenue",
   "active-captains": "Active Captains",
-  "of-total": "of total",
+  "of-total": "of {count} total",
   "satisfaction": "Satisfaction",
   "avg-rating": "Average",
   "revenue-by-platform": "Revenue by Platform",
@@ -34,7 +34,6 @@
   "customer": "Customer",
   "boat": "Boat",
   "booking-id": "Booking ID",
-
   "nav.dashboard": "Dashboard",
   "nav.calendar": "Calendar",
   "nav.commissions": "Commissions",
@@ -47,7 +46,6 @@
   "nav.fleet": "Fleet",
   "nav.operations": "Operations",
   "nav.logout": "🚪 Sign Out",
-
   "ops.title": "Operations",
   "ops.subtitle": "Task management and business tracking",
   "ops.back": "← Dashboard",
@@ -62,23 +60,19 @@
   "ops.btn.duplicate": "Duplicate",
   "ops.btn.send_expense": "Send to Expenses",
   "ops.btn.clear": "Clear",
-
   "ops.tab.summary": "Summary",
   "ops.tab.tasks": "Tasks",
   "ops.tab.timeline": "Timeline",
   "ops.tab.categories": "Categories",
   "ops.tab.assignees": "Assignees",
-
   "ops.stat.pending": "Pending",
   "ops.stat.in_progress": "In Progress",
   "ops.stat.completed": "Completed",
   "ops.stat.overdue": "Overdue",
   "ops.stat.total": "Total Tasks",
-
   "ops.summary.upcoming": "Upcoming Deadlines",
   "ops.summary.by_category": "By Category",
   "ops.summary.by_assignee": "Workload by Assignee",
-
   "ops.filter.search": "Search",
   "ops.filter.search_ph": "Title or description...",
   "ops.filter.status": "Status",
@@ -87,7 +81,6 @@
   "ops.filter.assignee": "Assignee",
   "ops.filter.all": "All",
   "ops.filter.all_f": "All",
-
   "ops.table.task": "Task",
   "ops.table.category": "Category",
   "ops.table.priority": "Priority",
@@ -95,17 +88,14 @@
   "ops.table.assignee": "Assignee",
   "ops.table.due": "Due Date",
   "ops.table.actions": "Actions",
-
   "ops.status.pending": "Pending",
   "ops.status.in_progress": "In Progress",
   "ops.status.completed": "Completed",
   "ops.status.paused": "Paused",
   "ops.status.cancelled": "Cancelled",
-
   "ops.priority.high": "High",
   "ops.priority.medium": "Medium",
   "ops.priority.low": "Low",
-
   "ops.field.title": "Title *",
   "ops.field.description": "Description",
   "ops.field.category": "Category",
@@ -127,7 +117,6 @@
   "ops.field.assignee_name": "Name *",
   "ops.field.assignee_role": "Role",
   "ops.field.assignee_email": "Email",
-
   "ops.modal.new_task": "New Task",
   "ops.modal.edit_task": "Edit Task",
   "ops.modal.task_detail": "Task Detail",
@@ -135,19 +124,16 @@
   "ops.modal.edit_cat": "Edit Category",
   "ops.modal.new_assignee": "New Assignee",
   "ops.modal.edit_assignee": "Edit Assignee",
-
   "ops.entity.boat": "Boat",
   "ops.entity.customer": "Customer",
   "ops.entity.contract": "Contract",
   "ops.entity.booking": "Booking",
   "ops.entity.supplier": "Supplier",
   "ops.entity.other": "Other",
-
   "ops.tl.weekly": "Week",
   "ops.tl.monthly": "Month",
   "ops.tl.prev": "← Previous",
   "ops.tl.next": "Next →",
-
   "common.loading": "Loading...",
   "common.error": "Error loading data",
   "common.empty": "No data",

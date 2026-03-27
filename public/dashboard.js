@@ -22,10 +22,26 @@ async function authFetch(url, options = {}) {
 function getCurrentLang() {
     return (window.i18n && window.i18n.current) ? window.i18n.current() : 'es';
 }
+function __(key) {
+    return (window.i18n && window.i18n.t) ? window.i18n.t(key) : key;
+}
 let currentTheme = 'light';
 let charts = {};
 let refreshInterval;
 let dashboardData = null;
+let lastPlatformsList = [];
+
+// Refresh dynamic content when language changes
+document.addEventListener('i18n:applied', function () {
+    if (dashboardData) {
+        updateKPIs(dashboardData);
+        updateCharts(dashboardData);
+        updatePlatformLeaderboard(dashboardData);
+    }
+    if (lastPlatformsList.length) {
+        updatePlatformFilter(lastPlatformsList);
+    }
+});
 
 // API Configuration
 const API_BASE = window.location.origin;
@@ -60,6 +76,7 @@ async function loadDashboardData() {
         // Fetch platforms
         const platformsResponse = await authFetch(`${API_BASE}/api/platforms`);
         const platforms = await platformsResponse.json();
+        lastPlatformsList = platforms;
         
         // Update platform filter
         updatePlatformFilter(platforms);
@@ -100,7 +117,7 @@ function updatePlatformFilter(platforms) {
     const currentValue = select.value;
     
     // Keep "All" option and add platforms
-    select.innerHTML = `<option value="all">${translate('all-platforms')}</option>`;
+    select.innerHTML = `<option value="all">${__('all-platforms')}</option>`;
     platforms.forEach(platform => {
         const option = document.createElement('option');
         option.value = platform;
@@ -123,7 +140,7 @@ function updateKPIs(data) {
     if (todayBookings) todayBookings.textContent = data.today_bookings || 0;
     if (todayRevenue) todayRevenue.textContent = `$${(data.today_revenue || 0).toLocaleString()}`;
     if (activeCaptains) activeCaptains.textContent = data.active_captains || 0;
-    if (totalCaptains) totalCaptains.textContent = translate('of-total').replace('{count}', data.total_captains || 0);
+    if (totalCaptains) totalCaptains.textContent = __('of-total').replace('{count}', data.total_captains || 0);
     
     // Calculate changes (simulated for now)
     const bookingChangeText = data.today_bookings > 0 ? '+15%' : '0%';
@@ -169,7 +186,7 @@ function updateRevenueByPlatformChart(data) {
         data: {
             labels: platforms,
             datasets: [{
-                label: translate('revenue'),
+                label: __('revenue'),
                 data: revenues,
                 backgroundColor: 'rgba(0, 119, 190, 0.7)',
                 borderColor: 'rgba(0, 119, 190, 1)',
@@ -187,7 +204,7 @@ function updateRevenueByPlatformChart(data) {
                 tooltip: {
                     callbacks: {
                         label: function(context) {
-                            return `${translate('revenue')}: $${context.parsed.y.toLocaleString()}`;
+                            return `${__('revenue')}: $${context.parsed.y.toLocaleString()}`;
                         }
                     }
                 }
@@ -234,7 +251,7 @@ function updateMonthlyTrendsChart(data) {
             labels: months,
             datasets: [
                 {
-                    label: translate('bookings'),
+                    label: __('bookings'),
                     data: bookingsData,
                     borderColor: 'rgba(0, 119, 190, 1)',
                     backgroundColor: 'rgba(0, 119, 190, 0.1)',
@@ -243,7 +260,7 @@ function updateMonthlyTrendsChart(data) {
                     yAxisID: 'y'
                 },
                 {
-                    label: translate('revenue'),
+                    label: __('revenue'),
                     data: revenueData,
                     borderColor: 'rgba(46, 196, 182, 1)',
                     backgroundColor: 'rgba(46, 196, 182, 0.1)',
@@ -360,7 +377,7 @@ function updatePlatformLeaderboard(data) {
             <div class="leaderboard-rank">${index + 1}</div>
             <div class="leaderboard-info">
                 <div class="leaderboard-name">${platform}</div>
-                <div class="leaderboard-stats">${data.bookings_by_platform[platform] || 0} ${translate('bookings')}</div>
+                <div class="leaderboard-stats">${data.bookings_by_platform[platform] || 0} ${__('bookings')}</div>
             </div>
             <div class="leaderboard-value">$${amount.toLocaleString()}</div>
         </div>
