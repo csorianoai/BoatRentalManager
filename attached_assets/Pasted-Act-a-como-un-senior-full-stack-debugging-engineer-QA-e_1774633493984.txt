@@ -1,0 +1,233 @@
+Actúa como un senior full-stack debugging engineer, QA engineer y browser runtime specialist.
+
+IMPORTANTE:
+El caso NO está resuelto.
+Aunque existe un reporte diciendo “20/20 pruebas aprobadas”, en la práctica el sistema multiidioma SIGUE SIN FUNCIONAR.
+Por lo tanto, ese reporte se considera insuficiente o falso positivo hasta que exista verificación real en la interfaz funcionando.
+
+OBJETIVO
+No quiero más reportes teóricos.
+Quiero que encuentres la causa real por la cual el selector de idiomas sigue sin funcionar en la UI renderizada del portal “gestión”, y que lo soluciones de forma comprobable.
+
+REGLA CRÍTICA
+NO cierres el caso con validaciones internas, suposiciones, logs parciales o pruebas unitarias aisladas.
+Solo puedes dar por cerrado el caso si el selector funciona REALMENTE en la interfaz visible y el idioma cambia en pantalla.
+
+PROBLEMA REAL
+Actualmente el selector de idiomas sigue sin funcionar aunque el código dice estar corregido.
+Eso significa que hay un problema en tiempo de ejecución, integración real, DOM, eventos, visibilidad, CSS, render dinámico o carga efectiva de archivos.
+
+LO QUE DEBES HACER AHORA
+Haz una depuración profunda de ejecución real, no solo revisión de archivos.
+
+==================================================
+1. PROHIBIDO DAR POR BUENO
+==================================================
+
+No aceptes como prueba suficiente:
+- “el archivo existe”
+- “la función está definida”
+- “el JSON carga”
+- “el localStorage tiene valor”
+- “las pruebas lógicas pasan”
+- “el reporte anterior dio 20/20”
+- “en teoría debería funcionar”
+
+Solo vale:
+- click real en selector
+- cambio real de idioma en pantalla
+- persistencia real al recargar
+- evidencia visible y verificable
+
+==================================================
+2. DIAGNÓSTICO DE RUNTIME OBLIGATORIO
+==================================================
+
+Debes revisar en ejecución real:
+
+A. SELECTOR
+- si el selector realmente aparece en el DOM final
+- si es visible
+- si se puede hacer click
+- si no está tapado por otro elemento
+- si tiene z-index correcto
+- si pointer-events no está bloqueado
+- si el contenedor no está interceptando el click
+- si el dropdown realmente abre
+- si los botones de idioma realmente reciben click
+
+B. EVENTOS
+- verificar que cada opción de idioma tenga listener real
+- verificar que el click dispare changeLanguage(lang)
+- verificar que no haya preventDefault o stopPropagation rompiendo flujo
+- verificar que no haya render posterior que destruya el selector
+- verificar si el selector se monta más de una vez y rompe referencias
+
+C. DOM REAL
+- confirmar que los elementos con data-i18n existen en la página renderizada
+- confirmar que applyTranslations() los encuentra
+- confirmar que el DOM que ves es el mismo DOM que está traduciendo el script
+- confirmar que no haya shadow DOM, render dinámico o reemplazo de nodos
+
+D. RED / FETCH
+- confirmar en runtime que /locales/es.json, en.json, fr.json, it.json, pt.json y tl.json cargan realmente desde la ruta correcta
+- confirmar status 200 real
+- confirmar que el contenido del JSON es válido
+- confirmar que no hay problemas de cache roto o rutas relativas incorrectas
+
+E. ORDEN REAL DE EJECUCIÓN
+- verificar si algún script posterior rompe window.i18n
+- verificar si algún módulo sobrescribe el selector
+- verificar si initLanguage() corre demasiado pronto o demasiado tarde
+- verificar si el layout del header se reconstruye después y elimina eventos
+
+F. CSS / LAYOUT
+- revisar overflow hidden
+- revisar stacking context
+- revisar fixed vs absolute
+- revisar visibility / opacity / display
+- revisar elementos superpuestos
+- revisar media queries que rompan el selector
+- revisar si en mobile funciona distinto que en desktop
+
+==================================================
+3. SI EL SELECTOR ACTUAL ESTÁ FALLANDO, HAZ ESTO
+==================================================
+
+Si después de la auditoría el selector dropdown sigue siendo inestable, reemplázalo temporal o permanentemente por una versión mínima, ultra robusta y comprobable:
+
+FORMATO SIMPLE Y ROBUSTO:
+Botones visibles directos en header:
+- ES
+- EN
+- FR
+- IT
+- PT
+- TL
+
+Sin dropdown si el dropdown está causando el fallo.
+
+REQUISITOS:
+- un botón por idioma
+- click directo
+- sin dependencia de hover
+- sin lógica compleja de posicionamiento
+- sin menús flotantes si están fallando
+- con clase activa visual
+- con listeners directos y verificables
+
+PRIORIDAD:
+Prefiero que funcione un selector simple antes que un dropdown “bonito” roto.
+
+==================================================
+4. MODO DEBUG OBLIGATORIO
+==================================================
+
+Agrega temporalmente un modo debug visual y de consola para verificar el flujo real.
+
+Debe mostrar claramente:
+- idioma actual detectado
+- si initLanguage() corrió
+- si changeLanguage(lang) fue llamado
+- qué idioma se intentó cargar
+- si el JSON cargó bien
+- cuántos elementos con data-i18n fueron traducidos
+- si hubo claves faltantes
+- si hubo errores de fetch
+
+Puedes hacerlo con:
+- logs claros en consola
+- o un panel debug pequeño visible solo en desarrollo
+
+Ejemplo de debug útil:
+- currentLanguage: en
+- selectorMounted: true
+- lastClickedLanguage: fr
+- translationsLoaded: 141
+- translatedNodes: 87
+- fetchStatus: 200
+
+==================================================
+5. VALIDACIÓN REAL OBLIGATORIA
+==================================================
+
+Debes probar de verdad, en la interfaz renderizada, no en abstracto.
+
+PRUEBAS REALES OBLIGATORIAS
+1. hacer click en ES y verificar cambio visual
+2. hacer click en EN y verificar cambio visual
+3. hacer click en FR y verificar cambio visual
+4. hacer click en IT y verificar cambio visual
+5. hacer click en PT y verificar cambio visual
+6. hacer click en TL y verificar cambio visual
+7. recargar estando en EN y verificar persistencia visual
+8. recargar estando en FR y verificar persistencia visual
+9. recargar estando en IT y verificar persistencia visual
+10. recargar estando en PT y verificar persistencia visual
+11. recargar estando en TL y verificar persistencia visual
+12. verificar traducción visible del menú
+13. verificar traducción visible del dashboard
+14. verificar traducción visible del módulo Operaciones
+15. verificar placeholders
+16. verificar modal abierto después de cambiar idioma
+17. verificar tabs o contenido dinámico
+18. verificar que no haya errores JS en consola
+19. verificar que el selector siga funcionando después de navegar internamente
+20. verificar que no haya que hacer doble click ni refresco manual para que cambie
+
+NO puedes marcar una prueba OK si no hubo confirmación visual real.
+
+==================================================
+6. EVIDENCIA OBLIGATORIA
+==================================================
+
+Quiero evidencia técnica real, no solo afirmaciones.
+
+Entrega:
+1. causa raíz exacta del fallo actual
+2. archivos modificados
+3. explicación concreta del cambio
+4. resultado de cada una de las 20 pruebas
+5. confirmación de qué selector quedó finalmente:
+   - dropdown
+   - botones directos
+6. evidencia de que el idioma cambia visualmente en la UI
+7. evidencia de que TL también funciona
+
+==================================================
+7. SI DETECTAS FALSO POSITIVO PREVIO
+==================================================
+
+Si descubres que el reporte anterior dio “20/20 OK” sin validación visual real, indícalo explícitamente.
+Quiero transparencia.
+Explica por qué ese reporte no reflejaba el comportamiento real del sistema.
+
+==================================================
+8. SOLUCIÓN MÍNIMA ACEPTABLE
+==================================================
+
+Si la arquitectura actual de idiomas funciona pero el selector falla, entonces:
+- no rehagas todo el sistema de traducción
+- reemplaza solo el selector por una versión mínima robusta
+
+Si también falla la traducción:
+- corrige initLanguage
+- corrige changeLanguage
+- corrige applyTranslations
+- corrige translateDynamicContent
+- corrige rutas JSON
+- corrige persistencia
+
+==================================================
+9. CRITERIO DE CIERRE
+==================================================
+
+NO cierres el caso hasta que:
+- el selector sea visible y clickeable
+- el idioma cambie realmente en pantalla
+- persista al recargar
+- funcione en ES, EN, FR, IT, PT y TL
+- el menú, dashboard y Operaciones cambien realmente
+- las 20 pruebas estén aprobadas con validación visual real
+
+Empieza ahora mismo por verificar en runtime si el selector está realmente montado, visible y recibiendo clicks. Si el dropdown sigue fallando, reemplázalo de inmediato por botones directos robustos en el header y vuelve a probar todo.

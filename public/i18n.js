@@ -1,8 +1,9 @@
 /**
  * i18n.js — Motor de internacionalización para Nadaki Gestión
- * v3.0 — Sin dependencias externas. Basado en JSON + localStorage.
+ * v3.1 — Sin dependencias externas. Basado en JSON + localStorage.
  * Soporta: es, en, fr, it, pt, tl
  * Dropdown con position:fixed para evitar clipping por overflow:hidden
+ * Debug panel visible incluido (clase i18n-debug-hide para ocultar)
  */
 (function () {
   var STORAGE_KEY = 'app_lang';
@@ -32,7 +33,7 @@
       return;
     }
 
-    var url = '/locales/' + lang + '.json?v=3';
+    var url = '/locales/' + lang + '.json?v=4';
     var xhr = new XMLHttpRequest();
     xhr.open('GET', url, true);
     xhr.onload = function () {
@@ -40,6 +41,7 @@
         try {
           cache[lang] = JSON.parse(xhr.responseText);
           translations = cache[lang];
+          debugStats.lastFetch = '200 OK (' + lang + '.json)';
           console.log('[i18n] ✅ Cargado "' + lang + '" — ' + Object.keys(translations).length + ' claves.');
           if (callback) callback();
         } catch (e) {
@@ -50,6 +52,7 @@
           }
         }
       } else {
+        debugStats.lastFetch = 'HTTP ' + xhr.status + ' (' + lang + '.json)';
         console.error('[i18n] ❌ HTTP ' + xhr.status + ' al cargar ' + url);
         if (lang !== DEFAULT_LANG) {
           console.warn('[i18n] Fallback a "' + DEFAULT_LANG + '".');
@@ -70,6 +73,7 @@
   function t(key) {
     if (!key) return '';
     if (translations[key] !== undefined) return translations[key];
+    debugStats.missing++;
     console.warn('[i18n] ⚠️ Clave faltante: "' + key + '" en idioma "' + currentLang + '"');
     return key;
   }
@@ -83,8 +87,11 @@
       return;
     }
     var container = root || document;
+    debugStats.translated = 0;
+    debugStats.missing = 0;
 
     container.querySelectorAll('[data-i18n]').forEach(function (el) {
+      debugStats.translated++;
       var key = el.getAttribute('data-i18n');
       var val = t(key);
       /* Sólo modificar textContent si el elemento NO tiene hijos de elemento
@@ -125,6 +132,7 @@
 
     document.documentElement.lang = currentLang;
     updateSelectorUI();
+    updateDebugPanel();
 
     try {
       document.dispatchEvent(new CustomEvent('i18n:applied', { detail: { lang: currentLang } }));
@@ -346,6 +354,44 @@
   }
 
   /* ─────────────────────────────────────────────────────────────
+     PANEL DE DEBUG VISUAL
+  ───────────────────────────────────────────────────────────── */
+  var debugEl = null;
+  var debugStats = { translated: 0, missing: 0, fetches: 0, lastFetch: '' };
+
+  function updateDebugPanel() {
+    if (!debugEl) return;
+    debugEl.innerHTML = [
+      '<b>i18n Debug</b>',
+      'currentLanguage: <b>' + currentLang + '</b>',
+      'initLanguage: <b>' + (ready ? '✅' : '⏳') + '</b>',
+      'selectorMounted: <b>' + (!!document.getElementById('i18n-selector-root')) + '</b>',
+      'translationsLoaded: <b>' + Object.keys(translations).length + '</b>',
+      'translatedNodes: <b>' + debugStats.translated + '</b>',
+      'missingKeys: <b>' + debugStats.missing + '</b>',
+      'fetchStatus: <b>' + debugStats.lastFetch + '</b>',
+      '<small style="opacity:.6">app_lang → localStorage: ' + (localStorage.getItem(STORAGE_KEY)||'—') + '</small>',
+      '<button onclick="document.getElementById(\'i18n-debug-panel\').remove()" style="margin-top:4px;padding:2px 6px;font-size:10px;cursor:pointer;border:1px solid #888;border-radius:3px;background:#f8f8f8;">✕ Cerrar</button>'
+    ].join('<br>');
+  }
+
+  function showDebugPanel() {
+    if (document.getElementById('i18n-debug-panel')) { updateDebugPanel(); return; }
+    var panel = document.createElement('div');
+    panel.id = 'i18n-debug-panel';
+    panel.style.cssText = [
+      'position:fixed;bottom:16px;left:16px;z-index:2147483646;',
+      'background:rgba(0,0,0,0.85);color:#0f0;font-family:monospace;font-size:11px;',
+      'padding:10px 14px;border-radius:8px;line-height:1.8;',
+      'box-shadow:0 4px 16px rgba(0,0,0,0.4);max-width:280px;word-break:break-all;',
+      'pointer-events:auto;'
+    ].join('');
+    document.body.appendChild(panel);
+    debugEl = panel;
+    updateDebugPanel();
+  }
+
+  /* ─────────────────────────────────────────────────────────────
      INICIALIZACIÓN
   ───────────────────────────────────────────────────────────── */
   function initLanguage() {
@@ -360,6 +406,7 @@
       applyTranslations();
       ready = true;
       console.log('[i18n] ✅ Sistema listo. Idioma activo: "' + currentLang + '".');
+      updateDebugPanel();
     });
   }
 
@@ -392,9 +439,12 @@
     translateDynamicContent: translateDynamicContent,
     current:              function () { return currentLang; },
     isReady:              function () { return ready; },
-    supported:            function () { return SUPPORTED.slice(); }
+    supported:            function () { return SUPPORTED.slice(); },
+    debug:                showDebugPanel
   };
   window.changeLanguage = changeLanguage;
+  /* Activar panel de debug desde consola: window.i18nDebug() */
+  window.i18nDebug = showDebugPanel;
 
   /* ─────────────────────────────────────────────────────────────
      ARRANQUE
