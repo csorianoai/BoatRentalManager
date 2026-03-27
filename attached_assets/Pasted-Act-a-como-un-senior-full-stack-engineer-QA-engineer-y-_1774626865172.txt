@@ -1,0 +1,230 @@
+Actúa como un senior full-stack engineer, QA engineer y debugging specialist. Tu tarea NO es proponer ideas generales. Tu tarea es encontrar, corregir y comprobar de forma concluyente por qué el sistema multiidioma del portal “gestión” no funciona.
+
+ESTADO ACTUAL DEL PROBLEMA
+El selector de idiomas NO funciona.
+No cambia correctamente el idioma.
+Ningún idioma funciona como debería.
+El sistema actual está roto o mal integrado.
+
+OBJETIVO
+Debes resolver completamente el sistema de idiomas del portal y NO dar el caso por cerrado hasta demostrar con pruebas verificables que:
+- el selector de idiomas funciona
+- todos los idiomas soportados funcionan
+- el idioma cambia realmente en pantalla
+- el idioma persiste al recargar
+- el contenido dinámico también se traduce
+- no hay errores silenciosos
+- existen pruebas reales y evidencia técnica
+
+IDIOMAS A SOPORTAR
+- Español (es)
+- Inglés (en)
+- Francés (fr)
+- Italiano (it)
+- Portugués (pt)
+- Filipino / Tagalog (tl)
+
+REGLAS CRÍTICAS
+- no quiero una explicación superficial
+- no quiero un “ya debería funcionar”
+- no quiero cambios cosméticos sin validar
+- no cierres el caso sin pruebas reales
+- si la implementación actual está rota, arréglala
+- si está demasiado rota, reemplázala por una versión mínima y robusta
+- no uses librerías pesadas
+- no uses APIs de traducción en tiempo real
+- no sobrearquitectes
+- mantén el sistema liviano para Replit
+- prioriza una solución simple, estable y comprobada
+
+TAREA PRINCIPAL
+Haz una auditoría completa del sistema multiidioma existente y resuelve el problema de raíz.
+
+DEBES REVISAR TODO ESTO
+1. selector visual de idiomas
+2. listeners de click
+3. carga del DOM
+4. localStorage
+5. rutas de archivos JSON
+6. contenido de los archivos JSON
+7. atributos data-i18n
+8. atributos data-i18n-placeholder
+9. atributos data-i18n-title
+10. atributos data-i18n-value
+11. textos hardcodeados
+12. modales
+13. tabs
+14. formularios
+15. contenido dinámico renderizado por JS
+16. módulo Operaciones
+17. dashboard
+18. menú principal
+19. sidebar o topbar
+20. cualquier error de consola que esté rompiendo la ejecución
+
+CAUSAS RAÍZ POSIBLES QUE DEBES INVESTIGAR
+- selector sin eventos correctamente enlazados
+- script cargando antes del DOM
+- localStorage guardando una key incorrecta
+- idioma guardado pero no reaplicado al cargar
+- fetch incorrecto de /locales/*.json
+- archivos JSON mal formados
+- claves faltantes
+- claves mal escritas
+- data-i18n inconsistentes
+- contenido dinámico sin retraducción
+- textos hardcodeados que pisan la traducción
+- errores JS previos que interrumpen la ejecución
+- el idioma activo no se refleja en la UI
+- el sistema intenta traducir elementos inexistentes y falla
+
+SOLUCIÓN ESPERADA
+Quiero que dejes un sistema mínimo, robusto y funcional con esta arquitectura, si hace falta rehacer solo la parte de idiomas:
+
+ARCHIVOS
+- /locales/es.json
+- /locales/en.json
+- /locales/fr.json
+- /locales/it.json
+- /locales/pt.json
+- /locales/tl.json
+
+ATRIBUTOS SOPORTADOS
+- data-i18n
+- data-i18n-placeholder
+- data-i18n-title
+- data-i18n-value
+
+FUNCIONES MÍNIMAS
+1. initLanguage()
+2. loadLanguage(lang)
+3. changeLanguage(lang)
+4. applyTranslations(root = document)
+5. translateDynamicContent(container)
+6. updateLanguageSelectorUI(lang)
+
+COMPORTAMIENTO OBLIGATORIO
+- idioma por defecto: es
+- persistencia en localStorage con una sola key consistente: app_lang
+- cache en memoria para no hacer fetch repetidos
+- fallback a español si falla un idioma
+- logs claros si falta archivo o clave
+- retraducción de modales y contenido dinámico
+- actualización visual del idioma activo en el selector
+
+SELECTOR DE IDIOMA
+Debes asegurarte de que el selector funcione realmente.
+Formato sugerido:
+- 🇪🇸 ES
+- 🇺🇸 EN
+- 🇫🇷 FR
+- 🇮🇹 IT
+- 🇵🇹 PT
+- 🇵🇭 TL
+
+Debe:
+- responder al click
+- cambiar idioma inmediatamente
+- resaltar idioma activo
+- mantenerse al recargar la página
+- estar disponible globalmente en el portal
+
+ALCANCE MÍNIMO DE TRADUCCIÓN QUE DEBE FUNCIONAR
+- menú principal
+- dashboard
+- módulo Operaciones
+- botones
+- labels
+- placeholders
+- tabs
+- modales
+- estados de tareas
+- categorías principales
+- mensajes comunes del sistema
+
+PROCESO DE TRABAJO OBLIGATORIO
+FASE 1: AUDITORÍA
+- inspecciona la implementación actual
+- identifica la causa raíz real
+- documenta exactamente qué está roto
+
+FASE 2: CORRECCIÓN
+- corrige lo mínimo necesario si es recuperable
+- si no es recuperable, reemplaza solo el subsistema de idiomas
+- no rehagas el portal entero
+
+FASE 3: VALIDACIÓN FUERTE
+No cierres el caso hasta completar 20 autoevaluaciones y pruebas reales.
+
+20 AUTOEVALUACIONES Y PRUEBAS OBLIGATORIAS
+1. probar cambio de español a inglés
+2. probar cambio de inglés a francés
+3. probar cambio de francés a italiano
+4. probar cambio de italiano a portugués
+5. probar cambio de portugués a filipino
+6. probar regreso de filipino a español
+7. probar persistencia al recargar estando en inglés
+8. probar persistencia al recargar estando en francés
+9. probar persistencia al recargar estando en italiano
+10. probar persistencia al recargar estando en portugués
+11. probar persistencia al recargar estando en filipino
+12. probar traducción del menú principal
+13. probar traducción del dashboard
+14. probar traducción del módulo Operaciones
+15. probar traducción de botones y labels
+16. probar traducción de placeholders
+17. probar traducción de un modal al abrirlo
+18. probar traducción de tabs o contenido dinámico
+19. revisar consola y confirmar cero errores críticos relacionados con idiomas
+20. validar que no existan claves rotas, textos vacíos ni elementos sin traducir dentro del alcance MVP
+
+REQUISITOS DE LAS PRUEBAS
+Cada prueba debe incluir:
+- qué se probó
+- resultado esperado
+- resultado real
+- estado: OK / FAIL
+- si falla, corregir y volver a probar
+
+NO puedes cerrar el caso si alguna prueba falla.
+
+EVIDENCIA OBLIGATORIA
+Quiero evidencia técnica verificable:
+- lista de archivos corregidos
+- funciones corregidas o creadas
+- causa raíz encontrada
+- pruebas ejecutadas con resultado
+- confirmación explícita de que los 6 idiomas funcionan:
+  - es
+  - en
+  - fr
+  - it
+  - pt
+  - tl
+
+MANEJO DE ERRORES
+Debes implementar logs claros para:
+- archivo JSON faltante
+- clave faltante
+- idioma no soportado
+- error de fetch
+- intento de traducir contenedor inválido
+
+REGLA FINAL
+No des el trabajo por terminado hasta que el selector funcione de verdad y existan 20 pruebas documentadas y aprobadas.
+
+ENTREGABLE FINAL
+Necesito:
+1. sistema multiidioma funcionando
+2. selector de idiomas funcionando
+3. filipino agregado y operativo
+4. persistencia correcta al recargar
+5. contenido dinámico traducible
+6. 20 autoevaluaciones y pruebas documentadas
+7. breve reporte final con:
+   - causa raíz
+   - solución aplicada
+   - archivos modificados
+   - evidencia de funcionamiento
+
+Empieza ahora mismo por auditar el sistema actual, encontrar la causa raíz y no cierres el caso hasta que las 20 pruebas estén aprobadas.
