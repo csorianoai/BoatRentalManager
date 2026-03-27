@@ -1,0 +1,253 @@
+Actúa como un senior full-stack engineer especializado en debugging, front-end architecture e internacionalización ligera. Necesito una auditoría completa y corrección inmediata del sistema de idiomas del portal existente “gestión”.
+
+CONTEXTO
+Ya existe una implementación multiidioma dentro del portal, pero no está funcionando correctamente. No quiero una solución nueva desde cero salvo que sea absolutamente necesario. Primero debes revisar, diagnosticar y reparar el sistema actual.
+
+OBJETIVO PRINCIPAL
+Dejar el sistema de idiomas funcionando de forma estable, consistente y ligera dentro de “gestión”, corrigiendo los errores actuales en:
+- selector de idioma
+- carga de traducciones
+- persistencia del idioma
+- traducción del DOM
+- contenido dinámico
+- modales, tabs, formularios y módulo Operaciones
+
+IMPORTANTE
+- no crear una app nueva
+- no rehacer el portal
+- no usar librerías pesadas
+- no sobrearquitectar
+- no duplicar componentes
+- mantener el sistema liviano para Replit
+- priorizar diagnóstico + corrección real
+- explicar al final la causa raíz encontrada
+
+==================================================
+1. PROBLEMAS A AUDITAR
+==================================================
+
+Revisa si ocurre alguno de estos fallos:
+
+1. el selector de idioma no cambia todos los textos
+2. algunos textos quedan en el idioma anterior
+3. el idioma no se mantiene al recargar
+4. localStorage guarda mal o no se lee bien
+5. algunas claves data-i18n están mal escritas
+6. algunos textos están hardcodeados y pisan la traducción
+7. los archivos JSON no cargan bien
+8. el sistema falla si falta una clave
+9. los modales no traducen al abrirse
+10. tabs, menús o formularios dinámicos no se retraducen
+11. placeholders, title, value o labels no se traducen
+12. el script corre antes de que el DOM esté listo
+13. hay fetch repetidos o ineficientes
+14. el idioma activo no se refleja visualmente en el selector
+15. el módulo “Operaciones” no cambia completamente de idioma
+
+==================================================
+2. TAREAS OBLIGATORIAS
+==================================================
+
+Haz una revisión técnica completa del sistema actual y corrige lo necesario.
+
+Debes:
+
+1. auditar toda la implementación actual del sistema de idiomas
+2. identificar la causa exacta del fallo
+3. corregir la lógica existente sin romper la UI
+4. validar que el idioma se guarde y se recupere correctamente
+5. validar que todos los elementos con atributos de traducción se actualicen bien
+6. validar que los elementos dinámicos también se traduzcan
+7. validar que no existan inconsistencias entre HTML, JS y archivos JSON
+8. agregar manejo de errores claro en consola
+9. dejar un sistema estable, simple y escalable
+
+==================================================
+3. REVISIÓN TÉCNICA DETALLADA
+==================================================
+
+Debes revisar y corregir estos puntos:
+
+A. INICIALIZACIÓN
+- confirmar que initLanguage() se ejecute al cargar
+- confirmar que use localStorage correctamente
+- confirmar que haga fallback a “es” si no existe idioma guardado
+- confirmar que no corra antes del DOMContentLoaded
+
+B. SELECTOR DE IDIOMA
+- confirmar que el selector visual funcione
+- confirmar que el click en bandera o botón dispare changeLanguage(lang)
+- confirmar que el idioma activo se marque visualmente
+- confirmar que el selector funcione en todas las vistas
+
+C. CARGA DE JSON
+- confirmar que /locales/es.json, /en.json, /fr.json, /it.json, /pt.json existan
+- confirmar que el fetch sea correcto
+- confirmar que los archivos estén bien formados
+- confirmar que haya fallback si un archivo no carga
+- evitar recargas innecesarias usando cache en memoria
+
+D. APLICACIÓN DE TRADUCCIONES
+- confirmar que applyTranslations() recorra todo el DOM necesario
+- traducir elementos con:
+  - data-i18n
+  - data-i18n-placeholder
+  - data-i18n-title
+  - data-i18n-value
+- revisar que no haya textos fijos sobrescribiendo el resultado
+
+E. CONTENIDO DINÁMICO
+- traducir modales al abrirse
+- traducir tabs al renderizar
+- traducir formularios generados dinámicamente
+- traducir contenido insertado por JS
+- crear función reutilizable para retraducir contenedores dinámicos
+
+F. CALIDAD DE CLAVES
+- comparar claves del HTML contra los JSON
+- detectar claves faltantes
+- detectar claves duplicadas o mal nombradas
+- detectar errores de nomenclatura
+- agregar logs claros si falta una traducción
+
+==================================================
+4. SOLUCIÓN TÉCNICA ESPERADA
+==================================================
+
+Necesito que dejes una estructura robusta, simple y ligera con estas funciones mínimas:
+
+1. initLanguage()
+- leer localStorage con una sola key consistente, por ejemplo: app_lang
+- usar “es” como fallback
+- cargar el idioma actual
+- aplicar traducciones al iniciar
+
+2. loadLanguage(lang)
+- cargar el JSON del idioma
+- usar cache para no repetir fetch
+- manejar errores correctamente
+
+3. changeLanguage(lang)
+- guardar idioma en localStorage
+- actualizar variable de idioma actual
+- cargar traducciones
+- aplicar traducciones
+- actualizar el selector visual
+
+4. applyTranslations(root = document)
+- traducir texto visible
+- traducir placeholder
+- traducir title
+- traducir value
+- no fallar silenciosamente
+
+5. translateDynamicContent(container)
+- volver a traducir modales, tabs y contenido generado después del render inicial
+
+==================================================
+5. REGLAS DE IMPLEMENTACIÓN
+==================================================
+
+- corregir primero, refactorizar solo si hace falta
+- no reemplazar todo si el sistema actual se puede salvar
+- no agregar frameworks o librerías externas
+- no usar i18next ni similares
+- no usar APIs de traducción automática
+- no rehacer pantallas
+- no tocar más de lo necesario
+- mantener el código corto, claro y estable
+- optimizar para bajo consumo en Replit
+
+==================================================
+6. ALCANCE DE LA VALIDACIÓN
+==================================================
+
+Después de corregir, prueba que funcione correctamente en:
+
+- menú principal
+- dashboard
+- botones globales
+- formularios
+- tabs
+- modales
+- módulo “Operaciones”
+- estados de tareas
+- categorías
+- placeholders
+- tooltips si existen
+
+==================================================
+7. MANEJO DE ERRORES
+==================================================
+
+Implementa logs claros en consola para estos casos:
+
+- no se encontró archivo JSON del idioma
+- falta una clave en el archivo de traducción
+- existe data-i18n inválido
+- no se pudo aplicar traducción a un elemento
+- idioma solicitado no soportado
+
+No quiero errores silenciosos.
+
+==================================================
+8. RESULTADO FINAL ESPERADO
+==================================================
+
+Al terminar, el sistema debe:
+
+- cambiar idioma correctamente al hacer clic
+- traducir todo el contenido soportado
+- mantener el idioma al recargar
+- traducir modales y contenido dinámico
+- usar fallback seguro a español
+- mostrar claramente errores de claves faltantes
+- funcionar sin volver pesado el portal
+
+==================================================
+9. ENTREGABLE
+==================================================
+
+Necesito que hagas todo esto:
+
+1. auditar implementación actual
+2. detectar causa raíz
+3. corregir el sistema
+4. dejar el selector funcionando
+5. dejar persistencia funcionando
+6. dejar traducción del DOM y contenido dinámico funcionando
+7. validar módulo “Operaciones”
+8. explicar brevemente:
+   - cuál era el problema
+   - qué corregiste
+   - qué quedó funcionando
+   - qué recomendaciones mínimas quedan para mantenerlo estable
+
+==================================================
+10. SI NECESITAS REESTRUCTURAR
+==================================================
+
+Solo si la implementación actual está demasiado rota, deja una versión mínima y ligera con esta arquitectura:
+
+- /locales/es.json
+- /locales/en.json
+- /locales/fr.json
+- /locales/it.json
+- /locales/pt.json
+
+Atributos soportados:
+- data-i18n
+- data-i18n-placeholder
+- data-i18n-title
+- data-i18n-value
+
+Funciones mínimas:
+- initLanguage()
+- loadLanguage(lang)
+- changeLanguage(lang)
+- applyTranslations(root)
+- translateDynamicContent(container)
+
+Pero primero intenta reparar lo existente antes de reemplazar.
+
+Empieza ahora con la auditoría del sistema actual y corrige el problema del multiidioma de forma inmediata.
