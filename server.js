@@ -742,6 +742,11 @@ async function initializeDatabase() {
       `ALTER TABLE bank_statements ADD COLUMN IF NOT EXISTS suggested_account_debit TEXT`,
       `ALTER TABLE bank_statements ADD COLUMN IF NOT EXISTS suggested_account_credit TEXT`,
       `ALTER TABLE bank_statements ADD COLUMN IF NOT EXISTS notes TEXT`,
+      `ALTER TABLE bank_statements ADD COLUMN IF NOT EXISTS vendor_suggestion TEXT`,
+      `ALTER TABLE bank_statements ADD COLUMN IF NOT EXISTS module_destination TEXT`,
+      `ALTER TABLE bank_statements ADD COLUMN IF NOT EXISTS is_duplicate BOOLEAN DEFAULT FALSE`,
+      `ALTER TABLE bank_statements ADD COLUMN IF NOT EXISTS duplicate_of TEXT`,
+      `ALTER TABLE bank_statements ADD COLUMN IF NOT EXISTS confidence_reason TEXT`,
     ];
     for (const q of bsCols) { try { await pool.query(q); } catch(_) {} }
 
@@ -752,11 +757,15 @@ async function initializeDatabase() {
         accounting_type TEXT NOT NULL,
         category TEXT NOT NULL,
         boat_id TEXT,
+        vendor_pattern TEXT,
+        module_destination TEXT,
         use_count INTEGER DEFAULT 1,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
       )
     `);
+    try { await pool.query(`ALTER TABLE classification_patterns ADD COLUMN IF NOT EXISTS vendor_pattern TEXT`); } catch(_) {}
+    try { await pool.query(`ALTER TABLE classification_patterns ADD COLUMN IF NOT EXISTS module_destination TEXT`); } catch(_) {}
     console.log('✅ FASE 8B: Smart classification columns + patterns table ready');
     
     // ============================================================================
