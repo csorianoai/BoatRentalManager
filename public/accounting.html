@@ -305,6 +305,9 @@
             <button class="tab" data-tab="reports" data-testid="tab-reports">
                 📊 Reportes
             </button>
+            <button class="tab" data-tab="deposits" data-testid="tab-deposits">
+                🔐 Depósitos de Reservas
+            </button>
         </div>
     </div>
 
@@ -527,6 +530,117 @@
             </div>
         </div>
 
+        <!-- Deposits Tab -->
+        <div class="tab-content" id="deposits">
+            <div class="transaction-form">
+                <h2>🔐 Registrar Depósito de Reserva</h2>
+                <p style="font-size:13px;color:#666;margin:-8px 0 14px">Los depósitos quedan separados de los ingresos operativos hasta que se apliquen a una reserva confirmada.</p>
+                <form id="depositForm">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Cliente <span style="color:#dc3545">*</span></label>
+                            <input type="text" id="dep-client" placeholder="Nombre del cliente" required data-testid="input-dep-client">
+                        </div>
+                        <div class="form-group">
+                            <label>Monto (USD) <span style="color:#dc3545">*</span></label>
+                            <input type="number" id="dep-amount" step="0.01" min="0" placeholder="0.00" required data-testid="input-dep-amount">
+                        </div>
+                        <div class="form-group">
+                            <label>Fecha del depósito <span style="color:#dc3545">*</span></label>
+                            <input type="date" id="dep-date" required data-testid="input-dep-date">
+                        </div>
+                        <div class="form-group">
+                            <label>Estado</label>
+                            <select id="dep-status" data-testid="select-dep-status">
+                                <option value="pending">Pendiente de aplicar</option>
+                                <option value="applied">Aplicado a reserva</option>
+                                <option value="refunded">Reembolsado</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Barco (opcional)</label>
+                            <select id="dep-boat" data-testid="select-dep-boat">
+                                <option value="">Sin asignar</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Referencia de reserva</label>
+                            <input type="text" id="dep-ref" placeholder="Nro. de reserva, confirmación..." data-testid="input-dep-ref">
+                        </div>
+                        <div class="form-group">
+                            <label>Email del cliente</label>
+                            <input type="email" id="dep-email" placeholder="cliente@ejemplo.com" data-testid="input-dep-email">
+                        </div>
+                        <div class="form-group">
+                            <label>Teléfono del cliente</label>
+                            <input type="text" id="dep-phone" placeholder="+1 787 000 0000" data-testid="input-dep-phone">
+                        </div>
+                        <div class="form-group" style="grid-column: 1 / -1;">
+                            <label>Notas</label>
+                            <input type="text" id="dep-notes" placeholder="Observaciones adicionales..." data-testid="input-dep-notes">
+                        </div>
+                    </div>
+                    <input type="hidden" id="dep-edit-id">
+                    <div style="display:flex;gap:10px;margin-top:8px">
+                        <button type="submit" class="btn-primary" data-testid="button-save-deposit">✅ Guardar depósito</button>
+                        <button type="button" id="dep-cancel-btn" onclick="cancelDepositEdit()" style="display:none" class="btn-secondary" data-testid="button-cancel-deposit">Cancelar</button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- KPI summary -->
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px">
+                <div style="background:#fff;border:1px solid #e0e0e0;border-radius:10px;padding:16px 20px">
+                    <div style="font-size:11px;color:#888;font-weight:700;text-transform:uppercase">Pendientes</div>
+                    <div style="font-size:24px;font-weight:800;color:#d97706;margin-top:4px" id="dep-kpi-pending">$0</div>
+                    <div style="font-size:11px;color:#aaa" id="dep-kpi-pending-count">0 depósitos</div>
+                </div>
+                <div style="background:#fff;border:1px solid #e0e0e0;border-radius:10px;padding:16px 20px">
+                    <div style="font-size:11px;color:#888;font-weight:700;text-transform:uppercase">Aplicados</div>
+                    <div style="font-size:24px;font-weight:800;color:#16a34a;margin-top:4px" id="dep-kpi-applied">$0</div>
+                    <div style="font-size:11px;color:#aaa" id="dep-kpi-applied-count">0 depósitos</div>
+                </div>
+                <div style="background:#fff;border:1px solid #e0e0e0;border-radius:10px;padding:16px 20px">
+                    <div style="font-size:11px;color:#888;font-weight:700;text-transform:uppercase">Reembolsados</div>
+                    <div style="font-size:24px;font-weight:800;color:#dc3545;margin-top:4px" id="dep-kpi-refunded">$0</div>
+                    <div style="font-size:11px;color:#aaa" id="dep-kpi-refunded-count">0 depósitos</div>
+                </div>
+            </div>
+
+            <!-- Filter bar -->
+            <div style="display:flex;gap:12px;align-items:flex-end;margin-bottom:14px;flex-wrap:wrap">
+                <div style="display:flex;flex-direction:column;gap:4px">
+                    <label style="font-size:12px;font-weight:600;color:#555">Estado</label>
+                    <select id="dep-filter-status" style="padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px" onchange="loadDeposits()" data-testid="select-dep-filter">
+                        <option value="">Todos</option>
+                        <option value="pending">Pendientes</option>
+                        <option value="applied">Aplicados</option>
+                        <option value="refunded">Reembolsados</option>
+                    </select>
+                </div>
+                <button onclick="loadDeposits()" class="btn-primary" style="padding:8px 16px;font-size:13px" data-testid="button-refresh-deposits">Actualizar</button>
+            </div>
+
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Cliente</th>
+                            <th>Barco</th>
+                            <th>Referencia</th>
+                            <th>Monto</th>
+                            <th>Estado</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="depositsTable" data-testid="table-deposits">
+                        <tr><td colspan="7" class="empty-state">Cargando...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
         <!-- Reports Tab -->
         <div class="tab-content" id="reports">
             <div class="form-grid" style="margin-bottom: 20px;">
@@ -570,6 +684,145 @@
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('/sw.js').catch(err => console.error('SW failed:', err));
         }
+
+        // ── BOOKING DEPOSITS ─────────────────────────────────
+        let allDeposits = [];
+        let depBoats = [];
+
+        async function initDeposits() {
+            try {
+                const res = await fetch('/api/fleet/boats');
+                if (res.ok) {
+                    depBoats = await res.json();
+                    const sel = document.getElementById('dep-boat');
+                    depBoats.forEach(b => {
+                        const o = document.createElement('option');
+                        o.value = b.id; o.textContent = b.name;
+                        sel.appendChild(o);
+                    });
+                }
+            } catch(e) { /* non-fatal */ }
+            await loadDeposits();
+        }
+
+        async function loadDeposits() {
+            const status = document.getElementById('dep-filter-status')?.value || '';
+            const url = '/api/booking-deposits' + (status ? '?status=' + status : '');
+            try {
+                const res = await fetch(url);
+                if (!res.ok) throw new Error('Error');
+                allDeposits = await res.json();
+                renderDeposits();
+                updateDepKpis();
+            } catch(e) { console.error('Error loading deposits:', e); }
+        }
+
+        function fmtDep(v) { return '$' + parseFloat(v||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+        function fmtDepDate(d) { if (!d) return '—'; return new Date(d+'T00:00:00').toLocaleDateString('es',{day:'2-digit',month:'short',year:'numeric'}); }
+
+        function renderDeposits() {
+            const tbody = document.getElementById('depositsTable');
+            if (!allDeposits.length) {
+                tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No hay depósitos registrados. Usa el formulario para agregar el primero.</td></tr>';
+                return;
+            }
+            const esc = s => { const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; };
+            const statusBadge = s => ({
+                pending:  '<span style="background:#fef3c7;color:#92400e;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:700">Pendiente</span>',
+                applied:  '<span style="background:#d4edda;color:#155724;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:700">Aplicado</span>',
+                refunded: '<span style="background:#f8d7da;color:#721c24;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:700">Reembolsado</span>',
+            }[s] || s);
+            tbody.innerHTML = allDeposits.map(d => `
+                <tr>
+                    <td>${fmtDepDate(d.deposit_date)}</td>
+                    <td><strong>${esc(d.client_name)}</strong>${d.client_email ? '<br><span style="font-size:11px;color:#888">'+esc(d.client_email)+'</span>' : ''}</td>
+                    <td>${esc(d.boat_name || '—')}</td>
+                    <td style="font-size:12px;color:#555">${esc(d.booking_reference || '—')}</td>
+                    <td><strong>${fmtDep(d.amount)}</strong></td>
+                    <td>${statusBadge(d.status)}</td>
+                    <td style="white-space:nowrap">
+                        <button onclick="editDeposit('${d.id}')" style="padding:4px 10px;border:1px solid #ddd;border-radius:5px;font-size:12px;cursor:pointer;margin-right:4px" data-testid="button-edit-deposit-${d.id}">Editar</button>
+                        <button onclick="deleteDeposit('${d.id}')" style="padding:4px 10px;border:1px solid #dc3545;border-radius:5px;font-size:12px;color:#dc3545;cursor:pointer;background:none" data-testid="button-delete-deposit-${d.id}">Eliminar</button>
+                    </td>
+                </tr>`).join('');
+        }
+
+        function updateDepKpis() {
+            const pending  = allDeposits.filter(d => d.status === 'pending');
+            const applied  = allDeposits.filter(d => d.status === 'applied');
+            const refunded = allDeposits.filter(d => d.status === 'refunded');
+            const sum = arr => arr.reduce((s,d) => s + parseFloat(d.amount||0), 0);
+            document.getElementById('dep-kpi-pending').textContent       = fmtDep(sum(pending));
+            document.getElementById('dep-kpi-pending-count').textContent = pending.length + ' depósitos';
+            document.getElementById('dep-kpi-applied').textContent       = fmtDep(sum(applied));
+            document.getElementById('dep-kpi-applied-count').textContent = applied.length + ' depósitos';
+            document.getElementById('dep-kpi-refunded').textContent      = fmtDep(sum(refunded));
+            document.getElementById('dep-kpi-refunded-count').textContent= refunded.length + ' depósitos';
+        }
+
+        function editDeposit(id) {
+            const d = allDeposits.find(x => x.id === id);
+            if (!d) return;
+            document.getElementById('dep-edit-id').value  = d.id;
+            document.getElementById('dep-client').value   = d.client_name || '';
+            document.getElementById('dep-amount').value   = d.amount || '';
+            document.getElementById('dep-date').value     = d.deposit_date?.slice(0,10) || '';
+            document.getElementById('dep-status').value   = d.status || 'pending';
+            document.getElementById('dep-boat').value     = d.boat_id || '';
+            document.getElementById('dep-ref').value      = d.booking_reference || '';
+            document.getElementById('dep-email').value    = d.client_email || '';
+            document.getElementById('dep-phone').value    = d.client_phone || '';
+            document.getElementById('dep-notes').value    = d.notes || '';
+            document.getElementById('dep-cancel-btn').style.display = 'inline-block';
+            document.querySelector('#depositForm button[type=submit]').textContent = '✅ Actualizar depósito';
+            document.getElementById('dep-client').focus();
+        }
+
+        function cancelDepositEdit() {
+            document.getElementById('depositForm').reset();
+            document.getElementById('dep-edit-id').value = '';
+            document.getElementById('dep-cancel-btn').style.display = 'none';
+            document.querySelector('#depositForm button[type=submit]').textContent = '✅ Guardar depósito';
+        }
+
+        async function deleteDeposit(id) {
+            if (!confirm('¿Eliminar este depósito?')) return;
+            try {
+                const res = await fetch('/api/booking-deposits/' + id, { method: 'DELETE' });
+                if (!res.ok) throw new Error('Error al eliminar');
+                await loadDeposits();
+            } catch(e) { alert('Error: ' + e.message); }
+        }
+
+        document.getElementById('depositForm')?.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const id = document.getElementById('dep-edit-id').value;
+            const body = {
+                client_name:       document.getElementById('dep-client').value.trim(),
+                amount:            parseFloat(document.getElementById('dep-amount').value),
+                deposit_date:      document.getElementById('dep-date').value,
+                status:            document.getElementById('dep-status').value,
+                boat_id:           document.getElementById('dep-boat').value || null,
+                booking_reference: document.getElementById('dep-ref').value.trim() || null,
+                client_email:      document.getElementById('dep-email').value.trim() || null,
+                client_phone:      document.getElementById('dep-phone').value.trim() || null,
+                notes:             document.getElementById('dep-notes').value.trim() || null,
+            };
+            try {
+                const url    = id ? '/api/booking-deposits/' + id : '/api/booking-deposits';
+                const method = id ? 'PATCH' : 'POST';
+                const res    = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+                const data   = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Error al guardar');
+                cancelDepositEdit();
+                await loadDeposits();
+            } catch(e) { alert('Error: ' + e.message); }
+        });
+
+        // Load deposits when tab is activated
+        document.querySelectorAll('.tab[data-tab="deposits"]').forEach(btn => {
+            btn.addEventListener('click', initDeposits);
+        });
     </script>
 </body>
 </html>

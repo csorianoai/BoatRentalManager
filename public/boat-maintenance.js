@@ -27,7 +27,55 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadPartsInventory();
   await loadAnalytics();
   setDefaultDates();
+  setupMarinaWarning();
 });
+
+// ── TOAST NOTIFICATION (non-blocking) ────────────────
+let _bmToastTimer;
+function showBmToast(msg, ok) {
+  const t = document.getElementById('bm-toast');
+  if (!t) { console.log('[toast]', msg); return; }
+  t.textContent = msg;
+  t.style.background = ok === false ? '#dc2626' : ok === true ? '#16a34a' : '#1e293b';
+  t.style.transform  = 'translateY(0)';
+  t.style.opacity    = '1';
+  clearTimeout(_bmToastTimer);
+  _bmToastTimer = setTimeout(() => { t.style.transform = 'translateY(80px)'; t.style.opacity = '0'; }, 3500);
+}
+
+// ── MARINA DUPLICATE WARNING ─────────────────────────
+function setupMarinaWarning() {
+  const catSel  = document.getElementById('expense-category');
+  const boatSel = document.getElementById('expense-boat');
+  if (!catSel) return;
+
+  // Create warning banner (hidden by default)
+  const banner = document.createElement('div');
+  banner.id = 'marina-warning-banner';
+  banner.style.cssText = 'display:none;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:10px 14px;font-size:13px;color:#92400e;margin-top:8px;line-height:1.5';
+  banner.innerHTML = `
+    <strong>Aviso:</strong> Ya existe un pago recurrente activo de Marina para este barco.<br>
+    Si este gasto es parte del contrato fijo, gestiona el pago desde la pestaña <strong>Gastos Programados</strong>.<br>
+    Si es un gasto extraordinario no programado, puedes continuar guardando normalmente.
+  `;
+  catSel.closest('.form-group')?.after(banner);
+
+  async function checkMarinaConflict() {
+    if (catSel.value !== 'marina_fees') { banner.style.display = 'none'; return; }
+    try {
+      const boatId = boatSel?.value || '';
+      let url = '/api/scheduled-expenses?category=marina_fees&status=pending';
+      if (boatId) url += '&boat_id=' + encodeURIComponent(boatId);
+      const res = await fetch(url);
+      if (!res.ok) return;
+      const data = await res.json();
+      banner.style.display = data.length > 0 ? 'block' : 'none';
+    } catch(e) { /* non-fatal */ }
+  }
+
+  catSel.addEventListener('change', checkMarinaConflict);
+  boatSel?.addEventListener('change', checkMarinaConflict);
+}
 
 // ===========================================================================
 // TAB MANAGEMENT
@@ -829,13 +877,13 @@ async function saveExpense(event) {
       editingExpenseId = null;
       await loadExpenses();
       await loadAnalytics();
-      alert(isEditing ? 'Gasto actualizado exitosamente' : 'Gasto guardado exitosamente y sincronizado con contabilidad');
+      showBmToast(isEditing ? 'Gasto actualizado exitosamente' : 'Gasto guardado y sincronizado con contabilidad', true);
     } else {
-      alert('Error al guardar el gasto');
+      showBmToast('Error al guardar el gasto', false);
     }
   } catch (error) {
     console.error('Error saving expense:', error);
-    alert('Error al guardar el gasto');
+    showBmToast('Error al guardar el gasto', false);
   }
 }
 

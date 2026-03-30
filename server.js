@@ -1188,6 +1188,25 @@ async function initializeDatabase() {
 
     console.log('✅ FASE 14 tables created (captain/stew payments)');
 
+    // Booking Deposits: separate liability account for future reservations
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS booking_deposits (
+        id TEXT PRIMARY KEY,
+        client_name TEXT NOT NULL,
+        client_email TEXT,
+        client_phone TEXT,
+        boat_id TEXT REFERENCES boats(id),
+        booking_reference TEXT,
+        amount NUMERIC(12,2) NOT NULL,
+        deposit_date DATE NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','applied','refunded')),
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+    console.log('✅ booking_deposits table ready');
+
     // Seed chart of accounts if empty
     const accountsCheck = await pool.query('SELECT COUNT(*) FROM chart_of_accounts');
     if (parseInt(accountsCheck.rows[0].count) === 0) {
@@ -1280,6 +1299,14 @@ async function initializeDatabase() {
       
       console.log('✅ Chart of accounts initialized with hierarchical marine business accounts');
     }
+
+    // Ensure "Deferred Booking Deposits" liability account exists (idempotent migration)
+    await pool.query(`
+      INSERT INTO chart_of_accounts (id, account_code, account_name, account_type, description)
+      VALUES ('acc_booking_deposits_2500', '2500', 'Deferred Booking Deposits', 'liability',
+              'Deposits received for future bookings — not yet recognized as revenue')
+      ON CONFLICT (id) DO NOTHING
+    `);
     
     // AUTHENTICATION: Create sessions table (required for Replit Auth)
     await pool.query(`
@@ -9355,6 +9382,69 @@ app.patch('/api/stews/:id', isAuthenticated, async (req, res) => {
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Stew no encontrado' });
     res.json(result.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── Booking Deposits ──────────────────────────────────
+app.get('/api/booking-deposits', isAuthenticated, async (req, res) => {
+  try {
+    const { status, boat_id } = req.query;
+    let sql = `SELECT bd.*, b.name as boat_name FROM booking_deposits bd LEFT JOIN boats b ON bd.boat_id = b.id WHERE 1=1`;
+    const params = [];
+    if (status)  { params.push(status);  sql += ` AND bd.status = $${params.length}`; }
+    if (boat_id) { params.push(boat_id); sql += ` AND bd.boat_id = $${params.length}`; }
+    sql += ' ORDER BY bd.deposit_date DESC';
+    const result = await pool.query(sql, params);
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/booking-deposits', isAuthenticated, async (req, res) => {
+  try {
+    const { client_name, client_email, client_phone, boat_id, booking_reference, amount, deposit_date, status, notes } = req.body;
+    if (!client_name || !amount || !deposit_date) return res.status(400).json({ error: 'client_name, amount y deposit_date son obligatorios' });
+    const { nanoid } = await import('nanoid');
+    const id = 'dep_' + nanoid(8);
+    const result = await pool.query(
+      `INSERT INTO booking_deposits (id, client_name, client_email, client_phone, boat_id, booking_reference, amount, deposit_date, status, notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      [id, client_name, client_email||null, client_phone||null, boat_id||null, booking_reference||null,
+       amount, deposit_date, status||'pending', notes||null]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.patch('/api/booking-deposits/:id', isAuthenticated, async (req, res) => {
+  try {
+    const { client_name, client_email, client_phone, boat_id, booking_reference, amount, deposit_date, status, notes } = req.body;
+    const result = await pool.query(
+      `UPDATE booking_deposits SET
+        client_name       = COALESCE($1, client_name),
+        client_email      = COALESCE($2, client_email),
+        client_phone      = COALESCE($3, client_phone),
+        boat_id           = COALESCE($4, boat_id),
+        booking_reference = COALESCE($5, booking_reference),
+        amount            = COALESCE($6, amount),
+        deposit_date      = COALESCE($7, deposit_date),
+        status            = COALESCE($8, status),
+        notes             = COALESCE($9, notes),
+        updated_at        = CURRENT_TIMESTAMP
+       WHERE id = $10 RETURNING *`,
+      [client_name||null, client_email||null, client_phone||null, boat_id||null,
+       booking_reference||null, amount||null, deposit_date||null, status||null,
+       notes||null, req.params.id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Depósito no encontrado' });
+    res.json(result.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/booking-deposits/:id', isAuthenticated, async (req, res) => {
+  try {
+    const result = await pool.query('DELETE FROM booking_deposits WHERE id = $1 RETURNING *', [req.params.id]);
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Depósito no encontrado' });
+    res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

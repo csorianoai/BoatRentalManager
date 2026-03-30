@@ -1,0 +1,240 @@
+Quiero modificar el sistema existente “gestión”. No quiero una app nueva. Necesito ajustar la parte de Gastos, crear una cuenta separada para depósitos de futuras reservas y ordenar correctamente los pagos recurrentes de marina para que actualicen bien la contabilidad.
+
+OBJETIVO
+1. Poder editar gastos ya creados sin tener que rehacerlos desde cero
+2. Crear una cuenta separada para registrar depósitos de separación de bookings futuros
+3. Evitar que los pagos de marina creados como gastos manuales choquen con pagos recurrentes ya configurados
+4. Asegurar que los pagos recurrentes actualicen correctamente la contabilidad
+
+REGLAS
+- no crear app nueva
+- integrar dentro de “gestión”
+- mantener UI consistente
+- código simple y modular
+- sin librerías pesadas
+- optimizado para bajo consumo en Replit
+- cambiar solo lo necesario para que funcione bien
+
+==================================================
+1. GASTOS EDITABLES
+==================================================
+
+Necesito que los gastos ya creados puedan modificarse.
+
+REQUISITOS
+- agregar opción de editar gasto
+- permitir cambiar:
+  - fecha
+  - barco
+  - categoría
+  - descripción
+  - monto
+  - proveedor
+  - método de pago
+  - notas
+- guardar fecha de actualización
+- no romper registros existentes
+
+OBJETIVO
+No tener que borrar y volver a crear un gasto completo si solo necesito corregir un dato.
+
+INTERFAZ
+- botón “Editar” en cada gasto
+- formulario simple de edición
+- guardar cambios y refrescar lista
+- mantener vínculo con el barco si ya estaba asignado
+
+==================================================
+2. CUENTA SEPARADA PARA DEPÓSITOS DE BOOKINGS FUTUROS
+==================================================
+
+Necesito crear una cuenta o categoría contable separada para recibir depósitos de separación de futuras reservas.
+
+OBJETIVO
+Que cuando entre dinero como depósito o adelanto de una reserva futura, no se mezcle con ingresos operativos normales.
+
+CREAR
+Una cuenta contable separada, por ejemplo:
+- Depósitos de reservas futuras
+o
+- Booking deposits / Deferred booking deposits
+
+COMPORTAMIENTO
+- permitir registrar depósitos recibidos como adelantos
+- esos depósitos deben entrar a esa cuenta separada
+- no tratarlos inmediatamente como ingreso final realizado
+- dejarlos identificados por:
+  - cliente
+  - barco si aplica
+  - fecha
+  - monto
+  - referencia de booking si existe
+  - estado
+
+ESTADOS SUGERIDOS
+- pendiente de aplicar
+- aplicado a booking
+- reembolsado
+
+OBJETIVO CONTABLE
+Que esos depósitos queden registrados de forma separada y luego se puedan aplicar correctamente cuando la reserva se confirme o se ejecute.
+
+==================================================
+3. PAGOS DE MARINA Y PAGOS RECURRENTES
+==================================================
+
+Cuando ingresemos gastos por pago de marina, necesito evitar duplicidades o conflictos con pagos recurrentes ya creados.
+
+PROBLEMA A RESOLVER
+Si ya existe un pago recurrente de marina, no quiero que un gasto manual de marina duplique ese movimiento o choque con la contabilidad.
+
+REGLA DE NEGOCIO
+- los pagos fijos o repetitivos de marina deben crearse como pagos recurrentes
+- los pagos extraordinarios o no programados de marina sí pueden crearse como gasto manual
+
+IMPLEMENTACIÓN
+Agregar una validación para categoría “Marina”:
+- si existe un pago recurrente activo similar para ese barco/proveedor/periodo, mostrar advertencia
+- sugerir al usuario:
+  - usar el pago recurrente existente
+  - o confirmar que este gasto es extraordinario/manual
+
+MENSAJE SUGERIDO
+“Ya existe un pago recurrente activo de marina para este barco o proveedor. ¿Deseas registrar este gasto como extraordinario o gestionarlo desde pagos recurrentes?”
+
+==================================================
+4. DÓNDE DEBEN CREARSE LOS PAGOS RECURRENTES
+==================================================
+
+Necesito que quede claro en el sistema que:
+
+- los pagos recurrentes deben crearse en una sección específica de:
+  - Pagos recurrentes
+  - o Contabilidad > Recurrentes
+  - o Gastos recurrentes
+
+NO deben crearse como gasto manual normal si son pagos periódicos esperados.
+
+TIPOS DE PAGOS RECURRENTES
+- marina
+- slip / dock
+- storage
+- seguros
+- suscripciones
+- servicios mensuales
+- otros cargos fijos
+
+==================================================
+5. CÓMO ACTUALIZAN LA CONTABILIDAD
+==================================================
+
+Necesito que los pagos recurrentes actualicen directamente la contabilidad.
+
+COMPORTAMIENTO REQUERIDO
+- cada pago recurrente debe generar automáticamente un registro contable cuando llegue su fecha
+- ese registro debe quedar en Gastos / Contabilidad
+- debe guardar relación con:
+  - barco
+  - proveedor
+  - categoría
+  - fecha
+  - monto
+  - regla recurrente de origen
+
+CAMPOS SUGERIDOS
+- recurring_rule_id
+- boat_id
+- category
+- amount
+- due_date
+- status
+- generated_automatically = true
+
+ESTADOS
+- programado
+- generado
+- pagado
+- vencido
+- cancelado
+
+OBJETIVO
+Que la contabilidad se actualice automáticamente desde los pagos recurrentes sin tener que volver a crear el gasto manualmente.
+
+==================================================
+6. LÓGICA PARA EVITAR DUPLICADOS
+==================================================
+
+Agregar validación para evitar duplicados entre:
+- gasto manual
+- gasto generado por pago recurrente
+
+CRITERIOS SUGERIDOS
+comparar:
+- barco
+- proveedor
+- categoría
+- monto
+- periodo o fecha cercana
+
+Si existe coincidencia fuerte:
+- mostrar alerta
+- permitir cancelar creación
+- o marcarlo explícitamente como gasto extraordinario
+
+==================================================
+7. INTERFAZ
+==================================================
+
+Necesito estas mejoras visibles:
+
+A. EN GASTOS
+- botón Editar
+- indicador si un gasto viene de pago recurrente
+- advertencia si categoría marina ya tiene recurrente activo
+
+B. EN CONTABILIDAD
+- cuenta separada para depósitos de bookings futuros
+- vista clara de depósitos pendientes de aplicar
+
+C. EN PAGOS RECURRENTES
+- formulario para crear pagos recurrentes
+- opción de asignar barco
+- proveedor
+- categoría
+- frecuencia
+- fecha inicio
+- monto
+- estado activo/inactivo
+
+==================================================
+8. MVP OBLIGATORIO
+==================================================
+
+Implementar primero:
+1. edición de gastos existentes
+2. cuenta separada para depósitos de bookings futuros
+3. validación para pagos de marina vs pagos recurrentes
+4. creación correcta de pagos recurrentes desde su sección adecuada
+5. generación automática de registros contables desde pagos recurrentes
+6. prevención básica de duplicados
+
+==================================================
+9. ENTREGABLE
+==================================================
+
+Necesito:
+- gastos editables
+- cuenta separada para depósitos de futuras reservas
+- lógica clara para marina manual vs marina recurrente
+- sección correcta para crear pagos recurrentes
+- actualización automática de contabilidad desde recurrentes
+- validación anti-duplicados
+- integración completa dentro de “gestión”
+
+RESULTADO FINAL
+Debo poder:
+- corregir un gasto ya creado sin rehacerlo
+- registrar depósitos de futuras reservas en una cuenta separada
+- manejar pagos recurrentes de marina en el lugar correcto
+- evitar duplicidades entre gastos manuales y recurrentes
+- ver esos movimientos reflejados correctamente en contabilidad
