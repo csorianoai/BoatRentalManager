@@ -1,0 +1,507 @@
+Quiero llevar el sistema de importación y conciliación bancaria dentro de “gestión” a un nivel automático e inteligente. No quiero una app nueva. Quiero una evolución del sistema actual.
+
+CONTEXTO
+Ya existe un flujo de importación de extractos bancarios en PDF/CSV/OFX, pero el parsing de PDFs todavía es limitado y la clasificación contable depende demasiado de intervención manual.
+
+OBJETIVO
+Construir un sistema de conciliación bancaria semi-automática que:
+- extraiga transacciones desde PDF, CSV y OFX
+- aprenda patrones del banco y del negocio
+- sugiera clasificación contable automáticamente
+- sugiera barco, proveedor y tipo de movimiento
+- permita validación humana antes de confirmar
+- mantenga trazabilidad completa
+- no rompa el sistema actual de contabilidad, gastos, activos, inventario e ingresos
+
+REGLAS
+- no crear app nueva
+- integrarlo dentro de “gestión”
+- no romper el flujo actual
+- no reemplazar CSV/OFX existentes si ya funcionan
+- mantener el sistema liviano para Replit
+- no usar librerías pesadas innecesarias
+- construir primero una versión robusta y semi-automática, no “mágica”
+- toda automatización debe poder revisarse y corregirse antes de confirmar
+
+==================================================
+1. NUEVA VISIÓN DEL FLUJO
+==================================================
+
+Quiero este flujo:
+
+1. subir extracto bancario (PDF, CSV, OFX)
+2. extraer movimientos
+3. normalizar movimientos
+4. detectar patrones conocidos
+5. sugerir clasificación contable
+6. sugerir entidad relacionada:
+   - barco
+   - proveedor
+   - cliente
+   - broker
+7. mostrar nivel de confianza
+8. permitir corrección manual
+9. confirmar y enviar al módulo correcto
+10. mostrar conciliación final y pendientes
+
+==================================================
+2. PARSER AUTOMÁTICO MULTIFORMATO
+==================================================
+
+El sistema debe soportar:
+- PDF
+- CSV
+- OFX
+
+A. PDF
+El parser debe ser flexible y tolerante a distintos formatos bancarios.
+
+Debe:
+- extraer texto
+- normalizar saltos de línea
+- detectar fechas
+- detectar montos
+- detectar descripciones
+- soportar transacciones en una sola línea o en múltiples líneas
+- ignorar headers, footers, balances y textos irrelevantes
+- si no puede detectar todo, devolver resultados parciales en vez de fallar completamente
+
+B. CSV
+- mantener flujo existente
+- mapear columnas automáticamente si es posible
+- permitir ajuste manual si encabezados cambian
+
+C. OFX
+- mantener flujo existente
+- transformar a formato común de movimientos
+
+==================================================
+3. NORMALIZACIÓN DE MOVIMIENTOS
+==================================================
+
+Todos los formatos deben convertirse a una estructura común:
+
+- id temporal
+- fecha
+- descripción original
+- descripción normalizada
+- referencia opcional
+- monto
+- tipo:
+  - débito
+  - crédito
+- cuenta bancaria origen
+- archivo origen
+- confidence_parse
+- estado:
+  - importado
+  - sugerido
+  - clasificado
+  - conciliado
+  - requiere revisión
+
+==================================================
+4. MOTOR DE APRENDIZAJE DE PATRONES
+==================================================
+
+Este punto es clave.
+
+El sistema debe aprender de decisiones previas del usuario.
+
+Ejemplo:
+- si “Shell Miami” fue clasificado antes como combustible del barco SEARAY 500
+- la próxima vez debe sugerir:
+  - tipo: gasto
+  - categoría: combustible
+  - barco: SEARAY 500
+  - proveedor: Shell Miami
+
+Guardar patrones simples basados en:
+- descripción normalizada
+- proveedor detectado
+- rango de monto
+- tipo de movimiento
+- frecuencia
+- categoría elegida
+- módulo destino
+- barco asociado
+- cuenta contable usada
+
+El sistema no debe “inventar”, sino sugerir basado en historial real.
+
+==================================================
+5. MOTOR DE SUGERENCIAS INTELIGENTES
+==================================================
+
+Para cada movimiento importado, el sistema debe sugerir automáticamente:
+
+A. TIPO CONTABLE
+- gasto
+- ingreso
+- activo
+- inventario
+- pasivo
+- transferencia
+- depósito diferido
+- cuenta por cobrar / pago recibido si aplica
+
+B. CATEGORÍA
+Ejemplos:
+- combustible
+- marina
+- mantenimiento
+- reparación
+- oficina
+- administrativo
+- limpieza
+- inventario
+- equipo
+- compra de bote
+- seguro
+- suscripción
+- nómina crew
+- proveedor
+- otro
+
+C. MÓDULO DESTINO
+- gastos
+- ingresos
+- activos
+- inventario
+- documentos
+- booking deposits
+- cuentas por cobrar
+- pasivos
+- transferencias
+
+D. ENTIDAD RELACIONADA
+- barco sugerido
+- proveedor sugerido
+- cliente sugerido
+- broker sugerido
+
+E. NIVEL DE CONFIANZA
+- alta
+- media
+- baja
+
+==================================================
+6. REGLAS CONTABLES INTELIGENTES
+==================================================
+
+Implementar reglas contables de negocio.
+
+A. GASTOS OPERATIVOS
+Si descripción contiene o coincide con patrones como:
+- shell, fuel, diesel, gas → combustible
+- marina, dock, slip → marina
+- repair, mechanic, service → mantenimiento/reparación
+- cleaning → limpieza
+- office, supplies → oficina/administrativo
+
+B. ACTIVOS
+Si:
+- monto alto
+- compra puntual
+- palabras como equipment, radio, device, carpet, mat
+→ sugerir activo o inventario, no gasto directo
+
+C. INVENTARIO
+Si:
+- compra repetible
+- cantidad alta
+- proveedor tipo Amazon/Home Depot/West Marine
+→ sugerir inventario o equipo
+
+D. COMPRA DE BOTE
+Si:
+- monto muy alto
+- palabras boat, yacht, hull, vessel, serial/model
+→ sugerir activo fijo tipo embarcación
+
+E. INGRESOS
+Si:
+- crédito/depósito positivo
+- coincide con cliente, broker o booking
+→ sugerir ingreso o depósito diferido
+
+F. DEPÓSITOS DE BOOKING
+Si:
+- coincide con monto parcial
+- referencias a reserva/booking/cliente
+→ sugerir Deferred Booking Deposits
+
+G. TRANSFERENCIAS
+Si:
+- mismo monto aparece en otra cuenta
+- descripción contiene transfer, ach transfer, internal transfer
+→ sugerir transferencia y no ingreso/gasto
+
+==================================================
+7. MATCHING CON HISTORIAL DEL SISTEMA
+==================================================
+
+El motor debe intentar relacionar movimientos con datos existentes:
+
+- gastos ya creados
+- facturas subidas
+- activos registrados
+- pagos recurrentes
+- depósitos de booking
+- cuentas por cobrar
+- brokers
+- proveedores
+- barcos
+
+Ejemplos:
+- si ya existe un gasto manual de marina por el mismo monto y fecha aproximada, sugerir conciliación en vez de crear uno nuevo
+- si ya existe factura asociada, sugerir vincularla
+- si ya existe depósito de booking similar, sugerir emparejarlo
+
+==================================================
+8. PREVIEW CONTABLE ANTES DE CONFIRMAR
+==================================================
+
+Antes de confirmar cada movimiento, mostrar “Impacto contable estimado”.
+
+Ejemplo:
+- Debit: Fuel Expense
+- Credit: Bank
+
+o
+
+- Debit: Equipment Asset
+- Credit: Bank
+
+o
+
+- Debit: Bank
+- Credit: Deferred Booking Deposits
+
+Esto es obligatorio para evitar errores.
+
+==================================================
+9. CLASIFICACIÓN GUIADA Y EDICIÓN MASIVA
+==================================================
+
+La interfaz debe permitir:
+
+- aceptar sugerencia con un clic
+- editar sugerencia antes de confirmar
+- aplicar misma clasificación a múltiples movimientos similares
+- filtrar por confianza baja para revisar primero
+- filtrar por movimientos sin asignar
+- filtrar por proveedor o barco
+
+También permitir acciones masivas:
+- clasificar varios como combustible
+- asignar varios al mismo barco
+- marcar varios como revisión pendiente
+
+==================================================
+10. MANEJO DE CONFIANZA
+==================================================
+
+Cada sugerencia debe tener score o confianza.
+
+Ejemplo:
+- alta: patrón ya visto muchas veces
+- media: coincide parcialmente
+- baja: regla genérica o ambigua
+
+Reglas:
+- alta → permitir auto-clasificación sugerida
+- media → revisión recomendada
+- baja → revisión obligatoria
+
+No contabilizar automáticamente sin control si la confianza es baja.
+
+==================================================
+11. APRENDIZAJE PROGRESIVO
+==================================================
+
+Cada vez que el usuario confirme una clasificación, guardar esa decisión como referencia futura.
+
+Guardar:
+- descripción normalizada
+- proveedor
+- categoría
+- tipo contable
+- módulo destino
+- cuenta contable
+- barco
+- notas opcionales
+- si fue aceptada como correcta
+
+El sistema debe mejorar con el tiempo y reducir trabajo manual.
+
+==================================================
+12. DETECCIÓN DE ERRORES E INCONSISTENCIAS
+==================================================
+
+El sistema debe alertar sobre:
+
+- movimiento duplicado probable
+- movimiento con monto alto clasificado como gasto pero que parece activo
+- movimiento sin barco cuando el patrón suele requerir barco
+- movimiento que parece transferencia pero fue marcado como ingreso
+- movimiento que parece depósito diferido pero fue marcado como ingreso final
+- movimiento ya registrado en otro módulo
+- diferencias entre total del estado y total conciliado
+
+==================================================
+13. CONCILIACIÓN FINAL
+==================================================
+
+Crear una pantalla de conciliación final con:
+
+- total movimientos importados
+- total auto-sugeridos
+- total clasificados
+- total conciliados
+- total pendientes de revisión
+- total sin asignar
+- duplicados potenciales
+- diferencia entre total bancario y total contabilizado
+
+Quiero una especie de checklist final:
+- todo asignado
+- todo revisado
+- sin duplicados
+- sin inconsistencias graves
+
+==================================================
+14. SOPORTE PARA DIVISIÓN DE MOVIMIENTOS
+==================================================
+
+Debe existir opción para dividir un movimiento en múltiples destinos contables.
+
+Ejemplo:
+un cargo de Amazon de 500 puede dividirse en:
+- 200 inventario
+- 150 oficina
+- 150 equipo
+
+También debe soportar:
+- parte gasto / parte activo
+- parte asociada a un barco / parte general
+
+==================================================
+15. INTEGRACIÓN CON DOCUMENTOS
+==================================================
+
+Si existe factura, recibo o PDF relacionado, el sistema debe poder:
+- vincularlo al movimiento bancario
+- mostrarlo en el detalle
+- usarlo como soporte de conciliación
+
+==================================================
+16. INTERFAZ DEL MÓDULO
+==================================================
+
+Quiero estas pantallas o secciones:
+
+A. Importar Estado Bancario
+- subir PDF/CSV/OFX
+- ver estado del archivo
+
+B. Bandeja de Movimientos
+- lista de movimientos importados
+- sugerencias
+- confianza
+- filtros
+- acciones rápidas
+
+C. Clasificación / Revisión
+- panel lateral o modal
+- tipo contable
+- categoría
+- barco
+- proveedor
+- cuenta contable
+- impacto contable estimado
+- notas
+- confirmar
+
+D. Conciliación Final
+- resumen
+- pendientes
+- errores
+- diferencias
+- movimientos conciliados
+
+==================================================
+17. AUTOMATIZACIÓN REALISTA
+==================================================
+
+Quiero automatización útil, no falsa.
+
+Hacer:
+- sugerencias automáticas
+- memoria de patrones
+- matching con historial
+- reglas de confianza
+- clasificación masiva
+
+No hacer todavía:
+- contabilización 100% autónoma sin revisión
+- IA opaca sin trazabilidad
+- OCR pesado por defecto
+
+==================================================
+18. MVP PREMIUM OBLIGATORIO
+==================================================
+
+Implementar primero:
+
+1. parser PDF más flexible
+2. normalización común de movimientos
+3. sugerencias automáticas por palabras clave
+4. aprendizaje de clasificaciones previas
+5. sugerencia de barco/proveedor si hay patrón
+6. preview contable
+7. aceptación rápida con un clic
+8. filtros por confianza
+9. conciliación final con métricas
+10. detección básica de duplicados e inconsistencias
+
+==================================================
+19. VALIDACIONES OBLIGATORIAS
+==================================================
+
+Antes de cerrar, validar:
+
+1. se puede subir PDF, CSV y OFX
+2. los movimientos se convierten a un formato común
+3. aparecen sugerencias automáticas
+4. el sistema recuerda clasificaciones previas
+5. se muestra nivel de confianza
+6. se puede editar antes de confirmar
+7. se pueden enviar movimientos a gastos / activos / inventario / ingresos
+8. se detectan duplicados probables
+9. se muestra conciliación final
+10. nada rompe el sistema existente de contabilidad
+
+==================================================
+20. RESULTADO FINAL
+==================================================
+
+Debo poder:
+- subir un estado bancario
+- ver movimientos extraídos
+- recibir sugerencias inteligentes
+- clasificar movimientos rápido
+- aprender del historial de decisiones
+- evitar errores contables
+- conciliar todo con confianza
+- verificar que todo quedó asignado correctamente a:
+  - gastos
+  - activos
+  - inventario
+  - ingresos
+  - depósitos de booking
+  - pasivos
+  - barcos
+  - proveedores
+
+Quiero una experiencia tipo fintech / backoffice profesional, pero integrada dentro de “gestión” y sin volver el sistema pesado.

@@ -1,0 +1,163 @@
+Quiero que soluciones el problema del parsing de transacciones en PDFs bancarios dentro de “gestión”.
+
+ERROR ACTUAL
+❌ No se pudieron extraer transacciones del PDF
+
+IMPORTANTE
+El problema NO es que el PDF no tenga texto.
+El problema es que el parser actual es demasiado rígido y no reconoce múltiples formatos de extractos bancarios.
+
+OBJETIVO
+Hacer el parser de PDF flexible, tolerante y capaz de detectar transacciones en distintos formatos reales de bancos.
+
+==================================================
+1. DIAGNÓSTICO OBLIGATORIO
+==================================================
+
+Antes de cambiar lógica:
+- imprimir en consola el texto extraído del PDF
+- verificar cómo viene estructurado realmente
+- confirmar si:
+  - las transacciones están en líneas
+  - están en bloques
+  - tienen columnas desalineadas
+  - tienen símbolos de moneda
+  - tienen balances mezclados
+
+==================================================
+2. REEMPLAZAR PARSER RÍGIDO
+==================================================
+
+Eliminar lógica que dependa de un solo formato tipo:
+
+regex única para:
+fecha + descripción + monto en una sola línea
+
+==================================================
+3. IMPLEMENTAR PARSER FLEXIBLE
+==================================================
+
+Crear sistema que detecte patrones comunes:
+
+A. detectar fechas:
+- formatos:
+  - MM/DD/YYYY
+  - DD/MM/YYYY
+  - DD MMM
+  - YYYY-MM-DD
+
+B. detectar montos:
+- números con:
+  - negativos (-120.00)
+  - positivos
+  - con $ o sin $
+  - con comas
+
+C. detectar líneas con posible transacción
+
+Ejemplo de lógica:
+
+- recorrer cada línea
+- si contiene fecha + número → posible transacción
+- guardar contexto de líneas cercanas
+
+==================================================
+4. SOPORTE MULTILÍNEA
+==================================================
+
+Muchos PDFs tienen transacciones en varias líneas:
+
+Ejemplo:
+
+03/23/2026
+AMAZON PURCHASE
+-120.00
+
+El parser debe:
+- agrupar líneas cercanas
+- construir una transacción completa
+
+==================================================
+5. LIMPIEZA DE TEXTO
+==================================================
+
+Antes de parsear:
+
+- eliminar espacios múltiples
+- normalizar texto
+- remover caracteres extraños
+- unificar saltos de línea
+
+==================================================
+6. FILTRADO INTELIGENTE
+==================================================
+
+Ignorar líneas que no son transacciones:
+
+- headers
+- balances
+- totales
+- títulos
+- páginas
+
+Ejemplo:
+- "Beginning Balance"
+- "Ending Balance"
+- "Page 1 of 3"
+
+==================================================
+7. RESULTADO PARCIAL (MUY IMPORTANTE)
+==================================================
+
+Si no puede extraer todo:
+
+- devolver transacciones parciales
+- NO fallar completamente
+
+Mostrar:
+“Se detectaron X transacciones, revisar y confirmar”
+
+==================================================
+8. MODO DEBUG VISUAL
+==================================================
+
+Agregar opción temporal:
+
+- mostrar texto extraído
+- mostrar líneas detectadas como transacciones
+- mostrar parsing paso a paso
+
+==================================================
+9. FALLBACK MANUAL
+==================================================
+
+Si parsing falla parcialmente:
+
+- mostrar tabla editable
+- permitir usuario corregir:
+  - fecha
+  - descripción
+  - monto
+
+==================================================
+10. VALIDACIONES
+==================================================
+
+Antes de cerrar:
+
+- probar con al menos 2 PDFs diferentes
+- confirmar que ya no aparece error
+- confirmar que extrae al menos algunas transacciones
+- confirmar que el sistema permite continuar aunque no sea perfecto
+
+==================================================
+11. RESULTADO FINAL
+==================================================
+
+El sistema debe:
+
+- aceptar PDFs reales de bancos
+- extraer transacciones aunque el formato no sea perfecto
+- no fallar completamente
+- permitir corrección manual
+- alimentar correctamente el sistema de clasificación contable

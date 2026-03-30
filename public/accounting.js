@@ -806,10 +806,9 @@ async function uploadFile(file) {
     const preview    = document.getElementById('importPreview');
     const results    = document.getElementById('importResults');
 
-    // Show loading state
     if (uploadZone) uploadZone.style.opacity = '0.5';
     if (preview)    preview.style.display    = 'block';
-    if (results)    results.innerHTML        = '<p style="color:#64748b">⏳ Procesando archivo, por favor espera...</p>';
+    if (results)    results.innerHTML        = '<p style="color:#64748b;padding:12px 0">⏳ Procesando archivo, esto puede tomar unos segundos…</p>';
 
     try {
         const response = await fetch('/api/accounting/bank-statements/upload', {
@@ -820,22 +819,121 @@ async function uploadFile(file) {
         const result = await response.json();
 
         if (!response.ok) {
-            results.innerHTML = `<p style="color:#ef4444;font-weight:600">❌ ${result.error || 'Error al importar el archivo'}</p>`;
+            results.innerHTML = `
+              <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:16px;margin-top:8px">
+                <p style="color:#991b1b;font-weight:700;margin:0 0 8px">❌ ${result.error || 'Error al importar el archivo'}</p>
+                ${result.error && result.error.includes('texto') ? `
+                  <p style="color:#64748b;font-size:13px;margin:0">
+                    Si tu extracto es un PDF escaneado (imagen), descarga la versión digital desde el portal de tu banco 
+                    en formato <strong>CSV</strong> o <strong>OFX</strong>.
+                  </p>` : ''}
+              </div>`;
             return;
         }
 
-        results.innerHTML = `
-            <p style="color:#10b981;font-weight:700;font-size:15px">✅ ${result.imported} movimientos importados de <em>${result.fileName}</em></p>
-            <p style="color:#64748b;font-size:13px;margin-top:6px">Ve a la pestaña <strong>🧠 Clasificación Inteligente</strong> para clasificar y registrar los movimientos en contabilidad.</p>
-        `;
+        // ── Case 1: PDF with no auto-detected transactions → show raw text for manual review
+        if (result.needsReview && result.imported === 0) {
+            results.innerHTML = buildManualReviewUI(result);
+            return;
+        }
 
+        // ── Case 2: PDF with detected transactions → show review table
+        if (result.needsReview && result.imported > 0) {
+            results.innerHTML = buildImportSuccessWithReview(result);
+            await loadData();
+            return;
+        }
+
+        // ── Case 3: CSV / OFX → standard success
+        results.innerHTML = `
+          <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:16px;margin-top:8px">
+            <p style="color:#065f46;font-weight:700;font-size:15px;margin:0 0 6px">
+              ✅ ${result.imported} movimientos importados de <em>${result.fileName}</em>
+            </p>
+            <p style="color:#64748b;font-size:13px;margin:0">
+              Ve a la pestaña <strong>🧠 Clasificación Inteligente</strong> para clasificar y registrar los movimientos.
+            </p>
+          </div>`;
         await loadData();
+
     } catch (error) {
         console.error('Error uploading file:', error);
-        if (results) results.innerHTML = '<p style="color:#ef4444;font-weight:600">❌ Error de conexión al importar el archivo</p>';
+        if (results) results.innerHTML = '<p style="color:#ef4444;font-weight:600;padding:12px 0">❌ Error de conexión. Intenta de nuevo.</p>';
     } finally {
         if (uploadZone) uploadZone.style.opacity = '1';
     }
+}
+
+function buildImportSuccessWithReview(result) {
+    const rows = (result.statements || []).slice(0, 50).map((s, i) => `
+      <tr>
+        <td><input type="date" value="${(s.statement_date||'').slice(0,10)}" 
+            onchange="pdfRows[${i}].statement_date=this.value"
+            style="border:1px solid #e5e7eb;border-radius:4px;padding:3px 6px;font-size:12px;width:120px"></td>
+        <td><input type="text" value="${(s.description||'').replace(/"/g,'&quot;')}"
+            onchange="pdfRows[${i}].description=this.value"
+            style="border:1px solid #e5e7eb;border-radius:4px;padding:3px 6px;font-size:12px;width:100%;min-width:180px"></td>
+        <td><input type="number" step="0.01" value="${parseFloat(s.amount||0).toFixed(2)}"
+            onchange="pdfRows[${i}].amount=parseFloat(this.value)"
+            style="border:1px solid #e5e7eb;border-radius:4px;padding:3px 6px;font-size:12px;width:90px;text-align:right"></td>
+        <td style="text-align:center">
+          <button onclick="removePdfRow(${i})" style="background:#fef2f2;border:1px solid #fecaca;border-radius:4px;padding:2px 8px;color:#991b1b;cursor:pointer;font-size:11px">✕</button>
+        </td>
+      </tr>`).join('');
+
+    window.pdfRows = (result.statements || []).slice(0, 50).map(s => ({...s}));
+
+    return `
+      <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:14px 16px;margin-top:8px">
+        <p style="color:#1e40af;font-weight:700;font-size:14px;margin:0 0 4px">
+          🧠 ${result.imported} transacciones detectadas en ${result.fileName}
+        </p>
+        <p style="color:#64748b;font-size:12px;margin:0">
+          Revisa y corrige las filas si es necesario, luego ve a <strong>🧠 Clasificación Inteligente</strong> para procesarlas.
+        </p>
+      </div>
+      <div style="overflow-x:auto;margin-top:12px;max-height:360px;overflow-y:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead style="position:sticky;top:0;background:#f8fafc">
+            <tr>
+              <th style="padding:6px 8px;text-align:left;border-bottom:2px solid #e5e7eb;color:#64748b">Fecha</th>
+              <th style="padding:6px 8px;text-align:left;border-bottom:2px solid #e5e7eb;color:#64748b">Descripción</th>
+              <th style="padding:6px 8px;text-align:right;border-bottom:2px solid #e5e7eb;color:#64748b">Monto</th>
+              <th style="padding:6px 8px;border-bottom:2px solid #e5e7eb"></th>
+            </tr>
+          </thead>
+          <tbody id="pdfReviewBody">${rows}</tbody>
+        </table>
+      </div>`;
+}
+
+function removePdfRow(i) {
+    if (window.pdfRows) window.pdfRows.splice(i, 1);
+    const tbody = document.getElementById('pdfReviewBody');
+    if (tbody) { const row = tbody.querySelectorAll('tr')[i]; if (row) row.remove(); }
+}
+
+function buildManualReviewUI(result) {
+    const escaped = (result.rawText || '').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return `
+      <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:14px 16px;margin-top:8px">
+        <p style="color:#92400e;font-weight:700;font-size:14px;margin:0 0 6px">
+          ⚠️ No se detectaron transacciones automáticamente en ${result.fileName}
+        </p>
+        <p style="color:#64748b;font-size:12px;margin:0 0 10px">
+          El PDF fue leído correctamente pero el formato no pudo ser interpretado automáticamente.
+          Descarga el extracto en formato <strong>CSV</strong> desde el portal de tu banco para mejor resultado,
+          o revisa el texto extraído abajo para copiar los datos manualmente.
+        </p>
+        <details style="margin-top:8px">
+          <summary style="cursor:pointer;color:#1e40af;font-size:12px;font-weight:600">
+            📋 Ver texto extraído del PDF (para diagnóstico)
+          </summary>
+          <pre style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:6px;padding:12px;
+                      font-size:11px;overflow-x:auto;max-height:300px;overflow-y:auto;
+                      margin-top:8px;white-space:pre-wrap;word-break:break-word;color:#1a1a2e">${escaped.slice(0,3000)}</pre>
+        </details>
+      </div>`;
 }
 
 async function deleteTransaction(id) {

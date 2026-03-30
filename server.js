@@ -5756,6 +5756,7 @@ app.post('/api/accounting/bank-statements/upload', isAuthenticated, upload.singl
     const fileType = fileName.toLowerCase();
     
     let statements = [];
+    let pdfRawText = ''; // shared scope for PDF raw text (used in final response)
 
     // Parse CSV files
     if (fileType.endsWith('.csv')) {
@@ -5830,6 +5831,7 @@ app.post('/api/accounting/bank-statements/upload', isAuthenticated, upload.singl
         const parser = new PDFParse({ data: fileBuffer });
         const pdfResult = await parser.getText();
         text = pdfResult.text || '';
+        pdfRawText = text; // expose to outer scope for response
         console.log(`📄 PDF text extracted — length: ${text.length} chars`);
       } catch (pdfErr) {
         console.error('PDF parse error:', pdfErr.message);
@@ -5843,61 +5845,154 @@ app.post('/api/accounting/bank-statements/upload', isAuthenticated, upload.singl
         });
       }
 
-      // Extract transactions from PDF text using flexible regex
-      const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 5);
-      const currentYear = new Date().getFullYear();
+      // ── FLEXIBLE MULTI-STRATEGY PDF PARSER ──────────────────────────
+      const rawTextPreview = text.slice(0, 2000); // for debug/review
+      console.log(`📄 PDF raw text preview (first 500 chars):\n${text.slice(0,500)}`);
 
-      // Match: date at start, then description, then amount at end
-      // Supports: MM/DD, MM/DD/YY, MM/DD/YYYY, YYYY-MM-DD, DD-MM-YYYY
-      const dateRx = /^(\d{1,2}[\/\-]\d{1,2}(?:[\/\-]\d{2,4})?|\d{4}[\/\-]\d{2}[\/\-]\d{2})\s+/;
-      const amtRx  = /\(?([\d,]{1,10}\.\d{2})\)?\s*[\+\-]?\s*$/;
+      const CY = new Date().getFullYear();
 
-      for (const line of lines) {
-        const dMatch = line.match(dateRx);
-        if (!dMatch) continue;
-        const aMatch = line.match(/\(?([\d,]{1,10}\.\d{2})\)?\s*$/);
-        if (!aMatch) continue;
+      // Lines to ignore (headers, totals, page markers)
+      const SKIP_RX = [
+        /^(beginning|ending|starting|opening|closing|available|current)\s+balance/i,
+        /^(saldo\s+(inicial|final|disponible|anterior))/i,
+        /^balance\s+forward/i, /^(deposits|withdrawals|debits?|credits?)\s*$/i,
+        /^page\s+\d+/i, /^p[áa]gina\s+\d+/i, /^account\s+(number|summary|activity)/i,
+        /^statement\s+(period|date|summary)/i, /^transaction\s+history/i,
+        /^actividad\s+de\s+cuenta/i, /^(fecha|date)\s+(descripci|description)/i,
+        /^(total|subtotal|grand\s+total)\s*$/i, /^\*+$/, /^-{3,}$/, /^={3,}$/,
+        /^(interest\s+charged|fees\s+charged|minimum\s+payment)/i,
+        /^(número\s+de\s+cuenta|account\s+no)/i,
+      ];
 
-        // Parse date
-        const rawDate = dMatch[1];
-        const parts = rawDate.split(/[\/\-]/);
-        let parsedDate = null;
-        if (parts.length === 3) {
-          // YYYY-MM-DD
-          if (parts[0].length === 4) {
-            parsedDate = `${parts[0]}-${parts[1].padStart(2,'0')}-${parts[2].padStart(2,'0')}`;
-          } else {
-            const yr = parts[2].length === 2 ? '20'+parts[2] : parts[2];
-            parsedDate = `${yr}-${parts[0].padStart(2,'0')}-${parts[1].padStart(2,'0')}`;
-          }
-        } else if (parts.length === 2) {
-          parsedDate = `${currentYear}-${parts[0].padStart(2,'0')}-${parts[1].padStart(2,'0')}`;
+      // Date patterns that anchor a transaction line
+      const DATE_RXS = [
+        /^(\d{1,2}\/\d{1,2}\/\d{2,4})/,   // MM/DD/YYYY or MM/DD/YY
+        /^(\d{1,2}\/\d{1,2})(?!\d)/,        // MM/DD (no year)
+        /^(\d{4}-\d{2}-\d{2})/,             // YYYY-MM-DD
+        /^(\d{1,2}-\d{1,2}-\d{2,4})/,       // DD-MM-YYYY
+        /^(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|Ene|Abr|Ago|Dic)\w*(?:\s+\d{4})?)/i,
+      ];
+
+      function parseDate(raw) {
+        if (!raw) return null;
+        raw = raw.trim();
+        // MM/DD/YYYY or MM/DD/YY
+        let m = raw.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/);
+        if (m) {
+          const yr = m[3] ? (m[3].length===2?'20'+m[3]:m[3]) : CY;
+          return `${yr}-${m[1].padStart(2,'0')}-${m[2].padStart(2,'0')}`;
         }
-        if (!parsedDate) continue;
-
-        // Parse amount — parentheses = negative (debit)
-        const rawAmt = aMatch[1].replace(/,/g,'');
-        let amount = parseFloat(rawAmt);
-        if (aMatch[0].includes('(')) amount = -Math.abs(amount);
-        if (isNaN(amount)) continue;
-
-        // Description = line without date prefix and amount suffix
-        const amtIdx = line.lastIndexOf(aMatch[0].trimEnd());
-        let desc = line.slice(dMatch[0].length, amtIdx).trim().replace(/\s{2,}/g,' ');
-        if (!desc || desc.length < 2) desc = 'Transacción';
-
-        statements.push({
-          statement_date: parsedDate,
-          description: desc,
-          amount,
-          balance: null,
-          reference_number: null
-        });
+        // YYYY-MM-DD
+        m = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+        // DD-MM-YYYY
+        m = raw.match(/^(\d{1,2})-(\d{1,2})-(\d{2,4})/);
+        if (m) { const yr = m[3].length===2?'20'+m[3]:m[3]; return `${yr}-${m[1].padStart(2,'0')}-${m[2].padStart(2,'0')}`; }
+        // DD Mon YYYY
+        const MONTHS = {jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12,ene:1,abr:4,ago:8,dic:12};
+        m = raw.match(/^(\d{1,2})\s+([a-z]{3})\w*(?:\s+(\d{4}))?/i);
+        if (m) { const mn = MONTHS[m[2].toLowerCase().slice(0,3)]; if (mn) return `${m[3]||CY}-${String(mn).padStart(2,'0')}-${m[1].padStart(2,'0')}`; }
+        return null;
       }
 
-      if (statements.length === 0) {
-        return res.status(400).json({
-          error: 'No se pudieron extraer transacciones del PDF. Asegúrate de que el PDF contiene texto (no es una imagen escaneada) y tiene el formato estándar de extracto bancario con fechas y montos por línea.'
+      // Find ALL monetary amounts in a string, with their position and sign
+      function findAmounts(str) {
+        const rx = /(-\s*\$?\s*[\d,]{1,12}\.\d{2}|\(\s*\$?\s*[\d,]{1,12}\.\d{2}\s*\)|\+\s*\$?\s*[\d,]{1,12}\.\d{2}|\$?\s*[\d,]{1,12}\.\d{2})/g;
+        const results = [];
+        let m;
+        while ((m = rx.exec(str)) !== null) {
+          const raw = m[1];
+          const isNeg = raw.trim().startsWith('-') || raw.includes('(');
+          const clean = raw.replace(/[\(\)\$,\s\+\-]/g,'');
+          const val = parseFloat(clean);
+          if (!isNaN(val) && val > 0) results.push({ val: isNeg?-val:val, raw, start: m.index, end: m.index+raw.length });
+        }
+        return results;
+      }
+
+      // ── STRATEGY 1: Date-anchored multi-line blocks ──
+      const rawLines = text.split('\n').map(l => l.replace(/\s{2,}/g,' ').trim()).filter(Boolean);
+      const blocks = [];
+      let blk = null;
+      for (const line of rawLines) {
+        if (SKIP_RX.some(rx => rx.test(line))) continue;
+        let dateMatch = null;
+        for (const rx of DATE_RXS) { const m = line.match(rx); if (m){ dateMatch = m; break; } }
+        if (dateMatch) {
+          if (blk) blocks.push(blk);
+          blk = { dateRaw: dateMatch[1], rest: line.slice(dateMatch[0].length).trim(), extras: [] };
+        } else if (blk) {
+          // Stop collecting continuation lines if it looks like a new section
+          if (line.length > 0 && !/^\d{4,}$/.test(line)) blk.extras.push(line);
+          if (blk.extras.length >= 3) { blocks.push(blk); blk = null; } // cap block size
+        }
+      }
+      if (blk) blocks.push(blk);
+      console.log(`📄 PDF strategy-1 blocks found: ${blocks.length}`);
+
+      for (const b of blocks) {
+        const pd = parseDate(b.dateRaw);
+        if (!pd) continue;
+        // Combine rest + extras into one text
+        const combined = [b.rest, ...b.extras].join(' ').replace(/\s+/g,' ').trim();
+        const amounts = findAmounts(combined);
+        if (!amounts.length) continue;
+
+        // Pick transaction amount: prefer negative, else first amount (skip last if 2+ = running balance)
+        let chosen = amounts.find(a => a.val < 0);
+        if (!chosen) chosen = amounts.length >= 2 ? amounts[0] : amounts[0];
+        const amount = chosen.val;
+
+        // Description: text before chosen amount
+        let desc = combined.slice(0, chosen.start).trim().replace(/\s+/g,' ');
+        // If desc is empty (amount was first token), use extras
+        if (!desc && b.extras.length) desc = b.extras.join(' ').trim();
+        if (!desc) desc = 'Transacción';
+        // Skip if description is just digits/symbols
+        if (/^[\d\s\$\.,\-\+\(\)]+$/.test(desc)) desc = b.extras.join(' ').trim() || 'Transacción';
+
+        statements.push({ statement_date: pd, description: desc.slice(0,200), amount, balance: null, reference_number: null });
+      }
+
+      // ── STRATEGY 2: Single-line scan (catches what strategy 1 misses) ──
+      if (statements.length < 3) {
+        console.log(`📄 PDF strategy-2 (single-line scan)…`);
+        for (const line of rawLines) {
+          if (SKIP_RX.some(rx => rx.test(line))) continue;
+          let dateMatch = null;
+          for (const rx of DATE_RXS) { const m = line.match(rx); if (m){ dateMatch = m; break; } }
+          if (!dateMatch) continue;
+          const rest = line.slice(dateMatch[0].length).trim();
+          const amounts = findAmounts(rest);
+          if (!amounts.length) continue;
+          const pd = parseDate(dateMatch[1]);
+          if (!pd) continue;
+          let chosen = amounts.find(a=>a.val<0) || amounts[0];
+          let desc = rest.slice(0, chosen.start).trim();
+          if (!desc) desc = 'Transacción';
+          if (/^[\d\s\$\.,\-\+\(\)]+$/.test(desc)) continue;
+          // Avoid duplicates
+          const isDupe = statements.some(s => s.statement_date===pd && Math.abs(s.amount-chosen.val)<0.01);
+          if (!isDupe) statements.push({ statement_date: pd, description: desc.slice(0,200), amount: chosen.val, balance: null, reference_number: null });
+        }
+      }
+
+      console.log(`📄 PDF total transactions parsed: ${statements.length}`);
+
+      // ── PARTIAL RESULT — never fail completely ──
+      const needsReview = statements.length === 0;
+      if (needsReview) {
+        // Return extracted text so frontend can show it for manual entry
+        console.log(`📄 PDF: no transactions auto-detected, returning raw text for manual review`);
+        return res.status(200).json({
+          success: true,
+          imported: 0,
+          needsReview: true,
+          rawText: text.slice(0, 5000),
+          rawTextPreview: rawTextPreview,
+          statements: [],
+          fileName: fileName,
+          message: 'El texto del PDF fue extraído pero no se detectaron transacciones automáticamente. Revisa el texto extraído y usa la tabla de revisión manual para ingresar los datos.'
         });
       }
     }
@@ -5928,11 +6023,17 @@ app.post('/api/accounting/bank-statements/upload', isAuthenticated, upload.singl
     }
 
     console.log(`✅ Imported ${imported.length} bank statements from ${fileName}`);
+    const isPdf = fileName.toLowerCase().endsWith('.pdf');
     res.json({ 
       success: true, 
       imported: imported.length, 
       statements: imported,
-      fileName: fileName
+      fileName: fileName,
+      needsReview: isPdf && imported.length > 0,
+      rawTextPreview: isPdf ? pdfRawText.slice(0, 2000) : '',
+      message: isPdf
+        ? `Se detectaron y guardaron ${imported.length} transacciones del PDF. Revisa y confirma en la tabla.`
+        : `${imported.length} movimientos importados correctamente.`
     });
   } catch (error) {
     console.error('Error uploading bank statement:', error);
