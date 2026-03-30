@@ -1,0 +1,176 @@
+Quiero modificar y corregir el sistema existente “gestión”. No quiero una app nueva. Necesito revisar funciones que desaparecieron y reactivar módulos importantes dentro del sistema actual.
+
+OBJETIVO
+1. Revisar por qué desapareció la ventana o sección de Flotilla y volver a activarla
+2. Revisar por qué ya no aparece la opción de Gastos Recurrentes y volver a activarla
+3. Asegurar que los Gastos Recurrentes estén sincronizados con los gastos generales de cada barco dentro de Contabilidad / Gastos
+4. Agregar en la carpeta de Documentos una nueva categoría llamada “Membresías” para subir documentos como membresías de remolque u otras afiliaciones de un bote
+
+REGLAS
+- no crear app nueva
+- integrar todo dentro de “gestión”
+- mantener la UI actual
+- no usar librerías pesadas
+- código simple, modular y optimizado para Replit
+- corregir primero lo que desapareció antes de agregar funciones nuevas
+- no romper módulos existentes
+
+==================================================
+1. FLOTILLA
+==================================================
+
+PROBLEMA
+La ventana o sección de Flotilla desapareció y necesito revisarla.
+
+TAREAS
+- revisar navegación, rutas, tabs, tarjetas o menú donde estaba Flotilla
+- identificar por qué dejó de mostrarse
+- restaurar el acceso visual a Flotilla
+- validar que vuelva a abrir correctamente
+- validar que cargue su contenido
+- validar que siga conectada con los barcos existentes del sistema
+
+OBJETIVO
+La opción Flotilla debe volver a estar visible y funcional dentro de “gestión”.
+
+==================================================
+2. GASTOS RECURRENTES
+==================================================
+
+PROBLEMA
+Ya no veo la opción de Gastos Recurrentes y la necesito activa.
+
+TAREAS
+- revisar por qué desapareció la sección de Gastos Recurrentes
+- restaurar el acceso en navegación o dentro de Contabilidad
+- volver a habilitar la creación, edición y visualización de gastos recurrentes
+- validar que quede visible dentro del flujo correcto del sistema
+
+UBICACIÓN RECOMENDADA
+- Contabilidad > Gastos Recurrentes
+o
+- Gastos > Recurrentes
+
+OBJETIVO
+La opción debe quedar activa, visible y usable.
+
+==================================================
+3. SINCRONIZACIÓN DE GASTOS RECURRENTES CON GASTOS GENERALES POR BARCO
+==================================================
+
+Necesito que los gastos recurrentes estén sincronizados con los gastos generales de cada barco dentro del sistema de gastos en contabilidad.
+
+LÓGICA REQUERIDA
+- cada gasto recurrente debe estar vinculado a un barco
+- cuando el gasto recurrente genere un movimiento, ese gasto debe aparecer también en Contabilidad > Gastos
+- debe reflejarse en el historial general de gastos del barco
+- debe sumarse al acumulado de gastos de esa embarcación
+- debe indicar que fue generado desde una regla recurrente
+
+CAMPOS CLAVE
+- boat_id
+- categoría
+- proveedor
+- monto
+- frecuencia
+- fecha inicio
+- próxima ejecución
+- recurring_rule_id
+- generated_automatically = true
+
+COMPORTAMIENTO
+- un gasto recurrente crea registros en gastos generales cuando corresponde
+- esos registros deben verse al filtrar por barco
+- al entrar al detalle del barco deben aparecer junto con los demás gastos
+- evitar duplicados con gastos manuales similares
+
+VALIDACIÓN ANTIDUPLICADOS
+Comparar:
+- barco
+- categoría
+- proveedor
+- monto
+- fecha o periodo
+Si ya existe uno equivalente, alertar o evitar duplicado.
+
+==================================================
+4. DOCUMENTOS > MEMBRESÍAS
+==================================================
+
+Necesito una nueva opción dentro de la carpeta o módulo de Documentos para “Membresías”.
+
+OBJETIVO
+Poder subir documentos que representen membresías relacionadas con un bote, por ejemplo:
+- membresía de remolque
+- membresía marina
+- asistencia
+- afiliaciones
+- servicios especiales del barco
+
+CAMBIOS REQUERIDOS
+- crear nueva categoría de documento: memberships o membresías
+- permitir asignar ese documento a un barco específico
+- mostrarlo en la carpeta general de documentos si corresponde
+- mostrarlo también dentro de la carpeta o vista del barco correspondiente
+
+RUTA SUGERIDA
+- /storage/boats/{boat_id}/documents/memberships/
+o manejarlo por metadata si el sistema ya usa una sola ruta física
+
+TIPO DE DOCUMENTO NUEVO
+- membership
+
+METADATA
+- id
+- nombre
+- ruta
+- tipo_documento = membership
+- boat_id
+- visible_en_general
+- fecha_subida
+- usuario
+- estado opcional
+- fecha_vencimiento opcional
+
+INTERFAZ
+- en el formulario de subida de documentos agregar la categoría “Membresías”
+- en la ficha del barco agregar sección o filtro de Membresías
+- permitir ver y descargar el documento como los demás
+
+==================================================
+5. PRUEBAS OBLIGATORIAS
+==================================================
+
+Antes de cerrar el trabajo, valida:
+
+1. Flotilla vuelve a aparecer en la UI
+2. Flotilla abre correctamente
+3. Gastos Recurrentes vuelve a aparecer en la UI
+4. Se puede crear un gasto recurrente
+5. El gasto recurrente queda vinculado a un barco
+6. El gasto recurrente genera o refleja un gasto en Contabilidad > Gastos
+7. Ese gasto aparece al filtrar gastos por barco
+8. El acumulado de gastos del barco incluye los recurrentes
+9. No se duplican gastos manuales y recurrentes iguales
+10. En Documentos aparece la categoría Membresías
+11. Se puede subir un documento de membresía
+12. El documento puede vincularse a un barco
+13. La membresía aparece en la vista general de documentos si corresponde
+14. La membresía aparece dentro del barco correspondiente
+
+No cierres el caso sin validar estos puntos.
+
+==================================================
+6. ENTREGABLE
+==================================================
+
+Necesito:
+- sección Flotilla restaurada
+- sección Gastos Recurrentes restaurada
+- sincronización real entre recurrentes y gastos generales por barco
+- categoría de documentos “Membresías”
+- vínculo de membresías con barcos
+- código limpio y funcional dentro de “gestión”
+
+RESULTADO FINAL
+Debo volver a ver Flotilla, volver a ver Gastos Recurrentes, tener los recurrentes integrados con la contabilidad y poder subir documentos de membresías para cada bote.

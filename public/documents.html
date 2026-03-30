@@ -293,6 +293,7 @@
     .tag.invoice   { background: #fdf4ff; color: #7e22ce; font-weight: 600; }
     .tag.contract  { background: #eff6ff; color: #1d4ed8; }
     .tag.insurance { background: #fef3c7; color: #92400e; }
+    .tag.membership { background: #ecfdf5; color: #065f46; }
     .tag.maintenance { background: #f0fdf4; color: #15803d; }
     .tag.permit    { background: #fdf4ff; color: #7e22ce; }
     .tag.payment   { background: #ecfdf5; color: #065f46; }
@@ -664,6 +665,10 @@
           <span class="filter-icon">&#128737;</span>
           <span>Seguros</span>
         </button>
+        <button class="filter-btn" data-type="membership" data-testid="filter-btn-membership" onclick="setType('membership', this)">
+          <span class="filter-icon">&#127760;</span>
+          <span>Membresías</span>
+        </button>
         <button class="filter-btn" data-type="maintenance" onclick="setType('maintenance', this)">
           <span class="filter-icon">&#128295;</span>
           <span>Mantenimiento</span>
@@ -795,6 +800,7 @@
             <option value="invoice">&#128203; Factura</option>
             <option value="contract">Contrato</option>
             <option value="insurance">Seguro</option>
+            <option value="membership">Membresía</option>
             <option value="maintenance">Mantenimiento</option>
             <option value="permit">Permiso</option>
             <option value="id">Identificación</option>
@@ -940,8 +946,8 @@
 
   const TYPE_LABELS = {
     invoice: 'Factura', contract: 'Contrato', insurance: 'Seguro',
-    maintenance: 'Mantenimiento', permit: 'Permiso', id: 'Identificación',
-    payment: 'Pago', attachment: 'Adjunto', other: 'Otro'
+    membership: 'Membresía', maintenance: 'Mantenimiento', permit: 'Permiso',
+    id: 'Identificación', payment: 'Pago', attachment: 'Adjunto', other: 'Otro'
   };
 
   // ── Boot ───────────────────────────────────────────────

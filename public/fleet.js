@@ -70,6 +70,8 @@ function initTabs() {
         renderCalendar();
       } else if (tabName === 'platforms') {
         loadPlatformBoatSelect();
+      } else if (tabName === 'recurring-expenses') {
+        loadRecurringExpenses();
       }
     });
   });
@@ -232,8 +234,9 @@ function renderBoatsGrid() {
 function populateBoatSelects() {
   const selects = [
     document.getElementById('calendar-boat-filter'),
-    document.getElementById('platform-boat-select')
-  ];
+    document.getElementById('platform-boat-select'),
+    document.getElementById('re-filter-boat')
+  ].filter(Boolean);
 
   selects.forEach(select => {
     const currentValue = select.value;
@@ -825,6 +828,115 @@ async function removePhoto(photoUrl, index) {
     console.error('Remove photo error:', error);
     alert('Error de conexion al eliminar foto');
   }
+}
+
+// ===== RECURRING / SCHEDULED EXPENSES =====
+
+const RE_CAT_LABELS = {
+  fuel:'Combustible', engine_maintenance:'Motor', hull_maintenance:'Casco',
+  cleaning:'Limpieza', marina_fees:'Marina/Muelle', insurance:'Seguro',
+  registration:'Registro', crew_payment:'Tripulación', supplies:'Suministros',
+  repair:'Reparación', electrical:'Eléctrico', plumbing:'Plomería',
+  safety_equipment:'Equipo Seguridad', other:'Otro'
+};
+
+async function loadRecurringExpenses() {
+  const container = document.getElementById('re-expenses-container');
+  const kpiRow    = document.getElementById('re-kpi-row');
+  if (!container) return;
+  container.innerHTML = '<p style="color:#717171;grid-column:1/-1;">Cargando...</p>';
+
+  try {
+    const boatFilter   = document.getElementById('re-filter-boat')?.value   || '';
+    const statusFilter = document.getElementById('re-filter-status')?.value || '';
+
+    let url = '/api/scheduled-expenses?';
+    if (boatFilter)   url += `boat_id=${encodeURIComponent(boatFilter)}&`;
+    if (statusFilter) url += `status=${encodeURIComponent(statusFilter)}&`;
+
+    const res  = await authFetch(url);
+    const data = await res.json();
+
+    // KPIs
+    const pending  = data.filter(e => e.status === 'pending');
+    const totalPending = pending.reduce((s, e) => s + parseFloat(e.amount||0), 0);
+    const recurring    = data.filter(e => e.recurrence_type && e.recurrence_type !== 'once');
+    const dueIn7  = pending.filter(e => {
+      const d = new Date(e.scheduled_date); const now = new Date();
+      return d >= now && (d - now) / 86400000 <= 7;
+    });
+
+    if (kpiRow) {
+      kpiRow.innerHTML = [
+        { label:'Total pendientes', value: pending.length, sub: `$${totalPending.toFixed(2)}`, color:'#0066cc' },
+        { label:'Recurrentes activos', value: recurring.length, color:'#16a34a' },
+        { label:'Vencen en 7 días', value: dueIn7.length, color: dueIn7.length > 0 ? '#dc2626' : '#717171' },
+      ].map(k => `
+        <div style="background:#fff;border:1px solid #ebebeb;border-radius:12px;padding:16px 20px;">
+          <div style="font-size:12px;color:#717171;margin-bottom:4px;">${k.label}</div>
+          <div style="font-size:28px;font-weight:700;color:${k.color};">${k.value}</div>
+          ${k.sub ? `<div style="font-size:13px;color:#717171;">${k.sub}</div>` : ''}
+        </div>
+      `).join('');
+    }
+
+    if (data.length === 0) {
+      container.innerHTML = `
+        <div style="grid-column:1/-1;text-align:center;padding:48px 24px;color:#717171;">
+          <p style="font-size:16px;margin-bottom:12px;">No hay gastos programados.</p>
+          <a href="/boat-maintenance.html" style="color:#0066cc;text-decoration:none;font-weight:500;">
+            Ir a Mantenimiento → Gastos Programados para crear uno
+          </a>
+        </div>`;
+      return;
+    }
+
+    container.innerHTML = data.map(e => {
+      const today   = new Date(); today.setHours(0,0,0,0);
+      const dueDate = new Date(e.scheduled_date + 'T00:00:00');
+      const diff    = Math.ceil((dueDate - today) / 86400000);
+      const urgColor = e.status === 'paid' ? '#16a34a' : diff < 0 ? '#dc2626' : diff <= 3 ? '#f59e0b' : diff <= 7 ? '#d97706' : '#0066cc';
+      const urgText  = e.status === 'paid' ? 'Pagado' : diff < 0 ? `${Math.abs(diff)}d vencido` : diff === 0 ? 'Hoy' : `En ${diff}d`;
+      const recLabel = e.recurrence_type === 'once' ? 'Una vez' :
+                       e.recurrence_type === 'monthly' ? `Mensual (c/${e.recurrence_interval||1}m)` :
+                       e.recurrence_type === 'weekly'  ? `Semanal` :
+                       e.recurrence_type === 'yearly'  ? `Anual` : e.recurrence_type;
+      const boatName = boats.find(b => b.id === e.boat_id)?.name || e.boat_name || 'Barco';
+
+      return `
+        <div data-testid="card-recurring-${e.id}" style="background:#fff;border:1px solid #ebebeb;border-radius:12px;padding:18px 20px;border-left:4px solid ${urgColor};">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:10px;">
+            <div>
+              <div style="font-weight:600;font-size:15px;color:#222;">${e.description||'Sin descripción'}</div>
+              <div style="font-size:13px;color:#717171;margin-top:2px;">${boatName}</div>
+            </div>
+            <div style="text-align:right;flex-shrink:0;">
+              <div style="font-size:20px;font-weight:700;color:#222;">$${parseFloat(e.amount).toFixed(2)}</div>
+              <div style="font-size:11px;font-weight:600;color:${urgColor};">${urgText}</div>
+            </div>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;color:#717171;flex-wrap:wrap;gap:6px;">
+            <span style="background:#f3f4f6;padding:3px 8px;border-radius:20px;">${RE_CAT_LABELS[e.category]||e.category}</span>
+            <span>${recLabel}</span>
+            <span>${formatDateRE(e.scheduled_date)}</span>
+          </div>
+          ${e.status === 'pending' ? `
+          <div style="margin-top:12px;text-align:right;">
+            <a href="/boat-maintenance.html" style="font-size:12px;color:#0066cc;text-decoration:none;font-weight:500;">Gestionar en Mantenimiento →</a>
+          </div>` : ''}
+        </div>
+      `;
+    }).join('');
+  } catch(err) {
+    console.error('Error loading recurring expenses:', err);
+    container.innerHTML = '<p style="color:#dc2626;grid-column:1/-1;">Error al cargar gastos recurrentes.</p>';
+  }
+}
+
+function formatDateRE(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr + 'T00:00:00');
+  return d.toLocaleDateString('es-ES', { day:'2-digit', month:'short', year:'numeric' });
 }
 
 // Logout

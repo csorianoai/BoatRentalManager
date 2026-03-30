@@ -1127,6 +1127,8 @@ async function initializeDatabase() {
     await pool.query(`ALTER TABLE boat_expenses ADD COLUMN IF NOT EXISTS payment_method TEXT`);
     await pool.query(`ALTER TABLE boat_expenses ADD COLUMN IF NOT EXISTS notes TEXT`);
     await pool.query(`ALTER TABLE boat_expenses ADD COLUMN IF NOT EXISTS invoice_document_id TEXT`);
+    await pool.query(`ALTER TABLE boat_expenses ADD COLUMN IF NOT EXISTS recurring_rule_id TEXT`);
+    await pool.query(`ALTER TABLE boat_expenses ADD COLUMN IF NOT EXISTS generated_automatically BOOLEAN DEFAULT FALSE`);
 
     // Stews catalog table
     await pool.query(`
@@ -3912,15 +3914,17 @@ cron.schedule('0 3 * * *', async () => {
         const expenseId = nanoid();
         await pool.query(`
           INSERT INTO boat_expenses 
-          (id, boat_id, category, amount, expense_date, description)
-          VALUES ($1, $2, $3, $4, $5, $6)
+          (id, boat_id, category, amount, expense_date, description, recurring_rule_id, generated_automatically)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         `, [
           expenseId, 
           scheduledExpense.boat_id, 
           scheduledExpense.category, 
           scheduledExpense.amount, 
           today, 
-          `${scheduledExpense.description} (Auto-generado)`
+          `${scheduledExpense.description} (Auto-generado)`,
+          scheduledExpense.id,
+          true
         ]);
         
         // Sync to accounting
@@ -8462,10 +8466,10 @@ app.post('/api/scheduled-expenses/:id/mark-paid', async (req, res) => {
     
     const expenseResult = await pool.query(`
       INSERT INTO boat_expenses 
-      (id, boat_id, category, amount, expense_date, description)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      (id, boat_id, category, amount, expense_date, description, recurring_rule_id, generated_automatically)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       RETURNING *
-    `, [expenseId, scheduledExpense.boat_id, scheduledExpense.category, finalAmount, finalDate, finalDescription]);
+    `, [expenseId, scheduledExpense.boat_id, scheduledExpense.category, finalAmount, finalDate, finalDescription, id, true]);
     console.log(`  ✅ boat_expense created: ${expenseId}`);
     
     // Sync to accounting
