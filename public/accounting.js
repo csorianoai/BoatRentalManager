@@ -188,7 +188,7 @@ function renderTransactionsTable() {
             <td>${tx.account_code} - ${tx.account_name}</td>
             <td>${tx.description || '-'}</td>
             <td>$${parseFloat(tx.amount).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
-            <td>${tx.reconciled === 1 ? '✅ Reconciliado' : '⏳ Pendiente'}</td>
+            <td>${tx.reconciled === 1 ? '<span style="color:#16a34a;font-weight:600">✅ Reconciliado</span>' : '<span style="color:#64748b;font-size:12px" title="Esta transacción aún no se ha comparado contra el extracto bancario">Sin reconciliar</span>'}</td>
             <td>
                 <button class="action-btn btn-edit" onclick="editTransaction('${tx.id}')" data-testid="button-edit-tx-${tx.id}">✏️</button>
                 <button class="action-btn btn-delete" onclick="deleteTransaction('${tx.id}')" data-testid="button-delete-tx-${tx.id}">🗑️</button>

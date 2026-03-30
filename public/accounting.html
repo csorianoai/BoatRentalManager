@@ -801,6 +801,7 @@
                     </select>
                 </div>
                 <button onclick="loadDeposits()" class="btn-primary" style="padding:8px 16px;font-size:13px" data-testid="button-refresh-deposits">Actualizar</button>
+                <button onclick="repairOrphanedDeposits()" style="padding:8px 14px;font-size:13px;border:1px solid #d97706;border-radius:6px;background:#fff;color:#92400e;cursor:pointer;font-weight:600" title="Crea transacciones contables retroactivas para depósitos y cuentas por cobrar que no las tienen" data-testid="button-repair-deposits">Reparar transacciones faltantes</button>
             </div>
 
             <div class="table-container">
@@ -834,8 +835,8 @@
                     </div>
                     <div style="display:flex;gap:8px;align-items:center">
                         <select id="ar-filter-status" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px" onchange="loadReceivables()" data-testid="select-ar-filter-status">
-                            <option value="pending">Pendientes</option>
                             <option value="">Todos</option>
+                            <option value="pending">Pendientes</option>
                             <option value="paid">Cobrados</option>
                             <option value="cancelled">Cancelados</option>
                         </select>
@@ -1278,6 +1279,26 @@
         document.querySelectorAll('.tab[data-tab="deposits"]').forEach(btn => {
             btn.addEventListener('click', initDeposits);
         });
+
+        // ── Repair orphaned deposits (retroactive transactions) ──────────
+        async function repairOrphanedDeposits() {
+            if (!confirm('Esto creará transacciones contables retroactivas para depósitos y cuentas por cobrar que no tienen registro en contabilidad.\n\n¿Continuar?')) return;
+            const btn = document.querySelector('[data-testid="button-repair-deposits"]');
+            const orig = btn.textContent;
+            btn.disabled = true; btn.textContent = 'Reparando...';
+            try {
+                const res = await fetch('/api/accounting/repair-deposits', { method: 'POST', headers: {'Content-Type':'application/json'} });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Error al reparar');
+                alert(`Reparación completada:\n✅ ${data.deposits_fixed} depósito(s) reparado(s)\n✅ ${data.ars_fixed} cuenta(s) por cobrar reparada(s)${data.errors > 0 ? '\n⚠️ ' + data.errors + ' error(es) — revisa la consola' : ''}`);
+                await loadDeposits();
+                await loadReceivables();
+            } catch(e) {
+                alert('Error: ' + e.message);
+            } finally {
+                btn.disabled = false; btn.textContent = orig;
+            }
+        }
     </script>
 
     <!-- ══ EDIT TRANSACTION MODAL ══════════════════════════════════════════ -->

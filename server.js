@@ -9973,6 +9973,122 @@ app.patch('/api/booking-receivables/:id/mark-paid', isAuthenticated, async (req,
   } finally { pg.release(); }
 });
 
+// ── Repair endpoint: create missing accounting transactions for orphaned deposits/ARs ──
+app.post('/api/accounting/repair-deposits', isAuthenticated, async (req, res) => {
+  const pg = await pool.connect();
+  try {
+    await pg.query('BEGIN');
+    const { nanoid } = await import('nanoid');
+    const report = { deposits_fixed: [], ars_fixed: [], errors: [] };
+
+    // 1. Find all deposits without a linked accounting transaction
+    const orphanedDeps = await pg.query(
+      `SELECT bd.*, b.name as boat_name
+       FROM booking_deposits bd
+       LEFT JOIN boats b ON bd.boat_id = b.id
+       WHERE bd.linked_transaction_id IS NULL
+       ORDER BY bd.deposit_date ASC`
+    );
+
+    for (const dep of orphanedDeps.rows) {
+      try {
+        const depDate = dep.deposit_date instanceof Date
+          ? dep.deposit_date.toISOString().slice(0, 10)
+          : String(dep.deposit_date).slice(0, 10);
+        const depDesc = `Depósito recibido — ${dep.client_name}${dep.booking_reference ? ' / Ref: ' + dep.booking_reference : ''} [retroactivo]`;
+
+        // Create receipt transaction in account 2500 (Deferred Booking Deposits)
+        const txRecId = 'tx_' + nanoid(8);
+        await pg.query(
+          `INSERT INTO transactions (id, transaction_date, transaction_type, account_id, amount, description, reference_id, reference_type, boat_id, notes)
+           VALUES ($1, $2, 'income', 'acc_booking_deposits_2500', $3, $4, $5, 'booking', $6, $7)`,
+          [txRecId, depDate, parseFloat(dep.amount), depDesc, dep.id, dep.boat_id||null, dep.notes||null]
+        );
+        await pg.query('UPDATE booking_deposits SET linked_transaction_id=$1 WHERE id=$2', [txRecId, dep.id]);
+
+        // If deposit was already applied, also create the revenue + reversal transactions
+        if (dep.status === 'applied') {
+          const today = new Date().toISOString().slice(0, 10);
+          const applyDesc = `Booking completado — ${dep.client_name} [retroactivo]`;
+          const revDesc = `Reclasificación depósito → ingreso — ${dep.client_name} [retroactivo]`;
+          // Find best revenue account (default 4020 Rentals)
+          const revAccRes = await pg.query(
+            `SELECT id FROM chart_of_accounts WHERE account_code='4020' LIMIT 1`
+          );
+          const revAccId = revAccRes.rows.length ? revAccRes.rows[0].id : null;
+          if (revAccId) {
+            const txApplyId = 'tx_' + nanoid(8);
+            await pg.query(
+              `INSERT INTO transactions (id, transaction_date, transaction_type, account_id, amount, description, reference_id, reference_type, boat_id, notes)
+               VALUES ($1, $2, 'income', $3, $4, $5, $6, 'booking', $7, $8)`,
+              [txApplyId, today, revAccId, parseFloat(dep.amount), applyDesc, dep.id, dep.boat_id||null, null]
+            );
+            const txRevId = 'tx_' + nanoid(8);
+            await pg.query(
+              `INSERT INTO transactions (id, transaction_date, transaction_type, account_id, amount, description, reference_id, reference_type, boat_id, notes)
+               VALUES ($1, $2, 'expense', 'acc_booking_deposits_2500', $3, $4, $5, 'booking', $6, $7)`,
+              [txRevId, today, parseFloat(dep.amount), revDesc, dep.id, dep.boat_id||null, null]
+            );
+          }
+        }
+
+        report.deposits_fixed.push({ id: dep.id, client: dep.client_name, amount: dep.amount, status: dep.status });
+      } catch (e) {
+        report.errors.push({ type: 'deposit', id: dep.id, error: e.message });
+      }
+    }
+
+    // 2. Find all paid ARs with no corresponding income transaction
+    const paidARs = await pg.query(
+      `SELECT ar.*, b.name as boat_name
+       FROM booking_receivables ar
+       LEFT JOIN boats b ON ar.boat_id = b.id
+       WHERE ar.status = 'paid'
+         AND NOT EXISTS (
+           SELECT 1 FROM transactions t
+           WHERE t.reference_id = ar.id AND t.transaction_type = 'income'
+         )
+       ORDER BY ar.due_date ASC`
+    );
+
+    for (const ar of paidARs.rows) {
+      try {
+        const arDate = new Date().toISOString().slice(0, 10);
+        const clientName = ar.client_name || ar.party_name || 'Cliente';
+        const arDesc = `Saldo cobrado — ${clientName}${ar.boat_name ? ' / ' + ar.boat_name : ''} [retroactivo]`;
+
+        // Find bank account (1010) or fall back to income account
+        const bankRes = await pg.query(`SELECT id FROM chart_of_accounts WHERE account_code='1010' LIMIT 1`);
+        const bankAccId = bankRes.rows.length ? bankRes.rows[0].id : 'acc_booking_deposits_2500';
+
+        const txArId = 'tx_ar_' + nanoid(8);
+        await pg.query(
+          `INSERT INTO transactions (id, transaction_date, transaction_type, account_id, amount, description, reference_id, reference_type, boat_id, notes)
+           VALUES ($1, $2, 'income', $3, $4, $5, $6, 'booking', $7, $8)`,
+          [txArId, arDate, bankAccId, parseFloat(ar.amount), arDesc, ar.id, ar.boat_id||null, 'Reparación retroactiva — saldo cobrado']
+        );
+
+        report.ars_fixed.push({ id: ar.id, client: clientName, amount: ar.amount });
+      } catch (e) {
+        report.errors.push({ type: 'ar', id: ar.id, error: e.message });
+      }
+    }
+
+    await pg.query('COMMIT');
+    res.json({
+      success: true,
+      deposits_fixed: report.deposits_fixed.length,
+      ars_fixed: report.ars_fixed.length,
+      errors: report.errors.length,
+      detail: report
+    });
+  } catch (err) {
+    await pg.query('ROLLBACK');
+    console.error('Repair deposits error:', err);
+    res.status(500).json({ error: err.message });
+  } finally { pg.release(); }
+});
+
 app.patch('/api/booking-receivables/:id/cancel', isAuthenticated, async (req, res) => {
   try {
     const result = await pool.query(
