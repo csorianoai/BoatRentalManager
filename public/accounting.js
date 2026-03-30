@@ -175,13 +175,26 @@ async function loadTransactions() {
 
 function renderTransactionsTable() {
     const tbody = document.getElementById('transactionsTable');
-    
-    if (transactionsData.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No hay transacciones en este período</td></tr>';
+    const searchEl = document.getElementById('txSearch');
+    const searchTerm = (searchEl ? searchEl.value : '').toLowerCase().trim();
+
+    let rows = transactionsData;
+    if (searchTerm) {
+        rows = rows.filter(tx =>
+            (tx.description || '').toLowerCase().includes(searchTerm) ||
+            (tx.account_name || '').toLowerCase().includes(searchTerm) ||
+            (tx.account_code || '').toLowerCase().includes(searchTerm) ||
+            (tx.notes || '').toLowerCase().includes(searchTerm) ||
+            String(tx.amount).includes(searchTerm)
+        );
+    }
+
+    if (rows.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="empty-state">${searchTerm ? 'Sin resultados para "' + searchTerm + '"' : 'No hay transacciones en este período'}</td></tr>`;
         return;
     }
     
-    tbody.innerHTML = transactionsData.map(tx => `
+    tbody.innerHTML = rows.map(tx => `
         <tr>
             <td>${formatDate(tx.transaction_date)}</td>
             <td><span class="badge badge-${tx.transaction_type}">${formatType(tx.transaction_type)}</span></td>

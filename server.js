@@ -9995,40 +9995,52 @@ app.post('/api/accounting/repair-deposits', isAuthenticated, async (req, res) =>
         const depDate = dep.deposit_date instanceof Date
           ? dep.deposit_date.toISOString().slice(0, 10)
           : String(dep.deposit_date).slice(0, 10);
-        const depDesc = `Depósito recibido — ${dep.client_name}${dep.booking_reference ? ' / Ref: ' + dep.booking_reference : ''} [retroactivo]`;
 
-        // Create receipt transaction in account 2500 (Deferred Booking Deposits)
-        const txRecId = 'tx_' + nanoid(8);
-        await pg.query(
-          `INSERT INTO transactions (id, transaction_date, transaction_type, account_id, amount, description, reference_id, reference_type, boat_id, notes)
-           VALUES ($1, $2, 'income', 'acc_booking_deposits_2500', $3, $4, $5, 'booking', $6, $7)`,
-          [txRecId, depDate, parseFloat(dep.amount), depDesc, dep.id, dep.boat_id||null, dep.notes||null]
+        // Check if a transaction already exists for this deposit (created by apply flow)
+        const existingTx = await pg.query(
+          `SELECT id FROM transactions WHERE reference_id = $1 ORDER BY transaction_date ASC LIMIT 1`,
+          [dep.id]
         );
-        await pg.query('UPDATE booking_deposits SET linked_transaction_id=$1 WHERE id=$2', [txRecId, dep.id]);
 
-        // If deposit was already applied, also create the revenue + reversal transactions
-        if (dep.status === 'applied') {
-          const today = new Date().toISOString().slice(0, 10);
-          const applyDesc = `Booking completado — ${dep.client_name} [retroactivo]`;
-          const revDesc = `Reclasificación depósito → ingreso — ${dep.client_name} [retroactivo]`;
-          // Find best revenue account (default 4020 Rentals)
-          const revAccRes = await pg.query(
-            `SELECT id FROM chart_of_accounts WHERE account_code='4020' LIMIT 1`
+        let txRecId;
+        if (existingTx.rows.length > 0) {
+          // Transaction already exists — just link it back, no duplicates
+          txRecId = existingTx.rows[0].id;
+          await pg.query('UPDATE booking_deposits SET linked_transaction_id=$1 WHERE id=$2', [txRecId, dep.id]);
+        } else {
+          const depDesc = `Depósito recibido — ${dep.client_name}${dep.booking_reference ? ' / Ref: ' + dep.booking_reference : ''} [retroactivo]`;
+          // Create receipt transaction in account 2500 (Deferred Booking Deposits)
+          txRecId = 'tx_' + nanoid(8);
+          await pg.query(
+            `INSERT INTO transactions (id, transaction_date, transaction_type, account_id, amount, description, reference_id, reference_type, boat_id, notes)
+             VALUES ($1, $2, 'income', 'acc_booking_deposits_2500', $3, $4, $5, 'booking', $6, $7)`,
+            [txRecId, depDate, parseFloat(dep.amount), depDesc, dep.id, dep.boat_id||null, dep.notes||null]
           );
-          const revAccId = revAccRes.rows.length ? revAccRes.rows[0].id : null;
-          if (revAccId) {
-            const txApplyId = 'tx_' + nanoid(8);
-            await pg.query(
-              `INSERT INTO transactions (id, transaction_date, transaction_type, account_id, amount, description, reference_id, reference_type, boat_id, notes)
-               VALUES ($1, $2, 'income', $3, $4, $5, $6, 'booking', $7, $8)`,
-              [txApplyId, today, revAccId, parseFloat(dep.amount), applyDesc, dep.id, dep.boat_id||null, null]
+          await pg.query('UPDATE booking_deposits SET linked_transaction_id=$1 WHERE id=$2', [txRecId, dep.id]);
+
+          // If deposit was already applied, also create the revenue + reversal transactions
+          if (dep.status === 'applied') {
+            const today = new Date().toISOString().slice(0, 10);
+            const applyDesc = `Booking completado — ${dep.client_name} [retroactivo]`;
+            const revDesc = `Reclasificación depósito → ingreso — ${dep.client_name} [retroactivo]`;
+            const revAccRes = await pg.query(
+              `SELECT id FROM chart_of_accounts WHERE account_code='4020' LIMIT 1`
             );
-            const txRevId = 'tx_' + nanoid(8);
-            await pg.query(
-              `INSERT INTO transactions (id, transaction_date, transaction_type, account_id, amount, description, reference_id, reference_type, boat_id, notes)
-               VALUES ($1, $2, 'expense', 'acc_booking_deposits_2500', $3, $4, $5, 'booking', $6, $7)`,
-              [txRevId, today, parseFloat(dep.amount), revDesc, dep.id, dep.boat_id||null, null]
-            );
+            const revAccId = revAccRes.rows.length ? revAccRes.rows[0].id : null;
+            if (revAccId) {
+              const txApplyId = 'tx_' + nanoid(8);
+              await pg.query(
+                `INSERT INTO transactions (id, transaction_date, transaction_type, account_id, amount, description, reference_id, reference_type, boat_id, notes)
+                 VALUES ($1, $2, 'income', $3, $4, $5, $6, 'booking', $7, $8)`,
+                [txApplyId, today, revAccId, parseFloat(dep.amount), applyDesc, dep.id, dep.boat_id||null, null]
+              );
+              const txRevId = 'tx_' + nanoid(8);
+              await pg.query(
+                `INSERT INTO transactions (id, transaction_date, transaction_type, account_id, amount, description, reference_id, reference_type, boat_id, notes)
+                 VALUES ($1, $2, 'expense', 'acc_booking_deposits_2500', $3, $4, $5, 'booking', $6, $7)`,
+                [txRevId, today, parseFloat(dep.amount), revDesc, dep.id, dep.boat_id||null, null]
+              );
+            }
           }
         }
 

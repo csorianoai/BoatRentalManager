@@ -225,6 +225,10 @@
                 <option value="expense">Gastos</option>
             </select>
         </div>
+        <div class="filter-group">
+            <label>Buscar:</label>
+            <input type="text" id="txSearch" class="filter-input" placeholder="Nombre, descripción..." data-testid="input-tx-search" style="min-width:180px;" oninput="renderTransactionsTable()">
+        </div>
     </section>
 
     <!-- Main Dashboard Grid -->
@@ -1290,9 +1294,10 @@
                 const res = await fetch('/api/accounting/repair-deposits', { method: 'POST', headers: {'Content-Type':'application/json'} });
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Error al reparar');
-                alert(`Reparación completada:\n✅ ${data.deposits_fixed} depósito(s) reparado(s)\n✅ ${data.ars_fixed} cuenta(s) por cobrar reparada(s)${data.errors > 0 ? '\n⚠️ ' + data.errors + ' error(es) — revisa la consola' : ''}`);
+                alert(`Reparación completada:\n✅ ${data.deposits_fixed} depósito(s) reparado(s)\n✅ ${data.ars_fixed} cuenta(s) por cobrar reparada(s)${data.errors > 0 ? '\n⚠️ ' + data.errors + ' error(es) — revisa la consola' : ''}\n\nVe al tab "Transacciones" y busca "nicola" o el nombre del cliente para ver los registros creados.`);
                 await loadDeposits();
                 await loadReceivables();
+                if (typeof loadTransactions === 'function') await loadTransactions();
             } catch(e) {
                 alert('Error: ' + e.message);
             } finally {
