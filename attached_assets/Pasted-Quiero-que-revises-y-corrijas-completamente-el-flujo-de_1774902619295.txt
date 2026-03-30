@@ -1,0 +1,359 @@
+Quiero que revises y corrijas completamente el flujo de depósitos de booking dentro del sistema existente “gestión”. No quiero una app nueva.
+
+PROBLEMA REAL
+El flujo actual de depósitos de booking está inconsistente.
+
+Ejemplo real:
+- cliente: Nicola
+- depósito recibido: 280
+- booking total: 680
+- saldo pendiente calculado: 400
+- barco: SEARAY 500
+- fecha booking: 03/28/2026
+
+Lo que está pasando:
+1. el sistema calcula bien el saldo pendiente
+2. el depósito queda como aplicado/cobrado
+3. pero luego me vuelve a pedir ingresar información que ya se capturó al registrar el depósito
+4. la cuenta por cobrar pendiente no aparece donde corresponde
+5. el depósito aplicado no aparece en ingresos, ni en transacciones generales, ni en contabilidad
+6. hay inconsistencia entre el estado del depósito y la sección de cuentas por cobrar
+
+OBJETIVO
+Revisar y arreglar el flujo completo de booking deposit desde que se registra el depósito hasta que se refleja correctamente en:
+- depósitos recibidos
+- cuentas por cobrar
+- transacciones generales
+- contabilidad
+- ingresos del bote cuando corresponda
+
+REGLA CRÍTICA
+No quiero parches visuales.
+Quiero corregir el flujo de datos, estados, relaciones y registros contables para que no se pierda ni se duplique información.
+
+==================================================
+1. AUDITORÍA DEL FLUJO COMPLETO
+==================================================
+
+Revisa el flujo completo desde:
+- Registrar Depósito de Reserva
+hasta:
+- Aplicar a reserva
+- Crear saldo pendiente
+- Reflejarse en contabilidad
+- Reflejarse en transacciones
+- Reflejarse en ingresos cuando corresponda
+
+Debes revisar:
+1. qué tabla/modelo guarda el depósito
+2. qué tabla/modelo guarda el booking
+3. qué tabla/modelo guarda la cuenta por cobrar
+4. qué tabla/modelo guarda las transacciones contables generales
+5. qué tabla/modelo guarda los ingresos
+6. si existen relaciones rotas entre esas entidades
+7. si el estado “aplicado” está cerrando incorrectamente el saldo pendiente
+8. si el sistema está marcando como cobrado algo que todavía no fue transferido a ingresos
+9. si falta crear el asiento contable o transacción general
+10. si la UI está leyendo de la fuente incorrecta
+
+==================================================
+2. PROBLEMAS A CORREGIR
+==================================================
+
+A. NO PEDIR DATOS DOS VECES
+Cuando ya registré:
+- cliente
+- barco
+- fecha del booking
+- monto total
+- depósito
+- horas
+- servicio
+- notas
+
+el sistema NO debe volver a pedir esa misma información para aplicar el depósito.
+
+Debe reutilizar automáticamente la data ya capturada.
+
+B. CREACIÓN REAL DE CUENTA POR COBRAR
+Si:
+- total booking = 680
+- depósito = 280
+entonces:
+- saldo pendiente = 400
+
+Ese saldo debe crear automáticamente una cuenta por cobrar real, visible y consultable.
+
+Debe aparecer en:
+- Cuentas por Cobrar
+- Contabilidad
+- detalle del booking
+- detalle del cliente o broker
+- detalle del bote si aplica
+
+C. REFLEJO EN TRANSACCIONES GENERALES
+Cuando se recibe el depósito:
+- debe registrarse una transacción general en contabilidad
+- no puede quedar solo en una lista aislada de depósitos
+
+D. REFLEJO EN CONTABILIDAD
+El depósito debe impactar contabilidad correctamente:
+- entrada de dinero en banco/caja
+- crédito a Deferred Booking Deposits
+
+E. APLICACIÓN POSTERIOR A INGRESO
+Cuando el booking se complete o se marque como realizado:
+- el depósito debe pasar de Deferred Booking Deposits a Booking Revenue
+- sin volver a escribir la data
+- usando cliente, barco, fecha, horas y monto ya guardados
+
+==================================================
+3. LÓGICA CONTABLE ESPERADA
+==================================================
+
+A. AL RECIBIR EL DEPÓSITO
+Ejemplo:
+depósito = 280
+
+Debe crear:
+- Debit: Cash / Banco = 280
+- Credit: Deferred Booking Deposits = 280
+
+Esto debe verse en:
+- transacciones generales
+- contabilidad
+- detalle del depósito
+
+B. AL CREAR EL SALDO PENDIENTE
+Si booking total = 680
+y depósito = 280
+saldo pendiente = 400
+
+Debe crear:
+- Accounts Receivable = 400
+asociado a:
+- cliente o broker responsable del pago
+- bote
+- booking
+- fecha del viaje o vencimiento
+
+Esto debe verse en:
+- cuentas por cobrar
+- contabilidad
+- detalle del booking
+
+C. CUANDO EL BOOKING SE COMPLETE
+Debe reclasificar:
+- Debit: Deferred Booking Deposits = 280
+- Credit: Booking Revenue = 280
+
+Y el saldo pendiente:
+- si fue cobrado:
+  - Debit: Cash / Banco = 400
+  - Credit: Accounts Receivable = 400
+- si no fue cobrado:
+  - dejar A/R abierta
+
+==================================================
+4. ESTADOS QUE DEBEN CORREGIRSE
+==================================================
+
+Revisar los estados porque parece que hoy están mezclados.
+
+Separar claramente:
+
+DEPÓSITO
+- recibido
+- pendiente de aplicar
+- aplicado a booking
+- reembolsado
+
+CUENTA POR COBRAR
+- pendiente
+- vencida
+- pagada
+- cancelada
+
+BOOKING
+- futuro
+- confirmado
+- completado
+- cancelado
+
+INGRESO
+- pendiente de reconocimiento
+- reconocido
+
+No quiero que “Aplicado” o “Cobrado” haga desaparecer la cuenta por cobrar si el saldo sigue pendiente.
+
+==================================================
+5. INTERFAZ / UX
+==================================================
+
+Corregir estas pantallas:
+
+A. REGISTRAR DEPÓSITO
+Debe capturar:
+- cliente
+- email
+- teléfono
+- barco
+- referencia reserva
+- fecha booking
+- monto total booking
+- depósito
+- horas
+- servicio
+- notas
+
+B. LISTADO DE DEPÓSITOS
+Debe mostrar:
+- cliente
+- bote
+- depósito
+- total booking
+- saldo pendiente
+- estado depósito
+- estado ingreso
+- estado cuenta por cobrar
+
+C. CUENTAS POR COBRAR
+Debe mostrar el saldo pendiente real generado por el depósito
+En el caso de Nicola debe mostrar:
+- cliente: Nicola
+- barco: SEARAY 500
+- saldo: 400
+- fecha vencimiento: fecha booking o la configurada
+- estado: pendiente
+
+D. TRANSACCIONES GENERALES / CONTABILIDAD
+Debe aparecer la transacción del depósito recibido
+No puede quedar invisible
+
+E. INGRESOS
+No debe aparecer como ingreso operativo todavía si el booking no se ha completado
+Pero sí debe quedar listo para convertirse automáticamente cuando corresponda
+
+==================================================
+6. RELACIONES DE DATOS
+==================================================
+
+Revisar o crear relaciones correctas entre:
+
+BOOKING_DEPOSITS
+- id
+- customer_name
+- customer_email
+- customer_phone
+- boat_id
+- booking_reference
+- booking_date
+- booking_total
+- deposit_amount
+- balance_due
+- hours_rented
+- service_type
+- notes
+- deposit_status
+- applied_to_booking
+- linked_receivable_id
+- linked_transaction_id
+- linked_revenue_id
+
+ACCOUNTS_RECEIVABLE
+- id
+- booking_id o deposit_id
+- customer_name o party_name
+- boat_id
+- due_date
+- amount
+- status
+
+ACCOUNTING_TRANSACTIONS
+- id
+- type
+- account_code
+- description
+- amount
+- related_deposit_id
+- related_booking_id
+- related_boat_id
+- related_customer
+
+BOOKING_REVENUE
+- id
+- booking_id
+- boat_id
+- customer_name
+- booking_date
+- hours_rented
+- amount
+- status
+
+==================================================
+7. REGLAS FUNCIONALES
+==================================================
+
+- no pedir dos veces la misma información
+- reutilizar toda la data ya capturada
+- al recibir depósito, generar transacción contable real
+- al existir saldo pendiente, generar cuenta por cobrar real
+- no ocultar la cuenta por cobrar por cambiar el estado del depósito
+- no marcar ingreso operativo final antes del booking completado
+- permitir luego convertir automáticamente el depósito en ingreso del bote
+
+==================================================
+8. CASO DE PRUEBA OBLIGATORIO
+==================================================
+
+Probar exactamente este caso o uno igual:
+
+Cliente: Nicola
+Barco: SEARAY 500
+Depósito: 280
+Booking total: 680
+Saldo pendiente esperado: 400
+Horas: 4
+Servicio: Renta
+Fecha depósito: 03/23/2026
+Fecha booking: 03/28/2026
+
+RESULTADO ESPERADO
+1. depósito visible en depósitos
+2. transacción visible en contabilidad/transacciones generales
+3. cuenta por cobrar visible por 400
+4. relación visible con SEARAY 500
+5. no volver a pedir datos ya capturados
+6. cuando el booking se complete, reclasificar depósito a ingreso correctamente
+
+==================================================
+9. VALIDACIONES OBLIGATORIAS ANTES DE CERRAR
+==================================================
+
+No cierres el caso hasta validar:
+
+1. registrar depósito crea transacción contable visible
+2. registrar depósito crea saldo pendiente visible si aplica
+3. cuenta por cobrar aparece en su módulo
+4. el depósito sigue vinculado al booking
+5. la data capturada no se pide nuevamente
+6. el depósito no desaparece del sistema general
+7. el flujo distingue correctamente entre depósito, A/R e ingreso
+8. el bote queda vinculado a todo el flujo
+9. el caso Nicola 280 / 680 / 400 funciona correctamente
+10. contabilidad, transacciones y depósitos quedan consistentes
+
+==================================================
+10. ENTREGABLE
+==================================================
+
+Necesito:
+- corrección completa del flujo de booking deposit
+- reutilización de datos ya ingresados
+- creación real de cuenta por cobrar
+- creación real de transacción contable
+- visibilidad en transacciones generales y contabilidad
+- flujo correcto para convertirlo en ingreso después
+- explicación breve de la causa raíz encontrada y la corrección aplicada
+
+No quiero una solución parcial. Quiero que revises el flujo end-to-end y corrijas el problema real de sincronización entre depósitos, cuentas por cobrar, transacciones y contabilidad.

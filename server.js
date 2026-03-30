@@ -1242,6 +1242,9 @@ async function initializeDatabase() {
     await pool.query(`ALTER TABLE booking_receivables ADD COLUMN IF NOT EXISTS booking_id TEXT`);
     await pool.query(`ALTER TABLE booking_receivables ADD COLUMN IF NOT EXISTS broker_id TEXT`);
 
+    // Extend booking_deposits with transaction link
+    await pool.query(`ALTER TABLE booking_deposits ADD COLUMN IF NOT EXISTS linked_transaction_id TEXT`);
+
     // Extend booking_deposits with source/broker/customer fields
     await pool.query(`ALTER TABLE booking_deposits ADD COLUMN IF NOT EXISTS booking_source TEXT DEFAULT 'direct'`);
     await pool.query(`ALTER TABLE booking_deposits ADD COLUMN IF NOT EXISTS customer_id TEXT`);
@@ -9774,8 +9777,20 @@ app.post('/api/booking-deposits', isAuthenticated, async (req, res) => {
       dep.linked_receivable_id = rId;
     }
 
+    // ── Create accounting transaction for deposit receipt (Debit Bank / Credit Deferred) ──
+    const txId = 'tx_' + nanoid(8);
+    const txDesc = `Depósito recibido — ${displayName}${dep.boat_id ? '' : ''}${booking_reference ? ' / Ref: ' + booking_reference : ''}`;
+    await pg.query(
+      `INSERT INTO transactions
+         (id, transaction_date, transaction_type, account_id, amount, description, reference_id, reference_type, boat_id, notes)
+       VALUES ($1, $2, 'income', 'acc_booking_deposits_2500', $3, $4, $5, 'booking', $6, $7)`,
+      [txId, deposit_date, parseFloat(amount), txDesc, id, boat_id||null, notes||null]
+    );
+    await pg.query('UPDATE booking_deposits SET linked_transaction_id=$1 WHERE id=$2', [txId, id]);
+    dep.linked_transaction_id = txId;
+
     await pg.query('COMMIT');
-    res.status(201).json({ ...dep, receivable, ledger_id: ledgerId });
+    res.status(201).json({ ...dep, receivable, ledger_id: ledgerId, transaction_id: txId });
   } catch (err) {
     await pg.query('ROLLBACK');
     console.error('Error creating booking deposit:', err);
@@ -9844,15 +9859,28 @@ app.post('/api/booking-deposits/:id/apply', isAuthenticated, async (req, res) =>
     const accRes = await client.query('SELECT id, account_name FROM chart_of_accounts WHERE id = $1 AND account_type = $2', [revenue_account_id, 'revenue']);
     if (!accRes.rows.length) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Cuenta de ingresos no válida' }); }
 
-    // Create income transaction
+    // Create income transaction (Deferred Deposits → Revenue)
     const { nanoid } = await import('nanoid');
     const txId = 'tx_dep_' + nanoid(10);
     const finalRef = booking_reference || dep.booking_reference;
-    const desc = `Depósito aplicado - ${dep.client_name}${finalRef ? ' / Ref: ' + finalRef : ''}`;
+    // Use today's date for accounting recognition (when the booking was completed/applied)
+    const applyDate = new Date().toISOString().slice(0, 10);
+    const desc = `Booking completado — ${dep.client_name}${finalRef ? ' / Ref: ' + finalRef : ''}`;
+
+    // 1. Revenue transaction: Credit Booking Revenue
     await client.query(
       `INSERT INTO transactions (id, transaction_date, account_id, amount, transaction_type, description, reference_id, boat_id, notes, reference_type)
        VALUES ($1, $2, $3, $4, 'income', $5, $6, $7, $8, 'booking')`,
-      [txId, dep.deposit_date, revenue_account_id, dep.amount, desc, finalRef || null, dep.boat_id || null, notes || null]
+      [txId, applyDate, revenue_account_id, dep.amount, desc, dep.id, dep.boat_id || null, notes || null]
+    );
+
+    // 2. Reversal transaction: Debit Deferred Deposits (clear the liability)
+    const txRevId = 'tx_rev_' + nanoid(10);
+    const revDesc = `Reclasificación depósito → ingreso — ${dep.client_name}`;
+    await client.query(
+      `INSERT INTO transactions (id, transaction_date, account_id, amount, transaction_type, description, reference_id, boat_id, notes, reference_type)
+       VALUES ($1, $2, 'acc_booking_deposits_2500', $3, 'expense', $4, $5, $6, $7, 'booking')`,
+      [txRevId, applyDate, dep.amount, revDesc, dep.id, dep.boat_id || null, notes || null]
     );
 
     // Update deposit status + booking reference
@@ -9861,8 +9889,16 @@ app.post('/api/booking-deposits/:id/apply', isAuthenticated, async (req, res) =>
       ['applied', finalRef || null, dep.id]
     );
 
+    // Update bookings_ledger status if linked
+    if (dep.booking_ledger_id) {
+      await client.query(
+        `UPDATE bookings_ledger SET status = 'completed' WHERE id = $1`,
+        [dep.booking_ledger_id]
+      );
+    }
+
     await client.query('COMMIT');
-    res.json({ success: true, transaction_id: txId, amount: dep.amount, client_name: dep.client_name });
+    res.json({ success: true, transaction_id: txId, reversal_id: txRevId, amount: dep.amount, client_name: dep.client_name });
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('Error applying deposit:', err);
@@ -9888,15 +9924,53 @@ app.get('/api/booking-receivables', isAuthenticated, async (req, res) => {
 });
 
 app.patch('/api/booking-receivables/:id/mark-paid', isAuthenticated, async (req, res) => {
+  const pg = await pool.connect();
   try {
+    await pg.query('BEGIN');
     const { notes } = req.body;
-    const result = await pool.query(
-      `UPDATE booking_receivables SET status='paid', notes=COALESCE($1, notes) WHERE id=$2 RETURNING *`,
+    const arRes = await pg.query(
+      `SELECT ar.*, b.name as boat_name FROM booking_receivables ar LEFT JOIN boats b ON ar.boat_id=b.id WHERE ar.id=$1`,
+      [req.params.id]
+    );
+    if (!arRes.rows.length) { await pg.query('ROLLBACK'); return res.status(404).json({ error: 'Cuenta por cobrar no encontrada' }); }
+    const ar = arRes.rows[0];
+
+    // Create cash receipt transaction for the saldo cobrado
+    const { nanoid } = await import('nanoid');
+    const txId = 'tx_ar_' + nanoid(8);
+    const desc = `Saldo cobrado — ${ar.client_name || ar.party_name}${ar.boat_name ? ' / ' + ar.boat_name : ''}`;
+    await pg.query(
+      `INSERT INTO transactions (id, transaction_date, account_id, amount, transaction_type, description, reference_id, boat_id, notes, reference_type)
+       VALUES ($1, CURRENT_DATE, 'acc_booking_deposits_2500', $2, 'income', $3, $4, $5, $6, 'booking')`,
+      [txId, parseFloat(ar.amount), desc, ar.id, ar.boat_id||null, notes||null]
+    );
+
+    // Note: we use the deposit account as placeholder — in a proper implementation
+    // a bank/cash account would be used. The user can reclassify if needed.
+    // Better approach: find the primary bank account
+    const bankAccRes = await pg.query(
+      `SELECT id FROM chart_of_accounts WHERE account_code = '1010' LIMIT 1`
+    );
+    if (bankAccRes.rows.length) {
+      // Update the transaction to use the bank account instead
+      await pg.query(
+        `UPDATE transactions SET account_id=$1 WHERE id=$2`,
+        [bankAccRes.rows[0].id, txId]
+      );
+    }
+
+    await pg.query(
+      `UPDATE booking_receivables SET status='paid', notes=COALESCE($1, notes) WHERE id=$2`,
       [notes||null, req.params.id]
     );
-    if (!result.rows.length) return res.status(404).json({ error: 'Cuenta por cobrar no encontrada' });
-    res.json(result.rows[0]);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+    await pg.query('COMMIT');
+
+    const updated = await pool.query('SELECT * FROM booking_receivables WHERE id=$1', [req.params.id]);
+    res.json({ ...updated.rows[0], cash_receipt_transaction_id: txId });
+  } catch (err) {
+    await pg.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally { pg.release(); }
 });
 
 app.patch('/api/booking-receivables/:id/cancel', isAuthenticated, async (req, res) => {

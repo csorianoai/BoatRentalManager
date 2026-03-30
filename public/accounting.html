@@ -815,6 +815,7 @@
                             <th>Total Booking</th>
                             <th>Saldo Pend.</th>
                             <th>Estado</th>
+                            <th>Contabilidad</th>
                             <th>Acciones</th>
                         </tr>
                     </thead>
@@ -1061,22 +1062,31 @@
         function renderDeposits() {
             const tbody = document.getElementById('depositsTable');
             if (!allDeposits.length) {
-                tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No hay depósitos registrados. Usa el formulario para agregar el primero.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No hay depósitos registrados. Usa el formulario para agregar el primero.</td></tr>';
                 return;
             }
             const esc = s => { const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; };
             const serviceLabels = { tour:'Tour', rental:'Renta', fishing:'Pesca', event:'Evento', charter:'Charter', other:'Otro' };
             const statusBadge = s => ({
                 pending:  '<span style="background:#fef3c7;color:#92400e;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:700">Pendiente</span>',
-                applied:  '<span style="background:#d4edda;color:#155724;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:700">Aplicado</span>',
+                applied:  '<span style="background:#d4edda;color:#155724;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:700">✅ Aplicado</span>',
                 refunded: '<span style="background:#f8d7da;color:#721c24;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:700">Reembolsado</span>',
             }[s] || s);
+            const today = new Date(); today.setHours(0,0,0,0);
             tbody.innerHTML = allDeposits.map(d => {
                 const balanceDue = d.balance_due != null ? parseFloat(d.balance_due) : null;
-                const balCell = balanceDue != null && balanceDue > 0.005
-                    ? `<strong style="color:#b45309">${fmtDep(balanceDue)}</strong>${d.ar_status ? `<br><span style="font-size:10px;color:${d.ar_status==='paid'?'#16a34a':d.ar_status==='cancelled'?'#888':'#d97706'}">${d.ar_status==='paid'?'✅ Cobrado':d.ar_status==='cancelled'?'Cancelado':'⏳ Pendiente'}</span>` : ''}`
-                    : (d.booking_total_amount ? '<span style="color:#16a34a;font-size:12px">✅ Saldado</span>' : '—');
-                return `<tr>
+                const hasAR = balanceDue != null && balanceDue > 0.005;
+                const bookingPassed = d.booking_date && new Date(d.booking_date+'T00:00:00') < today;
+                const arColor = d.ar_status==='paid'?'#16a34a':d.ar_status==='cancelled'?'#888':'#d97706';
+                const arLabel = d.ar_status==='paid'?'✅ Cobrado':d.ar_status==='cancelled'?'Cancelado':'⏳ Pendiente AR';
+                const balCell = hasAR
+                    ? `<strong style="color:#b45309">${fmtDep(balanceDue)}</strong>${d.ar_status ? `<br><span style="font-size:10px;color:${arColor};font-weight:600">${arLabel}</span>` : ''}`
+                    : (d.booking_total_amount ? '<span style="color:#16a34a;font-size:12px">✅ Saldado</span>' : '<span style="color:#aaa">—</span>');
+                const txBadge = d.linked_transaction_id
+                    ? '<span style="background:#e0f2fe;color:#0369a1;padding:2px 7px;border-radius:8px;font-size:10px;font-weight:600" title="Transacción contable registrada">Contabilizado</span>'
+                    : '<span style="background:#fef2f2;color:#991b1b;padding:2px 7px;border-radius:8px;font-size:10px" title="Sin transacción contable">Sin tx</span>';
+                const rowBg = (hasAR && bookingPassed && d.ar_status==='pending') ? 'background:#fff8f0' : '';
+                return `<tr style="${rowBg}">
                     <td style="font-size:12px">${fmtDepDate(d.deposit_date)}</td>
                     <td style="font-size:12px">${d.booking_date ? fmtDepDate(d.booking_date) : '<span style="color:#aaa">—</span>'}</td>
                     <td><strong>${esc(d.client_name)}</strong>${d.client_email ? '<br><span style="font-size:11px;color:#888">'+esc(d.client_email)+'</span>' : ''}</td>
@@ -1086,8 +1096,9 @@
                     <td style="font-size:12px">${d.booking_total_amount ? fmtDep(d.booking_total_amount) : '—'}</td>
                     <td style="font-size:12px">${balCell}</td>
                     <td>${statusBadge(d.status)}</td>
+                    <td style="font-size:11px">${txBadge}</td>
                     <td style="white-space:nowrap">
-                        ${d.status === 'pending' ? `<button onclick="openApplyDepositModal('${d.id}')" style="padding:4px 10px;border:none;border-radius:5px;font-size:12px;cursor:pointer;margin-right:4px;background:#16a34a;color:#fff;font-weight:600" data-testid="button-apply-deposit-${d.id}">Aplicar</button>` : ''}
+                        ${d.status === 'pending' ? `<button onclick="openApplyDepositModal('${d.id}')" style="padding:4px 10px;border:none;border-radius:5px;font-size:12px;cursor:pointer;margin-right:4px;background:#16a34a;color:#fff;font-weight:600" data-testid="button-apply-deposit-${d.id}">Completar Booking</button>` : ''}
                         <button onclick="editDeposit('${d.id}')" style="padding:4px 10px;border:1px solid #ddd;border-radius:5px;font-size:12px;cursor:pointer;margin-right:4px" data-testid="button-edit-deposit-${d.id}">Editar</button>
                         <button onclick="deleteDeposit('${d.id}')" style="padding:4px 10px;border:1px solid #dc3545;border-radius:5px;font-size:12px;color:#dc3545;cursor:pointer;background:none" data-testid="button-delete-deposit-${d.id}">Eliminar</button>
                     </td>

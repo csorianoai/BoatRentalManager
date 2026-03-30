@@ -48,7 +48,7 @@ function setupTabs() {
     const tabContents = document.querySelectorAll('.tab-content');
     
     tabs.forEach(tab => {
-        tab.addEventListener('click', () => {
+        tab.addEventListener('click', async () => {
             const targetTab = tab.dataset.tab;
             
             // Remove active from all tabs and contents
@@ -58,6 +58,14 @@ function setupTabs() {
             // Add active to clicked tab and corresponding content
             tab.classList.add('active');
             document.getElementById(targetTab).classList.add('active');
+
+            // Refresh data when switching to key tabs
+            if (targetTab === 'transactions') {
+                await loadTransactions();
+            } else if (targetTab === 'deposits') {
+                await loadDeposits();
+                await loadReceivables();
+            }
         });
     });
 }
