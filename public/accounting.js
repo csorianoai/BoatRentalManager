@@ -741,10 +741,166 @@ function formatOperator(op) {
     return operators[op] || op;
 }
 
-// Stub functions for edit
-function editTransaction(id) {
-    alert('Función de edición próximamente');
+// ── EDIT TRANSACTION ────────────────────────────────────────────
+let _editTxBoatsLoaded = false;
+
+async function editTransaction(id) {
+    const tx = transactionsData.find(t => t.id === id);
+    if (!tx) {
+        // Fall back to fetching from API if not in local cache
+        try {
+            const r = await fetch(`/api/accounting/transactions/${id}`);
+            if (!r.ok) { showEditTxToast('Transacción no encontrada', false); return; }
+            openEditTxModal(await r.json());
+        } catch(e) { showEditTxToast('Error al cargar transacción', false); }
+        return;
+    }
+    openEditTxModal(tx);
 }
+
+async function openEditTxModal(tx) {
+    // Populate account select from accountsData
+    const accSel = document.getElementById('edit-tx-account');
+    accSel.innerHTML = '<option value="">Seleccionar cuenta...</option>';
+    accountsData.forEach(a => {
+        const opt = document.createElement('option');
+        opt.value = a.id;
+        opt.textContent = `${a.account_code} - ${a.account_name}`;
+        accSel.appendChild(opt);
+    });
+
+    // Populate boat select (load once)
+    if (!_editTxBoatsLoaded) {
+        try {
+            const br = await fetch('/api/fleet/boats');
+            if (br.ok) {
+                const boats = await br.json();
+                const boatSel = document.getElementById('edit-tx-boat');
+                boatSel.innerHTML = '<option value="">Sin asignar</option>';
+                boats.forEach(b => {
+                    const opt = document.createElement('option');
+                    opt.value = b.id;
+                    opt.textContent = b.name;
+                    boatSel.appendChild(opt);
+                });
+                _editTxBoatsLoaded = true;
+            }
+        } catch(e) { /* non-fatal */ }
+    }
+
+    // Pre-fill fields
+    document.getElementById('edit-tx-id').value          = tx.id;
+    document.getElementById('edit-tx-date').value        = tx.transaction_date ? tx.transaction_date.split('T')[0] : '';
+    document.getElementById('edit-tx-type').value        = tx.transaction_type || 'expense';
+    document.getElementById('edit-tx-account').value     = tx.account_id || '';
+    document.getElementById('edit-tx-description').value = tx.description || '';
+    document.getElementById('edit-tx-amount').value      = parseFloat(tx.amount || 0).toFixed(2);
+    document.getElementById('edit-tx-ref-type').value    = tx.reference_type || '';
+    document.getElementById('edit-tx-boat').value        = tx.boat_id || '';
+    document.getElementById('edit-tx-refid').value       = tx.reference_id || '';
+    document.getElementById('edit-tx-notes').value       = tx.notes || '';
+
+    document.getElementById('edit-tx-title').textContent =
+        tx.transaction_type === 'income' ? 'Editar Ingreso' : 'Editar Gasto';
+    document.getElementById('edit-tx-error').style.display = 'none';
+
+    toggleEditTxFields();
+    document.getElementById('edit-tx-overlay').style.display = 'block';
+    document.body.style.overflow = 'hidden';
+}
+
+function closeEditTxModal() {
+    document.getElementById('edit-tx-overlay').style.display = 'none';
+    document.body.style.overflow = '';
+}
+
+function toggleEditTxFields() {
+    const type = document.getElementById('edit-tx-type').value;
+    const refIdGroup = document.getElementById('edit-tx-refid-group');
+    refIdGroup.style.display = (type === 'income') ? 'block' : 'none';
+}
+
+async function saveEditedTransaction(event) {
+    event.preventDefault();
+    const errEl = document.getElementById('edit-tx-error');
+    errEl.style.display = 'none';
+
+    const id     = document.getElementById('edit-tx-id').value;
+    const amount = parseFloat(document.getElementById('edit-tx-amount').value);
+
+    if (!amount || amount <= 0) {
+        errEl.textContent = 'El monto debe ser mayor que 0.';
+        errEl.style.display = 'block';
+        return;
+    }
+
+    const payload = {
+        transaction_date : document.getElementById('edit-tx-date').value,
+        transaction_type : document.getElementById('edit-tx-type').value,
+        account_id       : document.getElementById('edit-tx-account').value,
+        description      : document.getElementById('edit-tx-description').value.trim(),
+        amount,
+        reference_type   : document.getElementById('edit-tx-ref-type').value || null,
+        boat_id          : document.getElementById('edit-tx-boat').value     || null,
+        reference_id     : document.getElementById('edit-tx-refid').value    || null,
+        notes            : document.getElementById('edit-tx-notes').value    || null,
+        currency         : 'USD'
+    };
+
+    const saveBtn = document.getElementById('edit-tx-save-btn');
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Guardando...';
+
+    try {
+        const res = await fetch(`/api/accounting/transactions/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            errEl.textContent = err.error || 'Error al guardar. Verifica los datos.';
+            errEl.style.display = 'block';
+            return;
+        }
+
+        closeEditTxModal();
+        showEditTxToast('Transacción actualizada correctamente', true);
+        await loadTransactions(); // refresh table
+    } catch(e) {
+        errEl.textContent = 'Error de conexión al guardar.';
+        errEl.style.display = 'block';
+    } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Guardar cambios';
+    }
+}
+
+let _editTxToastTimer;
+function showEditTxToast(msg, ok) {
+    const t = document.getElementById('edit-tx-toast');
+    if (!t) return;
+    t.textContent = msg;
+    t.style.background = ok ? '#16a34a' : '#dc2626';
+    t.style.transform  = 'translateY(0)';
+    t.style.opacity    = '1';
+    clearTimeout(_editTxToastTimer);
+    _editTxToastTimer = setTimeout(() => {
+        t.style.transform = 'translateY(80px)';
+        t.style.opacity   = '0';
+    }, 3500);
+}
+
+// Close modal on overlay click
+document.addEventListener('DOMContentLoaded', () => {
+    const overlay = document.getElementById('edit-tx-overlay');
+    if (overlay) {
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) closeEditTxModal();
+        });
+    }
+});
 
 function editRule(id) {
     alert('Función de edición próximamente');
