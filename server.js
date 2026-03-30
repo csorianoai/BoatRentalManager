@@ -1411,6 +1411,66 @@ async function initializeDatabase() {
               'Deposits received for future bookings — not yet recognized as revenue')
       ON CONFLICT (id) DO NOTHING
     `);
+
+    // ── Company Assets tables ──────────────────────────────────────────────
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS company_assets (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        category TEXT NOT NULL CHECK (category IN ('equipo','inventario','accesorio','marina')),
+        description TEXT,
+        purchase_cost NUMERIC(12,2) NOT NULL DEFAULT 0,
+        purchase_date DATE,
+        supplier TEXT,
+        boat_id TEXT REFERENCES boats(id) ON DELETE SET NULL,
+        quantity INTEGER NOT NULL DEFAULT 1,
+        location TEXT,
+        status TEXT NOT NULL DEFAULT 'activo'
+          CHECK (status IN ('activo','en_uso','mantenimiento','dañado','fuera_de_servicio')),
+        payment_method TEXT DEFAULT 'cash' CHECK (payment_method IN ('cash','credit')),
+        useful_life_years INTEGER,
+        residual_value NUMERIC(12,2) DEFAULT 0,
+        notes TEXT,
+        accounting_tx_debit_id TEXT,
+        accounting_tx_credit_id TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS asset_movements (
+        id TEXT PRIMARY KEY,
+        asset_id TEXT NOT NULL REFERENCES company_assets(id) ON DELETE CASCADE,
+        movement_type TEXT NOT NULL
+          CHECK (movement_type IN ('asignado','movido','dañado','eliminado','reparado','ajuste_inventario')),
+        quantity_change INTEGER DEFAULT 0,
+        from_boat_id TEXT,
+        to_boat_id TEXT,
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    console.log('✅ company_assets and asset_movements tables ready');
+
+    // Idempotent asset chart-of-accounts
+    await pool.query(`
+      INSERT INTO chart_of_accounts (id, account_code, account_name, account_type, description)
+      VALUES
+        ('acc_marine_equipment_1620','1620','Marine Equipment','asset','Marine-specific equipment and gear'),
+        ('acc_inventory_assets_1630','1630','Inventory Assets','asset','Company inventory held for operations')
+      ON CONFLICT (id) DO NOTHING
+    `);
+
+    // Extend transactions reference_type constraint to include 'asset'
+    await pool.query(`
+      ALTER TABLE transactions
+        DROP CONSTRAINT IF EXISTS transactions_reference_type_check
+    `);
+    await pool.query(`
+      ALTER TABLE transactions
+        ADD CONSTRAINT transactions_reference_type_check
+        CHECK (reference_type IN ('booking','commission','fuel','maintenance','manual','bank_transfer','other','asset'))
+    `);
     
     // AUTHENTICATION: Create sessions table (required for Replit Auth)
     await pool.query(`
@@ -4723,6 +4783,181 @@ app.get('/api/fleet/search', async (req, res) => {
     console.error('Error searching boats:', error);
     res.status(500).json({ error: 'Failed to search boats' });
   }
+});
+
+// ========================================
+// 📦 COMPANY ASSETS ENDPOINTS
+// ========================================
+
+// GET /api/assets — list assets (optional filters: boat_id, category, status)
+app.get('/api/assets', isAuthenticated, async (req, res) => {
+  try {
+    const { boat_id, category, status } = req.query;
+    let q = `SELECT a.*, b.name as boat_name FROM company_assets a LEFT JOIN boats b ON a.boat_id = b.id WHERE 1=1`;
+    const params = [];
+    let i = 1;
+    if (boat_id) { q += ` AND a.boat_id = $${i++}`; params.push(boat_id); }
+    if (category) { q += ` AND a.category = $${i++}`; params.push(category); }
+    if (status) { q += ` AND a.status = $${i++}`; params.push(status); }
+    q += ` ORDER BY a.created_at DESC`;
+    const result = await pool.query(q, params);
+    res.json(result.rows);
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/assets — create asset + accounting entries
+app.post('/api/assets', isAuthenticated, async (req, res) => {
+  const pg = await pool.connect();
+  try {
+    const { nanoid } = await import('nanoid');
+    const {
+      name, category, description, purchase_cost, purchase_date, supplier,
+      boat_id, quantity, location, status, payment_method, useful_life_years,
+      residual_value, notes
+    } = req.body;
+    if (!name || !category) return res.status(400).json({ error: 'name y category son requeridos' });
+
+    const id = 'ast_' + nanoid(8);
+    const cost = parseFloat(purchase_cost) || 0;
+
+    // Determine debit account based on category
+    let debitAccId;
+    if (category === 'marina') debitAccId = 'acc_marine_equipment_1620';
+    else if (category === 'inventario') debitAccId = 'acc_inventory_assets_1630';
+    else { // equipo, accesorio
+      const eq = await pg.query(`SELECT id FROM chart_of_accounts WHERE account_code='1600' LIMIT 1`);
+      debitAccId = eq.rows.length ? eq.rows[0].id : 'acc_marine_equipment_1620';
+    }
+
+    // Determine credit account
+    let creditAccId;
+    if (payment_method === 'credit') {
+      const ap = await pg.query(`SELECT id FROM chart_of_accounts WHERE account_code='2010' LIMIT 1`);
+      creditAccId = ap.rows.length ? ap.rows[0].id : null;
+    } else {
+      const cash = await pg.query(`SELECT id FROM chart_of_accounts WHERE account_code='1010' LIMIT 1`);
+      creditAccId = cash.rows.length ? cash.rows[0].id : null;
+    }
+
+    await pg.query('BEGIN');
+
+    // Debit transaction (asset increases)
+    let txDebitId = null, txCreditId = null;
+    const txDate = purchase_date || new Date().toISOString().slice(0,10);
+    if (cost > 0 && debitAccId) {
+      txDebitId = 'tx_ast_d_' + nanoid(6);
+      const desc = `Activo registrado: ${name}${supplier ? ' / ' + supplier : ''}`;
+      await pg.query(
+        `INSERT INTO transactions (id, transaction_date, transaction_type, account_id, amount, description, reference_id, reference_type, notes)
+         VALUES ($1,$2,'income',$3,$4,$5,$6,'asset',$7)`,
+        [txDebitId, txDate, debitAccId, cost, desc, id, notes||null]
+      );
+    }
+    // Credit transaction (cash out or payable increases)
+    if (cost > 0 && creditAccId) {
+      txCreditId = 'tx_ast_c_' + nanoid(6);
+      const creditDesc = payment_method === 'credit'
+        ? `Cuenta por pagar — compra activo: ${name}`
+        : `Pago efectivo — compra activo: ${name}`;
+      await pg.query(
+        `INSERT INTO transactions (id, transaction_date, transaction_type, account_id, amount, description, reference_id, reference_type, notes)
+         VALUES ($1,$2,'expense',$3,$4,$5,$6,'asset',$7)`,
+        [txCreditId, txDate, creditAccId, cost, creditDesc, id, null]
+      );
+    }
+
+    // Insert asset
+    const result = await pg.query(
+      `INSERT INTO company_assets
+        (id, name, category, description, purchase_cost, purchase_date, supplier, boat_id, quantity, location, status, payment_method, useful_life_years, residual_value, notes, accounting_tx_debit_id, accounting_tx_credit_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
+      [id, name, category, description||null, cost, purchase_date||null, supplier||null,
+       boat_id||null, parseInt(quantity)||1, location||null, status||'activo', payment_method||'cash',
+       useful_life_years||null, parseFloat(residual_value)||0, notes||null, txDebitId, txCreditId]
+    );
+
+    // Log initial movement
+    await pg.query(
+      `INSERT INTO asset_movements (id, asset_id, movement_type, quantity_change, to_boat_id, notes)
+       VALUES ($1,$2,'asignado',$3,$4,'Registro inicial')`,
+      ['mov_' + nanoid(8), id, parseInt(quantity)||1, boat_id||null]
+    );
+
+    await pg.query('COMMIT');
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    await pg.query('ROLLBACK');
+    console.error('Error creating asset:', err);
+    res.status(500).json({ error: err.message });
+  } finally { pg.release(); }
+});
+
+// PATCH /api/assets/:id — update asset
+app.patch('/api/assets/:id', isAuthenticated, async (req, res) => {
+  try {
+    const { name, category, description, status, boat_id, quantity, location, supplier, notes, useful_life_years, residual_value } = req.body;
+    const result = await pool.query(
+      `UPDATE company_assets SET
+        name=COALESCE($1,name), category=COALESCE($2,category), description=$3,
+        status=COALESCE($4,status), boat_id=$5, quantity=COALESCE($6,quantity),
+        location=$7, supplier=$8, notes=$9, useful_life_years=$10, residual_value=$11,
+        updated_at=CURRENT_TIMESTAMP
+       WHERE id=$12 RETURNING *`,
+      [name, category, description, status, boat_id||null, quantity ? parseInt(quantity) : null,
+       location, supplier, notes, useful_life_years||null, parseFloat(residual_value)||0, req.params.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Asset not found' });
+    res.json(result.rows[0]);
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }); }
+});
+
+// DELETE /api/assets/:id
+app.delete('/api/assets/:id', isAuthenticated, async (req, res) => {
+  try {
+    await pool.query(`DELETE FROM company_assets WHERE id=$1`, [req.params.id]);
+    res.json({ success: true });
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/assets/:id/movements
+app.get('/api/assets/:id/movements', isAuthenticated, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT m.*, bf.name as from_boat_name, bt.name as to_boat_name
+       FROM asset_movements m
+       LEFT JOIN boats bf ON m.from_boat_id = bf.id
+       LEFT JOIN boats bt ON m.to_boat_id = bt.id
+       WHERE m.asset_id = $1 ORDER BY m.created_at DESC`,
+      [req.params.id]
+    );
+    res.json(result.rows);
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/assets/:id/movements — log movement
+app.post('/api/assets/:id/movements', isAuthenticated, async (req, res) => {
+  try {
+    const { nanoid } = await import('nanoid');
+    const { movement_type, quantity_change, from_boat_id, to_boat_id, notes } = req.body;
+    const movId = 'mov_' + nanoid(8);
+    const result = await pool.query(
+      `INSERT INTO asset_movements (id, asset_id, movement_type, quantity_change, from_boat_id, to_boat_id, notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [movId, req.params.id, movement_type, parseInt(quantity_change)||0, from_boat_id||null, to_boat_id||null, notes||null]
+    );
+    // If moving to a new boat, update the asset's boat_id
+    if (to_boat_id) {
+      await pool.query(`UPDATE company_assets SET boat_id=$1, updated_at=CURRENT_TIMESTAMP WHERE id=$2`, [to_boat_id, req.params.id]);
+    }
+    // If quantity adjustment, update quantity
+    if (quantity_change && parseInt(quantity_change) !== 0) {
+      await pool.query(
+        `UPDATE company_assets SET quantity = GREATEST(0, quantity + $1), updated_at=CURRENT_TIMESTAMP WHERE id=$2`,
+        [parseInt(quantity_change), req.params.id]
+      );
+    }
+    res.status(201).json(result.rows[0]);
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }); }
 });
 
 // ========================================

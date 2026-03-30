@@ -223,7 +223,10 @@ function renderBoatsGrid() {
               <button class="btn btn-secondary" data-testid="button-view-boat-${boat.id}" onclick="viewBoat('${boat.id}')" style="flex: 1;">Ver</button>
               <button class="btn btn-secondary" data-testid="button-edit-boat-${boat.id}" onclick="editBoat('${boat.id}')" style="flex: 1;">Editar</button>
             </div>
-            <button class="btn btn-danger" data-testid="button-delete-boat-${boat.id}" onclick="deleteBoat('${boat.id}')" style="flex: 1;">Eliminar</button>
+            <div style="display: flex; gap: 8px;">
+              <a href="/assets.html?boat_id=${boat.id}" class="btn btn-secondary" data-testid="button-assets-boat-${boat.id}" style="flex:1;justify-content:center;text-decoration:none;font-size:13px">📦 Activos</a>
+              <button class="btn btn-danger" data-testid="button-delete-boat-${boat.id}" onclick="deleteBoat('${boat.id}')" style="flex: 1;">Eliminar</button>
+            </div>
           </div>
         </div>
       </div>

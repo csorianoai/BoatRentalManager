@@ -1,0 +1,413 @@
+Quiero agregar dentro de la plataforma existente “gestión” un dashboard ejecutivo y financiero para operación de barcos, similar a una vista tipo Uber / Airbnb Charter. No quiero una app nueva. Debe integrarse dentro del sistema actual con el mismo estilo visual.
+
+OBJETIVO
+Crear una pantalla única donde pueda ver de forma rápida y clara el rendimiento del negocio y de cada embarcación, incluyendo:
+- ingresos por día
+- ocupación
+- horas vendidas
+- rentabilidad por barco
+- bookings futuros
+- gastos por barco
+- utilidad por barco
+
+La prioridad es que sea una vista simple, rápida, muy útil y bien conectada con los datos que ya existen en el sistema.
+
+REGLAS
+- no crear aplicación separada
+- integrarlo dentro de “gestión”
+- mantener la UI actual
+- no usar librerías pesadas
+- optimizar para bajo consumo en Replit
+- reutilizar datos ya existentes del sistema
+- construir primero un MVP funcional y luego mejoras visuales menores
+- no duplicar lógica ni tablas si ya existen
+
+==================================================
+1. NOMBRE DEL MÓDULO
+==================================================
+
+Usar uno de estos nombres:
+- Dashboard Ejecutivo
+- Performance
+- Boat Performance
+- Charter Dashboard
+
+Mi recomendación:
+- Dashboard Ejecutivo
+
+Debe poder abrirse desde:
+- Dashboard principal
+o
+- Flotilla
+o
+- Contabilidad
+
+==================================================
+2. OBJETIVO DEL DASHBOARD
+==================================================
+
+Quiero ver en una sola pantalla:
+
+A. NEGOCIO GENERAL
+- ingresos por día
+- bookings del día
+- horas vendidas
+- ocupación general
+- depósitos pendientes de aplicar
+- cuentas por cobrar pendientes
+- gastos del período
+- utilidad estimada
+
+B. POR EMBARCACIÓN
+- ingresos por barco
+- cantidad de bookings por barco
+- horas vendidas por barco
+- gastos por barco
+- pagos de capitán y stew por barco
+- rentabilidad por barco
+- margen por barco
+
+==================================================
+3. FILTROS
+==================================================
+
+Agregar filtros arriba del dashboard:
+- rango de fechas
+- barco
+- estado del booking
+- origen del booking:
+  - directo
+  - broker
+- vista:
+  - general
+  - por barco
+
+Filtros mínimos MVP:
+- fecha
+- barco
+
+==================================================
+4. KPIs PRINCIPALES
+==================================================
+
+Mostrar tarjetas superiores con:
+
+- Ingresos del período
+- Bookings confirmados
+- Horas vendidas
+- Ocupación
+- Gastos del período
+- Utilidad neta estimada
+- Cuentas por cobrar pendientes
+- Depósitos pendientes de aplicar
+
+Cada tarjeta debe ser clickeable si es posible para abrir detalle.
+
+==================================================
+5. INGRESOS POR DÍA
+==================================================
+
+Crear una sección de resumen diario que muestre:
+- fecha
+- total de ingresos del día
+- bookings del día
+- horas vendidas del día
+
+Usar datos de:
+- booking revenue ya reconocido
+- ingresos asociados a boat_id
+- bookings completados o confirmados según lógica del sistema
+
+Si hay gráfico, que sea liviano.
+Si no, una tabla o barras simples sirve para MVP.
+
+==================================================
+6. OCUPACIÓN
+==================================================
+
+Calcular ocupación por barco y general.
+
+MVP simple:
+- ocupación basada en días o slots con booking dentro del rango seleccionado
+- si ya existe calendario/reservas, reutilizar esa lógica
+- si no existe una fórmula avanzada, usar:
+  número de bookings / capacidad de días disponibles en el período
+
+Mostrar:
+- ocupación general %
+- ocupación por barco %
+
+Si no hay capacidad horaria definida aún, usar una fórmula simple y dejar preparada para mejorar después.
+
+==================================================
+7. HORAS VENDIDAS
+==================================================
+
+Sumar horas rentadas:
+- general
+- por barco
+- por día
+
+Usar:
+- hours_rented del booking/deposito/ingreso ya convertido
+- no pedir nuevamente la información si ya existe en el sistema
+
+Mostrar:
+- total horas vendidas
+- promedio por booking
+- horas por barco
+
+==================================================
+8. RENTABILIDAD POR BARCO
+==================================================
+
+Crear una tabla o panel por embarcación con estas columnas:
+
+- Barco
+- Ingresos
+- Horas vendidas
+- Bookings
+- Gastos
+- Capitán
+- Stew
+- Utilidad
+- Margen %
+
+FÓRMULA
+Utilidad = ingresos - gastos - pagos crew
+
+Donde:
+- ingresos = booking revenue del barco
+- gastos = gastos contables con boat_id
+- capitán = pagos de captain vinculados al barco
+- stew = pagos de stew vinculados al barco
+
+Margen %:
+- utilidad / ingresos * 100
+- si ingresos = 0, mostrar 0 o vacío
+
+==================================================
+9. GASTOS POR BARCO
+==================================================
+
+Sumar y mostrar por barco:
+- mantenimiento
+- marina
+- combustible
+- reparaciones
+- seguros
+- otros
+
+Mostrar:
+- total gastos
+- desglose por categoría
+- tendencia del período si es simple de implementar
+
+Debe usar boat_id de los gastos existentes.
+
+==================================================
+10. BOOKINGS FUTUROS
+==================================================
+
+Agregar una sección de próximos bookings con:
+- fecha
+- cliente o broker
+- barco
+- horas
+- monto total
+- depósito recibido
+- saldo pendiente
+- estado
+
+Esto debe servir para ver:
+- reservas próximas
+- cuentas por cobrar futuras
+- carga operativa futura
+
+==================================================
+11. CUENTAS POR COBRAR Y DEPÓSITOS
+==================================================
+
+Mostrar widgets o paneles con:
+- total cuentas por cobrar pendientes
+- total depósitos recibidos pendientes de aplicar
+- lista de pendientes relevantes
+
+Esto debe conectarse con el flujo de:
+- Deferred Booking Deposits
+- Accounts Receivable
+
+==================================================
+12. FUENTES DE DATOS A USAR
+==================================================
+
+Reutilizar datos del sistema actual de:
+- bookings / booking ledger
+- deferred booking deposits
+- accounts receivable
+- accounting transactions
+- expenses
+- captain payments
+- stew payments
+- boats / flotilla
+
+No crear nuevas fuentes si ya existe la data.
+
+==================================================
+13. ESTRUCTURA DEL DASHBOARD
+==================================================
+
+PROPUESTA DE LAYOUT
+
+A. FILA 1
+Tarjetas KPI:
+- ingresos
+- bookings
+- horas
+- ocupación
+- gastos
+- utilidad
+
+B. FILA 2
+- ingresos por día
+- próximos bookings
+
+C. FILA 3
+- rentabilidad por barco
+- gastos por barco
+
+D. FILA 4
+- cuentas por cobrar
+- depósitos pendientes
+- resumen por broker/directo si existe
+
+==================================================
+14. VISTA POR BARCO
+==================================================
+
+Cuando seleccione un barco, el dashboard debe cambiar y mostrar solo la información de ese bote:
+
+- ingresos del barco
+- bookings del barco
+- horas vendidas
+- gastos del barco
+- crew cost
+- utilidad
+- próximos bookings del barco
+- documentos o alertas opcionales después
+
+OBJETIVO
+Entrar a un barco y entender en segundos si está siendo rentable.
+
+==================================================
+15. MVP OBLIGATORIO
+==================================================
+
+Implementar primero:
+
+1. filtros por fecha y barco
+2. tarjetas KPI
+3. ingresos por día
+4. horas vendidas
+5. ocupación simple
+6. tabla de rentabilidad por barco
+7. gastos por barco
+8. próximos bookings
+9. cuentas por cobrar pendientes
+10. depósitos pendientes de aplicar
+
+==================================================
+16. UI / UX
+==================================================
+
+Necesito una interfaz:
+- limpia
+- profesional
+- ejecutiva
+- rápida
+- responsive
+- consistente con “gestión”
+
+Usar:
+- tarjetas
+- tablas limpias
+- badges de estado
+- colores suaves para ingresos/gastos/utilidad
+- diseño enfocado en lectura rápida
+
+Evitar:
+- gráficos pesados
+- animaciones innecesarias
+- complejidad visual
+
+==================================================
+17. CÁLCULOS CLAVE
+==================================================
+
+A. INGRESOS
+Usar solo ingresos reconocidos o booking revenue según estado correcto.
+No mezclar depósitos diferidos con ingresos finales.
+
+B. GASTOS
+Usar gastos ligados a boat_id.
+Incluir recurrentes ya generados en contabilidad.
+
+C. CREW
+Sumar captain + stew vinculados al barco.
+
+D. UTILIDAD
+utilidad = ingresos - gastos - crew
+
+E. HORAS VENDIDAS
+Sumar hours_rented reales del período.
+
+==================================================
+18. VALIDACIONES OBLIGATORIAS
+==================================================
+
+Antes de cerrar, validar:
+
+1. el dashboard aparece dentro de “gestión”
+2. los filtros funcionan
+3. ingresos por día muestran datos reales
+4. horas vendidas muestran datos reales
+5. ocupación muestra cálculo consistente
+6. cada barco muestra ingresos correctos
+7. cada barco muestra gastos correctos
+8. captain y stew impactan la utilidad
+9. depósitos no se cuentan como ingresos finales antes de tiempo
+10. cuentas por cobrar pendientes sí aparecen
+11. próximos bookings muestran barco, horas y monto
+12. la vista por barco funciona correctamente
+
+==================================================
+19. ENTREGABLE
+==================================================
+
+Necesito:
+- nuevo Dashboard Ejecutivo dentro de “gestión”
+- KPIs generales
+- ingresos por día
+- ocupación
+- horas vendidas
+- rentabilidad por barco
+- gastos por barco
+- próximos bookings
+- cuentas por cobrar
+- depósitos pendientes
+- código limpio, integrado y funcional
+
+==================================================
+20. RESULTADO FINAL
+==================================================
+
+Debo poder entrar al dashboard y ver en una sola pantalla:
+- cuánto está ingresando el negocio
+- cuántas horas se están vendiendo
+- qué barcos están produciendo más
+- qué barcos están gastando más
+- cuál es la rentabilidad real por embarcación
+- qué bookings vienen en camino
+- qué dinero sigue pendiente por cobrar
+
+Todo dentro de la plataforma actual “gestión”, sin salir del sistema y sin tener que revisar varios módulos por separado.

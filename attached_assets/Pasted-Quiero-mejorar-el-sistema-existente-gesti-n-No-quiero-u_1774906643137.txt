@@ -1,0 +1,201 @@
+Quiero mejorar el sistema existente “gestión”. No quiero una app nueva.
+
+OBJETIVO
+Crear un sistema básico de activos (inventario/equipos) para registrar bienes de la empresa como alfombras flotantes, radios, accesorios de barcos y otros equipos.
+
+Estos elementos NO deben registrarse como gasto ni como ingreso, sino como activos.
+
+==================================================
+1. CREAR CUENTAS CONTABLES
+==================================================
+
+Agregar en el plan de cuentas:
+
+ACTIVOS (Assets):
+- Equipment
+- Marine Equipment
+- Inventory Assets
+
+PASIVOS (si aplica):
+- Accounts Payable
+
+GASTOS (para uso futuro):
+- Depreciation Expense
+
+==================================================
+2. NUEVO MÓDULO: ACTIVOS
+==================================================
+
+Crear una sección dentro de “gestión” llamada:
+- Activos
+o
+- Inventario / Equipos
+
+==================================================
+3. REGISTRO DE ACTIVOS
+==================================================
+
+Permitir crear activos con los siguientes campos:
+
+- nombre del activo
+- categoría:
+  - equipo
+  - inventario
+  - accesorio
+  - marina
+- descripción
+- costo de compra
+- fecha de compra
+- proveedor opcional
+- barco asignado opcional
+- cantidad
+- ubicación opcional
+- estado:
+  - activo
+  - en uso
+  - en mantenimiento
+  - dañado
+  - fuera de servicio
+- notas
+
+==================================================
+4. LÓGICA CONTABLE
+==================================================
+
+Cuando se registra un activo:
+
+SI se paga en efectivo:
+- Debit: Equipment / Inventory Assets
+- Credit: Cash / Banco
+
+SI se compra a crédito:
+- Debit: Equipment / Inventory Assets
+- Credit: Accounts Payable
+
+IMPORTANTE:
+- NO registrar como gasto directo
+- NO afectar ingresos
+
+==================================================
+5. ASIGNACIÓN A BARCOS
+==================================================
+
+Permitir asignar activos a un barco específico:
+
+- boat_id
+- boat_name
+
+OBJETIVO
+Poder saber qué activos tiene cada embarcación:
+- radios por barco
+- alfombras por barco
+- equipos por barco
+
+==================================================
+6. CONTROL DE INVENTARIO
+==================================================
+
+Para activos tipo inventario:
+
+- permitir cantidad
+- permitir reducir cantidad si se usa o pierde
+- registrar movimientos:
+  - asignado
+  - movido
+  - dañado
+  - eliminado
+
+==================================================
+7. DEPRECIACIÓN (MVP SIMPLE)
+==================================================
+
+Preparar el sistema para depreciación futura:
+
+Campos opcionales:
+- vida útil
+- valor residual
+
+(No implementar cálculo complejo todavía, solo dejar estructura lista)
+
+==================================================
+8. INTERFAZ
+==================================================
+
+Crear:
+
+A. LISTADO DE ACTIVOS
+- nombre
+- categoría
+- costo
+- barco asignado
+- estado
+- cantidad
+
+B. DETALLE DEL ACTIVO
+- toda la información
+- historial de movimientos
+- asignación a barco
+
+C. EN FICHA DEL BARCO
+Agregar sección:
+- “Equipos / Activos”
+mostrar activos asignados a ese bote
+
+==================================================
+9. RELACIÓN CON GASTOS
+==================================================
+
+Si se compra un activo desde gastos:
+
+- permitir convertir ese gasto en activo
+o
+- registrar directamente como activo en lugar de gasto
+
+Evitar duplicar registros.
+
+==================================================
+10. REPORTES
+==================================================
+
+Permitir:
+- ver activos por barco
+- ver activos totales de la empresa
+- valor total de activos
+- activos dañados o fuera de servicio
+
+==================================================
+11. MVP OBLIGATORIO
+==================================================
+
+Implementar primero:
+
+1. cuentas contables de activos
+2. módulo de activos
+3. registro de activos
+4. asignación a barcos
+5. registro contable correcto (no gasto)
+6. listado y detalle
+7. visualización dentro del barco
+
+==================================================
+12. REGLAS
+==================================================
+
+- no crear app nueva
+- integrarlo dentro de “gestión”
+- no usar librerías pesadas
+- código simple
+- optimizado para Replit
+- no tratar activos como gastos
+- mantener consistencia contable
+
+==================================================
+13. RESULTADO FINAL
+==================================================
+
+Debo poder:
+- registrar una alfombra flotante o radio como activo
+- asignarlo a un barco específico
+- ver ese activo dentro del barco
+- registrar correctamente el impacto contable como activo
+- no mezclarlo con gastos ni ingresos

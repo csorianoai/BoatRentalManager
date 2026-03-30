@@ -1,0 +1,140 @@
+Quiero crear dentro de “gestión” una vista financiera por embarcación. No quiero una app nueva.
+
+OBJETIVO
+Poder ver cuánto dinero genera y cuánto cuesta cada barco, consolidando ingresos y gastos en una sola vista.
+
+==================================================
+1. NUEVA VISTA: PERFORMANCE DEL BARCO
+==================================================
+
+Crear una sección accesible desde:
+- Flotilla
+o
+- Contabilidad
+o
+- dentro de cada barco
+
+Nombre sugerido:
+- Boat Performance
+- Resumen Financiero del Barco
+
+==================================================
+2. FILTROS
+==================================================
+
+Permitir:
+- seleccionar barco
+- rango de fechas
+
+==================================================
+3. INGRESOS POR BARCO
+==================================================
+
+Sumar automáticamente:
+
+- booking revenue (cuando se completa)
+- depósitos aplicados
+- ingresos por renta
+
+Campos a mostrar:
+- total ingresos
+- número de bookings
+- horas rentadas
+
+==================================================
+4. GASTOS POR BARCO
+==================================================
+
+Sumar todos los gastos asociados al boat_id:
+
+- mantenimiento
+- marina
+- combustible
+- reparaciones
+- seguros
+- otros
+
+Mostrar:
+- total gastos
+- desglose por categoría
+
+==================================================
+5. TRIPULACIÓN
+==================================================
+
+Incluir:
+- pagos a capitanes
+- pagos a stew
+
+Mostrar:
+- total crew cost
+
+==================================================
+6. RESULTADO FINAL
+==================================================
+
+Calcular:
+
+UTILIDAD = INGRESOS - GASTOS - CREW
+
+Mostrar:
+- utilidad total
+- margen %
+
+==================================================
+7. INTERFAZ
+==================================================
+
+Mostrar:
+
+A. RESUMEN
+- ingresos
+- gastos
+- crew
+- utilidad
+
+B. DETALLE
+- lista de ingresos
+- lista de gastos
+- lista de pagos de crew
+
+C. GRÁFICO SIMPLE (opcional)
+- ingresos vs gastos
+
+==================================================
+8. INTEGRACIÓN
+==================================================
+
+Usar datos existentes de:
+- accounting (ingresos y gastos)
+- booking deposits convertidos a revenue
+- captain payments
+- stew payments
+
+Todo debe filtrarse por:
+- boat_id
+
+==================================================
+9. MVP OBLIGATORIO
+==================================================
+
+Implementar:
+1. selección de barco
+2. cálculo de ingresos por barco
+3. cálculo de gastos por barco
+4. incluir pagos de capitanes
+5. incluir pagos de stew
+6. cálculo de utilidad
+7. vista simple tipo resumen
+
+==================================================
+10. RESULTADO FINAL
+==================================================
+
+Debo poder entrar a un barco y ver:
+
+- cuánto ha generado
+- cuánto ha costado
+- cuánto deja de ganancia
+
+Todo en una sola pantalla sin tener que buscar en múltiples módulos.
