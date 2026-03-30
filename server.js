@@ -1235,6 +1235,79 @@ async function initializeDatabase() {
     `);
     console.log('✅ booking_receivables table ready');
 
+    // Extend booking_receivables with party info
+    await pool.query(`ALTER TABLE booking_receivables ADD COLUMN IF NOT EXISTS party_type TEXT CHECK (party_type IN ('customer','broker'))`);
+    await pool.query(`ALTER TABLE booking_receivables ADD COLUMN IF NOT EXISTS party_id TEXT`);
+    await pool.query(`ALTER TABLE booking_receivables ADD COLUMN IF NOT EXISTS party_name TEXT`);
+    await pool.query(`ALTER TABLE booking_receivables ADD COLUMN IF NOT EXISTS booking_id TEXT`);
+    await pool.query(`ALTER TABLE booking_receivables ADD COLUMN IF NOT EXISTS broker_id TEXT`);
+
+    // Extend booking_deposits with source/broker/customer fields
+    await pool.query(`ALTER TABLE booking_deposits ADD COLUMN IF NOT EXISTS booking_source TEXT DEFAULT 'direct'`);
+    await pool.query(`ALTER TABLE booking_deposits ADD COLUMN IF NOT EXISTS customer_id TEXT`);
+    await pool.query(`ALTER TABLE booking_deposits ADD COLUMN IF NOT EXISTS broker_id TEXT`);
+    await pool.query(`ALTER TABLE booking_deposits ADD COLUMN IF NOT EXISTS final_customer_name TEXT`);
+    await pool.query(`ALTER TABLE booking_deposits ADD COLUMN IF NOT EXISTS final_customer_phone TEXT`);
+    await pool.query(`ALTER TABLE booking_deposits ADD COLUMN IF NOT EXISTS final_customer_email TEXT`);
+    await pool.query(`ALTER TABLE booking_deposits ADD COLUMN IF NOT EXISTS booking_ledger_id TEXT`);
+
+    // Brokers table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS brokers (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        phone TEXT,
+        email TEXT,
+        notes TEXT,
+        active BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    console.log('✅ brokers table ready');
+
+    // Customers table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS customers (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        phone TEXT,
+        email TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    console.log('✅ customers table ready');
+
+    // Bookings ledger — full booking record
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS bookings_ledger (
+        id TEXT PRIMARY KEY,
+        booking_source TEXT NOT NULL DEFAULT 'direct' CHECK (booking_source IN ('direct','broker')),
+        boat_id TEXT REFERENCES boats(id),
+        booking_date DATE,
+        hours_rented NUMERIC(5,2),
+        total_amount NUMERIC(12,2),
+        deposit_amount NUMERIC(12,2),
+        customer_id TEXT REFERENCES customers(id),
+        customer_name TEXT,
+        customer_phone TEXT,
+        customer_email TEXT,
+        broker_id TEXT REFERENCES brokers(id),
+        broker_name TEXT,
+        final_customer_name TEXT,
+        final_customer_phone TEXT,
+        final_customer_email TEXT,
+        receivable_party_type TEXT CHECK (receivable_party_type IN ('customer','broker')),
+        receivable_party_id TEXT,
+        receivable_party_name TEXT,
+        deposit_id TEXT,
+        service_type TEXT,
+        status TEXT DEFAULT 'pending' CHECK (status IN ('pending','confirmed','completed','cancelled')),
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    console.log('✅ bookings_ledger table ready');
+
     // Seed chart of accounts if empty
     const accountsCheck = await pool.query('SELECT COUNT(*) FROM chart_of_accounts');
     if (parseInt(accountsCheck.rows[0].count) === 0) {
@@ -9467,6 +9540,100 @@ app.patch('/api/stews/:id', isAuthenticated, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── Brokers ───────────────────────────────────────────
+app.get('/api/brokers', isAuthenticated, async (req, res) => {
+  try {
+    const { active } = req.query;
+    let sql = 'SELECT * FROM brokers';
+    if (active !== undefined) sql += ` WHERE active = ${active === 'false' ? 'false' : 'true'}`;
+    sql += ' ORDER BY name ASC';
+    const result = await pool.query(sql);
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/brokers', isAuthenticated, async (req, res) => {
+  try {
+    const { name, phone, email, notes } = req.body;
+    if (!name) return res.status(400).json({ error: 'name es obligatorio' });
+    const { nanoid } = await import('nanoid');
+    const id = 'brk_' + nanoid(8);
+    const result = await pool.query(
+      `INSERT INTO brokers (id, name, phone, email, notes) VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+      [id, name, phone||null, email||null, notes||null]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.patch('/api/brokers/:id', isAuthenticated, async (req, res) => {
+  try {
+    const { name, phone, email, notes, active } = req.body;
+    const result = await pool.query(
+      `UPDATE brokers SET name=COALESCE($1,name), phone=COALESCE($2,phone), email=COALESCE($3,email),
+       notes=COALESCE($4,notes), active=COALESCE($5,active) WHERE id=$6 RETURNING *`,
+      [name||null, phone||null, email||null, notes||null, active!=null?active:null, req.params.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Broker no encontrado' });
+    res.json(result.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── Customers ─────────────────────────────────────────
+app.get('/api/customers', isAuthenticated, async (req, res) => {
+  try {
+    const { q } = req.query;
+    let sql = 'SELECT * FROM customers';
+    const params = [];
+    if (q) { params.push(`%${q}%`); sql += ` WHERE name ILIKE $1 OR email ILIKE $1 OR phone ILIKE $1`; }
+    sql += ' ORDER BY name ASC LIMIT 100';
+    const result = await pool.query(sql, params);
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/customers', isAuthenticated, async (req, res) => {
+  try {
+    const { name, phone, email } = req.body;
+    if (!name) return res.status(400).json({ error: 'name es obligatorio' });
+    const { nanoid } = await import('nanoid');
+    const id = 'cust_' + nanoid(8);
+    const result = await pool.query(
+      `INSERT INTO customers (id, name, phone, email) VALUES ($1,$2,$3,$4) RETURNING *`,
+      [id, name, phone||null, email||null]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── Bookings Ledger ───────────────────────────────────
+app.get('/api/bookings-ledger', isAuthenticated, async (req, res) => {
+  try {
+    const { status, boat_id, booking_source } = req.query;
+    let sql = `SELECT bl.*, b.name as boat_name,
+                 CASE WHEN bl.total_amount > 0 THEN GREATEST(0, bl.total_amount - COALESCE(bl.deposit_amount,0)) ELSE 0 END as balance_due
+               FROM bookings_ledger bl LEFT JOIN boats b ON bl.boat_id = b.id WHERE 1=1`;
+    const params = [];
+    if (status)  { params.push(status);  sql += ` AND bl.status=$${params.length}`; }
+    if (boat_id) { params.push(boat_id); sql += ` AND bl.boat_id=$${params.length}`; }
+    if (booking_source) { params.push(booking_source); sql += ` AND bl.booking_source=$${params.length}`; }
+    sql += ' ORDER BY bl.booking_date DESC, bl.created_at DESC';
+    const result = await pool.query(sql, params);
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.patch('/api/bookings-ledger/:id/complete', isAuthenticated, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `UPDATE bookings_ledger SET status='completed' WHERE id=$1 RETURNING *`,
+      [req.params.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Booking no encontrado' });
+    res.json(result.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ── Booking Deposits ──────────────────────────────────
 app.get('/api/booking-deposits', isAuthenticated, async (req, res) => {
   try {
@@ -9494,50 +9661,124 @@ app.post('/api/booking-deposits', isAuthenticated, async (req, res) => {
   const pg = await pool.connect();
   try {
     await pg.query('BEGIN');
-    const { client_name, client_email, client_phone, boat_id, booking_reference,
-            amount, deposit_date, status, notes,
-            booking_date, booking_total_amount, hours_rented, service_type } = req.body;
-    if (!client_name || !amount || !deposit_date) {
+    const {
+      client_name, client_email, client_phone, boat_id, booking_reference,
+      amount, deposit_date, status, notes,
+      booking_date, booking_total_amount, hours_rented, service_type,
+      // New fields
+      booking_source,
+      customer_id, customer_name, customer_phone, customer_email,
+      broker_id, broker_name, broker_phone, broker_email,
+      final_customer_name, final_customer_phone, final_customer_email,
+    } = req.body;
+
+    // Determine who the deposit/AR is for
+    const source = booking_source || 'direct';
+    const isBroker = source === 'broker';
+    // For display/legacy: client_name is broker name if broker, or customer if direct
+    const displayName = isBroker
+      ? (broker_name || client_name || 'Broker')
+      : (customer_name || client_name || 'Cliente');
+    const displayEmail = isBroker ? (broker_email || client_email || null) : (customer_email || client_email || null);
+    const displayPhone = isBroker ? (broker_phone || client_phone || null) : (customer_phone || client_phone || null);
+
+    if (!displayName || !amount || !deposit_date) {
       await pg.query('ROLLBACK');
-      return res.status(400).json({ error: 'client_name, amount y deposit_date son obligatorios' });
+      return res.status(400).json({ error: 'Nombre, monto y fecha son obligatorios' });
     }
+
     const { nanoid } = await import('nanoid');
     const id = 'dep_' + nanoid(8);
-    const result = await pg.query(
+
+    // Auto-create customer/broker records if names given but no IDs
+    let resolvedCustomerId = customer_id || null;
+    let resolvedBrokerId = broker_id || null;
+
+    if (!isBroker && !resolvedCustomerId && customer_name) {
+      const cRes = await pg.query(
+        `INSERT INTO customers (id, name, phone, email) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING RETURNING id`,
+        ['cust_' + nanoid(8), customer_name, customer_phone||null, customer_email||null]
+      );
+      if (cRes.rows.length) resolvedCustomerId = cRes.rows[0].id;
+    }
+    if (isBroker && !resolvedBrokerId && broker_name) {
+      const bRes = await pg.query(
+        `INSERT INTO brokers (id, name, phone, email) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING RETURNING id`,
+        ['brk_' + nanoid(8), broker_name, broker_phone||null, broker_email||null]
+      );
+      if (bRes.rows.length) resolvedBrokerId = bRes.rows[0].id;
+    }
+
+    // Insert deposit
+    const depResult = await pg.query(
       `INSERT INTO booking_deposits
          (id, client_name, client_email, client_phone, boat_id, booking_reference, amount, deposit_date,
-          status, notes, booking_date, booking_total_amount, hours_rented, service_type)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
-      [id, client_name, client_email||null, client_phone||null, boat_id||null, booking_reference||null,
+          status, notes, booking_date, booking_total_amount, hours_rented, service_type,
+          booking_source, customer_id, broker_id, final_customer_name, final_customer_phone, final_customer_email)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING *`,
+      [id, displayName, displayEmail, displayPhone, boat_id||null, booking_reference||null,
        amount, deposit_date, status||'pending', notes||null,
-       booking_date||null, booking_total_amount||null, hours_rented||null, service_type||null]
+       booking_date||null, booking_total_amount||null, hours_rented||null, service_type||null,
+       source, resolvedCustomerId, resolvedBrokerId,
+       final_customer_name||null, final_customer_phone||null, final_customer_email||null]
     );
-    const dep = result.rows[0];
+    const dep = depResult.rows[0];
 
-    // Auto-create accounts receivable if balance_due > 0
+    // Create bookings_ledger entry
+    const ledgerId = 'bl_' + nanoid(8);
+    await pg.query(
+      `INSERT INTO bookings_ledger
+         (id, booking_source, boat_id, booking_date, hours_rented, total_amount, deposit_amount,
+          customer_id, customer_name, customer_phone, customer_email,
+          broker_id, broker_name,
+          final_customer_name, final_customer_phone, final_customer_email,
+          receivable_party_type, receivable_party_id, receivable_party_name,
+          deposit_id, service_type, notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
+      [ledgerId, source, boat_id||null, booking_date||null, hours_rented||null,
+       booking_total_amount||null, amount,
+       resolvedCustomerId, isBroker ? (final_customer_name||null) : (customer_name||displayName), customer_phone||null, customer_email||null,
+       resolvedBrokerId, broker_name||null,
+       final_customer_name||null, final_customer_phone||null, final_customer_email||null,
+       isBroker ? 'broker' : 'customer',
+       isBroker ? resolvedBrokerId : resolvedCustomerId,
+       isBroker ? (broker_name||displayName) : (customer_name||displayName),
+       id, service_type||null, notes||null]
+    );
+    // Link ledger to deposit
+    await pg.query('UPDATE booking_deposits SET booking_ledger_id=$1 WHERE id=$2', [ledgerId, id]);
+
+    // Auto-create AR if balance_due > 0
     let receivable = null;
     const totalAmt  = parseFloat(booking_total_amount||0);
     const depositAmt = parseFloat(amount);
     const balanceDue = totalAmt - depositAmt;
     if (totalAmt > 0 && balanceDue > 0.005) {
       const rId = 'ar_' + nanoid(8);
+      const arPartyType = isBroker ? 'broker' : 'customer';
+      const arPartyName = isBroker ? (broker_name||displayName) : (customer_name||displayName);
+      const arPartyId   = isBroker ? resolvedBrokerId : resolvedCustomerId;
       const arResult = await pg.query(
         `INSERT INTO booking_receivables
-           (id, deposit_id, client_name, client_email, client_phone, boat_id, due_date, amount, status, notes)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pending',$9) RETURNING *`,
-        [rId, id, client_name, client_email||null, client_phone||null, boat_id||null,
-         booking_date||deposit_date, balanceDue.toFixed(2), `Saldo pendiente - ${booking_reference||client_name}`]
+           (id, deposit_id, client_name, client_email, client_phone, boat_id, due_date, amount, status, notes,
+            party_type, party_id, party_name, booking_id, broker_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pending',$9,$10,$11,$12,$13,$14) RETURNING *`,
+        [rId, id, arPartyName, displayEmail, displayPhone, boat_id||null,
+         booking_date||deposit_date, balanceDue.toFixed(2),
+         `Saldo pendiente — ${booking_reference||arPartyName}`,
+         arPartyType, arPartyId||null, arPartyName, ledgerId,
+         isBroker ? resolvedBrokerId : null]
       );
       receivable = arResult.rows[0];
-      // Link receivable to deposit
-      await pg.query('UPDATE booking_deposits SET linked_receivable_id = $1 WHERE id = $2', [rId, id]);
+      await pg.query('UPDATE booking_deposits SET linked_receivable_id=$1 WHERE id=$2', [rId, id]);
       dep.linked_receivable_id = rId;
     }
 
     await pg.query('COMMIT');
-    res.status(201).json({ ...dep, receivable });
+    res.status(201).json({ ...dep, receivable, ledger_id: ledgerId });
   } catch (err) {
     await pg.query('ROLLBACK');
+    console.error('Error creating booking deposit:', err);
     res.status(500).json({ error: err.message });
   } finally { pg.release(); }
 });

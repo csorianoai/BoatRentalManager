@@ -1,0 +1,326 @@
+Quiero modificar el sistema existente “gestión”. No quiero una app nueva.
+
+OBJETIVO
+Cuando en “Nueva Transacción” se seleccione la cuenta:
+- 2500 - Deferred Booking Deposits
+
+el formulario debe convertirse en un flujo especial para reservas futuras y depósitos de booking.
+
+Necesito que permita:
+- ingresar directamente el monto del depósito
+- crear o ingresar el nombre del cliente
+- crear automáticamente una cuenta por cobrar
+- distinguir si la reserva es directa o si fue generada por un broker
+- si es por broker, poder crear o seleccionar el broker
+- si es por broker, la cuenta por cobrar debe ir al broker
+- si es directa, la cuenta por cobrar debe ir al cliente
+- guardar también el nombre del cliente final que usará el bote cuando aplique
+
+==================================================
+1. FLUJO ESPECIAL PARA DEFERRED BOOKING DEPOSITS
+==================================================
+
+Si la cuenta seleccionada es:
+- 2500 - Deferred Booking Deposits
+
+mostrar campos especiales obligatorios.
+
+CAMPOS
+- monto del depósito (editable directamente)
+- monto total del booking
+- fecha del booking
+- bote seleccionado
+- horas rentadas
+- tipo de origen:
+  - directo
+  - broker
+
+==================================================
+2. ESCENARIO A: BOOKING DIRECTO
+==================================================
+
+Si el origen es “directo”:
+- permitir ingresar o crear el nombre del cliente
+- opcionalmente guardar teléfono y email
+- la cuenta por cobrar debe crearse a nombre del cliente
+- el cliente también queda vinculado al booking y al bote
+
+CAMPOS PARA DIRECTO
+- cliente_nombre
+- cliente_tel opcional
+- cliente_email opcional
+
+==================================================
+3. ESCENARIO B: BOOKING POR BROKER
+==================================================
+
+Si el origen es “broker”:
+- permitir seleccionar broker existente
+- o crear broker nuevo
+- permitir registrar nombre del cliente final que usará el bote
+- la cuenta por cobrar debe crearse a nombre del broker
+- el cliente final debe quedar registrado solo como ocupante/usuario final del bote
+- el booking debe quedar vinculado a ambos:
+  - broker
+  - cliente final
+
+CAMPOS PARA BROKER
+- broker_id o broker_nombre nuevo
+- broker_tel opcional
+- broker_email opcional
+- cliente_final_nombre
+- cliente_final_tel opcional
+- cliente_final_email opcional
+
+REGLA
+- si booking_source = broker, la cuenta por cobrar va al broker
+- si booking_source = direct, la cuenta por cobrar va al cliente
+
+==================================================
+4. MONTO Y CUENTA POR COBRAR
+==================================================
+
+Necesito que el campo:
+- Monto *
+
+permita ingresar directamente el depósito recibido, como ya ocurre, pero además el sistema debe usarlo para crear automáticamente el flujo contable.
+
+LÓGICA
+- deposito = monto ingresado
+- total_booking = monto total del booking
+- saldo_pendiente = total_booking - deposito
+
+Si saldo_pendiente > 0:
+- crear automáticamente una cuenta por cobrar
+- con fecha del booking o fecha de vencimiento configurable
+- vinculada al responsable del cobro:
+  - cliente si es directo
+  - broker si es broker
+
+==================================================
+5. SELECCIÓN DEL BOTE
+==================================================
+
+Debe permitir seleccionar el bote desde la data real del sistema.
+
+Campos:
+- boat_id
+- boat_name
+
+OBJETIVO
+Que toda la operación quede asociada al bote correcto y luego sirva para:
+- ingresos por bote
+- horas rentadas por bote
+- bookings por bote
+- cuentas por cobrar por bote
+
+==================================================
+6. CUENTAS DE BROKERS
+==================================================
+
+Necesito una estructura para brokers similar a clientes.
+
+Debe permitir:
+- crear broker nuevo
+- seleccionar broker existente
+- guardar:
+  - nombre
+  - teléfono opcional
+  - email opcional
+  - notas opcionales
+
+Además debe existir una lógica para cuentas por cobrar a brokers.
+
+OBJETIVO
+Si el broker es quien paga, la cuenta por cobrar debe quedar asociada al broker, no al cliente final.
+
+==================================================
+7. DATOS QUE DEBEN QUEDAR GUARDADOS
+==================================================
+
+Al crear esta transacción especial, guardar:
+
+- booking_source = direct / broker
+- deposit_amount
+- booking_total_amount
+- booking_date
+- boat_id
+- hours_rented
+
+SI ES DIRECTO
+- customer_name
+- customer_phone opcional
+- customer_email opcional
+- receivable_party_type = customer
+- receivable_party_id o receivable_name
+
+SI ES BROKER
+- broker_id o broker_name
+- broker_phone opcional
+- broker_email opcional
+- final_customer_name
+- final_customer_phone opcional
+- final_customer_email opcional
+- receivable_party_type = broker
+- receivable_party_id o receivable_name
+
+==================================================
+8. AUTOMATIZACIÓN CONTABLE
+==================================================
+
+A. AL REGISTRAR DEPÓSITO
+- Debit: Cash / Banco
+- Credit: Deferred Booking Deposits
+
+B. AL CREAR SALDO PENDIENTE
+- generar Accounts Receivable
+- responsable del cobro según el origen:
+  - cliente directo
+  - broker
+
+C. CUANDO EL BOOKING SE COMPLETE
+- mover el depósito a ingreso real:
+  - Debit: Deferred Booking Deposits
+  - Credit: Booking Revenue
+- si el saldo fue cobrado:
+  - Debit: Cash / Banco
+  - Credit: Accounts Receivable
+- si no fue cobrado:
+  - mantener la cuenta por cobrar abierta
+
+==================================================
+9. INTERFAZ
+==================================================
+
+En “Nueva Transacción”:
+- si la cuenta es Deferred Booking Deposits, mostrar sección especial “Datos del Booking”
+
+SECCIÓN ESPECIAL
+- origen del booking: Directo / Broker
+- monto depósito
+- monto total booking
+- fecha booking
+- bote
+- horas
+- cliente o broker según corresponda
+
+LÓGICA DE CAMPOS DINÁMICOS
+- si origen = directo → mostrar campos cliente
+- si origen = broker → mostrar campos broker + cliente final
+
+==================================================
+10. BOTONES Y FLUJO
+==================================================
+
+Agregar funciones:
+- Crear cliente nuevo desde el formulario
+- Crear broker nuevo desde el formulario
+- Crear cuenta por cobrar automática
+- Aplicar depósito
+- Marcar booking como completado
+
+==================================================
+11. REPORTES FUTUROS
+==================================================
+
+Esta data debe servir para:
+- ingresos por bote
+- horas rentadas por bote
+- bookings directos vs por broker
+- cuentas por cobrar por cliente
+- cuentas por cobrar por broker
+- depósitos pendientes de aplicar
+- revenue por bote
+
+==================================================
+12. MODELOS / TABLAS
+==================================================
+
+Agregar o confirmar soporte para:
+
+BROKERS
+- id
+- name
+- phone opcional
+- email opcional
+- notes opcional
+- active
+
+CUSTOMERS
+- id
+- name
+- phone opcional
+- email opcional
+
+BOOKINGS_LEDGER o equivalente
+- id
+- booking_source
+- boat_id
+- booking_date
+- hours_rented
+- total_amount
+- deposit_amount
+- balance_due
+- customer_id o customer_name
+- broker_id opcional
+- final_customer_name opcional
+- receivable_party_type
+- receivable_party_id opcional
+- status
+
+ACCOUNTS_RECEIVABLE
+- id
+- party_type = customer / broker
+- party_id opcional
+- party_name
+- boat_id
+- booking_id
+- due_date
+- amount
+- status
+
+==================================================
+13. MVP OBLIGATORIO
+==================================================
+
+Implementar primero:
+1. campo monto editable directo
+2. origen del booking: directo o broker
+3. cliente directo con creación rápida
+4. broker con selección o creación rápida
+5. cliente final si es broker
+6. monto total del booking
+7. fecha del booking
+8. bote
+9. horas rentadas
+10. creación automática de cuenta por cobrar
+11. cuenta por cobrar al cliente si es directo
+12. cuenta por cobrar al broker si es broker
+
+==================================================
+14. REGLAS
+==================================================
+
+- no crear app nueva
+- integrar dentro de “gestión”
+- mantener UI consistente
+- no usar librerías pesadas
+- código simple y modular
+- optimizado para bajo consumo en Replit
+- evitar duplicar captura de datos
+- reutilizar esta data después para ingresos y reportes
+
+==================================================
+15. RESULTADO FINAL
+==================================================
+
+Debo poder:
+- seleccionar Deferred Booking Deposits
+- ingresar directamente el monto del depósito
+- seleccionar si el booking es directo o por broker
+- si es directo, crear o ingresar cliente y generar cuenta por cobrar al cliente
+- si es por broker, crear o seleccionar broker, registrar cliente final y generar cuenta por cobrar al broker
+- seleccionar el bote
+- ingresar horas rentadas
+- guardar toda esa información una sola vez
+- usar esa data después para generar el ingreso real del bote sin repetir tareas

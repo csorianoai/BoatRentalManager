@@ -353,6 +353,10 @@ function updateCharts(totalIncome, totalExpenses) {
 }
 
 // ── Account 2500 Booking Deposit detection ─────────────────
+let _bdBrokers = [];
+let _bdCustomers = [];
+let _txAmountBdListener = null; // track so we can remove it later
+
 function onTxAccountChange() {
     const sel = document.getElementById('txAccount');
     const selectedOption = sel.options[sel.selectedIndex];
@@ -365,10 +369,21 @@ function onTxAccountChange() {
     if (submitBtn) {
         submitBtn.textContent = is2500 ? '🔐 Registrar Depósito + Cuenta por Cobrar' : '✅ Crear Transacción';
     }
-    // Populate boat selector inside booking section
-    if (is2500 && document.getElementById('bd-boat-id')) {
+    // Wire/unwire txAmount → balance preview
+    const txAmountEl = document.getElementById('txAmount');
+    if (txAmountEl) {
+        if (_txAmountBdListener) txAmountEl.removeEventListener('input', _txAmountBdListener);
+        if (is2500) {
+            _txAmountBdListener = updateBdBalance;
+            txAmountEl.addEventListener('input', _txAmountBdListener);
+        } else {
+            _txAmountBdListener = null;
+        }
+    }
+    if (is2500) {
+        // Load boats
         const boatSel = document.getElementById('bd-boat-id');
-        if (boatSel.options.length <= 1) {
+        if (boatSel && boatSel.options.length <= 1) {
             fetch('/api/boats').then(r => r.json()).then(boats => {
                 boatSel.innerHTML = '<option value="">-- Seleccionar barco --</option>';
                 boats.forEach(b => {
@@ -379,12 +394,85 @@ function onTxAccountChange() {
                 });
             }).catch(() => {});
         }
+        // Load brokers
+        fetch('/api/brokers?active=true').then(r => r.json()).then(list => {
+            _bdBrokers = list;
+            const brkSel = document.getElementById('bd-broker-select');
+            if (brkSel) {
+                brkSel.innerHTML = '<option value="">-- Seleccionar broker --</option>';
+                list.forEach(b => {
+                    const opt = document.createElement('option');
+                    opt.value = b.id;
+                    opt.dataset.name = b.name;
+                    opt.dataset.phone = b.phone || '';
+                    opt.dataset.email = b.email || '';
+                    opt.textContent = b.name;
+                    brkSel.appendChild(opt);
+                });
+            }
+        }).catch(() => {});
+        // Load customers
+        fetch('/api/customers').then(r => r.json()).then(list => {
+            _bdCustomers = list;
+            const custSel = document.getElementById('bd-customer-select');
+            if (custSel) {
+                custSel.innerHTML = '<option value="">-- Seleccionar o escribir abajo --</option>';
+                list.forEach(c => {
+                    const opt = document.createElement('option');
+                    opt.value = c.id;
+                    opt.dataset.name = c.name;
+                    opt.dataset.phone = c.phone || '';
+                    opt.dataset.email = c.email || '';
+                    opt.textContent = c.name + (c.phone ? ` · ${c.phone}` : '');
+                    custSel.appendChild(opt);
+                });
+            }
+        }).catch(() => {});
     }
 }
 
+// Toggle between Directo / Broker panels
+function setBdSource(source) {
+    const isDirect = source === 'direct';
+    document.getElementById('bd-panel-direct').style.display = isDirect ? 'block' : 'none';
+    document.getElementById('bd-panel-broker').style.display = isDirect ? 'none' : 'block';
+    // Update radio buttons
+    document.getElementById('bd-source-direct').checked = isDirect;
+    document.getElementById('bd-source-broker').checked = !isDirect;
+    // Style labels
+    const dLabel = document.getElementById('bd-source-direct-label');
+    const bLabel = document.getElementById('bd-source-broker-label');
+    dLabel.style.borderColor = isDirect ? '#0ea5e9' : '#d1d5db';
+    dLabel.style.color = isDirect ? '#0369a1' : '#374151';
+    bLabel.style.borderColor = isDirect ? '#d1d5db' : '#7c3aed';
+    bLabel.style.color = isDirect ? '#374151' : '#7c3aed';
+    // Update AR party label
+    const partyLabel = document.getElementById('bd-ar-party-label');
+    if (partyLabel) partyLabel.textContent = isDirect ? 'cliente' : 'broker';
+    updateBdBalance();
+}
+
+function onBdCustomerSelect() {
+    const sel = document.getElementById('bd-customer-select');
+    const opt = sel.options[sel.selectedIndex];
+    if (!opt || !opt.value) return;
+    document.getElementById('bd-customer-name').value = opt.dataset.name || '';
+    document.getElementById('bd-customer-phone').value = opt.dataset.phone || '';
+    document.getElementById('bd-customer-email').value = opt.dataset.email || '';
+}
+
+function onBdBrokerSelect() {
+    const sel = document.getElementById('bd-broker-select');
+    const opt = sel.options[sel.selectedIndex];
+    if (!opt || !opt.value) return;
+    document.getElementById('bd-broker-name').value = opt.dataset.name || '';
+    document.getElementById('bd-broker-phone').value = opt.dataset.phone || '';
+    document.getElementById('bd-broker-email').value = opt.dataset.email || '';
+}
+
 function updateBdBalance() {
-    const total = parseFloat(document.getElementById('bd-total-amount').value) || 0;
-    const deposit = parseFloat(document.getElementById('txAmount').value) || 0;
+    const total = parseFloat(document.getElementById('bd-total-amount') && document.getElementById('bd-total-amount').value) || 0;
+    const deposit = parseFloat(document.getElementById('txAmount') && document.getElementById('txAmount').value) || 0;
     const balance = Math.max(0, total - deposit);
     const preview = document.getElementById('bd-balance-preview');
     const amtEl  = document.getElementById('bd-balance-amount');
@@ -440,7 +528,10 @@ async function createTransaction(e) {
 }
 
 async function createBookingDepositFromForm() {
-    const clientName = document.getElementById('bd-client-name').value.trim();
+    // Determine booking source
+    const source = document.querySelector('input[name="bd-source"]:checked')?.value || 'direct';
+    const isBroker = source === 'broker';
+
     const bookingDate = document.getElementById('bd-booking-date').value;
     const totalAmount = document.getElementById('bd-total-amount').value;
     const depositAmount = document.getElementById('txAmount').value;
@@ -448,21 +539,64 @@ async function createBookingDepositFromForm() {
     const boatId = document.getElementById('bd-boat-id').value;
     const hours = document.getElementById('bd-hours').value;
     const serviceType = document.getElementById('bd-service-type').value;
-    const phone = document.getElementById('bd-phone').value.trim();
-    const email = document.getElementById('bd-email').value.trim();
     const notes = document.getElementById('txDescription').value.trim();
+    const ref = document.getElementById('bd-ref') ? document.getElementById('bd-ref').value.trim() : '';
 
-    if (!clientName) { alert('❌ El nombre del cliente es obligatorio'); return; }
+    // Collect direct or broker fields
+    let customerName = '', customerPhone = '', customerEmail = '', customerId = null;
+    let brokerName = '', brokerPhone = '', brokerEmail = '', brokerId = null;
+    let finalName = '', finalPhone = '', finalEmail = '';
+
+    if (!isBroker) {
+        const custSel = document.getElementById('bd-customer-select');
+        customerId = custSel && custSel.value ? custSel.value : null;
+        customerName = (document.getElementById('bd-customer-name').value || '').trim();
+        customerPhone = (document.getElementById('bd-customer-phone').value || '').trim();
+        customerEmail = (document.getElementById('bd-customer-email').value || '').trim();
+        if (!customerName && !customerId) {
+            alert('❌ El nombre del cliente es obligatorio'); return;
+        }
+    } else {
+        const brkSel = document.getElementById('bd-broker-select');
+        brokerId = brkSel && brkSel.value ? brkSel.value : null;
+        brokerName = (document.getElementById('bd-broker-name').value || '').trim();
+        brokerPhone = (document.getElementById('bd-broker-phone').value || '').trim();
+        brokerEmail = (document.getElementById('bd-broker-email').value || '').trim();
+        finalName = (document.getElementById('bd-final-name').value || '').trim();
+        finalPhone = (document.getElementById('bd-final-phone').value || '').trim();
+        finalEmail = (document.getElementById('bd-final-email').value || '').trim();
+        if (!brokerName && !brokerId) {
+            alert('❌ Selecciona o escribe el nombre del broker'); return;
+        }
+        if (!finalName) {
+            alert('❌ El nombre del cliente final es obligatorio'); return;
+        }
+    }
+
     if (!bookingDate) { alert('❌ La fecha del booking es obligatoria'); return; }
     if (!totalAmount || parseFloat(totalAmount) <= 0) { alert('❌ El monto total del booking es obligatorio'); return; }
     if (!boatId) { alert('❌ Selecciona el barco'); return; }
 
+    const displayName = isBroker ? (brokerName || 'Broker') : (customerName || 'Cliente');
+
     const body = {
-        client_name: clientName,
-        client_email: email || null,
-        client_phone: phone || null,
+        booking_source: source,
+        // Direct
+        customer_id: customerId,
+        customer_name: customerName || null,
+        customer_phone: customerPhone || null,
+        customer_email: customerEmail || null,
+        // Broker
+        broker_id: brokerId,
+        broker_name: brokerName || null,
+        broker_phone: brokerPhone || null,
+        broker_email: brokerEmail || null,
+        final_customer_name: finalName || null,
+        final_customer_phone: finalPhone || null,
+        final_customer_email: finalEmail || null,
+        // Common
         boat_id: boatId,
-        booking_reference: notes || null,
+        booking_reference: ref || notes || null,
         amount: parseFloat(depositAmount),
         deposit_date: depositDate,
         status: 'pending',
@@ -489,9 +623,11 @@ async function createBookingDepositFromForm() {
         }
         const result = await response.json();
         const balanceDue = result.receivable ? parseFloat(result.receivable.amount) : 0;
-        let msg = `✅ Depósito registrado exitosamente!\n\nCliente: ${clientName}\nDepósito: $${parseFloat(depositAmount).toFixed(2)}`;
+        const arParty = isBroker ? brokerName : (customerName || 'Cliente');
+        let msg = `✅ Depósito registrado!\n\n${isBroker ? 'Broker' : 'Cliente'}: ${displayName}\nDepósito: $${parseFloat(depositAmount).toFixed(2)}\nTotal booking: $${parseFloat(totalAmount).toFixed(2)}`;
+        if (isBroker && finalName) msg += `\nCliente final: ${finalName}`;
         if (balanceDue > 0) {
-            msg += `\n\nSaldo pendiente: $${balanceDue.toFixed(2)}\n📋 Cuenta por Cobrar creada automáticamente`;
+            msg += `\n\nSaldo pendiente: $${balanceDue.toFixed(2)}\nCuenta por Cobrar creada → ${arParty}`;
         }
         alert(msg);
 
@@ -501,6 +637,10 @@ async function createBookingDepositFromForm() {
         document.getElementById('booking-deposit-section').style.display = 'none';
         document.getElementById('tx-submit-btn').textContent = '✅ Crear Transacción';
         document.getElementById('bd-balance-preview').style.display = 'none';
+        // Reset broker/direct panels to default
+        setBdSource('direct');
+        document.getElementById('bd-customer-select').value = '';
+        document.getElementById('bd-broker-select').value = '';
 
         // Refresh deposits tab if visible
         if (typeof renderDeposits === 'function') renderDeposits();

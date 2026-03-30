@@ -350,60 +350,141 @@
 
                     <!-- BOOKING DEPOSIT SECTION — shown only when account 2500 is selected -->
                     <div id="booking-deposit-section" style="display:none;border:2px solid #0ea5e9;border-radius:10px;padding:18px 20px;margin-top:14px;background:#f0f9ff;">
-                        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+                        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
                             <div style="font-size:20px;">🔐</div>
-                            <div>
+                            <div style="flex:1">
                                 <div style="font-weight:700;font-size:15px;color:#0369a1;">Datos del Booking — Depósito Diferido</div>
-                                <div style="font-size:12px;color:#0284c7;">Registra todos los datos ahora. El sistema crea el saldo pendiente automáticamente.</div>
+                                <div style="font-size:12px;color:#0284c7;">Registra todos los datos ahora. El sistema crea la Cuenta por Cobrar automáticamente.</div>
                             </div>
                         </div>
-                        <div class="form-grid">
-                            <div class="form-group">
-                                <label>Cliente <span style="color:#dc3545">*</span></label>
-                                <input type="text" id="bd-client-name" placeholder="Nombre del cliente" data-testid="input-bd-client-name">
-                            </div>
-                            <div class="form-group">
-                                <label>Fecha del Booking <span style="color:#dc3545">*</span></label>
-                                <input type="date" id="bd-booking-date" data-testid="input-bd-booking-date">
-                            </div>
-                            <div class="form-group">
-                                <label>Monto Total del Booking ($) <span style="color:#dc3545">*</span></label>
-                                <input type="number" id="bd-total-amount" step="0.01" min="0" placeholder="Monto total acordado" data-testid="input-bd-total-amount" oninput="updateBdBalance()">
-                            </div>
-                            <div class="form-group">
-                                <label>Barco <span style="color:#dc3545">*</span></label>
-                                <select id="bd-boat-id" data-testid="select-bd-boat">
-                                    <option value="">-- Seleccionar barco --</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>Horas Rentadas</label>
-                                <input type="number" id="bd-hours" step="0.5" min="0" placeholder="ej: 4" data-testid="input-bd-hours">
-                            </div>
-                            <div class="form-group">
-                                <label>Tipo de Servicio</label>
-                                <select id="bd-service-type" data-testid="select-bd-service-type">
-                                    <option value="">Sin especificar</option>
-                                    <option value="tour">Tour</option>
-                                    <option value="rental">Renta</option>
-                                    <option value="fishing">Pesca</option>
-                                    <option value="event">Evento especial</option>
-                                    <option value="charter">Charter privado</option>
-                                    <option value="other">Otro</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>Teléfono (opcional)</label>
-                                <input type="text" id="bd-phone" placeholder="+1 787 000 0000" data-testid="input-bd-phone">
-                            </div>
-                            <div class="form-group">
-                                <label>Email (opcional)</label>
-                                <input type="email" id="bd-email" placeholder="cliente@email.com" data-testid="input-bd-email">
+
+                        <!-- ① ORIGEN DEL BOOKING -->
+                        <div style="margin-bottom:16px;">
+                            <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;">Origen del booking</div>
+                            <div style="display:flex;gap:10px;">
+                                <label style="flex:1;display:flex;align-items:center;gap:8px;padding:10px 14px;border:2px solid #0ea5e9;border-radius:8px;cursor:pointer;background:#fff;font-weight:600;font-size:14px;color:#0369a1;" id="bd-source-direct-label" onclick="setBdSource('direct')">
+                                    <input type="radio" name="bd-source" id="bd-source-direct" value="direct" checked data-testid="radio-bd-source-direct" style="accent-color:#0ea5e9">
+                                    Booking Directo
+                                    <span style="font-size:11px;font-weight:400;color:#6b7280;margin-left:4px">— AR al cliente</span>
+                                </label>
+                                <label style="flex:1;display:flex;align-items:center;gap:8px;padding:10px 14px;border:2px solid #d1d5db;border-radius:8px;cursor:pointer;background:#fff;font-weight:600;font-size:14px;color:#374151;" id="bd-source-broker-label" onclick="setBdSource('broker')">
+                                    <input type="radio" name="bd-source" id="bd-source-broker" value="broker" data-testid="radio-bd-source-broker" style="accent-color:#7c3aed">
+                                    Por Broker / Agencia
+                                    <span style="font-size:11px;font-weight:400;color:#6b7280;margin-left:4px">— AR al broker</span>
+                                </label>
                             </div>
                         </div>
-                        <!-- Balance due preview -->
-                        <div id="bd-balance-preview" style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:12px 16px;margin-top:10px;display:none;">
-                            <div style="font-size:12px;color:#856404;font-weight:700;text-transform:uppercase;margin-bottom:4px;">Saldo pendiente que quedará como Cuenta por Cobrar</div>
+
+                        <!-- ② PANEL DIRECTO -->
+                        <div id="bd-panel-direct" style="background:#fff;border:1px solid #bae6fd;border-radius:8px;padding:14px 16px;margin-bottom:14px;">
+                            <div style="font-size:12px;font-weight:700;color:#0369a1;margin-bottom:10px;text-transform:uppercase;">Cliente</div>
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label>Nombre del cliente <span style="color:#dc3545">*</span></label>
+                                    <div style="display:flex;gap:8px;">
+                                        <select id="bd-customer-select" data-testid="select-bd-customer" style="flex:1" onchange="onBdCustomerSelect()">
+                                            <option value="">-- Seleccionar o escribir abajo --</option>
+                                        </select>
+                                    </div>
+                                    <input type="text" id="bd-customer-name" placeholder="Nombre (nuevo o no registrado)" data-testid="input-bd-customer-name" style="margin-top:6px">
+                                </div>
+                                <div class="form-group">
+                                    <label>Teléfono (opcional)</label>
+                                    <input type="text" id="bd-customer-phone" placeholder="+1 787 000 0000" data-testid="input-bd-customer-phone">
+                                </div>
+                                <div class="form-group">
+                                    <label>Email (opcional)</label>
+                                    <input type="email" id="bd-customer-email" placeholder="cliente@email.com" data-testid="input-bd-customer-email">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ③ PANEL BROKER -->
+                        <div id="bd-panel-broker" style="display:none;background:#fff;border:1px solid #ddd6fe;border-radius:8px;padding:14px 16px;margin-bottom:14px;">
+                            <div style="font-size:12px;font-weight:700;color:#7c3aed;margin-bottom:10px;text-transform:uppercase;">Broker / Agencia</div>
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label>Seleccionar broker <span style="color:#dc3545">*</span></label>
+                                    <div style="display:flex;gap:8px;">
+                                        <select id="bd-broker-select" data-testid="select-bd-broker" style="flex:1" onchange="onBdBrokerSelect()">
+                                            <option value="">-- Seleccionar broker --</option>
+                                        </select>
+                                    </div>
+                                    <input type="text" id="bd-broker-name" placeholder="Nombre broker (si es nuevo)" data-testid="input-bd-broker-name" style="margin-top:6px">
+                                </div>
+                                <div class="form-group">
+                                    <label>Teléfono broker</label>
+                                    <input type="text" id="bd-broker-phone" placeholder="+1 786 000 0000" data-testid="input-bd-broker-phone">
+                                </div>
+                                <div class="form-group">
+                                    <label>Email broker</label>
+                                    <input type="email" id="bd-broker-email" placeholder="broker@agencia.com" data-testid="input-bd-broker-email">
+                                </div>
+                            </div>
+                            <!-- Cliente final -->
+                            <div style="margin-top:12px;padding-top:12px;border-top:1px dashed #ddd6fe;">
+                                <div style="font-size:12px;font-weight:700;color:#7c3aed;margin-bottom:10px;text-transform:uppercase;">Cliente Final (quien usa el bote)</div>
+                                <div class="form-grid">
+                                    <div class="form-group">
+                                        <label>Nombre cliente final <span style="color:#dc3545">*</span></label>
+                                        <input type="text" id="bd-final-name" placeholder="Nombre del pasajero" data-testid="input-bd-final-name">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Teléfono</label>
+                                        <input type="text" id="bd-final-phone" placeholder="+1 305 000 0000" data-testid="input-bd-final-phone">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Email</label>
+                                        <input type="email" id="bd-final-email" placeholder="final@email.com" data-testid="input-bd-final-email">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ④ DATOS DEL BOOKING -->
+                        <div style="background:#fff;border:1px solid #bae6fd;border-radius:8px;padding:14px 16px;margin-bottom:14px;">
+                            <div style="font-size:12px;font-weight:700;color:#0369a1;margin-bottom:10px;text-transform:uppercase;">Datos del Booking</div>
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label>Fecha del Booking <span style="color:#dc3545">*</span></label>
+                                    <input type="date" id="bd-booking-date" data-testid="input-bd-booking-date">
+                                </div>
+                                <div class="form-group">
+                                    <label>Monto Total del Booking ($) <span style="color:#dc3545">*</span></label>
+                                    <input type="number" id="bd-total-amount" step="0.01" min="0" placeholder="Total acordado" data-testid="input-bd-total-amount" oninput="updateBdBalance()">
+                                </div>
+                                <div class="form-group">
+                                    <label>Barco <span style="color:#dc3545">*</span></label>
+                                    <select id="bd-boat-id" data-testid="select-bd-boat">
+                                        <option value="">-- Seleccionar barco --</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Horas Rentadas</label>
+                                    <input type="number" id="bd-hours" step="0.5" min="0" placeholder="ej: 4" data-testid="input-bd-hours">
+                                </div>
+                                <div class="form-group">
+                                    <label>Tipo de Servicio</label>
+                                    <select id="bd-service-type" data-testid="select-bd-service-type">
+                                        <option value="">Sin especificar</option>
+                                        <option value="tour">Tour</option>
+                                        <option value="rental">Renta</option>
+                                        <option value="fishing">Pesca</option>
+                                        <option value="event">Evento especial</option>
+                                        <option value="charter">Charter privado</option>
+                                        <option value="other">Otro</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Referencia / Notas</label>
+                                    <input type="text" id="bd-ref" placeholder="# de confirmación, origen..." data-testid="input-bd-ref">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ⑤ BALANCE PREVIEW -->
+                        <div id="bd-balance-preview" style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:12px 16px;display:none;">
+                            <div style="font-size:12px;color:#856404;font-weight:700;text-transform:uppercase;margin-bottom:4px;">Saldo pendiente → Cuenta por Cobrar (<span id="bd-ar-party-label">cliente</span>)</div>
                             <div style="font-size:22px;font-weight:800;color:#b45309;" id="bd-balance-amount">$0.00</div>
                             <div style="font-size:11px;color:#92400e;margin-top:2px;">Se creará automáticamente una Cuenta por Cobrar por este monto</div>
                         </div>
