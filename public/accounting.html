@@ -611,11 +611,17 @@
             <div style="display:flex;gap:12px;align-items:flex-end;margin-bottom:14px;flex-wrap:wrap">
                 <div style="display:flex;flex-direction:column;gap:4px">
                     <label style="font-size:12px;font-weight:600;color:#555">Estado</label>
-                    <select id="dep-filter-status" style="padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px" onchange="loadDeposits()" data-testid="select-dep-filter">
+                    <select id="dep-filter-status" style="padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px" onchange="loadDeposits()" data-testid="select-dep-filter-status">
                         <option value="">Todos</option>
                         <option value="pending">Pendientes</option>
                         <option value="applied">Aplicados</option>
                         <option value="refunded">Reembolsados</option>
+                    </select>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px">
+                    <label style="font-size:12px;font-weight:600;color:#555">Barco</label>
+                    <select id="dep-filter-boat" style="padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px" onchange="loadDeposits()" data-testid="select-dep-filter-boat">
+                        <option value="">Todos los barcos</option>
                     </select>
                 </div>
                 <button onclick="loadDeposits()" class="btn-primary" style="padding:8px 16px;font-size:13px" data-testid="button-refresh-deposits">Actualizar</button>
@@ -694,11 +700,19 @@
                 const res = await fetch('/api/fleet/boats');
                 if (res.ok) {
                     depBoats = await res.json();
+                    // Populate boat selector in form
                     const sel = document.getElementById('dep-boat');
                     depBoats.forEach(b => {
                         const o = document.createElement('option');
                         o.value = b.id; o.textContent = b.name;
                         sel.appendChild(o);
+                    });
+                    // Populate boat filter
+                    const fsel = document.getElementById('dep-filter-boat');
+                    depBoats.forEach(b => {
+                        const o = document.createElement('option');
+                        o.value = b.id; o.textContent = b.name;
+                        fsel.appendChild(o);
                     });
                 }
             } catch(e) { /* non-fatal */ }
@@ -706,8 +720,12 @@
         }
 
         async function loadDeposits() {
-            const status = document.getElementById('dep-filter-status')?.value || '';
-            const url = '/api/booking-deposits' + (status ? '?status=' + status : '');
+            const status  = document.getElementById('dep-filter-status')?.value || '';
+            const boatId  = document.getElementById('dep-filter-boat')?.value || '';
+            const params  = new URLSearchParams();
+            if (status) params.set('status', status);
+            if (boatId) params.set('boat_id', boatId);
+            const url = '/api/booking-deposits' + (params.toString() ? '?' + params.toString() : '');
             try {
                 const res = await fetch(url);
                 if (!res.ok) throw new Error('Error');
@@ -718,7 +736,14 @@
         }
 
         function fmtDep(v) { return '$' + parseFloat(v||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
-        function fmtDepDate(d) { if (!d) return '—'; return new Date(d+'T00:00:00').toLocaleDateString('es',{day:'2-digit',month:'short',year:'numeric'}); }
+        function fmtDepDate(d) {
+            if (!d) return '—';
+            // Handle both 'YYYY-MM-DD' and full ISO strings from PostgreSQL
+            const s = d.includes('T') ? d : d + 'T00:00:00';
+            const dt = new Date(s);
+            if (isNaN(dt)) return d;
+            return dt.toLocaleDateString('es',{day:'2-digit',month:'short',year:'numeric'});
+        }
 
         function renderDeposits() {
             const tbody = document.getElementById('depositsTable');
@@ -741,6 +766,7 @@
                     <td><strong>${fmtDep(d.amount)}</strong></td>
                     <td>${statusBadge(d.status)}</td>
                     <td style="white-space:nowrap">
+                        ${d.status === 'pending' ? `<button onclick="openApplyDepositModal('${d.id}')" style="padding:4px 10px;border:none;border-radius:5px;font-size:12px;cursor:pointer;margin-right:4px;background:#16a34a;color:#fff;font-weight:600" data-testid="button-apply-deposit-${d.id}">Aplicar a Ingreso</button>` : ''}
                         <button onclick="editDeposit('${d.id}')" style="padding:4px 10px;border:1px solid #ddd;border-radius:5px;font-size:12px;cursor:pointer;margin-right:4px" data-testid="button-edit-deposit-${d.id}">Editar</button>
                         <button onclick="deleteDeposit('${d.id}')" style="padding:4px 10px;border:1px solid #dc3545;border-radius:5px;font-size:12px;color:#dc3545;cursor:pointer;background:none" data-testid="button-delete-deposit-${d.id}">Eliminar</button>
                     </td>
@@ -817,6 +843,84 @@
                 cancelDepositEdit();
                 await loadDeposits();
             } catch(e) { alert('Error: ' + e.message); }
+        });
+
+        // ── APPLY DEPOSIT MODAL ─────────────────────────────────
+        let _applyDepId = null;
+        let _revenueAccounts = [];
+
+        async function openApplyDepositModal(depositId) {
+            _applyDepId = depositId;
+            const dep = allDeposits.find(d => d.id === depositId);
+            if (!dep) return;
+
+            // Load revenue accounts once
+            if (!_revenueAccounts.length) {
+                try {
+                    const res = await fetch('/api/accounting/accounts?type=revenue');
+                    if (res.ok) {
+                        const data = await res.json();
+                        _revenueAccounts = (data.accounts || data).filter(a => a.account_type === 'revenue');
+                    }
+                } catch(e) { /* non-fatal */ }
+            }
+
+            // Fill modal info
+            document.getElementById('apply-dep-info').innerHTML =
+                `<strong>${dep.client_name}</strong> · ${fmtDep(dep.amount)}` +
+                (dep.boat_name ? ` · ${dep.boat_name}` : '') +
+                (dep.booking_reference ? `<br><small style="color:#888">Ref: ${dep.booking_reference}</small>` : '');
+            document.getElementById('apply-dep-ref').value = dep.booking_reference || '';
+
+            // Populate revenue account select
+            const sel = document.getElementById('apply-dep-account');
+            sel.innerHTML = '<option value="">-- Seleccionar cuenta --</option>';
+            _revenueAccounts.forEach(a => {
+                const o = document.createElement('option');
+                o.value = a.id;
+                o.textContent = `${a.account_code} · ${a.account_name}`;
+                // Default to Revenue - Rentals (4020)
+                if (a.account_code === '4020') o.selected = true;
+                sel.appendChild(o);
+            });
+            document.getElementById('apply-dep-notes').value = '';
+
+            document.getElementById('apply-dep-overlay').style.display = 'flex';
+        }
+
+        function closeApplyDepositModal() {
+            document.getElementById('apply-dep-overlay').style.display = 'none';
+            _applyDepId = null;
+        }
+
+        async function confirmApplyDeposit() {
+            const revenue_account_id = document.getElementById('apply-dep-account').value;
+            const booking_reference  = document.getElementById('apply-dep-ref').value.trim() || null;
+            const notes              = document.getElementById('apply-dep-notes').value.trim() || null;
+            if (!revenue_account_id) { alert('Selecciona una cuenta de ingresos'); return; }
+
+            const btn = document.getElementById('apply-dep-confirm-btn');
+            btn.disabled = true; btn.textContent = 'Aplicando...';
+            try {
+                const res = await fetch('/api/booking-deposits/' + _applyDepId + '/apply', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ revenue_account_id, booking_reference, notes })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Error al aplicar');
+                closeApplyDepositModal();
+                await loadDeposits();
+            } catch(e) {
+                alert('Error: ' + e.message);
+            } finally {
+                btn.disabled = false; btn.textContent = 'Confirmar aplicación';
+            }
+        }
+
+        // Close modal on overlay click
+        document.getElementById('apply-dep-overlay')?.addEventListener('click', function(e) {
+            if (e.target === this) closeApplyDepositModal();
         });
 
         // Load deposits when tab is activated
@@ -936,5 +1040,52 @@
     </div>
 
     <div id="edit-tx-toast" style="position:fixed;bottom:24px;right:24px;background:#1e293b;color:#fff;padding:11px 20px;border-radius:8px;font-size:13px;z-index:9999;transform:translateY(80px);opacity:0;transition:all .3s;pointer-events:none;"></div>
+
+    <!-- ══ APPLY DEPOSIT MODAL ══════════════════════════════════════════════ -->
+    <div id="apply-dep-overlay" data-testid="modal-apply-deposit"
+         style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9100;align-items:center;justify-content:center;padding:20px;">
+      <div style="background:#fff;border-radius:12px;width:100%;max-width:500px;padding:28px 28px 24px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <h2 style="font-size:18px;font-weight:700;margin:0;">Aplicar Depósito a Ingreso</h2>
+          <button onclick="closeApplyDepositModal()" data-testid="button-close-apply-dep"
+                  style="background:none;border:none;font-size:20px;cursor:pointer;color:#555;line-height:1;">✕</button>
+        </div>
+        <p style="font-size:13px;color:#666;margin:0 0 18px;">El depósito se convertirá en una transacción de ingreso y quedará marcado como <strong>Aplicado</strong>.</p>
+
+        <!-- Deposit info banner -->
+        <div id="apply-dep-info" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px 14px;font-size:14px;margin-bottom:18px;color:#166534;"></div>
+
+        <!-- Revenue account select -->
+        <div style="margin-bottom:14px;">
+          <label style="display:block;font-size:13px;font-weight:600;color:#333;margin-bottom:5px;">Cuenta de ingresos destino <span style="color:#dc3545">*</span></label>
+          <select id="apply-dep-account" data-testid="select-apply-dep-account"
+                  style="width:100%;padding:9px 10px;border:1px solid #ddd;border-radius:7px;font-size:14px;">
+            <option value="">-- Cargando cuentas... --</option>
+          </select>
+        </div>
+
+        <!-- Booking reference -->
+        <div style="margin-bottom:14px;">
+          <label style="display:block;font-size:13px;font-weight:600;color:#333;margin-bottom:5px;">Referencia de reserva</label>
+          <input type="text" id="apply-dep-ref" data-testid="input-apply-dep-ref"
+                 placeholder="Nro. de reserva o confirmación..."
+                 style="width:100%;padding:9px 10px;border:1px solid #ddd;border-radius:7px;font-size:14px;box-sizing:border-box;">
+        </div>
+
+        <!-- Notes -->
+        <div style="margin-bottom:20px;">
+          <label style="display:block;font-size:13px;font-weight:600;color:#333;margin-bottom:5px;">Notas (opcional)</label>
+          <input type="text" id="apply-dep-notes" data-testid="input-apply-dep-notes"
+                 placeholder="Observaciones al aplicar el depósito..."
+                 style="width:100%;padding:9px 10px;border:1px solid #ddd;border-radius:7px;font-size:14px;box-sizing:border-box;">
+        </div>
+
+        <div style="display:flex;gap:10px;justify-content:flex-end;">
+          <button onclick="closeApplyDepositModal()" class="btn-secondary" data-testid="button-cancel-apply-dep">Cancelar</button>
+          <button id="apply-dep-confirm-btn" onclick="confirmApplyDeposit()" class="btn-primary" data-testid="button-confirm-apply-dep"
+                  style="background:#16a34a;border-color:#16a34a;">Confirmar aplicación</button>
+        </div>
+      </div>
+    </div>
 </body>
 </html>

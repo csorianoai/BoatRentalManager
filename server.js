@@ -9452,6 +9452,53 @@ app.delete('/api/booking-deposits/:id', isAuthenticated, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Apply deposit → creates income transaction + sets status = applied
+app.post('/api/booking-deposits/:id/apply', isAuthenticated, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { revenue_account_id, notes, booking_reference } = req.body;
+    if (!revenue_account_id) return res.status(400).json({ error: 'revenue_account_id es obligatorio' });
+
+    // Fetch deposit
+    const depRes = await client.query(
+      'SELECT bd.*, b.name as boat_name FROM booking_deposits bd LEFT JOIN boats b ON bd.boat_id = b.id WHERE bd.id = $1',
+      [req.params.id]
+    );
+    if (!depRes.rows.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Depósito no encontrado' }); }
+    const dep = depRes.rows[0];
+    if (dep.status === 'applied') { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Este depósito ya fue aplicado' }); }
+
+    // Verify revenue account exists
+    const accRes = await client.query('SELECT id, account_name FROM chart_of_accounts WHERE id = $1 AND account_type = $2', [revenue_account_id, 'revenue']);
+    if (!accRes.rows.length) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Cuenta de ingresos no válida' }); }
+
+    // Create income transaction
+    const { nanoid } = await import('nanoid');
+    const txId = 'tx_dep_' + nanoid(10);
+    const finalRef = booking_reference || dep.booking_reference;
+    const desc = `Depósito aplicado - ${dep.client_name}${finalRef ? ' / Ref: ' + finalRef : ''}`;
+    await client.query(
+      `INSERT INTO transactions (id, transaction_date, account_id, amount, transaction_type, description, reference_id, boat_id, notes, reference_type)
+       VALUES ($1, $2, $3, $4, 'income', $5, $6, $7, $8, 'booking')`,
+      [txId, dep.deposit_date, revenue_account_id, dep.amount, desc, finalRef || null, dep.boat_id || null, notes || null]
+    );
+
+    // Update deposit status + booking reference
+    await client.query(
+      'UPDATE booking_deposits SET status = $1, booking_reference = COALESCE($2, booking_reference) WHERE id = $3',
+      ['applied', finalRef || null, dep.id]
+    );
+
+    await client.query('COMMIT');
+    res.json({ success: true, transaction_id: txId, amount: dep.amount, client_name: dep.client_name });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error applying deposit:', err);
+    res.status(500).json({ error: err.message });
+  } finally { client.release(); }
+});
+
 // ── Captain Payments ───────────────────
 app.get('/api/captain-payments', isAuthenticated, async (req, res) => {
   try {
