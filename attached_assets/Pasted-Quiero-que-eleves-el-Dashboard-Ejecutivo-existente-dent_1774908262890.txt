@@ -1,0 +1,299 @@
+Quiero que eleves el “Dashboard Ejecutivo” existente dentro de “gestión” a un nivel mucho más avanzado, profesional y estratégico, sin romper nada de lo que ya funciona.
+
+CONTEXTO
+El dashboard actual ya incluye:
+- filtros globales
+- 9 KPIs ejecutivos
+- rentabilidad por barco
+- ingresos por día
+- próximos bookings
+- gastos por barco
+- crew cost por barco
+- cuentas por cobrar
+- depósitos pendientes
+- alertas ejecutivas
+- ranking de barcos
+- comparación período actual vs anterior
+
+Todos los datos vienen del sistema existente y no se deben romper ni duplicar.
+
+OBJETIVO
+Quiero transformar este dashboard en una herramienta de inteligencia ejecutiva estilo top-tier para operación de charter náutico, con mejor diseño, más análisis, mejores visualizaciones, más capacidad de decisión y mayor profundidad financiera y operativa.
+
+REGLAS
+- no crear app nueva
+- no romper nada existente
+- no duplicar tablas si ya existen
+- reutilizar todos los datos actuales del sistema
+- mantener compatibilidad total con la lógica actual
+- mejorar UX/UI y análisis sin volver pesado el sistema
+- no usar librerías pesadas innecesarias
+- optimizar para Replit
+- implementar primero mejoras de alto valor y bajo riesgo
+
+==================================================
+1. NUEVAS CAPAS DEL DASHBOARD
+==================================================
+
+Agregar 3 modos de visualización dentro del mismo módulo:
+
+A. MODO EJECUTIVO
+Vista rápida de negocio para dueños o dirección:
+- ingresos
+- utilidad
+- bookings
+- horas vendidas
+- top barcos
+- barcos en riesgo
+- cuentas por cobrar críticas
+- depósitos pendientes
+- cash expected próximos 7 días
+
+B. MODO OPERATIVO
+Vista de ejecución:
+- próximos bookings
+- depósitos sin aplicar
+- cuentas por cobrar próximas o vencidas
+- carga operativa por barco
+- horas reservadas
+- ocupación por embarcación
+
+C. MODO FINANCIERO POR BARCO
+Vista analítica:
+- ingresos por barco
+- gastos por barco
+- capitán
+- stew
+- crew total
+- utilidad
+- margen
+- tendencia
+- costo por hora
+- ingreso por hora
+- health score por barco
+
+==================================================
+2. NUEVAS MÉTRICAS Y KPIs
+==================================================
+
+Agregar estos KPIs nuevos además de los actuales:
+
+- ingreso promedio por booking
+- ingreso por hora vendida
+- costo por hora vendida
+- utilidad por hora
+- cash expected próximos 7 días
+- depósitos aplicados vs pendientes
+- barcos con pérdida
+- AR vencida
+- health score promedio de flotilla
+
+==================================================
+3. HEALTH SCORE POR BARCO
+==================================================
+
+Crear un indicador de salud por embarcación de 0 a 100 basado en:
+- ingresos
+- utilidad
+- ocupación
+- gastos
+- cuentas por cobrar pendientes
+- depósitos sin aplicar
+- recurrencia de mantenimiento
+
+Mostrar:
+- score numérico
+- color semáforo
+- etiqueta:
+  - excelente
+  - saludable
+  - atención
+  - riesgo
+
+==================================================
+4. VISUALIZACIONES AVANZADAS PERO LIVIANAS
+==================================================
+
+Agregar visualizaciones útiles, no decorativas:
+
+A. línea o área:
+- ingresos vs gastos vs utilidad en el tiempo
+
+B. barras horizontales:
+- utilidad por barco
+- ingresos por barco
+
+C. donut o stacked:
+- estructura de gastos por categoría
+
+D. stacked bars:
+- costo crew vs gastos operativos por barco
+
+E. funnel:
+- depósito recibido → booking → saldo pendiente → ingreso reconocido
+
+F. heatmap simple:
+- ocupación por barco y día o por semana
+
+G. mini sparklines dentro de KPIs
+- tendencia corta
+
+==================================================
+5. DRILL-DOWN / NAVEGACIÓN INTELIGENTE
+==================================================
+
+Hacer que el dashboard permita profundizar sin salir del sistema:
+
+- clic en KPI ingresos → ver ingresos fuente
+- clic en gastos → ver gastos por categoría y barco
+- clic en cuentas por cobrar → abrir detalle
+- clic en un barco → abrir mini P&L del barco
+- clic en utilidad de un barco → mostrar detalle de cálculo
+- clic en depósito pendiente → abrir booking relacionado
+
+==================================================
+6. NUEVAS SECCIONES ESTRATÉGICAS
+==================================================
+
+Agregar:
+
+A. OWNER SNAPSHOT
+Bloque resumido con:
+- ingresos del período
+- utilidad
+- top 3 barcos
+- bottom 3 barcos
+- cobros urgentes
+- cash expected
+
+B. BOAT PROFITABILITY MATRIX
+Matriz para comparar barcos por:
+- ingresos
+- utilidad
+- margen
+- horas
+- gastos
+- score
+
+C. ALERTAS INTELIGENTES
+Nuevas alertas como:
+- barco con ocupación alta y utilidad baja
+- barco con ingreso alto pero gasto excesivo
+- barco con margen negativo
+- booking próximo con saldo sin cobrar
+- cuentas por cobrar vencidas
+- depósitos viejos sin aplicar
+- mantenimiento subiendo más rápido que ingresos
+
+D. FORECAST SIMPLE
+Sin IA compleja:
+- ingresos esperados según bookings futuros
+- cuentas por cobrar esperadas
+- cash-in esperado 7 / 30 días
+- ocupación futura simple
+
+==================================================
+7. NUEVAS MÉTRICAS POR BARCO
+==================================================
+
+Agregar en la tabla o vista detalle por embarcación:
+- ingreso promedio por booking
+- ingreso por hora
+- costo por hora
+- utilidad por hora
+- ocupación estimada
+- costo crew por booking
+- top gasto del barco
+- tendencia del barco vs período anterior
+
+==================================================
+8. COMPARATIVOS AVANZADOS
+==================================================
+
+Mejorar la comparación actual con:
+- período actual vs anterior
+- mes contra mes
+- barco actual vs promedio de flotilla
+- utilidad del barco vs utilidad promedio
+- gasto del barco vs ingreso del barco
+
+==================================================
+9. EXPERIENCIA VISUAL
+==================================================
+
+Mejorar el diseño sin romper el estilo actual:
+
+- tarjetas KPI con micro tendencia
+- colores más elegantes y útiles
+- badges de salud/riesgo
+- layout jerárquico
+- tablas más ejecutivas
+- métricas destacadas
+- uso cuidadoso de verde, rojo, ámbar y azul
+- diseño responsive
+- lectura rápida para dueño y también para operación
+
+==================================================
+10. TABS INTERNAS RECOMENDADAS
+==================================================
+
+Dentro del Dashboard Ejecutivo, crear tabs:
+- Resumen
+- Barcos
+- Ingresos
+- Gastos
+- Cobros
+- Alertas
+
+==================================================
+11. CONSISTENCIA DE DATOS
+==================================================
+
+No romper la lógica existente:
+- no contar depósitos diferidos como ingreso final
+- usar revenue reconocido correctamente
+- usar gastos por boat_id
+- usar captain y stew por boat_id
+- usar cuentas por cobrar reales
+- usar depósitos pendientes reales
+- reutilizar las fuentes actuales del sistema
+
+==================================================
+12. MVP PREMIUM OBLIGATORIO
+==================================================
+
+Implementar primero estas mejoras:
+1. Health score por barco
+2. owner snapshot
+3. gráficas clave:
+   - ingresos vs gastos vs utilidad
+   - utilidad por barco
+   - estructura de gastos
+4. KPI nuevos:
+   - ingreso por booking
+   - ingreso por hora
+   - costo por hora
+   - cash expected
+5. alertas inteligentes
+6. ranking más potente
+7. vista por barco mejorada
+8. forecast simple
+9. drill-down básico desde KPIs y barcos
+
+==================================================
+13. RESULTADO FINAL ESPERADO
+==================================================
+
+Quiero un dashboard que no solo muestre datos, sino que me ayude a dirigir el negocio.
+
+Debe permitirme entender:
+- qué está ganando dinero
+- qué está perdiendo dinero
+- qué barco está sano o en riesgo
+- qué cobros debo atender primero
+- qué reservas vienen
+- cuánto dinero espero recibir
+- qué embarcación me conviene empujar más
+- qué costos están consumiendo margen
+
+Debe sentirse premium, ejecutivo, inteligente y futurista, pero estable y compatible con el sistema actual.

@@ -10746,7 +10746,12 @@ app.get('/api/executive-dashboard', isAuthenticated, async (req, res) => {
       prevIncomeRow, prevExpRow, prevCapRow, prevStewRow,
       expByCat,
       incomeByBoat, expByBoatR, capByBoat, stewByBoat,
-      arList, depList
+      arList, depList,
+      cashBkg7d, cashAR7d,
+      depositsAppliedRow,
+      prevIncomeByBoat,
+      globalExpByCat,
+      incomeExpPerDay,
     ] = await Promise.all([
       pool.query(`SELECT COALESCE(SUM(amount),0) as total FROM transactions WHERE transaction_type='income' AND transaction_date BETWEEN $1 AND $2 ${bc}`, p),
       pool.query(`SELECT COALESCE(SUM(amount),0) as total FROM boat_expenses WHERE expense_date BETWEEN $1 AND $2 ${bc}`, p),
@@ -10761,8 +10766,8 @@ app.get('/api/executive-dashboard', isAuthenticated, async (req, res) => {
       pool.query(`SELECT transaction_date::text as date, SUM(amount) as income, COUNT(*) as tx_count FROM transactions WHERE transaction_type='income' AND transaction_date BETWEEN $1 AND $2 ${bc} GROUP BY transaction_date ORDER BY transaction_date`, p),
       pool.query(`SELECT boat_id, COALESCE(SUM(hours_rented),0) as hours, COUNT(*) as bookings FROM bookings_ledger WHERE booking_date BETWEEN $1 AND $2 AND status != 'cancelled' ${bc} GROUP BY boat_id`, p),
       safeBoatId
-        ? pool.query(`SELECT bl.*, b.name as boat_name_ref FROM bookings_ledger bl LEFT JOIN boats b ON b.id=bl.boat_id WHERE bl.booking_date >= CURRENT_DATE AND bl.status != 'cancelled' AND bl.boat_id=$1 ORDER BY bl.booking_date LIMIT 20`, [safeBoatId])
-        : pool.query(`SELECT bl.*, b.name as boat_name_ref FROM bookings_ledger bl LEFT JOIN boats b ON b.id=bl.boat_id WHERE bl.booking_date >= CURRENT_DATE AND bl.status != 'cancelled' ORDER BY bl.booking_date LIMIT 20`),
+        ? pool.query(`SELECT bl.*, b.name as boat_name_ref FROM bookings_ledger bl LEFT JOIN boats b ON b.id=bl.boat_id WHERE bl.booking_date >= CURRENT_DATE AND bl.status != 'cancelled' AND bl.boat_id=$1 ORDER BY bl.booking_date LIMIT 30`, [safeBoatId])
+        : pool.query(`SELECT bl.*, b.name as boat_name_ref FROM bookings_ledger bl LEFT JOIN boats b ON b.id=bl.boat_id WHERE bl.booking_date >= CURRENT_DATE AND bl.status != 'cancelled' ORDER BY bl.booking_date LIMIT 30`),
       pool.query(`SELECT id, name FROM boats WHERE status != 'inactive' ORDER BY name`),
       pool.query(`SELECT COALESCE(SUM(amount),0) as total FROM transactions WHERE transaction_type='income' AND transaction_date BETWEEN $1 AND $2 ${bc}`, pp),
       pool.query(`SELECT COALESCE(SUM(amount),0) as total FROM boat_expenses WHERE expense_date BETWEEN $1 AND $2 ${bc}`, pp),
@@ -10774,11 +10779,27 @@ app.get('/api/executive-dashboard', isAuthenticated, async (req, res) => {
       pool.query(`SELECT boat_id, boat_name, COALESCE(SUM(amount),0) as total FROM captain_payments WHERE work_date BETWEEN $1 AND $2 ${bc} GROUP BY boat_id, boat_name`, p),
       pool.query(`SELECT boat_id, boat_name, COALESCE(SUM(amount),0) as total FROM stew_payments WHERE work_date BETWEEN $1 AND $2 ${bc} GROUP BY boat_id, boat_name`, p),
       safeBoatId
-        ? pool.query(`SELECT br.*, b.name as boat_name_ref FROM booking_receivables br LEFT JOIN boats b ON b.id=br.boat_id WHERE br.status='pending' AND br.boat_id=$1 ORDER BY br.due_date LIMIT 25`, [safeBoatId])
-        : pool.query(`SELECT br.*, b.name as boat_name_ref FROM booking_receivables br LEFT JOIN boats b ON b.id=br.boat_id WHERE br.status='pending' ORDER BY br.due_date LIMIT 25`),
+        ? pool.query(`SELECT br.*, b.name as boat_name_ref FROM booking_receivables br LEFT JOIN boats b ON b.id=br.boat_id WHERE br.status='pending' AND br.boat_id=$1 ORDER BY br.due_date LIMIT 30`, [safeBoatId])
+        : pool.query(`SELECT br.*, b.name as boat_name_ref FROM booking_receivables br LEFT JOIN boats b ON b.id=br.boat_id WHERE br.status='pending' ORDER BY br.due_date LIMIT 30`),
       safeBoatId
-        ? pool.query(`SELECT bd.*, b.name as boat_name_ref FROM booking_deposits bd LEFT JOIN boats b ON b.id=bd.boat_id WHERE bd.status='pending' AND bd.boat_id=$1 ORDER BY bd.deposit_date DESC LIMIT 25`, [safeBoatId])
-        : pool.query(`SELECT bd.*, b.name as boat_name_ref FROM booking_deposits bd LEFT JOIN boats b ON b.id=bd.boat_id WHERE bd.status='pending' ORDER BY bd.deposit_date DESC LIMIT 25`),
+        ? pool.query(`SELECT bd.*, b.name as boat_name_ref FROM booking_deposits bd LEFT JOIN boats b ON b.id=bd.boat_id WHERE bd.status='pending' AND bd.boat_id=$1 ORDER BY bd.deposit_date DESC LIMIT 30`, [safeBoatId])
+        : pool.query(`SELECT bd.*, b.name as boat_name_ref FROM booking_deposits bd LEFT JOIN boats b ON b.id=bd.boat_id WHERE bd.status='pending' ORDER BY bd.deposit_date DESC LIMIT 30`),
+      // Cash expected from upcoming booking balances (next 7 days)
+      safeBoatId
+        ? pool.query(`SELECT COALESCE(SUM(GREATEST(COALESCE(total_amount,0)-COALESCE(deposit_amount,0),0)),0) as total FROM bookings_ledger WHERE booking_date BETWEEN CURRENT_DATE AND CURRENT_DATE+7 AND status!='cancelled' AND boat_id=$1`, [safeBoatId])
+        : pool.query(`SELECT COALESCE(SUM(GREATEST(COALESCE(total_amount,0)-COALESCE(deposit_amount,0),0)),0) as total FROM bookings_ledger WHERE booking_date BETWEEN CURRENT_DATE AND CURRENT_DATE+7 AND status!='cancelled'`),
+      // AR due in next 7 days
+      safeBoatId
+        ? pool.query(`SELECT COALESCE(SUM(amount),0) as total FROM booking_receivables WHERE status='pending' AND due_date BETWEEN CURRENT_DATE AND CURRENT_DATE+7 AND boat_id=$1`, [safeBoatId])
+        : pool.query(`SELECT COALESCE(SUM(amount),0) as total FROM booking_receivables WHERE status='pending' AND due_date BETWEEN CURRENT_DATE AND CURRENT_DATE+7`),
+      // Deposits applied in period
+      pool.query(`SELECT COALESCE(SUM(amount),0) as total, COUNT(*) as count FROM booking_deposits WHERE status='applied' AND deposit_date BETWEEN $1 AND $2 ${bc}`, p),
+      // Previous period income by boat (for trend)
+      pool.query(`SELECT boat_id, COALESCE(SUM(amount),0) as total FROM transactions WHERE transaction_type='income' AND transaction_date BETWEEN $1 AND $2 ${bc} GROUP BY boat_id`, pp),
+      // Global expense categories (for donut chart)
+      pool.query(`SELECT category, SUM(amount) as total FROM boat_expenses WHERE expense_date BETWEEN $1 AND $2 ${bc} GROUP BY category ORDER BY total DESC`, p),
+      // Income + expenses per day for trend chart
+      pool.query(`SELECT transaction_date::text as date, transaction_type, SUM(amount) as total FROM transactions WHERE transaction_date BETWEEN $1 AND $2 ${bc} AND transaction_type IN ('income','expense') GROUP BY transaction_date, transaction_type ORDER BY transaction_date`, p),
     ]);
 
     const income   = parseFloat(incomeRow.rows[0].total);
@@ -10824,30 +10845,77 @@ app.get('/api/executive-dashboard', isAuthenticated, async (req, res) => {
       expCatMap[r.boat_id].total += parseFloat(r.total);
     });
 
-    // Alerts
+    // Cash expected next 7 days
+    const cashExpected7d = parseFloat(cashBkg7d.rows[0].total) + parseFloat(cashAR7d.rows[0].total);
+
+    // Deposits applied
+    const depositsApplied = { total: parseFloat(depositsAppliedRow.rows[0].total), count: parseInt(depositsAppliedRow.rows[0].count) };
+
+    // Previous period income by boat map
+    const prevIncomeBmap = {};
+    prevIncomeByBoat.rows.forEach(r => { prevIncomeBmap[r.boat_id] = parseFloat(r.total); });
+
+    // Add prev income trend to profitByBoat
+    profitByBoat.forEach(b => {
+      b.prevIncome = prevIncomeBmap[b.id] || 0;
+      b.incomeTrend = b.prevIncome > 0 ? ((b.income - b.prevIncome) / b.prevIncome * 100) : null;
+      b.incomePerBooking = b.bookings > 0 ? b.income / b.bookings : 0;
+      b.incomePerHour = b.hours > 0 ? b.income / b.hours : 0;
+      b.costPerHour = b.hours > 0 ? (b.expenses + b.crew) / b.hours : 0;
+      b.profitPerHour = b.hours > 0 ? b.profit / b.hours : 0;
+    });
+
+    // Build income/expense per day for combo trend chart
+    const dayTrendMap = {};
+    incomeExpPerDay.rows.forEach(r => {
+      if (!dayTrendMap[r.date]) dayTrendMap[r.date] = { date: r.date, income: 0, expense: 0 };
+      dayTrendMap[r.date][r.transaction_type] = parseFloat(r.total);
+    });
+    const trendPerDay = Object.values(dayTrendMap).sort((a,b) => a.date.localeCompare(b.date));
+
+    // Smart alerts
+    const now2 = new Date();
     const alerts = [];
     profitByBoat.forEach(b => {
-      if (b.profit < 0) alerts.push({ priority: 'alta', msg: `${b.name}: utilidad negativa ($${Math.abs(b.profit).toFixed(0)})`, type: 'negative_profit' });
-      else if (b.income > 0 && b.expenses > b.income * 0.7) alerts.push({ priority: 'media', msg: `${b.name}: gastos = ${(b.expenses/b.income*100).toFixed(0)}% de ingresos`, type: 'high_expenses' });
+      if (b.profit < 0 && b.income > 0) alerts.push({ priority: 'alta', msg: `${b.name}: utilidad negativa ($${Math.abs(b.profit).toFixed(0)}) — margen ${b.margin.toFixed(1)}%`, type: 'negative_profit', boat: b.name });
+      else if (b.income > 0 && b.margin < 15 && b.margin >= 0) alerts.push({ priority: 'media', msg: `${b.name}: margen bajo (${b.margin.toFixed(1)}%) — revisar gastos`, type: 'low_margin', boat: b.name });
+      if (b.income > 0 && b.expenses > b.income * 0.6) alerts.push({ priority: 'media', msg: `${b.name}: gastos representan ${(b.expenses/b.income*100).toFixed(0)}% de ingresos`, type: 'high_expenses', boat: b.name });
+      if (b.income > 0 && b.crew > b.income * 0.4) alerts.push({ priority: 'media', msg: `${b.name}: crew cost = ${(b.crew/b.income*100).toFixed(0)}% de ingresos`, type: 'high_crew', boat: b.name });
     });
-    const now2 = new Date();
     const overdueAR = arList.rows.filter(r => r.due_date && new Date(r.due_date) < now2);
-    if (overdueAR.length > 0) alerts.push({ priority: 'alta', msg: `${overdueAR.length} AR vencida(s)`, type: 'overdue_ar' });
+    if (overdueAR.length > 0) alerts.push({ priority: 'alta', msg: `${overdueAR.length} cuenta(s) por cobrar vencida(s) — acción inmediata`, type: 'overdue_ar' });
     const depPendCount = parseInt(depPendRow.rows[0].count);
-    if (depPendCount > 0) alerts.push({ priority: 'media', msg: `${depPendCount} depósito(s) sin aplicar`, type: 'pending_deposits' });
-    if (income > 0 && crewCost > income * 0.5) alerts.push({ priority: 'media', msg: `Crew cost = ${(crewCost/income*100).toFixed(0)}% de ingresos`, type: 'high_crew' });
+    if (depPendCount > 0) {
+      const oldest = depList.rows[0];
+      const daysOld = oldest && oldest.deposit_date ? Math.round((now2 - new Date(oldest.deposit_date)) / 86400000) : 0;
+      alerts.push({ priority: daysOld > 30 ? 'alta' : 'media', msg: `${depPendCount} depósito(s) sin aplicar${daysOld > 0 ? ` — el más antiguo hace ${daysOld} días` : ''}`, type: 'pending_deposits' });
+    }
+    // Upcoming with unpaid balance
+    const upcomingWithBalance = upcoming.rows.filter(b => b.total_amount > 0 && (b.total_amount - (b.deposit_amount||0)) > 0).slice(0,3);
+    if (upcomingWithBalance.length > 0) alerts.push({ priority: 'baja', msg: `${upcomingWithBalance.length} booking(s) próximo(s) con saldo pendiente de cobro`, type: 'upcoming_balance' });
+    if (income > 0 && crewCost > income * 0.5) alerts.push({ priority: 'media', msg: `Crew cost total = ${(crewCost/income*100).toFixed(0)}% de ingresos del período`, type: 'high_crew_total' });
 
     res.json({
       period: { start: startDate, end: endDate, prevStart: prevStartDate, prevEnd: prevEndDate, days: daysInPeriod },
-      kpis: { income, expenses, crewCost, netProfit, totalHours, totalBookings, avgHoursPerBooking, occupancy,
-              arPending: parseFloat(arTotalRow.rows[0].total), arCount: parseInt(arTotalRow.rows[0].count),
-              depositsPending: parseFloat(depPendRow.rows[0].total), depositsCount: depPendCount },
+      kpis: {
+        income, expenses, crewCost, netProfit, totalHours, totalBookings, avgHoursPerBooking, occupancy,
+        arPending: parseFloat(arTotalRow.rows[0].total), arCount: parseInt(arTotalRow.rows[0].count),
+        depositsPending: parseFloat(depPendRow.rows[0].total), depositsCount: depPendCount,
+        cashExpected7d, depositsApplied,
+        incomePerBooking: totalBookings > 0 ? income / totalBookings : 0,
+        incomePerHour: totalHours > 0 ? income / totalHours : 0,
+        costPerHour: totalHours > 0 ? (expenses + crewCost) / totalHours : 0,
+        profitPerHour: totalHours > 0 ? netProfit / totalHours : 0,
+        boatsWithLoss: profitByBoat.filter(b => b.profit < 0).length,
+      },
       comparison: { prevIncome, prevExpenses, prevCrew, prevProfit,
                     incomeChange: pct(income, prevIncome), expensesChange: pct(expenses, prevExpenses),
                     profitChange: prevProfit !== 0 ? ((netProfit - prevProfit) / Math.abs(prevProfit) * 100) : null },
       incomePerDay: incomePerDay.rows,
+      trendPerDay,
       profitByBoat,
       expensesByBoat: Object.values(expCatMap),
+      expensesByCategory: globalExpByCat.rows.map(r => ({ category: r.category, total: parseFloat(r.total) })),
       upcomingBookings: upcoming.rows,
       arList: arList.rows,
       pendingDeposits: depList.rows,
