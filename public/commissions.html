@@ -85,6 +85,24 @@
     .empty-state { text-align:center; padding:44px 20px; color:#aaa; }
     .empty-icon { font-size:38px; margin-bottom:10px; }
 
+    /* Directory cards */
+    .dir-section { background:#fff; border:1px solid #e8e8e8; border-radius:10px; overflow:hidden; margin-bottom:18px; }
+    .dir-header { display:flex; align-items:center; justify-content:space-between; padding:12px 18px; border-bottom:1px solid #f0f0f0; cursor:pointer; user-select:none; }
+    .dir-header h3 { font-size:14px; font-weight:700; color:#222; margin:0; display:flex; align-items:center; gap:8px; }
+    .dir-toggle { font-size:11px; color:#888; }
+    .dir-body { padding:14px 18px 18px; }
+    .dir-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:12px; margin-top:12px; }
+    .pcard { background:#f8faff; border:1px solid #e0e8f8; border-radius:9px; padding:14px 16px; display:flex; flex-direction:column; gap:6px; position:relative; }
+    .pcard-name { font-size:14px; font-weight:700; color:#1a3a6b; }
+    .pcard-info { font-size:12px; color:#555; display:flex; align-items:center; gap:6px; }
+    .pcard-info a { color:#0066cc; text-decoration:none; }
+    .pcard-info a:hover { text-decoration:underline; }
+    .pcard-empty { font-size:12px; color:#bbb; font-style:italic; }
+    .pcard-edit { position:absolute; top:10px; right:10px; background:none; border:1px solid #ddd; border-radius:5px; padding:3px 8px; font-size:11px; color:#666; cursor:pointer; }
+    .pcard-edit:hover { background:#f0f4ff; border-color:#aac0f0; color:#0066cc; }
+    .btn-outline-sm { background:#fff; border:1px solid #0066cc; color:#0066cc; padding:5px 12px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; }
+    .btn-outline-sm:hover { background:#e8f0ff; }
+
     /* Toast */
     #toast { position:fixed; bottom:20px; right:20px; background:#1e293b; color:#fff; padding:10px 18px; border-radius:8px; font-size:13px; z-index:9999; transform:translateY(80px); opacity:0; transition:all .3s; pointer-events:none; }
 
@@ -156,6 +174,23 @@
     </div>
   </div>
 
+  <!-- Directorio de Capitanes -->
+  <div class="dir-section" id="capDirSection">
+    <div class="dir-header" onclick="toggleDir('cap')" data-testid="header-cap-directory">
+      <h3>Directorio de Capitanes <span id="cap-dir-badge" style="font-size:11px;font-weight:400;color:#888"></span></h3>
+      <span class="dir-toggle" id="cap-dir-toggle">&#9660; ocultar</span>
+    </div>
+    <div class="dir-body" id="cap-dir-body">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <span style="font-size:12px;color:#666">Información de contacto de los capitanes registrados.</span>
+        <button class="btn-outline-sm" onclick="openCapProfileModal()" data-testid="button-new-cap-profile">+ Agregar capitán</button>
+      </div>
+      <div class="dir-grid" id="cap-dir-grid">
+        <p style="color:#aaa;font-size:13px;padding:8px 0">Cargando...</p>
+      </div>
+    </div>
+  </div>
+
   <div class="tbl-card">
     <div class="tbl-card-header"><h3>Registro de pagos</h3><span id="cap-rec-count" style="font-size:12px;color:#aaa">0 registros</span></div>
     <div class="tbl-wrap">
@@ -188,6 +223,23 @@
     <div class="fbar-actions">
       <button class="btn btn-ghost" onclick="loadStewPayments()" data-testid="button-stew-filter">Filtrar</button>
       <button class="btn btn-primary" onclick="openStewModal()" data-testid="button-new-stew">+ Registrar pago</button>
+    </div>
+  </div>
+
+  <!-- Directorio de Stew -->
+  <div class="dir-section" id="stewDirSection">
+    <div class="dir-header" onclick="toggleDir('stew')" data-testid="header-stew-directory">
+      <h3>Directorio de Stew <span id="stew-dir-badge" style="font-size:11px;font-weight:400;color:#888"></span></h3>
+      <span class="dir-toggle" id="stew-dir-toggle">&#9660; ocultar</span>
+    </div>
+    <div class="dir-body" id="stew-dir-body">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <span style="font-size:12px;color:#666">Información de contacto del personal de tripulación registrado.</span>
+        <button class="btn-outline-sm" onclick="openStewProfileModal()" data-testid="button-new-stew-profile">+ Agregar stew</button>
+      </div>
+      <div class="dir-grid" id="stew-dir-grid">
+        <p style="color:#aaa;font-size:13px;padding:8px 0">Cargando...</p>
+      </div>
     </div>
   </div>
 
@@ -298,6 +350,68 @@
       </table>
     </div>
   </main>
+</div>
+
+<!-- ═══ CAPTAIN PROFILE MODAL ═══ -->
+<div class="modal-overlay" id="capProfileModal">
+  <div class="modal-box">
+    <div class="mh">
+      <h3 id="capProfileTitle">Agregar Capitán</h3>
+      <button class="modal-close" onclick="closeCapProfileModal()">&#215;</button>
+    </div>
+    <div class="mb">
+      <input type="hidden" id="cap-profile-id">
+      <div class="fg2">
+        <label>Nombre <span class="req">*</span></label>
+        <input type="text" id="cap-profile-name" placeholder="Nombre completo" data-testid="input-cap-profile-name">
+      </div>
+      <div class="frow">
+        <div class="fg2">
+          <label>Teléfono</label>
+          <input type="tel" id="cap-profile-phone" placeholder="+1 787 000 0000" data-testid="input-cap-profile-phone">
+        </div>
+        <div class="fg2">
+          <label>Correo electrónico</label>
+          <input type="email" id="cap-profile-email" placeholder="correo@ejemplo.com" data-testid="input-cap-profile-email">
+        </div>
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-ghost" onclick="closeCapProfileModal()" data-testid="button-cancel-cap-profile">Cancelar</button>
+      <button class="btn btn-primary" onclick="submitCapProfile()" data-testid="button-save-cap-profile">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ STEW PROFILE MODAL ═══ -->
+<div class="modal-overlay" id="stewProfileModal">
+  <div class="modal-box">
+    <div class="mh">
+      <h3 id="stewProfileTitle">Agregar Stew</h3>
+      <button class="modal-close" onclick="closeStewProfileModal()">&#215;</button>
+    </div>
+    <div class="mb">
+      <input type="hidden" id="stew-profile-id">
+      <div class="fg2">
+        <label>Nombre <span class="req">*</span></label>
+        <input type="text" id="stew-profile-name" placeholder="Nombre completo" data-testid="input-stew-profile-name">
+      </div>
+      <div class="frow">
+        <div class="fg2">
+          <label>Teléfono</label>
+          <input type="tel" id="stew-profile-phone" placeholder="+1 787 000 0000" data-testid="input-stew-profile-phone">
+        </div>
+        <div class="fg2">
+          <label>Correo electrónico</label>
+          <input type="email" id="stew-profile-email" placeholder="correo@ejemplo.com" data-testid="input-stew-profile-email">
+        </div>
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-ghost" onclick="closeStewProfileModal()" data-testid="button-cancel-stew-profile">Cancelar</button>
+      <button class="btn btn-primary" onclick="submitStewProfile()" data-testid="button-save-stew-profile">Guardar</button>
+    </div>
+  </div>
 </div>
 
 <!-- ═══ CAPTAIN MODAL ═══ -->
@@ -411,7 +525,7 @@ document.querySelectorAll('.main-tab').forEach(btn => {
     btn.classList.add('active');
     document.getElementById('pane-' + btn.dataset.pane).classList.add('active');
     if (btn.dataset.pane === 'captains') { loadCaptainPayments(); loadCapSummary(); }
-    if (btn.dataset.pane === 'stew')     { loadStewPayments();    loadStewSummary(); }
+    if (btn.dataset.pane === 'stew')     { loadStewPayments(); loadStewSummary(); loadStewProfiles(); }
     if (btn.dataset.pane === 'platforms'){ loadInitialData(); }
   });
 });
@@ -726,20 +840,155 @@ async function deleteStewPayment(id) {
 }
 
 // Close modals on backdrop click
-['capModal','stewModal'].forEach(id => {
+['capModal','stewModal','capProfileModal','stewProfileModal'].forEach(id => {
   document.getElementById(id).addEventListener('click', e => {
     if (e.target.id === id) {
-      if (id === 'capModal')  closeCapModal();
-      if (id === 'stewModal') closeStewModal();
+      if (id === 'capModal')         closeCapModal();
+      if (id === 'stewModal')        closeStewModal();
+      if (id === 'capProfileModal')  closeCapProfileModal();
+      if (id === 'stewProfileModal') closeStewProfileModal();
     }
   });
 });
+
+// ── DIRECTORY TOGGLE ─────────────────────────────────
+const dirState = { cap: true, stew: true };
+function toggleDir(type) {
+  dirState[type] = !dirState[type];
+  document.getElementById(type + '-dir-body').style.display   = dirState[type] ? 'block' : 'none';
+  document.getElementById(type + '-dir-toggle').innerHTML     = dirState[type] ? '&#9660; ocultar' : '&#9654; mostrar';
+}
+
+// ── CAPTAIN DIRECTORY ─────────────────────────────────
+let capProfiles = [];
+
+async function loadCapProfiles() {
+  try {
+    const res = await fetch('/api/captains');
+    if (!res.ok) return;
+    capProfiles = await res.json();
+    renderCapProfiles();
+  } catch(e) { console.warn('Error loading captain profiles:', e.message); }
+}
+
+function renderCapProfiles() {
+  const grid  = document.getElementById('cap-dir-grid');
+  const badge = document.getElementById('cap-dir-badge');
+  badge.textContent = `(${capProfiles.length})`;
+  if (!capProfiles.length) {
+    grid.innerHTML = '<p style="color:#aaa;font-size:13px;padding:8px 0">No hay capitanes registrados. Usa "+ Agregar capitán" para crear el primero.</p>';
+    return;
+  }
+  grid.innerHTML = capProfiles.map(c => `
+    <div class="pcard" data-testid="card-captain-${c.id}">
+      <button class="pcard-edit" onclick="openCapProfileModal('${c.id}')" data-testid="button-edit-cap-profile-${c.id}">Editar</button>
+      <div class="pcard-name">${esc(c.name)}</div>
+      ${c.phone ? `<div class="pcard-info"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.8a19.79 19.79 0 01-3.07-8.66A2 2 0 012 .99h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L6.09 8.91A16 16 0 0015.09 17.91l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"/></svg><a href="tel:${esc(c.phone)}" data-testid="link-cap-phone-${c.id}">${esc(c.phone)}</a></div>` : '<div class="pcard-empty">Sin teléfono</div>'}
+      ${c.email ? `<div class="pcard-info"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg><a href="mailto:${esc(c.email)}" data-testid="link-cap-email-${c.id}">${esc(c.email)}</a></div>` : '<div class="pcard-empty">Sin correo</div>'}
+    </div>`).join('');
+}
+
+function openCapProfileModal(id) {
+  const c = id ? capProfiles.find(x => x.id === id) : null;
+  document.getElementById('cap-profile-id').value    = c?.id || '';
+  document.getElementById('capProfileTitle').textContent = c ? 'Editar Capitán' : 'Agregar Capitán';
+  document.getElementById('cap-profile-name').value  = c?.name  || '';
+  document.getElementById('cap-profile-phone').value = c?.phone || '';
+  document.getElementById('cap-profile-email').value = c?.email || '';
+  document.getElementById('capProfileModal').classList.add('open');
+  setTimeout(() => document.getElementById('cap-profile-name').focus(), 100);
+}
+function closeCapProfileModal() { document.getElementById('capProfileModal').classList.remove('open'); }
+
+async function submitCapProfile() {
+  const id    = document.getElementById('cap-profile-id').value;
+  const name  = document.getElementById('cap-profile-name').value.trim();
+  const phone = document.getElementById('cap-profile-phone').value.trim();
+  const email = document.getElementById('cap-profile-email').value.trim();
+  if (!name) { showToast('El nombre es obligatorio', false); return; }
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    showToast('El formato del correo no es válido', false); return;
+  }
+  try {
+    const url    = id ? `/api/captains/${id}` : '/api/captains';
+    const method = id ? 'PATCH' : 'POST';
+    const res    = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name, phone, email }) });
+    const data   = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error al guardar');
+    showToast(id ? 'Capitán actualizado' : 'Capitán agregado', true);
+    closeCapProfileModal();
+    loadCapProfiles();
+  } catch(e) { showToast(e.message, false); }
+}
+
+// ── STEW DIRECTORY ────────────────────────────────────
+let stewProfiles = [];
+
+async function loadStewProfiles() {
+  try {
+    const res = await fetch('/api/stews');
+    if (!res.ok) return;
+    stewProfiles = await res.json();
+    renderStewProfiles();
+  } catch(e) { console.warn('Error loading stew profiles:', e.message); }
+}
+
+function renderStewProfiles() {
+  const grid  = document.getElementById('stew-dir-grid');
+  const badge = document.getElementById('stew-dir-badge');
+  badge.textContent = `(${stewProfiles.length})`;
+  if (!stewProfiles.length) {
+    grid.innerHTML = '<p style="color:#aaa;font-size:13px;padding:8px 0">No hay stew registrados. Usa "+ Agregar stew" para crear el primero.</p>';
+    return;
+  }
+  grid.innerHTML = stewProfiles.map(s => `
+    <div class="pcard" data-testid="card-stew-${s.id}">
+      <button class="pcard-edit" onclick="openStewProfileModal('${s.id}')" data-testid="button-edit-stew-profile-${s.id}">Editar</button>
+      <div class="pcard-name">${esc(s.name)}</div>
+      ${s.phone ? `<div class="pcard-info"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.8a19.79 19.79 0 01-3.07-8.66A2 2 0 012 .99h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L6.09 8.91A16 16 0 0015.09 17.91l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"/></svg><a href="tel:${esc(s.phone)}" data-testid="link-stew-phone-${s.id}">${esc(s.phone)}</a></div>` : '<div class="pcard-empty">Sin teléfono</div>'}
+      ${s.email ? `<div class="pcard-info"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg><a href="mailto:${esc(s.email)}" data-testid="link-stew-email-${s.id}">${esc(s.email)}</a></div>` : '<div class="pcard-empty">Sin correo</div>'}
+    </div>`).join('');
+}
+
+function openStewProfileModal(id) {
+  const s = id ? stewProfiles.find(x => x.id === id) : null;
+  document.getElementById('stew-profile-id').value    = s?.id || '';
+  document.getElementById('stewProfileTitle').textContent = s ? 'Editar Stew' : 'Agregar Stew';
+  document.getElementById('stew-profile-name').value  = s?.name  || '';
+  document.getElementById('stew-profile-phone').value = s?.phone || '';
+  document.getElementById('stew-profile-email').value = s?.email || '';
+  document.getElementById('stewProfileModal').classList.add('open');
+  setTimeout(() => document.getElementById('stew-profile-name').focus(), 100);
+}
+function closeStewProfileModal() { document.getElementById('stewProfileModal').classList.remove('open'); }
+
+async function submitStewProfile() {
+  const id    = document.getElementById('stew-profile-id').value;
+  const name  = document.getElementById('stew-profile-name').value.trim();
+  const phone = document.getElementById('stew-profile-phone').value.trim();
+  const email = document.getElementById('stew-profile-email').value.trim();
+  if (!name) { showToast('El nombre es obligatorio', false); return; }
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    showToast('El formato del correo no es válido', false); return;
+  }
+  try {
+    const url    = id ? `/api/stews/${id}` : '/api/stews';
+    const method = id ? 'PATCH' : 'POST';
+    const res    = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name, phone, email }) });
+    const data   = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error al guardar');
+    showToast(id ? 'Stew actualizado' : 'Stew agregado', true);
+    closeStewProfileModal();
+    loadStewProfiles();
+  } catch(e) { showToast(e.message, false); }
+}
 
 // ── INIT ──────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   await loadBoats();
   loadCaptainPayments();
   loadCapSummary();
+  loadCapProfiles();
 });
 </script>
 </body>

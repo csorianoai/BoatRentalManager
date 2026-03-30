@@ -2102,6 +2102,46 @@ app.get('/api/captains', async (req, res) => {
   }
 });
 
+// ── Captain Profile Management ─────────────────────────
+app.post('/api/captains', isAuthenticated, async (req, res) => {
+  try {
+    const { name, phone, email, specialties, status } = req.body;
+    if (!name) return res.status(400).json({ error: 'El nombre es obligatorio' });
+    const { nanoid } = await import('nanoid');
+    const id = 'cap_' + nanoid(8);
+    const emailVal = email && email.trim() ? email.trim() : '';
+    const phoneVal = phone && phone.trim() ? phone.trim() : '';
+    const result = await pool.query(
+      'INSERT INTO captains (id, name, phone, email, status, specialties) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',
+      [id, name.trim(), phoneVal, emailVal, status || 'active', JSON.stringify(specialties || [])]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error('Error creating captain:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch('/api/captains/:id', isAuthenticated, async (req, res) => {
+  try {
+    const { name, phone, email, status } = req.body;
+    const result = await pool.query(
+      `UPDATE captains SET
+        name   = COALESCE($1, name),
+        phone  = COALESCE($2, phone),
+        email  = COALESCE($3, email),
+        status = COALESCE($4, status)
+       WHERE id = $5 RETURNING *`,
+      [name || null, phone !== undefined ? phone : null, email !== undefined ? email : null, status || null, req.params.id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Capitán no encontrado' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating captain:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 📍 WEBHOOK PARA RESPUESTAS DE CAPITANES
 app.post('/webhook/captain-response', async (req, res) => {
   try {
