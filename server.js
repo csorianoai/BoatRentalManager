@@ -729,6 +729,33 @@ async function initializeDatabase() {
     `);
     
     console.log('✅ FASE 8 tables created (accounting, transactions, reconciliation, categorization, alerts)');
+
+    // FASE 8B: Smart classification columns for bank_statements + patterns table
+    const bsCols = [
+      `ALTER TABLE bank_statements ADD COLUMN IF NOT EXISTS category TEXT`,
+      `ALTER TABLE bank_statements ADD COLUMN IF NOT EXISTS accounting_type TEXT`,
+      `ALTER TABLE bank_statements ADD COLUMN IF NOT EXISTS confidence_level TEXT`,
+      `ALTER TABLE bank_statements ADD COLUMN IF NOT EXISTS boat_id TEXT`,
+      `ALTER TABLE bank_statements ADD COLUMN IF NOT EXISTS classification_status TEXT DEFAULT 'unclassified'`,
+      `ALTER TABLE bank_statements ADD COLUMN IF NOT EXISTS suggested_account_debit TEXT`,
+      `ALTER TABLE bank_statements ADD COLUMN IF NOT EXISTS suggested_account_credit TEXT`,
+      `ALTER TABLE bank_statements ADD COLUMN IF NOT EXISTS notes TEXT`,
+    ];
+    for (const q of bsCols) { try { await pool.query(q); } catch(_) {} }
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS classification_patterns (
+        id TEXT PRIMARY KEY,
+        description_pattern TEXT NOT NULL UNIQUE,
+        accounting_type TEXT NOT NULL,
+        category TEXT NOT NULL,
+        boat_id TEXT,
+        use_count INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+    console.log('✅ FASE 8B: Smart classification columns + patterns table ready');
     
     // ============================================================================
     // FASE 9: MESSAGING CENTER - Multi-platform unified inbox
@@ -6008,6 +6035,233 @@ app.post('/api/accounting/bank-statements/smart-auto-match', isAuthenticated, as
     console.error('Error in smart auto-match:', error);
     res.status(500).json({ error: 'Failed to auto-match statements' });
   }
+});
+
+// ============================================================
+// SMART CLASSIFICATION ENGINE
+// ============================================================
+function smartClassify(description, amount, transactionType, patterns = []) {
+  const desc = (description || '').toLowerCase();
+  const amt  = Math.abs(parseFloat(amount) || 0);
+  const isCredit = transactionType === 'credit' || parseFloat(amount) > 0;
+
+  const out = (accounting_type, category, confidence_level, reason, debit, credit) => ({
+    accounting_type, category, confidence_level,
+    confidence_reason: reason,
+    suggested_account_debit: debit,
+    suggested_account_credit: credit,
+    classification_status: 'suggested'
+  });
+
+  // --- Learned patterns (highest priority) ---
+  for (const p of patterns.sort((a,b)=>(b.use_count||0)-(a.use_count||0))) {
+    if (desc.includes((p.description_pattern||'').toLowerCase())) {
+      const lbl = p.accounting_type==='expense'?'Gasto':p.accounting_type==='asset'?'Activo':p.accounting_type==='income'?'Ingreso':'Otro';
+      return out(p.accounting_type, p.category, 'high', 'Patrón aprendido',
+        isCredit?'Cuenta Bancaria':`${lbl} — ${p.category}`,
+        isCredit?`${lbl} — ${p.category}`:'Cuenta Bancaria');
+    }
+  }
+
+  // --- Keyword rules ---
+  if (/fuel|gas(?:oline)?|diesel|petro|gasolina|shell\b|exxon|mobil\b|chevron|sunoco|bp\b|citgo/.test(desc))
+    return out('expense','fuel','high','Palabra clave: combustible','Gastos de Combustible','Cuenta Bancaria');
+
+  if (/marina|dock(?:age)?|harbour?|slip\b|mooring|anchorage|pier\b/.test(desc))
+    return out('expense','marina_fees','high','Palabra clave: marina/dock','Gastos de Marina','Cuenta Bancaria');
+
+  if (/repair|service|maintenance|maint\b|mechanic|engine\b|motor\b|propel|reparacion|servicio/.test(desc))
+    return out('expense','maintenance_parts','high','Palabra clave: mantenimiento','Gastos de Mantenimiento','Cuenta Bancaria');
+
+  if (/clean(?:ing)?|laundry|wash\b|detail(?:ing)?|sanitiz/.test(desc))
+    return out('expense','cleaning','high','Palabra clave: limpieza','Gastos de Limpieza','Cuenta Bancaria');
+
+  if (/insurance|insur\b|poliz|premium\b|seguro/.test(desc))
+    return out('expense','insurance','high','Palabra clave: seguro','Gastos de Seguro','Cuenta Bancaria');
+
+  if (/office|supply|supplies|staples|fedex|ups\b|printing|papel|oficina/.test(desc))
+    return out('expense','office','medium','Palabra clave: oficina','Gastos de Oficina','Cuenta Bancaria');
+
+  if (/amazon|home depot|lowes?|walmart|costco|sam\'s club|harbor freight/.test(desc)) {
+    if (amt > 500) return out('asset','equipment','medium','Proveedor+monto: activo probable','Activos — Equipos','Cuenta Bancaria');
+    return out('expense','inventory','medium','Proveedor tipo inventario/suministros','Gastos de Inventario','Cuenta Bancaria');
+  }
+
+  if (/equipment|radio\b|gps\b|device|electronic|sensor|camera|sonar|equipo/.test(desc))
+    return out('asset','equipment','high','Palabra clave: equipo/dispositivo','Activos — Equipos','Cuenta Bancaria');
+
+  if ((/boat|yacht|hull|vessel|embarcacion/.test(desc)) && amt > 5000)
+    return out('asset','boat_purchase','medium','Palabra clave: barco + monto alto','Activos — Barco','Cuenta Bancaria');
+
+  if (/transfer|zelle|wire\b|ach\b|electronic transfer|trasnfer/.test(desc))
+    return out('transfer','bank_transfer','medium','Palabra clave: transferencia','Cuenta Destino','Cuenta Origen');
+
+  if (isCredit) {
+    if (/airbnb|getmyboat|boatsetter|viator|booking|stripe|paypal|payment|charter|trip\b|reserva/.test(desc))
+      return out('income','booking_income','high','Ingreso plataforma detectado','Cuenta Bancaria','Ingresos de Reservas');
+    if (amt > 0)
+      return out('income','other_income','medium','Crédito sin patrón específico','Cuenta Bancaria','Otros Ingresos');
+  }
+
+  if (amt > 1000 && !isCredit)
+    return out('asset','equipment','low','Monto alto — revisar si es activo','Activos — Equipos','Cuenta Bancaria');
+
+  return out(isCredit?'income':'expense', isCredit?'other_income':'other_expense',
+    'low','Sin patrón detectado',
+    isCredit?'Cuenta Bancaria':'Gastos Generales',
+    isCredit?'Otros Ingresos':'Cuenta Bancaria');
+}
+
+// --- Classify all unclassified bank statements ---
+app.post('/api/accounting/bank-statements/smart-classify', isAuthenticated, async (req, res) => {
+  try {
+    const patterns = await pool.query('SELECT * FROM classification_patterns ORDER BY use_count DESC');
+    const stmts = await pool.query(
+      `SELECT * FROM bank_statements WHERE (classification_status IS NULL OR classification_status='unclassified') ORDER BY statement_date DESC`
+    );
+    let updated = 0;
+    for (const s of stmts.rows) {
+      const r = smartClassify(s.description, s.amount, s.transaction_type, patterns.rows);
+      await pool.query(
+        `UPDATE bank_statements SET accounting_type=$1, category=$2, confidence_level=$3,
+         suggested_account_debit=$4, suggested_account_credit=$5, classification_status='suggested', updated_at=CURRENT_TIMESTAMP
+         WHERE id=$6`,
+        [r.accounting_type, r.category, r.confidence_level, r.suggested_account_debit, r.suggested_account_credit, s.id]
+      );
+      updated++;
+    }
+    res.json({ success: true, classified: updated });
+  } catch(err) {
+    console.error('smart-classify error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Get classification stats ---
+app.get('/api/accounting/bank-statements/classification-stats', isAuthenticated, async (req, res) => {
+  try {
+    const r = await pool.query(`
+      SELECT
+        COUNT(*) as total,
+        COUNT(*) FILTER (WHERE classification_status='unclassified' OR classification_status IS NULL) as unclassified,
+        COUNT(*) FILTER (WHERE classification_status='suggested') as suggested,
+        COUNT(*) FILTER (WHERE classification_status='confirmed') as confirmed,
+        COUNT(*) FILTER (WHERE classification_status='posted') as posted,
+        COUNT(*) FILTER (WHERE matched_transaction_id IS NOT NULL) as matched,
+        COUNT(*) FILTER (WHERE confidence_level='high') as high_confidence,
+        COUNT(*) FILTER (WHERE confidence_level='medium') as medium_confidence,
+        COUNT(*) FILTER (WHERE confidence_level='low') as low_confidence
+      FROM bank_statements
+    `);
+    const row = r.rows[0];
+    const total = parseInt(row.total) || 1;
+    const classified = parseInt(row.confirmed||0) + parseInt(row.posted||0);
+    res.json({
+      ...row,
+      pct_classified: Math.round(classified/total*100),
+      pct_reconciled: Math.round(parseInt(row.posted||0)/total*100),
+    });
+  } catch(err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Update classification for a single statement ---
+app.patch('/api/accounting/bank-statements/:id/classify', isAuthenticated, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { accounting_type, category, confidence_level, boat_id, suggested_account_debit, suggested_account_credit, notes, status } = req.body;
+    const newStatus = status || 'confirmed';
+    const r = await pool.query(
+      `UPDATE bank_statements SET
+         accounting_type=COALESCE($1,accounting_type),
+         category=COALESCE($2,category),
+         confidence_level=COALESCE($3,confidence_level),
+         boat_id=COALESCE($4,boat_id),
+         suggested_account_debit=COALESCE($5,suggested_account_debit),
+         suggested_account_credit=COALESCE($6,suggested_account_credit),
+         notes=COALESCE($7,notes),
+         classification_status=$8,
+         updated_at=CURRENT_TIMESTAMP
+       WHERE id=$9 RETURNING *`,
+      [accounting_type, category, confidence_level, boat_id, suggested_account_debit, suggested_account_credit, notes, newStatus, id]
+    );
+    if (!r.rows.length) return res.status(404).json({ error: 'Not found' });
+
+    // Learn from this confirmation: upsert a pattern
+    if (newStatus === 'confirmed' || newStatus === 'posted') {
+      const stmt = r.rows[0];
+      const words = (stmt.description||'').toLowerCase().split(/\s+/).filter(w=>w.length>3).slice(0,2).join(' ');
+      if (words.length > 2) {
+        const { nanoid } = await import('nanoid');
+        await pool.query(
+          `INSERT INTO classification_patterns (id, description_pattern, accounting_type, category, boat_id, use_count)
+           VALUES ($1,$2,$3,$4,$5,1)
+           ON CONFLICT (description_pattern) DO UPDATE SET
+             accounting_type=EXCLUDED.accounting_type, category=EXCLUDED.category,
+             use_count=classification_patterns.use_count+1, updated_at=CURRENT_TIMESTAMP`,
+          [nanoid(), words, stmt.accounting_type, stmt.category, stmt.boat_id||null]
+        );
+      }
+    }
+    res.json(r.rows[0]);
+  } catch(err) {
+    console.error('classify error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Post a confirmed statement to accounting (create transaction) ---
+app.post('/api/accounting/bank-statements/:id/post', isAuthenticated, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const stmt = await pool.query('SELECT * FROM bank_statements WHERE id=$1', [id]);
+    if (!stmt.rows.length) return res.status(404).json({ error: 'Statement not found' });
+    const s = stmt.rows[0];
+    if (!s.accounting_type || !s.category) return res.status(400).json({ error: 'Classify the statement before posting' });
+
+    const { nanoid } = await import('nanoid');
+    const txType = s.accounting_type === 'income' ? 'income' : s.accounting_type === 'asset' ? 'expense' : s.accounting_type === 'transfer' ? 'transfer' : 'expense';
+    const txId = nanoid();
+
+    // Find a valid account for the type — fall back to first matching type
+    const acctType = s.accounting_type==='income'?'revenue':s.accounting_type==='asset'?'asset':'expense';
+    const acctR = await pool.query(
+      `SELECT id FROM chart_of_accounts WHERE account_type=$1 LIMIT 1`, [acctType]
+    );
+    const accountId = acctR.rows.length ? acctR.rows[0].id : null;
+
+    await pool.query(
+      `INSERT INTO transactions (id, transaction_date, description, amount, transaction_type, category, boat_id, notes, reconciled)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,1)`,
+      [txId, s.statement_date, s.description, Math.abs(parseFloat(s.amount)), txType, s.category, s.boat_id||null, `Importado del extracto bancario — ${s.suggested_account_debit} / ${s.suggested_account_credit}`, ]
+    );
+
+    await pool.query(
+      `UPDATE bank_statements SET classification_status='posted', matched_transaction_id=$1, reconciliation_status='matched', updated_at=CURRENT_TIMESTAMP WHERE id=$2`,
+      [txId, id]
+    );
+
+    res.json({ success: true, transaction_id: txId });
+  } catch(err) {
+    console.error('post error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Classification patterns (learning) ---
+app.get('/api/accounting/classification-patterns', isAuthenticated, async (req, res) => {
+  try {
+    const r = await pool.query('SELECT * FROM classification_patterns ORDER BY use_count DESC, updated_at DESC LIMIT 100');
+    res.json(r.rows);
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/accounting/classification-patterns/:id', isAuthenticated, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM classification_patterns WHERE id=$1', [req.params.id]);
+    res.json({ success: true });
+  } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
 // ===== RECONCILIATION =====

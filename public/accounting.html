@@ -41,6 +41,48 @@
         .tab-content.active {
             display: block;
         }
+        /* ===== Classification Engine Styles ===== */
+        .classif-stat-card {
+            background:#fff;border-radius:10px;padding:14px 16px;
+            box-shadow:0 1px 4px rgba(0,0,0,.08);border:1px solid #f1f5f9;
+        }
+        .csf-label { font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px }
+        .csf-val   { font-size:26px;font-weight:800;color:#1a1a2e;margin-top:4px }
+        .csf-filter {
+            border:none;background:transparent;padding:5px 11px;border-radius:6px;
+            font-size:12px;font-weight:600;cursor:pointer;color:#64748b;transition:all .15s;
+        }
+        .csf-filter.active { background:#fff;color:#0066cc;box-shadow:0 1px 3px rgba(0,0,0,.12); }
+        .csf-filter:hover:not(.active) { background:rgba(255,255,255,.7);color:#1a1a2e; }
+        .conf-badge {
+            display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;
+            font-weight:700;text-transform:uppercase;letter-spacing:.4px;
+        }
+        .conf-high   { background:#dcfce7;color:#15803d }
+        .conf-medium { background:#fef3c7;color:#92400e }
+        .conf-low    { background:#fee2e2;color:#991b1b }
+        .classif-status-badge {
+            display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;
+        }
+        .status-unclassified { background:#f1f5f9;color:#64748b }
+        .status-suggested    { background:#fef3c7;color:#92400e }
+        .status-confirmed    { background:#dbeafe;color:#1e40af }
+        .status-posted       { background:#dcfce7;color:#15803d }
+        .classif-type-pill {
+            display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;
+            font-weight:700;background:#ede9fe;color:#5b21b6;
+        }
+        .classif-action-btn {
+            border:none;border-radius:6px;padding:4px 10px;font-size:11px;
+            font-weight:600;cursor:pointer;transition:opacity .15s;white-space:nowrap;
+        }
+        .classif-action-btn:hover { opacity:.85 }
+        .btn-accept  { background:#10b981;color:#fff }
+        .btn-edit    { background:#0066cc;color:#fff }
+        .btn-ignore  { background:#f1f5f9;color:#64748b }
+        .btn-post    { background:#8b5cf6;color:#fff }
+        /* ===== End Classification Styles ===== */
+
         .transaction-form, .upload-form, .rule-form {
             background: white;
             padding: 24px;
@@ -297,6 +339,9 @@
             <button class="tab active" data-tab="transactions" data-testid="tab-transactions">
                 💸 Transacciones
             </button>
+            <button class="tab" data-tab="clasificacion" data-testid="tab-clasificacion">
+                🧠 Clasificación Inteligente
+            </button>
             <button class="tab" data-tab="reconciliation" data-testid="tab-reconciliation">
                 🔄 Reconciliación
             </button>
@@ -518,6 +563,168 @@
                     </tbody>
                 </table>
             </div>
+        </div>
+
+        <!-- Clasificación Inteligente Tab -->
+        <div class="tab-content" id="clasificacion" data-testid="tab-content-clasificacion">
+
+          <!-- Stats Row -->
+          <div id="classif-stats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px;padding:18px 0 0">
+            <div class="classif-stat-card" data-testid="stat-total">
+              <div class="csf-label">Total Movimientos</div>
+              <div class="csf-val" id="cs-total">—</div>
+            </div>
+            <div class="classif-stat-card" data-testid="stat-unclassified">
+              <div class="csf-label">Sin Clasificar</div>
+              <div class="csf-val" id="cs-unclassified" style="color:#ef4444">—</div>
+            </div>
+            <div class="classif-stat-card" data-testid="stat-suggested">
+              <div class="csf-label">Sugeridos</div>
+              <div class="csf-val" id="cs-suggested" style="color:#f59e0b">—</div>
+            </div>
+            <div class="classif-stat-card" data-testid="stat-confirmed">
+              <div class="csf-label">Confirmados</div>
+              <div class="csf-val" id="cs-confirmed" style="color:#0066cc">—</div>
+            </div>
+            <div class="classif-stat-card" data-testid="stat-posted">
+              <div class="csf-label">Registrados</div>
+              <div class="csf-val" id="cs-posted" style="color:#10b981">—</div>
+            </div>
+            <div class="classif-stat-card" style="grid-column:span 2">
+              <div class="csf-label">Score de Conciliación</div>
+              <div id="cs-score-bar-wrap" style="margin-top:6px">
+                <div style="display:flex;justify-content:space-between;font-size:11px;color:#64748b;margin-bottom:4px">
+                  <span id="cs-score-pct">0%</span><span id="cs-score-lbl">sin datos</span>
+                </div>
+                <div style="background:#f1f5f9;border-radius:4px;height:8px;overflow:hidden">
+                  <div id="cs-score-fill" style="height:100%;background:#10b981;border-radius:4px;width:0%;transition:width .4s"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Controls -->
+          <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid #e5e7eb">
+            <button class="btn-primary" onclick="runSmartClassify()" data-testid="button-smart-classify" style="font-size:13px;padding:8px 16px">
+              🧠 Clasificar Todo Automáticamente
+            </button>
+            <button class="btn-primary" onclick="postAllConfirmed()" data-testid="button-post-all" style="font-size:13px;padding:8px 16px;background:#10b981">
+              ✅ Registrar Confirmados en Contabilidad
+            </button>
+            <div style="flex:1"></div>
+            <div style="display:flex;gap:4px;background:#f1f5f9;padding:3px;border-radius:8px">
+              <button class="csf-filter active" onclick="setClassifFilter('all')" data-testid="filter-all">Todos</button>
+              <button class="csf-filter" onclick="setClassifFilter('unclassified')" data-testid="filter-unclassified">Sin clasificar</button>
+              <button class="csf-filter" onclick="setClassifFilter('suggested')" data-testid="filter-suggested">Sugeridos</button>
+              <button class="csf-filter" onclick="setClassifFilter('confirmed')" data-testid="filter-confirmed">Confirmados</button>
+              <button class="csf-filter" onclick="setClassifFilter('posted')" data-testid="filter-posted">Registrados</button>
+            </div>
+          </div>
+
+          <div id="classif-notice" style="display:none;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px 16px;font-size:13px;color:#1e40af;margin-bottom:12px"></div>
+
+          <!-- Classification Table -->
+          <div class="table-container" style="overflow-x:auto">
+            <table id="classif-table" style="min-width:900px">
+              <thead>
+                <tr>
+                  <th style="width:90px">Fecha</th>
+                  <th>Descripción</th>
+                  <th style="width:100px;text-align:right">Monto</th>
+                  <th style="width:60px;text-align:center">Tipo</th>
+                  <th style="min-width:200px">Sugerencia</th>
+                  <th style="min-width:180px">Impacto Contable</th>
+                  <th style="width:160px;text-align:center">Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="classif-tbody" data-testid="classif-table-body">
+                <tr><td colspan="7" class="empty-state">Cargando movimientos...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Edit Classification Modal -->
+        <div id="classif-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;align-items:center;justify-content:center">
+          <div style="background:#fff;border-radius:12px;width:min(560px,96vw);padding:24px;box-shadow:0 8px 32px rgba(0,0,0,.2);max-height:90vh;overflow-y:auto">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+              <h3 style="font-size:16px;font-weight:700;color:#1a1a2e">Clasificar Movimiento</h3>
+              <button onclick="closeClassifModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#94a3b8">×</button>
+            </div>
+            <div id="classif-modal-stmt" style="background:#f8fafc;border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px;border:1px solid #e5e7eb"></div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+              <div>
+                <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Tipo Contable *</label>
+                <select id="cm-type" data-testid="select-classif-type" style="width:100%;margin-top:4px;padding:7px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:13px">
+                  <option value="expense">Gasto</option>
+                  <option value="asset">Activo</option>
+                  <option value="inventory">Inventario</option>
+                  <option value="income">Ingreso</option>
+                  <option value="liability">Pasivo</option>
+                  <option value="transfer">Transferencia</option>
+                </select>
+              </div>
+              <div>
+                <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Categoría *</label>
+                <select id="cm-category" data-testid="select-classif-category" style="width:100%;margin-top:4px;padding:7px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:13px">
+                  <option value="fuel">Combustible</option>
+                  <option value="marina_fees">Marina / Docking</option>
+                  <option value="maintenance_parts">Mantenimiento / Reparación</option>
+                  <option value="cleaning">Limpieza</option>
+                  <option value="insurance">Seguro</option>
+                  <option value="office">Oficina / Suministros</option>
+                  <option value="inventory">Inventario</option>
+                  <option value="equipment">Equipo / Activo</option>
+                  <option value="boat_purchase">Compra de Barco</option>
+                  <option value="booking_income">Ingreso de Reserva</option>
+                  <option value="other_income">Otro Ingreso</option>
+                  <option value="bank_transfer">Transferencia Bancaria</option>
+                  <option value="other_expense">Otro Gasto</option>
+                </select>
+              </div>
+              <div>
+                <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Débito</label>
+                <input id="cm-debit" data-testid="input-classif-debit" type="text" style="width:100%;margin-top:4px;padding:7px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:13px" placeholder="Cuenta de débito">
+              </div>
+              <div>
+                <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Crédito</label>
+                <input id="cm-credit" data-testid="input-classif-credit" type="text" style="width:100%;margin-top:4px;padding:7px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:13px" placeholder="Cuenta de crédito">
+              </div>
+              <div>
+                <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Barco (opcional)</label>
+                <select id="cm-boat" data-testid="select-classif-boat" style="width:100%;margin-top:4px;padding:7px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:13px">
+                  <option value="">— Sin asignar —</option>
+                </select>
+              </div>
+              <div>
+                <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Confianza</label>
+                <select id="cm-confidence" data-testid="select-classif-confidence" style="width:100%;margin-top:4px;padding:7px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:13px">
+                  <option value="high">Alta</option>
+                  <option value="medium">Media</option>
+                  <option value="low">Baja</option>
+                </select>
+              </div>
+            </div>
+            <div style="margin-top:12px">
+              <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Notas</label>
+              <input id="cm-notes" data-testid="input-classif-notes" type="text" style="width:100%;margin-top:4px;padding:7px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:13px" placeholder="Notas opcionales...">
+            </div>
+
+            <!-- Accounting Preview -->
+            <div id="cm-preview" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px;margin-top:14px;font-size:12px">
+              <div style="font-weight:700;color:#065f46;margin-bottom:6px">Vista Previa — Impacto Contable</div>
+              <div style="display:flex;gap:16px">
+                <div><span style="color:#6b7280">Débito:</span> <span id="preview-debit" style="font-weight:600;color:#1a1a2e"></span></div>
+                <div><span style="color:#6b7280">Crédito:</span> <span id="preview-credit" style="font-weight:600;color:#1a1a2e"></span></div>
+              </div>
+            </div>
+
+            <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
+              <button onclick="closeClassifModal()" style="padding:8px 16px;border:1px solid #e5e7eb;border-radius:6px;background:#fff;cursor:pointer;font-size:13px">Cancelar</button>
+              <button onclick="confirmClassification()" data-testid="button-confirm-classif" style="padding:8px 18px;background:#0066cc;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600">Confirmar Clasificación</button>
+            </div>
+          </div>
         </div>
 
         <!-- Reconciliation Tab -->
@@ -1304,6 +1511,278 @@
                 btn.disabled = false; btn.textContent = orig;
             }
         }
+
+        // ═══════════════════════════════════════════════════════════════
+        // SMART CLASSIFICATION ENGINE — UI LOGIC
+        // ═══════════════════════════════════════════════════════════════
+        let classifData = [];
+        let classifFilter = 'all';
+        let classifEditId = null;
+
+        // Load on tab switch
+        document.querySelectorAll('.tab[data-tab="clasificacion"]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            loadClassifStats();
+            loadClassifStatements();
+            loadBoatsIntoClassifModal();
+          });
+        });
+
+        async function loadClassifStats() {
+          try {
+            const r = await fetch('/api/accounting/bank-statements/classification-stats');
+            if (!r.ok) return;
+            const d = await r.json();
+            document.getElementById('cs-total').textContent = d.total||0;
+            document.getElementById('cs-unclassified').textContent = d.unclassified||0;
+            document.getElementById('cs-suggested').textContent = d.suggested||0;
+            document.getElementById('cs-confirmed').textContent = d.confirmed||0;
+            document.getElementById('cs-posted').textContent = d.posted||0;
+            const pct = parseInt(d.pct_classified||0);
+            document.getElementById('cs-score-pct').textContent = pct + '%';
+            document.getElementById('cs-score-fill').style.width = pct + '%';
+            document.getElementById('cs-score-fill').style.background = pct>80?'#10b981':pct>40?'#f59e0b':'#ef4444';
+            const lbl = pct>80?'Excelente':pct>60?'Bueno':pct>30?'En progreso':'Requiere atención';
+            document.getElementById('cs-score-lbl').textContent = lbl;
+          } catch(e) { console.error('stats error', e); }
+        }
+
+        async function loadClassifStatements() {
+          const tbody = document.getElementById('classif-tbody');
+          tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Cargando...</td></tr>';
+          try {
+            let url = '/api/accounting/bank-statements?limit=500';
+            if (classifFilter !== 'all') url += `&status=${classifFilter}`;
+            const r = await fetch(url);
+            if (!r.ok) throw new Error(await r.text());
+            const data = await r.json();
+            classifData = (data.statements || data || []);
+
+            // Filter client-side too
+            let rows = classifData;
+            if (classifFilter === 'unclassified') rows = classifData.filter(s=>!s.classification_status||s.classification_status==='unclassified');
+            else if (classifFilter === 'suggested') rows = classifData.filter(s=>s.classification_status==='suggested');
+            else if (classifFilter === 'confirmed') rows = classifData.filter(s=>s.classification_status==='confirmed');
+            else if (classifFilter === 'posted') rows = classifData.filter(s=>s.classification_status==='posted');
+
+            if (!rows.length) {
+              tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No hay movimientos para este filtro.</td></tr>';
+              return;
+            }
+
+            tbody.innerHTML = rows.map(s => {
+              const status = s.classification_status || 'unclassified';
+              const amt = parseFloat(s.amount)||0;
+              const amtFmt = (amt<0?'-':'+')+'$'+Math.abs(amt).toFixed(2);
+              const amtColor = amt>=0?'#10b981':'#ef4444';
+              const typeLabel = {expense:'Gasto',asset:'Activo',inventory:'Inventario',income:'Ingreso',liability:'Pasivo',transfer:'Transferencia','':'—'}[s.accounting_type||'']||s.accounting_type||'—';
+              const catLabel = (s.category||'').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase()) || '—';
+              const confBadge = s.confidence_level
+                ? `<span class="conf-badge conf-${s.confidence_level}">${{high:'Alta',medium:'Media',low:'Baja'}[s.confidence_level]}</span>`
+                : '';
+              const statusBadge = `<span class="classif-status-badge status-${status}">${{unclassified:'Sin clasificar',suggested:'Sugerido',confirmed:'Confirmado',posted:'Registrado',ignored:'Ignorado'}[status]||status}</span>`;
+
+              const suggestion = s.accounting_type
+                ? `<div><span class="classif-type-pill">${typeLabel}</span> <span style="color:#64748b;font-size:11px">${catLabel}</span></div><div style="margin-top:3px">${confBadge}</div>`
+                : `<span style="color:#94a3b8;font-size:12px">Sin clasificar</span>`;
+
+              const preview = (s.suggested_account_debit||s.suggested_account_credit)
+                ? `<div style="font-size:11px;line-height:1.6">
+                     <div><span style="color:#6b7280">D:</span> <span style="color:#1a1a2e;font-weight:600">${s.suggested_account_debit||'—'}</span></div>
+                     <div><span style="color:#6b7280">C:</span> <span style="color:#1a1a2e;font-weight:600">${s.suggested_account_credit||'—'}</span></div>
+                   </div>`
+                : '<span style="color:#94a3b8;font-size:11px">—</span>';
+
+              const canPost = status==='confirmed';
+              const canAccept = status==='suggested'||status==='unclassified';
+
+              const actions = `
+                <div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:center">
+                  ${canAccept?`<button class="classif-action-btn btn-accept" onclick="acceptClassif('${s.id}')" data-testid="accept-${s.id}">✓ Aceptar</button>`:''}
+                  <button class="classif-action-btn btn-edit" onclick="openClassifModal('${s.id}')" data-testid="edit-${s.id}">✏ Editar</button>
+                  ${canPost?`<button class="classif-action-btn btn-post" onclick="postStatement('${s.id}')" data-testid="post-${s.id}">📒 Registrar</button>`:''}
+                  ${status!=='posted'&&status!=='ignored'?`<button class="classif-action-btn btn-ignore" onclick="ignoreClassif('${s.id}')" data-testid="ignore-${s.id}">✕</button>`:''}
+                </div>`;
+
+              return `<tr data-id="${s.id}">
+                <td style="font-size:12px;color:#64748b">${(s.statement_date||'').slice(0,10)}</td>
+                <td>
+                  <div style="font-weight:600;font-size:13px;color:#1a1a2e;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${s.description}">${s.description||'—'}</div>
+                  <div style="margin-top:3px">${statusBadge}</div>
+                </td>
+                <td style="text-align:right;font-weight:700;font-size:14px;color:${amtColor}">${amtFmt}</td>
+                <td style="text-align:center;font-size:11px;color:#64748b;text-transform:uppercase">${s.transaction_type||'—'}</td>
+                <td>${suggestion}</td>
+                <td>${preview}</td>
+                <td style="text-align:center">${actions}</td>
+              </tr>`;
+            }).join('');
+          } catch(e) {
+            tbody.innerHTML = `<tr><td colspan="7" class="empty-state" style="color:#ef4444">Error: ${e.message}</td></tr>`;
+          }
+        }
+
+        function setClassifFilter(f) {
+          classifFilter = f;
+          document.querySelectorAll('.csf-filter').forEach(b => {
+            b.classList.toggle('active', b.getAttribute('onclick').includes(`'${f}'`));
+          });
+          loadClassifStatements();
+        }
+
+        async function runSmartClassify() {
+          const btn = document.querySelector('[data-testid="button-smart-classify"]');
+          const orig = btn.textContent;
+          btn.textContent = '⏳ Clasificando...'; btn.disabled = true;
+          try {
+            const r = await fetch('/api/accounting/bank-statements/smart-classify', { method:'POST' });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.error||'Error');
+            showNotice(`✅ ${d.classified} movimientos clasificados automáticamente.`,'green');
+            await loadClassifStats();
+            await loadClassifStatements();
+          } catch(e) {
+            showNotice('Error: '+e.message,'red');
+          } finally {
+            btn.textContent = orig; btn.disabled = false;
+          }
+        }
+
+        async function acceptClassif(id) {
+          try {
+            const r = await fetch(`/api/accounting/bank-statements/${id}/classify`, {
+              method:'PATCH', headers:{'Content-Type':'application/json'},
+              body: JSON.stringify({ status:'confirmed' })
+            });
+            if (!r.ok) throw new Error(await r.text());
+            showNotice('Clasificación confirmada.','green');
+            await loadClassifStats();
+            await loadClassifStatements();
+          } catch(e) { showNotice('Error: '+e.message,'red'); }
+        }
+
+        async function ignoreClassif(id) {
+          try {
+            await fetch(`/api/accounting/bank-statements/${id}/classify`, {
+              method:'PATCH', headers:{'Content-Type':'application/json'},
+              body: JSON.stringify({ status:'ignored' })
+            });
+            await loadClassifStats();
+            await loadClassifStatements();
+          } catch(e) { showNotice('Error: '+e.message,'red'); }
+        }
+
+        async function postStatement(id) {
+          try {
+            const r = await fetch(`/api/accounting/bank-statements/${id}/post`, { method:'POST' });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.error||'Error');
+            showNotice('✅ Movimiento registrado en contabilidad.','green');
+            await loadClassifStats();
+            await loadClassifStatements();
+          } catch(e) { showNotice('Error: '+e.message,'red'); }
+        }
+
+        async function postAllConfirmed() {
+          const confirmed = classifData.filter(s=>s.classification_status==='confirmed');
+          if (!confirmed.length) { showNotice('No hay movimientos confirmados para registrar.','orange'); return; }
+          const btn = document.querySelector('[data-testid="button-post-all"]');
+          const orig = btn.textContent; btn.textContent = '⏳ Registrando...'; btn.disabled = true;
+          let count = 0;
+          for (const s of confirmed) {
+            try {
+              const r = await fetch(`/api/accounting/bank-statements/${s.id}/post`, { method:'POST' });
+              if (r.ok) count++;
+            } catch(_) {}
+          }
+          btn.textContent = orig; btn.disabled = false;
+          showNotice(`✅ ${count} movimientos registrados en contabilidad.`,'green');
+          await loadClassifStats();
+          await loadClassifStatements();
+        }
+
+        async function loadBoatsIntoClassifModal() {
+          try {
+            const r = await fetch('/api/boats');
+            if (!r.ok) return;
+            const boats = await r.json();
+            const sel = document.getElementById('cm-boat');
+            sel.innerHTML = '<option value="">— Sin asignar —</option>' +
+              boats.map(b=>`<option value="${b.id}">${b.name}</option>`).join('');
+          } catch(_) {}
+        }
+
+        function openClassifModal(id) {
+          const s = classifData.find(x=>x.id===id);
+          if (!s) return;
+          classifEditId = id;
+          document.getElementById('cm-type').value = s.accounting_type||'expense';
+          document.getElementById('cm-category').value = s.category||'other_expense';
+          document.getElementById('cm-confidence').value = s.confidence_level||'medium';
+          document.getElementById('cm-debit').value = s.suggested_account_debit||'';
+          document.getElementById('cm-credit').value = s.suggested_account_credit||'';
+          document.getElementById('cm-boat').value = s.boat_id||'';
+          document.getElementById('cm-notes').value = s.notes||'';
+          const amt = parseFloat(s.amount||0);
+          document.getElementById('classif-modal-stmt').innerHTML =
+            `<div style="display:flex;justify-content:space-between;align-items:center">
+               <div><div style="font-weight:700;color:#1a1a2e">${s.description}</div>
+                    <div style="color:#64748b;font-size:11px;margin-top:2px">${(s.statement_date||'').slice(0,10)} • ${s.transaction_type||''}</div></div>
+               <div style="font-size:18px;font-weight:800;color:${amt>=0?'#10b981':'#ef4444'}">${amt>=0?'+':''}\$${Math.abs(amt).toFixed(2)}</div>
+             </div>`;
+          updateClassifPreview();
+          document.getElementById('classif-modal').style.display = 'flex';
+        }
+
+        function closeClassifModal() {
+          document.getElementById('classif-modal').style.display = 'none';
+          classifEditId = null;
+        }
+
+        function updateClassifPreview() {
+          document.getElementById('preview-debit').textContent = document.getElementById('cm-debit').value||'—';
+          document.getElementById('preview-credit').textContent = document.getElementById('cm-credit').value||'—';
+        }
+        document.getElementById('cm-debit')?.addEventListener('input', updateClassifPreview);
+        document.getElementById('cm-credit')?.addEventListener('input', updateClassifPreview);
+
+        async function confirmClassification() {
+          if (!classifEditId) return;
+          const payload = {
+            accounting_type: document.getElementById('cm-type').value,
+            category:        document.getElementById('cm-category').value,
+            confidence_level:document.getElementById('cm-confidence').value,
+            boat_id:         document.getElementById('cm-boat').value||null,
+            suggested_account_debit:  document.getElementById('cm-debit').value,
+            suggested_account_credit: document.getElementById('cm-credit').value,
+            notes:           document.getElementById('cm-notes').value,
+            status: 'confirmed'
+          };
+          try {
+            const r = await fetch(`/api/accounting/bank-statements/${classifEditId}/classify`, {
+              method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)
+            });
+            if (!r.ok) throw new Error(await r.text());
+            closeClassifModal();
+            showNotice('Clasificación confirmada y patrón aprendido.','green');
+            await loadClassifStats();
+            await loadClassifStatements();
+          } catch(e) { showNotice('Error: '+e.message,'red'); }
+        }
+
+        function showNotice(msg, color) {
+          const el = document.getElementById('classif-notice');
+          const bgMap = {green:'#f0fdf4',red:'#fef2f2',orange:'#fffbeb'};
+          const bdMap = {green:'#bbf7d0',red:'#fecaca',orange:'#fde68a'};
+          const txMap = {green:'#065f46',red:'#991b1b',orange:'#92400e'};
+          el.style.background = bgMap[color]||bgMap.green;
+          el.style.borderColor = bdMap[color]||bdMap.green;
+          el.style.color = txMap[color]||txMap.green;
+          el.textContent = msg;
+          el.style.display = 'block';
+          setTimeout(()=>{ el.style.display='none'; }, 4000);
+        }
+
     </script>
 
     <!-- ══ EDIT TRANSACTION MODAL ══════════════════════════════════════════ -->

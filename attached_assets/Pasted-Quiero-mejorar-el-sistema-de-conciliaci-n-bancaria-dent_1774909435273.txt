@@ -1,0 +1,287 @@
+Quiero mejorar el sistema de conciliación bancaria dentro de “gestión” para convertirlo en un motor inteligente de clasificación contable asistida.
+
+No quiero una app nueva. Debe integrarse completamente con el sistema existente.
+
+OBJETIVO
+Permitir subir estados bancarios (PDF, CSV, OFX), extraer movimientos y clasificarlos automáticamente con sugerencias inteligentes, permitiendo luego validación manual antes de impactar la contabilidad.
+
+El sistema debe aprender patrones simples y ayudar a clasificar correctamente entre:
+- gastos
+- activos
+- inventario
+- compras de bote
+- ingresos
+- pasivos
+- transferencias
+
+==================================================
+1. CAPA DE INTELIGENCIA (CLASIFICACIÓN AUTOMÁTICA)
+==================================================
+
+Cada movimiento bancario debe pasar por un motor de sugerencias que analice:
+
+- descripción del banco
+- monto
+- tipo (débito/crédito)
+- frecuencia
+- historial previo del sistema
+- proveedor detectado
+- palabras clave
+
+El sistema debe sugerir automáticamente:
+
+- tipo contable:
+  - gasto
+  - activo
+  - inventario
+  - ingreso
+  - pasivo
+  - transferencia
+
+- categoría:
+  - combustible
+  - marina
+  - mantenimiento
+  - oficina
+  - inventario
+  - equipo
+  - compra de bote
+  - etc.
+
+- proveedor sugerido
+- barco sugerido si aplica
+
+==================================================
+2. REGLAS INTELIGENTES (CORE)
+==================================================
+
+Implementar reglas básicas de clasificación:
+
+A. GASTOS OPERATIVOS
+Si contiene:
+- fuel, gas, diesel → combustible
+- marina, dock → marina
+- repair, service → mantenimiento/reparación
+- cleaning → limpieza
+- office, supplies → oficina
+
+B. ACTIVOS
+Si contiene:
+- equipment, radio, device → activo
+- large amount + one-time → sugerir activo
+- purchase asset-like → activo
+
+C. INVENTARIO
+Si contiene:
+- bulk purchase
+- repetición de items
+- proveedor tipo Amazon, Home Depot → sugerir inventario o equipo
+
+D. COMPRA DE BOTE
+Si:
+- monto alto
+- descripción contiene boat, yacht, hull, model
+→ sugerir activo fijo tipo barco
+
+E. INGRESOS
+Si:
+- depósito positivo
+- descripción contiene cliente, booking, payment
+→ sugerir ingreso o depósito diferido
+
+F. TRANSFERENCIAS
+Si:
+- mismo monto aparece en otra cuenta
+→ sugerir transferencia
+
+==================================================
+3. MOTOR DE APRENDIZAJE SIMPLE
+==================================================
+
+El sistema debe recordar decisiones previas:
+
+Ejemplo:
+- si “Shell Miami” fue clasificado como combustible → sugerirlo automáticamente la próxima vez
+- si “Amazon” fue dividido entre inventario y oficina → sugerir ambas opciones
+
+Guardar:
+- patrón de descripción
+- categoría elegida
+- tipo contable
+- barco asociado
+
+==================================================
+4. UI DE CLASIFICACIÓN INTELIGENTE
+==================================================
+
+Cada movimiento debe mostrar:
+
+- datos originales del banco
+- sugerencia automática destacada
+- nivel de confianza:
+  - alta
+  - media
+  - baja
+
+Ejemplo:
+“Sugerencia: Gasto → Combustible (Confianza alta)”
+
+Permitir:
+- aceptar sugerencia con 1 click
+- editar antes de confirmar
+
+==================================================
+5. DETECCIÓN DE ERRORES Y ALERTAS
+==================================================
+
+El sistema debe detectar:
+
+- montos altos clasificados como gasto → sugerir revisar como activo
+- movimientos duplicados
+- gastos sin barco cuando deberían tener uno
+- activos mal clasificados como gasto
+- ingresos que parecen depósitos diferidos
+- inconsistencias con historial
+
+==================================================
+6. CLASIFICACIÓN MULTINIVEL
+==================================================
+
+Cada movimiento debe permitir:
+
+Nivel 1:
+- tipo contable (gasto, activo, inventario, etc.)
+
+Nivel 2:
+- categoría
+
+Nivel 3:
+- subcategoría opcional
+
+Nivel 4:
+- barco (si aplica)
+
+Nivel 5:
+- proveedor / cliente / broker
+
+==================================================
+7. PREVIEW CONTABLE (MUY IMPORTANTE)
+==================================================
+
+Antes de confirmar, mostrar:
+
+“Impacto contable estimado”
+
+Ejemplo:
+- Debit: Fuel Expense
+- Credit: Bank
+
+o
+
+- Debit: Equipment Asset
+- Credit: Bank
+
+Esto evita errores graves.
+
+==================================================
+8. AUTO-ASIGNACIÓN A MÓDULOS
+==================================================
+
+Cuando confirmo:
+
+- gasto → va a contabilidad > gastos
+- activo → va a módulo de activos
+- inventario → va a inventario/activos
+- ingreso → va a ingresos
+- pasivo → cuentas por pagar
+- transferencia → entre cuentas
+
+==================================================
+9. CONCILIACIÓN INTELIGENTE
+==================================================
+
+Crear estado:
+
+- sin clasificar
+- sugerido
+- clasificado
+- conciliado
+
+Mostrar progreso:
+
+- % clasificado
+- % conciliado
+- faltantes
+
+==================================================
+10. SCORE DE CONFIANZA GLOBAL
+==================================================
+
+Mostrar:
+
+- “Nivel de conciliación del estado bancario”
+
+Ejemplo:
+- 92% conciliado
+- 8% pendiente
+
+==================================================
+11. AUTOMATIZACIÓN PROGRESIVA
+==================================================
+
+Si confianza alta + patrón repetido:
+
+→ permitir “auto-clasificar”
+
+pero siempre con opción de revisión.
+
+==================================================
+12. CASOS AVANZADOS
+==================================================
+
+Soportar:
+
+- un movimiento dividido en múltiples categorías
+- un movimiento asignado a varios barcos
+- un movimiento con parte gasto y parte activo
+
+==================================================
+13. VALIDACIÓN FINAL
+==================================================
+
+Pantalla final tipo checklist:
+
+- todos los movimientos asignados
+- sin duplicados
+- sin inconsistencias
+- total banco vs total sistema igual
+
+==================================================
+14. MVP PREMIUM OBLIGATORIO
+==================================================
+
+Implementar primero:
+
+1. sugerencias automáticas por palabras clave
+2. memoria de clasificaciones previas
+3. UI con sugerencia + confianza
+4. preview contable
+5. clasificación a módulos correctos
+6. alertas básicas
+7. conciliación visible
+8. score de progreso
+
+==================================================
+15. RESULTADO FINAL
+==================================================
+
+Debo poder:
+
+- subir un PDF bancario
+- ver movimientos
+- recibir sugerencias inteligentes
+- clasificar rápido sin pensar todo desde cero
+- evitar errores contables
+- detectar inconsistencias
+- confirmar que todo quedó bien asignado
+- tener confianza en la contabilidad del sistema
