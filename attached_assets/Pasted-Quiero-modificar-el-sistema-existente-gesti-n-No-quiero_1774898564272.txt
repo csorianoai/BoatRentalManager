@@ -1,0 +1,314 @@
+Quiero modificar el sistema existente “gestión”. No quiero una app nueva.
+
+OBJETIVO
+Cuando en “Nueva Transacción” se seleccione la cuenta:
+- 2500 - Deferred Booking Deposits
+
+el formulario debe activar un flujo especial para depósitos de reservas futuras.
+
+Ese flujo debe permitir capturar toda la información del booking desde el inicio, para evitar repetir tareas después y para que el sistema pueda convertir automáticamente ese depósito en ingreso de renta del bote cuando llegue o pase la fecha del booking.
+
+==================================================
+1. COMPORTAMIENTO ESPECIAL AL SELECCIONAR LA CUENTA
+==================================================
+
+Si la cuenta seleccionada es:
+- 2500 - Deferred Booking Deposits
+
+entonces mostrar campos adicionales obligatorios:
+
+- nombre del cliente / persona que hace el depósito
+- teléfono opcional
+- email opcional
+- fecha del booking
+- monto total del booking
+- monto depositado
+- bote seleccionado
+- horas rentadas
+- tipo de servicio opcional
+- referencia o notas opcional
+
+El campo “Monto” actual debe seguir existiendo, pero debe representar el depósito recibido.
+
+==================================================
+2. SELECCIÓN DEL BOTE
+==================================================
+
+Debe existir selector de bote conectado con la data real de barcos del sistema.
+
+Campos:
+- boat_id
+- boat_name
+
+OBJETIVO
+Que el depósito quede vinculado desde el inicio al bote correcto.
+
+==================================================
+3. CUENTA POR COBRAR AUTOMÁTICA
+==================================================
+
+Cuando se registre un depósito en Deferred Booking Deposits, el sistema debe calcular automáticamente el saldo pendiente del booking:
+
+saldo_pendiente = monto_total_booking - monto_depositado
+
+Si el saldo pendiente es mayor que 0:
+- crear automáticamente una cuenta por cobrar para la fecha del booking
+- vincularla al cliente
+- vincularla al bote
+- vincularla al depósito original
+
+CUENTA SUGERIDA
+- Accounts Receivable / Cuentas por Cobrar
+
+DATOS DE ESA CUENTA POR COBRAR
+- cliente
+- bote
+- fecha del booking
+- saldo pendiente
+- horas rentadas
+- referencia del depósito
+- estado: pendiente
+
+==================================================
+4. AUTOMATIZACIÓN CUANDO EL BOOKING YA PASÓ
+==================================================
+
+Cuando llegue la fecha del booking o cuando el booking sea marcado como realizado/completado, el sistema debe poder hacer automáticamente la reclasificación contable necesaria.
+
+OBJETIVO
+Convertir el depósito y el saldo pendiente en ingreso real del bote rentado.
+
+LÓGICA CONTABLE ESPERADA
+
+A. AL MOMENTO DEL DEPÓSITO
+- Debit: Cash / Banco
+- Credit: Deferred Booking Deposits
+
+B. SI HAY SALDO PENDIENTE
+- crear cuenta por cobrar por el saldo
+
+C. CUANDO EL BOOKING SE REALIZA
+mover el depósito a ingreso real:
+- Debit: Deferred Booking Deposits
+- Credit: Booking Revenue
+
+y si el saldo pendiente fue cobrado:
+- Debit: Cash / Banco
+- Credit: Accounts Receivable
+
+o si todavía no se ha cobrado:
+- mantener cuenta por cobrar abierta hasta pago
+
+==================================================
+5. INGRESO POR RENTA DEL BOTE
+==================================================
+
+Cuando el booking pase o se marque como completado, el sistema debe generar el ingreso asociado al bote específico.
+
+Ese ingreso debe quedar relacionado con:
+- bote
+- cliente
+- fecha del booking
+- horas rentadas
+- monto total del booking
+- depósito aplicado
+- saldo pendiente o cobrado
+- referencia del booking
+
+OBJETIVO
+Que luego podamos analizar:
+- ingresos por bote
+- horas rentadas por bote
+- bookings por bote
+- depósitos aplicados
+- saldos pendientes
+
+==================================================
+6. NO REPETIR TAREAS
+==================================================
+
+La información capturada al crear el depósito debe reutilizarse automáticamente después.
+
+No quiero volver a escribir:
+- cliente
+- bote
+- fecha del booking
+- horas
+- monto total
+
+Esa data debe alimentar automáticamente:
+- depósito diferido
+- cuenta por cobrar
+- ingreso por booking
+- historial del bote
+- reportes futuros
+
+==================================================
+7. FLUJO RECOMENDADO
+==================================================
+
+Quiero este flujo:
+
+1. Crear nueva transacción
+2. Seleccionar cuenta: 2500 - Deferred Booking Deposits
+3. El sistema abre campos especiales de booking
+4. Ingreso:
+   - nombre del cliente
+   - fecha del booking
+   - monto total del booking
+   - depósito recibido
+   - bote
+   - horas rentadas
+5. Guardar
+6. El sistema:
+   - registra el depósito en Deferred Booking Deposits
+   - crea cuenta por cobrar por el saldo pendiente si aplica
+   - guarda toda la relación con el bote y cliente
+7. Cuando el booking pase o se complete:
+   - aplica automáticamente el depósito a ingreso
+   - genera ingreso por renta del bote
+   - mantiene o cierra cuenta por cobrar según cobro real
+
+==================================================
+8. CAMPOS Y RELACIONES NECESARIAS
+==================================================
+
+Agregar o confirmar estos campos:
+
+TRANSACTION / DEPOSIT
+- booking_id opcional
+- customer_name
+- customer_phone opcional
+- customer_email opcional
+- booking_date
+- booking_total_amount
+- deposit_amount
+- boat_id
+- hours_rented
+- deposit_status
+- linked_receivable_id opcional
+- linked_revenue_id opcional
+
+BOOKING / BOOKING_LEDGER opcional
+- id
+- customer_name
+- boat_id
+- booking_date
+- hours_rented
+- total_amount
+- deposit_amount
+- balance_due
+- status
+
+ACCOUNTS_RECEIVABLE
+- id
+- customer_name
+- boat_id
+- due_date
+- amount
+- booking_id
+- status
+
+BOOKING_REVENUE
+- id
+- boat_id
+- booking_date
+- hours_rented
+- amount
+- booking_id
+- status
+
+==================================================
+9. OPCIÓN MANUAL + AUTOMÁTICA
+==================================================
+
+Necesito ambas opciones:
+
+- automática al llegar la fecha del booking
+- manual con botón tipo:
+  - “Aplicar depósito”
+  - “Marcar booking como completado”
+  - “Convertir a ingreso”
+
+Esto es por si necesitamos control manual.
+
+==================================================
+10. INTERFAZ
+==================================================
+
+En el formulario de nueva transacción:
+- si la cuenta es Deferred Booking Deposits, mostrar sección especial “Datos del Booking”
+
+En el listado o detalle:
+- mostrar cliente
+- bote
+- fecha del booking
+- horas
+- monto total
+- depósito
+- saldo pendiente
+- estado
+
+Agregar botones:
+- Ver booking
+- Aplicar depósito
+- Marcar completado
+- Ver cuenta por cobrar
+
+==================================================
+11. REPORTES Y ANÁLISIS
+==================================================
+
+Quiero que esta data sirva para:
+- ingresos por bote
+- horas rentadas por bote
+- depósitos pendientes de aplicar
+- cuentas por cobrar por booking
+- bookings futuros por bote
+- bookings completados por bote
+
+==================================================
+12. REGLAS
+==================================================
+
+- no crear app nueva
+- integrar dentro de “gestión”
+- mantener UI consistente
+- no usar librerías pesadas
+- código simple y modular
+- optimizado para bajo consumo en Replit
+- evitar duplicar registros
+- reutilizar la data del depósito para todos los pasos posteriores
+
+==================================================
+13. MVP OBLIGATORIO
+==================================================
+
+Implementar primero:
+1. campos especiales al seleccionar Deferred Booking Deposits
+2. nombre del cliente
+3. fecha del booking
+4. monto total del booking
+5. selección de bote
+6. horas rentadas
+7. creación automática de cuenta por cobrar por el saldo
+8. relación con el bote
+9. botón manual para aplicar depósito a ingreso
+10. generación del ingreso por renta del bote usando esa data
+
+==================================================
+14. ENTREGABLE
+==================================================
+
+Necesito:
+- formulario inteligente para Deferred Booking Deposits
+- captura completa de datos del booking
+- cuenta por cobrar automática
+- vínculo con bote
+- vínculo con horas rentadas
+- conversión a ingreso sin repetir datos
+- integración contable correcta
+- análisis posterior por bote e ingresos
+
+RESULTADO FINAL
+Debo poder registrar un depósito de booking, indicar cliente, bote, fecha, horas y monto total, crear automáticamente el saldo pendiente como cuenta por cobrar, y cuando el booking pase convertir ese depósito en ingreso por renta del bote específico sin volver a cargar la misma información.

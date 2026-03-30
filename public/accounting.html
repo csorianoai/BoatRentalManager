@@ -334,12 +334,12 @@
                         </div>
                         <div class="form-group">
                             <label>Cuenta *</label>
-                            <select id="txAccount" required data-testid="select-tx-account">
+                            <select id="txAccount" required data-testid="select-tx-account" onchange="onTxAccountChange()">
                                 <option value="">Seleccionar cuenta...</option>
                             </select>
                         </div>
                         <div class="form-group">
-                            <label>Monto *</label>
+                            <label id="txAmountLabel">Monto *</label>
                             <input type="number" id="txAmount" step="0.01" required data-testid="input-tx-amount">
                         </div>
                         <div class="form-group" style="grid-column: 1 / -1;">
@@ -347,7 +347,69 @@
                             <input type="text" id="txDescription" data-testid="input-tx-description">
                         </div>
                     </div>
-                    <button type="submit" class="btn-primary" data-testid="button-create-transaction">
+
+                    <!-- BOOKING DEPOSIT SECTION — shown only when account 2500 is selected -->
+                    <div id="booking-deposit-section" style="display:none;border:2px solid #0ea5e9;border-radius:10px;padding:18px 20px;margin-top:14px;background:#f0f9ff;">
+                        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+                            <div style="font-size:20px;">🔐</div>
+                            <div>
+                                <div style="font-weight:700;font-size:15px;color:#0369a1;">Datos del Booking — Depósito Diferido</div>
+                                <div style="font-size:12px;color:#0284c7;">Registra todos los datos ahora. El sistema crea el saldo pendiente automáticamente.</div>
+                            </div>
+                        </div>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>Cliente <span style="color:#dc3545">*</span></label>
+                                <input type="text" id="bd-client-name" placeholder="Nombre del cliente" data-testid="input-bd-client-name">
+                            </div>
+                            <div class="form-group">
+                                <label>Fecha del Booking <span style="color:#dc3545">*</span></label>
+                                <input type="date" id="bd-booking-date" data-testid="input-bd-booking-date">
+                            </div>
+                            <div class="form-group">
+                                <label>Monto Total del Booking ($) <span style="color:#dc3545">*</span></label>
+                                <input type="number" id="bd-total-amount" step="0.01" min="0" placeholder="Monto total acordado" data-testid="input-bd-total-amount" oninput="updateBdBalance()">
+                            </div>
+                            <div class="form-group">
+                                <label>Barco <span style="color:#dc3545">*</span></label>
+                                <select id="bd-boat-id" data-testid="select-bd-boat">
+                                    <option value="">-- Seleccionar barco --</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Horas Rentadas</label>
+                                <input type="number" id="bd-hours" step="0.5" min="0" placeholder="ej: 4" data-testid="input-bd-hours">
+                            </div>
+                            <div class="form-group">
+                                <label>Tipo de Servicio</label>
+                                <select id="bd-service-type" data-testid="select-bd-service-type">
+                                    <option value="">Sin especificar</option>
+                                    <option value="tour">Tour</option>
+                                    <option value="rental">Renta</option>
+                                    <option value="fishing">Pesca</option>
+                                    <option value="event">Evento especial</option>
+                                    <option value="charter">Charter privado</option>
+                                    <option value="other">Otro</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Teléfono (opcional)</label>
+                                <input type="text" id="bd-phone" placeholder="+1 787 000 0000" data-testid="input-bd-phone">
+                            </div>
+                            <div class="form-group">
+                                <label>Email (opcional)</label>
+                                <input type="email" id="bd-email" placeholder="cliente@email.com" data-testid="input-bd-email">
+                            </div>
+                        </div>
+                        <!-- Balance due preview -->
+                        <div id="bd-balance-preview" style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:12px 16px;margin-top:10px;display:none;">
+                            <div style="font-size:12px;color:#856404;font-weight:700;text-transform:uppercase;margin-bottom:4px;">Saldo pendiente que quedará como Cuenta por Cobrar</div>
+                            <div style="font-size:22px;font-weight:800;color:#b45309;" id="bd-balance-amount">$0.00</div>
+                            <div style="font-size:11px;color:#92400e;margin-top:2px;">Se creará automáticamente una Cuenta por Cobrar por este monto</div>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn-primary" id="tx-submit-btn" data-testid="button-create-transaction" style="margin-top:14px;">
                         ✅ Crear Transacción
                     </button>
                 </form>
@@ -543,7 +605,7 @@
                         </div>
                         <div class="form-group">
                             <label>Monto (USD) <span style="color:#dc3545">*</span></label>
-                            <input type="number" id="dep-amount" step="0.01" min="0" placeholder="0.00" required data-testid="input-dep-amount">
+                            <input type="number" id="dep-amount" step="0.01" min="0" placeholder="0.00" required data-testid="input-dep-amount" oninput="updateDepBalance()">
                         </div>
                         <div class="form-group">
                             <label>Fecha del depósito <span style="color:#dc3545">*</span></label>
@@ -574,6 +636,39 @@
                         <div class="form-group">
                             <label>Teléfono del cliente</label>
                             <input type="text" id="dep-phone" placeholder="+1 787 000 0000" data-testid="input-dep-phone">
+                        </div>
+                        <!-- Booking detail fields -->
+                        <div class="form-group" style="border-top:1px dashed #ddd;padding-top:12px;grid-column:1/-1;margin-top:4px">
+                            <div style="font-size:12px;font-weight:700;color:#0369a1;text-transform:uppercase;margin-bottom:8px">Datos del Booking (opcional pero recomendado)</div>
+                        </div>
+                        <div class="form-group">
+                            <label>Fecha del Booking</label>
+                            <input type="date" id="dep-booking-date" data-testid="input-dep-booking-date">
+                        </div>
+                        <div class="form-group">
+                            <label>Monto Total del Booking ($)</label>
+                            <input type="number" id="dep-total-amount" step="0.01" min="0" placeholder="Total acordado con cliente" data-testid="input-dep-total-amount" oninput="updateDepBalance()">
+                        </div>
+                        <div class="form-group">
+                            <label>Horas Rentadas</label>
+                            <input type="number" id="dep-hours" step="0.5" min="0" placeholder="ej: 4" data-testid="input-dep-hours">
+                        </div>
+                        <div class="form-group">
+                            <label>Tipo de Servicio</label>
+                            <select id="dep-service-type" data-testid="select-dep-service-type">
+                                <option value="">Sin especificar</option>
+                                <option value="tour">Tour</option>
+                                <option value="rental">Renta</option>
+                                <option value="fishing">Pesca</option>
+                                <option value="event">Evento especial</option>
+                                <option value="charter">Charter privado</option>
+                                <option value="other">Otro</option>
+                            </select>
+                        </div>
+                        <!-- Balance due preview -->
+                        <div id="dep-balance-preview" style="display:none;background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:10px 16px;grid-column:1/-1">
+                            <div style="font-size:12px;color:#856404;font-weight:700">Saldo pendiente (se crea cuenta por cobrar automáticamente)</div>
+                            <div style="font-size:20px;font-weight:800;color:#b45309;margin-top:2px" id="dep-balance-amount">$0.00</div>
                         </div>
                         <div class="form-group" style="grid-column: 1 / -1;">
                             <label>Notas</label>
@@ -631,19 +726,59 @@
                 <table>
                     <thead>
                         <tr>
-                            <th>Fecha</th>
+                            <th>Fecha Dep.</th>
+                            <th>Fecha Booking</th>
                             <th>Cliente</th>
-                            <th>Barco</th>
-                            <th>Referencia</th>
-                            <th>Monto</th>
+                            <th>Barco / Servicio</th>
+                            <th>Monto Dep.</th>
+                            <th>Total Booking</th>
+                            <th>Saldo Pend.</th>
                             <th>Estado</th>
                             <th>Acciones</th>
                         </tr>
                     </thead>
                     <tbody id="depositsTable" data-testid="table-deposits">
-                        <tr><td colspan="7" class="empty-state">Cargando...</td></tr>
+                        <tr><td colspan="9" class="empty-state">Cargando...</td></tr>
                     </tbody>
                 </table>
+            </div>
+
+            <!-- ── CUENTAS POR COBRAR ─────────────────────────────── -->
+            <div style="margin-top:32px">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+                    <div>
+                        <h3 style="margin:0;font-size:16px;font-weight:700;color:#1e293b">📋 Cuentas por Cobrar (Saldos Pendientes)</h3>
+                        <div style="font-size:12px;color:#64748b;margin-top:2px">Saldos de booking que aún deben cobrarse al cliente en la fecha del viaje</div>
+                    </div>
+                    <div style="display:flex;gap:8px;align-items:center">
+                        <select id="ar-filter-status" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px" onchange="loadReceivables()" data-testid="select-ar-filter-status">
+                            <option value="pending">Pendientes</option>
+                            <option value="">Todos</option>
+                            <option value="paid">Cobrados</option>
+                            <option value="cancelled">Cancelados</option>
+                        </select>
+                        <button onclick="loadReceivables()" class="btn-primary" style="padding:6px 14px;font-size:13px" data-testid="button-refresh-ar">Actualizar</button>
+                    </div>
+                </div>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Vencimiento</th>
+                                <th>Cliente</th>
+                                <th>Barco</th>
+                                <th>Saldo</th>
+                                <th>Estado</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="receivablesTable" data-testid="table-receivables">
+                            <tr><td colspan="6" class="empty-state">Cargando...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <!-- AR KPI -->
+                <div style="margin-top:12px;display:flex;gap:16px;flex-wrap:wrap" id="ar-kpis"></div>
             </div>
         </div>
 
@@ -717,6 +852,89 @@
                 }
             } catch(e) { /* non-fatal */ }
             await loadDeposits();
+            await loadReceivables();
+        }
+
+        // ── CUENTAS POR COBRAR ────────────────────────────────────────
+        let allReceivables = [];
+
+        async function loadReceivables() {
+            const status = document.getElementById('ar-filter-status')?.value ?? 'pending';
+            const params = new URLSearchParams();
+            if (status) params.set('status', status);
+            try {
+                const res = await fetch('/api/booking-receivables?' + params.toString());
+                if (!res.ok) throw new Error('Error');
+                allReceivables = await res.json();
+                renderReceivables();
+            } catch(e) { console.error('Error loading receivables:', e); }
+        }
+
+        function renderReceivables() {
+            const tbody = document.getElementById('receivablesTable');
+            if (!tbody) return;
+            const kpiDiv = document.getElementById('ar-kpis');
+            if (!allReceivables.length) {
+                tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No hay cuentas por cobrar pendientes</td></tr>';
+                if (kpiDiv) kpiDiv.innerHTML = '';
+                return;
+            }
+            const esc = s => { const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; };
+            const arBadge = s => ({
+                pending:   '<span style="background:#fef3c7;color:#92400e;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:700">⏳ Pendiente</span>',
+                paid:      '<span style="background:#d4edda;color:#155724;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:700">✅ Cobrado</span>',
+                cancelled: '<span style="background:#f8d7da;color:#721c24;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:700">Cancelado</span>',
+            }[s] || s);
+            const today = new Date(); today.setHours(0,0,0,0);
+            tbody.innerHTML = allReceivables.map(r => {
+                const due = r.due_date ? new Date(r.due_date + 'T00:00:00') : null;
+                const isOverdue = due && due < today && r.status === 'pending';
+                const dueCss = isOverdue ? 'color:#dc3545;font-weight:700' : '';
+                return `<tr style="${isOverdue?'background:#fff8f8':''}">
+                    <td style="font-size:12px;${dueCss}">${due ? fmtDepDate(r.due_date) : '—'}${isOverdue?'<br><span style="color:#dc3545;font-size:10px">VENCIDA</span>':''}</td>
+                    <td><strong>${esc(r.client_name)}</strong>${r.client_email?'<br><span style="font-size:11px;color:#888">'+esc(r.client_email)+'</span>':''}</td>
+                    <td style="font-size:12px">${esc(r.boat_name||'—')}</td>
+                    <td><strong style="color:#b45309">${fmtDep(r.amount)}</strong></td>
+                    <td>${arBadge(r.status)}</td>
+                    <td style="white-space:nowrap">
+                        ${r.status==='pending'?`<button onclick="markArPaid('${r.id}')" style="padding:4px 10px;border:none;border-radius:5px;font-size:12px;cursor:pointer;margin-right:4px;background:#16a34a;color:#fff;font-weight:600" data-testid="button-ar-paid-${r.id}">✅ Cobrado</button>`:''}
+                        ${r.status==='pending'?`<button onclick="markArCancelled('${r.id}')" style="padding:4px 10px;border:1px solid #dc3545;border-radius:5px;font-size:12px;color:#dc3545;cursor:pointer;background:none" data-testid="button-ar-cancel-${r.id}">Cancelar</button>`:''}
+                    </td>
+                </tr>`;
+            }).join('');
+            // KPIs
+            const pending = allReceivables.filter(r => r.status === 'pending');
+            const paid    = allReceivables.filter(r => r.status === 'paid');
+            const sumAmt  = arr => arr.reduce((s,r)=>s+parseFloat(r.amount||0),0);
+            const overdue = pending.filter(r => { const d=r.due_date?new Date(r.due_date+'T00:00:00'):null; return d&&d<today; });
+            if (kpiDiv) kpiDiv.innerHTML = [
+                { label:'Por cobrar', val:fmtDep(sumAmt(pending)), count:pending.length+' registros', color:'#d97706' },
+                { label:'Vencidas', val:fmtDep(sumAmt(overdue)), count:overdue.length+' registros', color:'#dc3545' },
+                { label:'Cobradas', val:fmtDep(sumAmt(paid)), count:paid.length+' registros', color:'#16a34a' },
+            ].map(k=>`<div style="background:#fff;border:1px solid #e0e0e0;border-radius:10px;padding:14px 20px;min-width:140px">
+                <div style="font-size:11px;color:#888;font-weight:700;text-transform:uppercase">${k.label}</div>
+                <div style="font-size:22px;font-weight:800;color:${k.color};margin-top:4px">${k.val}</div>
+                <div style="font-size:11px;color:#aaa">${k.count}</div>
+            </div>`).join('');
+        }
+
+        async function markArPaid(id) {
+            if (!confirm('¿Marcar esta cuenta como cobrada?')) return;
+            try {
+                const res = await fetch('/api/booking-receivables/' + id + '/mark-paid', { method:'PATCH', headers:{'Content-Type':'application/json'}, body:'{}' });
+                if (!res.ok) { const e=await res.json(); throw new Error(e.error); }
+                await loadReceivables();
+                await loadDeposits();
+            } catch(e) { alert('Error: ' + e.message); }
+        }
+
+        async function markArCancelled(id) {
+            if (!confirm('¿Cancelar esta cuenta por cobrar?')) return;
+            try {
+                const res = await fetch('/api/booking-receivables/' + id + '/cancel', { method:'PATCH', headers:{'Content-Type':'application/json'}, body:'{}' });
+                if (!res.ok) { const e=await res.json(); throw new Error(e.error); }
+                await loadReceivables();
+            } catch(e) { alert('Error: ' + e.message); }
         }
 
         async function loadDeposits() {
@@ -745,32 +963,55 @@
             return dt.toLocaleDateString('es',{day:'2-digit',month:'short',year:'numeric'});
         }
 
+        function updateDepBalance() {
+            const total = parseFloat(document.getElementById('dep-total-amount').value) || 0;
+            const dep   = parseFloat(document.getElementById('dep-amount').value) || 0;
+            const bal   = Math.max(0, total - dep);
+            const preview = document.getElementById('dep-balance-preview');
+            const amtEl   = document.getElementById('dep-balance-amount');
+            if (preview && amtEl) {
+                if (total > 0 && bal > 0.005) {
+                    preview.style.display = 'block';
+                    amtEl.textContent = '$' + bal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                } else { preview.style.display = 'none'; }
+            }
+        }
+
         function renderDeposits() {
             const tbody = document.getElementById('depositsTable');
             if (!allDeposits.length) {
-                tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No hay depósitos registrados. Usa el formulario para agregar el primero.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No hay depósitos registrados. Usa el formulario para agregar el primero.</td></tr>';
                 return;
             }
             const esc = s => { const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; };
+            const serviceLabels = { tour:'Tour', rental:'Renta', fishing:'Pesca', event:'Evento', charter:'Charter', other:'Otro' };
             const statusBadge = s => ({
                 pending:  '<span style="background:#fef3c7;color:#92400e;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:700">Pendiente</span>',
                 applied:  '<span style="background:#d4edda;color:#155724;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:700">Aplicado</span>',
                 refunded: '<span style="background:#f8d7da;color:#721c24;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:700">Reembolsado</span>',
             }[s] || s);
-            tbody.innerHTML = allDeposits.map(d => `
-                <tr>
-                    <td>${fmtDepDate(d.deposit_date)}</td>
+            tbody.innerHTML = allDeposits.map(d => {
+                const balanceDue = d.balance_due != null ? parseFloat(d.balance_due) : null;
+                const balCell = balanceDue != null && balanceDue > 0.005
+                    ? `<strong style="color:#b45309">${fmtDep(balanceDue)}</strong>${d.ar_status ? `<br><span style="font-size:10px;color:${d.ar_status==='paid'?'#16a34a':d.ar_status==='cancelled'?'#888':'#d97706'}">${d.ar_status==='paid'?'✅ Cobrado':d.ar_status==='cancelled'?'Cancelado':'⏳ Pendiente'}</span>` : ''}`
+                    : (d.booking_total_amount ? '<span style="color:#16a34a;font-size:12px">✅ Saldado</span>' : '—');
+                return `<tr>
+                    <td style="font-size:12px">${fmtDepDate(d.deposit_date)}</td>
+                    <td style="font-size:12px">${d.booking_date ? fmtDepDate(d.booking_date) : '<span style="color:#aaa">—</span>'}</td>
                     <td><strong>${esc(d.client_name)}</strong>${d.client_email ? '<br><span style="font-size:11px;color:#888">'+esc(d.client_email)+'</span>' : ''}</td>
-                    <td>${esc(d.boat_name || '—')}</td>
-                    <td style="font-size:12px;color:#555">${esc(d.booking_reference || '—')}</td>
+                    <td style="font-size:12px">${esc(d.boat_name || '—')}${d.service_type ? '<br><span style="background:#e0f2fe;color:#0369a1;padding:1px 6px;border-radius:8px;font-size:10px">'+esc(serviceLabels[d.service_type]||d.service_type)+'</span>' : ''}${d.hours_rented ? '<br><span style="color:#666;font-size:11px">'+d.hours_rented+'h</span>':''}
+                    </td>
                     <td><strong>${fmtDep(d.amount)}</strong></td>
+                    <td style="font-size:12px">${d.booking_total_amount ? fmtDep(d.booking_total_amount) : '—'}</td>
+                    <td style="font-size:12px">${balCell}</td>
                     <td>${statusBadge(d.status)}</td>
                     <td style="white-space:nowrap">
-                        ${d.status === 'pending' ? `<button onclick="openApplyDepositModal('${d.id}')" style="padding:4px 10px;border:none;border-radius:5px;font-size:12px;cursor:pointer;margin-right:4px;background:#16a34a;color:#fff;font-weight:600" data-testid="button-apply-deposit-${d.id}">Aplicar a Ingreso</button>` : ''}
+                        ${d.status === 'pending' ? `<button onclick="openApplyDepositModal('${d.id}')" style="padding:4px 10px;border:none;border-radius:5px;font-size:12px;cursor:pointer;margin-right:4px;background:#16a34a;color:#fff;font-weight:600" data-testid="button-apply-deposit-${d.id}">Aplicar</button>` : ''}
                         <button onclick="editDeposit('${d.id}')" style="padding:4px 10px;border:1px solid #ddd;border-radius:5px;font-size:12px;cursor:pointer;margin-right:4px" data-testid="button-edit-deposit-${d.id}">Editar</button>
                         <button onclick="deleteDeposit('${d.id}')" style="padding:4px 10px;border:1px solid #dc3545;border-radius:5px;font-size:12px;color:#dc3545;cursor:pointer;background:none" data-testid="button-delete-deposit-${d.id}">Eliminar</button>
                     </td>
-                </tr>`).join('');
+                </tr>`;
+            }).join('');
         }
 
         function updateDepKpis() {
@@ -789,16 +1030,21 @@
         function editDeposit(id) {
             const d = allDeposits.find(x => x.id === id);
             if (!d) return;
-            document.getElementById('dep-edit-id').value  = d.id;
-            document.getElementById('dep-client').value   = d.client_name || '';
-            document.getElementById('dep-amount').value   = d.amount || '';
-            document.getElementById('dep-date').value     = d.deposit_date?.slice(0,10) || '';
-            document.getElementById('dep-status').value   = d.status || 'pending';
-            document.getElementById('dep-boat').value     = d.boat_id || '';
-            document.getElementById('dep-ref').value      = d.booking_reference || '';
-            document.getElementById('dep-email').value    = d.client_email || '';
-            document.getElementById('dep-phone').value    = d.client_phone || '';
-            document.getElementById('dep-notes').value    = d.notes || '';
+            document.getElementById('dep-edit-id').value       = d.id;
+            document.getElementById('dep-client').value        = d.client_name || '';
+            document.getElementById('dep-amount').value        = d.amount || '';
+            document.getElementById('dep-date').value          = d.deposit_date?.slice(0,10) || '';
+            document.getElementById('dep-status').value        = d.status || 'pending';
+            document.getElementById('dep-boat').value          = d.boat_id || '';
+            document.getElementById('dep-ref').value           = d.booking_reference || '';
+            document.getElementById('dep-email').value         = d.client_email || '';
+            document.getElementById('dep-phone').value         = d.client_phone || '';
+            document.getElementById('dep-notes').value         = d.notes || '';
+            document.getElementById('dep-booking-date').value  = d.booking_date?.slice(0,10) || '';
+            document.getElementById('dep-total-amount').value  = d.booking_total_amount || '';
+            document.getElementById('dep-hours').value         = d.hours_rented || '';
+            document.getElementById('dep-service-type').value  = d.service_type || '';
+            updateDepBalance();
             document.getElementById('dep-cancel-btn').style.display = 'inline-block';
             document.querySelector('#depositForm button[type=submit]').textContent = '✅ Actualizar depósito';
             document.getElementById('dep-client').focus();
@@ -809,6 +1055,8 @@
             document.getElementById('dep-edit-id').value = '';
             document.getElementById('dep-cancel-btn').style.display = 'none';
             document.querySelector('#depositForm button[type=submit]').textContent = '✅ Guardar depósito';
+            const preview = document.getElementById('dep-balance-preview');
+            if (preview) preview.style.display = 'none';
         }
 
         async function deleteDeposit(id) {
@@ -823,16 +1071,21 @@
         document.getElementById('depositForm')?.addEventListener('submit', async function(e) {
             e.preventDefault();
             const id = document.getElementById('dep-edit-id').value;
+            const totalAmt = parseFloat(document.getElementById('dep-total-amount').value) || null;
             const body = {
-                client_name:       document.getElementById('dep-client').value.trim(),
-                amount:            parseFloat(document.getElementById('dep-amount').value),
-                deposit_date:      document.getElementById('dep-date').value,
-                status:            document.getElementById('dep-status').value,
-                boat_id:           document.getElementById('dep-boat').value || null,
-                booking_reference: document.getElementById('dep-ref').value.trim() || null,
-                client_email:      document.getElementById('dep-email').value.trim() || null,
-                client_phone:      document.getElementById('dep-phone').value.trim() || null,
-                notes:             document.getElementById('dep-notes').value.trim() || null,
+                client_name:          document.getElementById('dep-client').value.trim(),
+                amount:               parseFloat(document.getElementById('dep-amount').value),
+                deposit_date:         document.getElementById('dep-date').value,
+                status:               document.getElementById('dep-status').value,
+                boat_id:              document.getElementById('dep-boat').value || null,
+                booking_reference:    document.getElementById('dep-ref').value.trim() || null,
+                client_email:         document.getElementById('dep-email').value.trim() || null,
+                client_phone:         document.getElementById('dep-phone').value.trim() || null,
+                notes:                document.getElementById('dep-notes').value.trim() || null,
+                booking_date:         document.getElementById('dep-booking-date').value || null,
+                booking_total_amount: totalAmt,
+                hours_rented:         parseFloat(document.getElementById('dep-hours').value) || null,
+                service_type:         document.getElementById('dep-service-type').value || null,
             };
             try {
                 const url    = id ? '/api/booking-deposits/' + id : '/api/booking-deposits';
@@ -840,8 +1093,14 @@
                 const res    = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
                 const data   = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Error al guardar');
+                // Show receivable creation message for new deposits
+                if (!id && data.receivable) {
+                    const bal = parseFloat(data.receivable.amount).toFixed(2);
+                    alert(`✅ Depósito guardado.\n\nSaldo pendiente: $${bal}\n📋 Cuenta por Cobrar creada automáticamente.`);
+                }
                 cancelDepositEdit();
                 await loadDeposits();
+                await loadReceivables();
             } catch(e) { alert('Error: ' + e.message); }
         });
 

@@ -1209,6 +1209,32 @@ async function initializeDatabase() {
     `);
     console.log('✅ booking_deposits table ready');
 
+    // Add booking-detail columns to booking_deposits (safe ADD IF NOT EXISTS)
+    await pool.query(`ALTER TABLE booking_deposits ADD COLUMN IF NOT EXISTS booking_date DATE`);
+    await pool.query(`ALTER TABLE booking_deposits ADD COLUMN IF NOT EXISTS booking_total_amount NUMERIC(12,2)`);
+    await pool.query(`ALTER TABLE booking_deposits ADD COLUMN IF NOT EXISTS hours_rented NUMERIC(5,2)`);
+    await pool.query(`ALTER TABLE booking_deposits ADD COLUMN IF NOT EXISTS service_type TEXT`);
+    await pool.query(`ALTER TABLE booking_deposits ADD COLUMN IF NOT EXISTS linked_receivable_id TEXT`);
+    console.log('✅ booking_deposits columns extended');
+
+    // Accounts receivable for booking balance-due amounts
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS booking_receivables (
+        id TEXT PRIMARY KEY,
+        deposit_id TEXT REFERENCES booking_deposits(id) ON DELETE CASCADE,
+        client_name TEXT NOT NULL,
+        client_email TEXT,
+        client_phone TEXT,
+        boat_id TEXT REFERENCES boats(id),
+        due_date DATE,
+        amount NUMERIC(12,2) NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','paid','cancelled')),
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    console.log('✅ booking_receivables table ready');
+
     // Seed chart of accounts if empty
     const accountsCheck = await pool.query('SELECT COUNT(*) FROM chart_of_accounts');
     if (parseInt(accountsCheck.rows[0].count) === 0) {
@@ -3996,6 +4022,58 @@ cron.schedule('0 3 * * *', async () => {
   } catch (error) {
     console.error('❌ Scheduled expenses cron error:', error);
   }
+});
+
+// Runs daily at 3:30 AM — auto-apply pending booking deposits whose booking_date has passed
+console.log('🔐 Scheduling daily booking deposit auto-apply...');
+cron.schedule('30 3 * * *', async () => {
+  console.log('🔐 Auto-applying overdue booking deposits...');
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    // Find pending deposits with booking_date <= today
+    const { rows: overdue } = await pool.query(`
+      SELECT bd.*, b.name as boat_name FROM booking_deposits bd
+      LEFT JOIN boats b ON bd.boat_id = b.id
+      WHERE bd.status = 'pending'
+        AND bd.booking_date IS NOT NULL
+        AND bd.booking_date <= $1
+    `, [today]);
+
+    // Get default revenue account (4020 - Rentals)
+    const { rows: accts } = await pool.query(
+      `SELECT id FROM chart_of_accounts WHERE account_code = '4020' AND is_active = true LIMIT 1`
+    );
+    const defaultAccountId = accts.length ? accts[0].id : null;
+    if (!defaultAccountId) { console.log('  ⚠️ No default revenue account found, skipping'); return; }
+
+    const { nanoid } = await import('nanoid');
+    let applied = 0;
+    for (const dep of overdue) {
+      try {
+        const pg = await pool.connect();
+        try {
+          await pg.query('BEGIN');
+          const txId = 'tx_' + nanoid(8);
+          await pg.query(
+            `INSERT INTO transactions (id, transaction_date, transaction_type, account_id, amount, description, reference_id, reference_type, boat_id, notes)
+             VALUES ($1,$2,'income',$3,$4,$5,$6,'booking_deposit',$7,$8)`,
+            [txId, dep.booking_date || today, defaultAccountId, dep.amount,
+             `Depósito aplicado (auto) — ${dep.client_name}`, dep.booking_reference || dep.id,
+             dep.boat_id || null, `Auto-aplicado el ${today}`]
+          );
+          await pg.query(
+            `UPDATE booking_deposits SET status='applied', booking_reference=COALESCE(booking_reference,$1) WHERE id=$2`,
+            [dep.id, dep.id]
+          );
+          await pg.query('COMMIT');
+          applied++;
+          console.log(`  ✅ Auto-applied: ${dep.client_name} — $${dep.amount}`);
+        } catch(e) { await pg.query('ROLLBACK'); console.error(`  ❌ Error applying ${dep.id}:`, e.message); }
+        finally { pg.release(); }
+      } catch(e) { console.error('  ❌ DB connect error:', e.message); }
+    }
+    console.log(`🔐 Auto-apply complete: ${applied}/${overdue.length} deposits applied`);
+  } catch(e) { console.error('❌ Booking deposit auto-apply cron error:', e); }
 });
 
 // Runs daily at midnight to refresh demand forecasts for all regions
@@ -9393,51 +9471,103 @@ app.patch('/api/stews/:id', isAuthenticated, async (req, res) => {
 app.get('/api/booking-deposits', isAuthenticated, async (req, res) => {
   try {
     const { status, boat_id } = req.query;
-    let sql = `SELECT bd.*, b.name as boat_name FROM booking_deposits bd LEFT JOIN boats b ON bd.boat_id = b.id WHERE 1=1`;
+    let sql = `SELECT bd.*,
+                 b.name as boat_name,
+                 CASE WHEN bd.booking_total_amount > 0
+                      THEN GREATEST(0, bd.booking_total_amount - bd.amount)
+                      ELSE NULL END as balance_due,
+                 ar.status as ar_status, ar.amount as ar_amount
+               FROM booking_deposits bd
+               LEFT JOIN boats b ON bd.boat_id = b.id
+               LEFT JOIN booking_receivables ar ON ar.id = bd.linked_receivable_id
+               WHERE 1=1`;
     const params = [];
     if (status)  { params.push(status);  sql += ` AND bd.status = $${params.length}`; }
     if (boat_id) { params.push(boat_id); sql += ` AND bd.boat_id = $${params.length}`; }
-    sql += ' ORDER BY bd.deposit_date DESC';
+    sql += ' ORDER BY bd.deposit_date DESC, bd.created_at DESC';
     const result = await pool.query(sql, params);
     res.json(result.rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.post('/api/booking-deposits', isAuthenticated, async (req, res) => {
+  const pg = await pool.connect();
   try {
-    const { client_name, client_email, client_phone, boat_id, booking_reference, amount, deposit_date, status, notes } = req.body;
-    if (!client_name || !amount || !deposit_date) return res.status(400).json({ error: 'client_name, amount y deposit_date son obligatorios' });
+    await pg.query('BEGIN');
+    const { client_name, client_email, client_phone, boat_id, booking_reference,
+            amount, deposit_date, status, notes,
+            booking_date, booking_total_amount, hours_rented, service_type } = req.body;
+    if (!client_name || !amount || !deposit_date) {
+      await pg.query('ROLLBACK');
+      return res.status(400).json({ error: 'client_name, amount y deposit_date son obligatorios' });
+    }
     const { nanoid } = await import('nanoid');
     const id = 'dep_' + nanoid(8);
-    const result = await pool.query(
-      `INSERT INTO booking_deposits (id, client_name, client_email, client_phone, boat_id, booking_reference, amount, deposit_date, status, notes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+    const result = await pg.query(
+      `INSERT INTO booking_deposits
+         (id, client_name, client_email, client_phone, boat_id, booking_reference, amount, deposit_date,
+          status, notes, booking_date, booking_total_amount, hours_rented, service_type)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
       [id, client_name, client_email||null, client_phone||null, boat_id||null, booking_reference||null,
-       amount, deposit_date, status||'pending', notes||null]
+       amount, deposit_date, status||'pending', notes||null,
+       booking_date||null, booking_total_amount||null, hours_rented||null, service_type||null]
     );
-    res.status(201).json(result.rows[0]);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+    const dep = result.rows[0];
+
+    // Auto-create accounts receivable if balance_due > 0
+    let receivable = null;
+    const totalAmt  = parseFloat(booking_total_amount||0);
+    const depositAmt = parseFloat(amount);
+    const balanceDue = totalAmt - depositAmt;
+    if (totalAmt > 0 && balanceDue > 0.005) {
+      const rId = 'ar_' + nanoid(8);
+      const arResult = await pg.query(
+        `INSERT INTO booking_receivables
+           (id, deposit_id, client_name, client_email, client_phone, boat_id, due_date, amount, status, notes)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pending',$9) RETURNING *`,
+        [rId, id, client_name, client_email||null, client_phone||null, boat_id||null,
+         booking_date||deposit_date, balanceDue.toFixed(2), `Saldo pendiente - ${booking_reference||client_name}`]
+      );
+      receivable = arResult.rows[0];
+      // Link receivable to deposit
+      await pg.query('UPDATE booking_deposits SET linked_receivable_id = $1 WHERE id = $2', [rId, id]);
+      dep.linked_receivable_id = rId;
+    }
+
+    await pg.query('COMMIT');
+    res.status(201).json({ ...dep, receivable });
+  } catch (err) {
+    await pg.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally { pg.release(); }
 });
 
 app.patch('/api/booking-deposits/:id', isAuthenticated, async (req, res) => {
   try {
-    const { client_name, client_email, client_phone, boat_id, booking_reference, amount, deposit_date, status, notes } = req.body;
+    const { client_name, client_email, client_phone, boat_id, booking_reference,
+            amount, deposit_date, status, notes,
+            booking_date, booking_total_amount, hours_rented, service_type } = req.body;
     const result = await pool.query(
       `UPDATE booking_deposits SET
-        client_name       = COALESCE($1, client_name),
-        client_email      = COALESCE($2, client_email),
-        client_phone      = COALESCE($3, client_phone),
-        boat_id           = COALESCE($4, boat_id),
-        booking_reference = COALESCE($5, booking_reference),
-        amount            = COALESCE($6, amount),
-        deposit_date      = COALESCE($7, deposit_date),
-        status            = COALESCE($8, status),
-        notes             = COALESCE($9, notes),
-        updated_at        = CURRENT_TIMESTAMP
-       WHERE id = $10 RETURNING *`,
+        client_name          = COALESCE($1, client_name),
+        client_email         = COALESCE($2, client_email),
+        client_phone         = COALESCE($3, client_phone),
+        boat_id              = COALESCE($4, boat_id),
+        booking_reference    = COALESCE($5, booking_reference),
+        amount               = COALESCE($6, amount),
+        deposit_date         = COALESCE($7, deposit_date),
+        status               = COALESCE($8, status),
+        notes                = COALESCE($9, notes),
+        booking_date         = COALESCE($10, booking_date),
+        booking_total_amount = COALESCE($11, booking_total_amount),
+        hours_rented         = COALESCE($12, hours_rented),
+        service_type         = COALESCE($13, service_type),
+        updated_at           = CURRENT_TIMESTAMP
+       WHERE id = $14 RETURNING *`,
       [client_name||null, client_email||null, client_phone||null, boat_id||null,
        booking_reference||null, amount||null, deposit_date||null, status||null,
-       notes||null, req.params.id]
+       notes||null, booking_date||null, booking_total_amount||null,
+       hours_rented||null, service_type||null, req.params.id]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Depósito no encontrado' });
     res.json(result.rows[0]);
@@ -9497,6 +9627,46 @@ app.post('/api/booking-deposits/:id/apply', isAuthenticated, async (req, res) =>
     console.error('Error applying deposit:', err);
     res.status(500).json({ error: err.message });
   } finally { client.release(); }
+});
+
+// ── Booking Receivables ────────────────
+app.get('/api/booking-receivables', isAuthenticated, async (req, res) => {
+  try {
+    const { status, boat_id } = req.query;
+    let sql = `SELECT br.*, b.name as boat_name
+               FROM booking_receivables br
+               LEFT JOIN boats b ON br.boat_id = b.id
+               WHERE 1=1`;
+    const params = [];
+    if (status)  { params.push(status);  sql += ` AND br.status = $${params.length}`; }
+    if (boat_id) { params.push(boat_id); sql += ` AND br.boat_id = $${params.length}`; }
+    sql += ' ORDER BY br.due_date ASC, br.created_at DESC';
+    const result = await pool.query(sql, params);
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.patch('/api/booking-receivables/:id/mark-paid', isAuthenticated, async (req, res) => {
+  try {
+    const { notes } = req.body;
+    const result = await pool.query(
+      `UPDATE booking_receivables SET status='paid', notes=COALESCE($1, notes) WHERE id=$2 RETURNING *`,
+      [notes||null, req.params.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Cuenta por cobrar no encontrada' });
+    res.json(result.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.patch('/api/booking-receivables/:id/cancel', isAuthenticated, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `UPDATE booking_receivables SET status='cancelled' WHERE id=$1 RETURNING *`,
+      [req.params.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Cuenta por cobrar no encontrada' });
+    res.json(result.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // ── Captain Payments ───────────────────

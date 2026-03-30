@@ -352,8 +352,63 @@ function updateCharts(totalIncome, totalExpenses) {
     }
 }
 
+// ── Account 2500 Booking Deposit detection ─────────────────
+function onTxAccountChange() {
+    const sel = document.getElementById('txAccount');
+    const selectedOption = sel.options[sel.selectedIndex];
+    const is2500 = selectedOption && selectedOption.textContent.includes('2500');
+    const bookingSection = document.getElementById('booking-deposit-section');
+    const submitBtn = document.getElementById('tx-submit-btn');
+    if (bookingSection) {
+        bookingSection.style.display = is2500 ? 'block' : 'none';
+    }
+    if (submitBtn) {
+        submitBtn.textContent = is2500 ? '🔐 Registrar Depósito + Cuenta por Cobrar' : '✅ Crear Transacción';
+    }
+    // Populate boat selector inside booking section
+    if (is2500 && document.getElementById('bd-boat-id')) {
+        const boatSel = document.getElementById('bd-boat-id');
+        if (boatSel.options.length <= 1) {
+            fetch('/api/boats').then(r => r.json()).then(boats => {
+                boatSel.innerHTML = '<option value="">-- Seleccionar barco --</option>';
+                boats.forEach(b => {
+                    const opt = document.createElement('option');
+                    opt.value = b.id;
+                    opt.textContent = b.name;
+                    boatSel.appendChild(opt);
+                });
+            }).catch(() => {});
+        }
+    }
+}
+
+function updateBdBalance() {
+    const total = parseFloat(document.getElementById('bd-total-amount').value) || 0;
+    const deposit = parseFloat(document.getElementById('txAmount').value) || 0;
+    const balance = Math.max(0, total - deposit);
+    const preview = document.getElementById('bd-balance-preview');
+    const amtEl  = document.getElementById('bd-balance-amount');
+    if (preview && amtEl) {
+        if (total > 0 && balance > 0.005) {
+            preview.style.display = 'block';
+            amtEl.textContent = '$' + balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        } else {
+            preview.style.display = 'none';
+        }
+    }
+}
+
 async function createTransaction(e) {
     e.preventDefault();
+
+    // Check if account 2500 (Deferred Booking Deposits) is selected
+    const txAccountSel = document.getElementById('txAccount');
+    const selectedOption = txAccountSel.options[txAccountSel.selectedIndex];
+    const is2500 = selectedOption && selectedOption.textContent.includes('2500');
+
+    if (is2500) {
+        return await createBookingDepositFromForm();
+    }
     
     const data = {
         transaction_date: document.getElementById('txDate').value,
@@ -375,10 +430,87 @@ async function createTransaction(e) {
         alert('✅ Transacción creada exitosamente');
         document.getElementById('newTransactionForm').reset();
         document.getElementById('txDate').valueAsDate = new Date();
+        document.getElementById('booking-deposit-section').style.display = 'none';
+        document.getElementById('tx-submit-btn').textContent = '✅ Crear Transacción';
         await loadData();
     } catch (error) {
         console.error('Error:', error);
         alert('❌ Error al crear transacción');
+    }
+}
+
+async function createBookingDepositFromForm() {
+    const clientName = document.getElementById('bd-client-name').value.trim();
+    const bookingDate = document.getElementById('bd-booking-date').value;
+    const totalAmount = document.getElementById('bd-total-amount').value;
+    const depositAmount = document.getElementById('txAmount').value;
+    const depositDate = document.getElementById('txDate').value;
+    const boatId = document.getElementById('bd-boat-id').value;
+    const hours = document.getElementById('bd-hours').value;
+    const serviceType = document.getElementById('bd-service-type').value;
+    const phone = document.getElementById('bd-phone').value.trim();
+    const email = document.getElementById('bd-email').value.trim();
+    const notes = document.getElementById('txDescription').value.trim();
+
+    if (!clientName) { alert('❌ El nombre del cliente es obligatorio'); return; }
+    if (!bookingDate) { alert('❌ La fecha del booking es obligatoria'); return; }
+    if (!totalAmount || parseFloat(totalAmount) <= 0) { alert('❌ El monto total del booking es obligatorio'); return; }
+    if (!boatId) { alert('❌ Selecciona el barco'); return; }
+
+    const body = {
+        client_name: clientName,
+        client_email: email || null,
+        client_phone: phone || null,
+        boat_id: boatId,
+        booking_reference: notes || null,
+        amount: parseFloat(depositAmount),
+        deposit_date: depositDate,
+        status: 'pending',
+        notes: notes || null,
+        booking_date: bookingDate,
+        booking_total_amount: parseFloat(totalAmount),
+        hours_rented: hours ? parseFloat(hours) : null,
+        service_type: serviceType || null
+    };
+
+    try {
+        const btn = document.getElementById('tx-submit-btn');
+        btn.disabled = true;
+        btn.textContent = '⏳ Guardando...';
+
+        const response = await fetch('/api/booking-deposits', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.error || 'Error al crear depósito');
+        }
+        const result = await response.json();
+        const balanceDue = result.receivable ? parseFloat(result.receivable.amount) : 0;
+        let msg = `✅ Depósito registrado exitosamente!\n\nCliente: ${clientName}\nDepósito: $${parseFloat(depositAmount).toFixed(2)}`;
+        if (balanceDue > 0) {
+            msg += `\n\nSaldo pendiente: $${balanceDue.toFixed(2)}\n📋 Cuenta por Cobrar creada automáticamente`;
+        }
+        alert(msg);
+
+        // Reset form
+        document.getElementById('newTransactionForm').reset();
+        document.getElementById('txDate').valueAsDate = new Date();
+        document.getElementById('booking-deposit-section').style.display = 'none';
+        document.getElementById('tx-submit-btn').textContent = '✅ Crear Transacción';
+        document.getElementById('bd-balance-preview').style.display = 'none';
+
+        // Refresh deposits tab if visible
+        if (typeof renderDeposits === 'function') renderDeposits();
+        await loadData();
+    } catch (error) {
+        console.error('Error:', error);
+        alert('❌ ' + error.message);
+    } finally {
+        const btn = document.getElementById('tx-submit-btn');
+        if (btn) { btn.disabled = false; btn.textContent = '🔐 Registrar Depósito + Cuenta por Cobrar'; }
     }
 }
 
