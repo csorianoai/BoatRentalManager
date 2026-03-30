@@ -1,0 +1,98 @@
+Quiero modificar el sistema existente “gestión”. No quiero una app nueva.
+
+PROBLEMA
+En la sección de contabilidad / accounting, el botón de editar actualmente muestra un mensaje tipo:
+“Función de edición próximamente”.
+Eso debe dejar de ser un placeholder y convertirse en una función real.
+
+OBJETIVO
+Necesito poder modificar transacciones ya creadas, tanto:
+- gastos
+- ingresos
+
+REQUISITOS PRINCIPALES
+
+1. EDITAR TRANSACCIONES
+Al hacer clic en el botón de editar de una fila, debe abrirse un formulario o modal real de edición, no un alert.
+
+Debe permitir editar estos campos según el tipo de transacción:
+
+Campos comunes:
+- fecha
+- cuenta
+- descripción
+- monto
+- estado
+
+Si es gasto:
+- categoría de gasto
+- barco relacionado si aplica
+- proveedor si aplica
+- notas opcionales
+
+Si es ingreso:
+- categoría de ingreso
+- barco relacionado si aplica
+- cliente si aplica
+- referencia de booking si aplica
+- notas opcionales
+
+2. GUARDADO
+Al guardar:
+- actualizar la transacción existente
+- mantener el mismo id
+- guardar fecha de actualización
+- refrescar la tabla
+- reflejar el cambio sin tener que recrear la transacción desde cero
+
+3. VALIDACIONES
+- monto debe ser numérico y mayor que 0
+- fecha obligatoria
+- cuenta obligatoria
+- descripción obligatoria
+- si hay barco relacionado, permitir seleccionarlo del sistema
+- no romper registros anteriores que no tengan todos los campos nuevos
+
+4. BASE DE DATOS / MODELO
+Asegurar que las transacciones tengan soporte para actualización.
+Agregar o confirmar:
+- updated_at
+- updated_by opcional
+
+5. INTERFAZ
+- reemplazar el alert actual por modal o formulario real
+- precargar los datos actuales de la transacción
+- botón Guardar cambios
+- botón Cancelar
+- mantener estilo visual actual de “gestión”
+
+6. ALCANCE
+Esto debe funcionar en:
+- gastos
+- ingresos
+
+7. REGLAS
+- no crear app nueva
+- integrarlo dentro de “gestión”
+- no usar librerías pesadas
+- mantener código simple
+- optimizar para bajo consumo en Replit
+- cambiar solo lo necesario
+
+8. PRUEBAS OBLIGATORIAS
+Antes de cerrar:
+- editar un gasto existente
+- cambiar descripción y monto
+- guardar correctamente
+- editar un ingreso existente
+- cambiar descripción y monto
+- guardar correctamente
+- confirmar que la tabla muestra el valor actualizado
+- confirmar que ya no aparece el mensaje “Función de edición próximamente”
+
+ENTREGABLE
+- botón editar funcional
+- modal o formulario de edición real
+- soporte para editar gastos e ingresos
+- guardado correcto en contabilidad
+- tabla actualizada con cambios
