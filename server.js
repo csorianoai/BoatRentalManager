@@ -1126,6 +1126,7 @@ async function initializeDatabase() {
     await pool.query(`ALTER TABLE boat_expenses ADD COLUMN IF NOT EXISTS vendor TEXT`);
     await pool.query(`ALTER TABLE boat_expenses ADD COLUMN IF NOT EXISTS payment_method TEXT`);
     await pool.query(`ALTER TABLE boat_expenses ADD COLUMN IF NOT EXISTS notes TEXT`);
+    await pool.query(`ALTER TABLE boat_expenses ADD COLUMN IF NOT EXISTS invoice_document_id TEXT`);
 
     // Stews catalog table
     await pool.query(`
@@ -7840,7 +7841,7 @@ app.post('/api/boat-expenses', async (req, res) => {
     const {
       boat_id, category, amount, expense_date, description,
       mechanic_id, fuel_gallons, fuel_station, invoice_number, is_tax_deductible,
-      vendor, payment_method, notes
+      vendor, payment_method, notes, invoice_document_id
     } = req.body;
     
     if (!boat_id || !category || !amount || !expense_date || !description) {
@@ -7856,14 +7857,14 @@ app.post('/api/boat-expenses', async (req, res) => {
       INSERT INTO boat_expenses 
       (id, boat_id, category, amount, expense_date, description, mechanic_id, 
        fuel_gallons, fuel_station, invoice_number, is_tax_deductible,
-       vendor, payment_method, notes)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+       vendor, payment_method, notes, invoice_document_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
       RETURNING *
     `, [
       id, boat_id, category, amount, expense_date, description,
       mechanic_id || null, fuel_gallons || null, fuel_station || null,
       invoice_number || null, is_tax_deductible !== undefined ? is_tax_deductible : 1,
-      vendor || null, payment_method || null, notes || null
+      vendor || null, payment_method || null, notes || null, invoice_document_id || null
     ]);
     
     // Auto-sync to accounting system (FASE 8 integration)
@@ -7892,7 +7893,7 @@ app.patch('/api/boat-expenses/:id', async (req, res) => {
     const allowedFields = [
       'category', 'amount', 'expense_date', 'description', 'mechanic_id',
       'fuel_gallons', 'fuel_station', 'invoice_number', 'is_tax_deductible', 'receipt_image',
-      'boat_id', 'vendor', 'payment_method', 'notes'
+      'boat_id', 'vendor', 'payment_method', 'notes', 'invoice_document_id'
     ];
     
     const setClause = [];

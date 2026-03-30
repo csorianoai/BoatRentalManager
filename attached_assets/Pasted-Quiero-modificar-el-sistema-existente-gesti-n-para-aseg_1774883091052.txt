@@ -1,0 +1,110 @@
+Quiero modificar el sistema existente “gestión” para asegurar que cualquier factura que suba quede asociada correctamente a los gastos del barco en la parte de contabilidad.
+
+OBJETIVO
+Cuando se suba una factura, el sistema debe permitir vincularla directamente a un barco y a un gasto contable, para que quede registrada como soporte del gasto de esa embarcación.
+
+REGLAS
+- no crear app nueva
+- integrar dentro de “gestión”
+- mantener UI consistente
+- no usar librerías pesadas
+- optimizar para bajo consumo en Replit
+- primero implementar un MVP funcional y claro
+
+FUNCIONALIDAD REQUERIDA
+
+1. TIPO DE DOCUMENTO: FACTURA
+- cuando se suba un documento con tipo “factura”, debe tener flujo especial
+- no debe tratarse como archivo genérico sin relación
+
+2. CAMPOS OBLIGATORIOS AL SUBIR FACTURA
+- barco
+- fecha
+- proveedor
+- monto
+- categoría contable
+- descripción
+- archivo PDF
+- opción:
+  - vincular a gasto existente
+  - crear nuevo gasto
+
+3. LÓGICA DE CONTABILIDAD
+Al subir una factura, el sistema debe permitir:
+- seleccionar un barco obligatoriamente
+- buscar un gasto existente de ese barco para adjuntar la factura
+- o crear un nuevo gasto automáticamente en Contabilidad > Gastos
+
+4. SI SE CREA GASTO NUEVO
+El sistema debe crear el gasto con:
+- boat_id
+- fecha
+- categoría
+- descripción
+- monto
+- proveedor
+- invoice_document_id
+
+5. SI SE VINCULA A GASTO EXISTENTE
+El sistema debe:
+- adjuntar la factura al gasto ya creado
+- guardar relación entre documento y gasto
+- mostrar la factura dentro del detalle del gasto
+
+6. RELACIONES DE BASE DE DATOS
+
+DOCUMENTS
+- id
+- nombre_original
+- nombre_guardado
+- ruta
+- tipo_documento
+- boat_id
+- uploaded_at
+- uploaded_by
+
+EXPENSES
+- id
+- boat_id
+- fecha
+- categoría
+- descripción
+- monto
+- proveedor
+- invoice_document_id opcional
+- created_at
+- updated_at
+
+Si hace falta, permitir relación 1 gasto = varios documentos soporte.
+
+7. INTERFAZ
+- en subida de documentos, si tipo = factura, abrir formulario especial
+- selector obligatorio de barco
+- opción para:
+  - crear gasto nuevo
+  - vincular a gasto existente
+- en Contabilidad > Gastos, mostrar:
+  - gasto
+  - barco
+  - factura adjunta
+  - botón ver factura
+- en la ficha del barco, mostrar:
+  - gastos del barco
+  - facturas asociadas
+
+8. VISUALIZACIÓN
+- la factura debe poder abrirse dentro de la plataforma
+- no solo descargarse
+- botón Ver factura dentro del gasto
+- botón Descargar opcional
+
+9. OBJETIVO FINAL
+Debo poder subir una factura PDF, asignarla al barco correcto y hacer que quede automáticamente asociada a un gasto contable de esa embarcación.
+
+10. MVP OBLIGATORIO
+- subida de factura
+- selección obligatoria de barco
+- crear gasto desde factura
+- o vincular factura a gasto existente
+- ver factura dentro del gasto
+- mostrar factura y gasto dentro del barco correspondiente
