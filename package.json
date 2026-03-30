@@ -33,6 +33,7 @@
     "openai": "^6.7.0",
     "openid-client": "^6.8.1",
     "passport": "^0.7.0",
+    "pdf-parse": "^2.4.5",
     "stripe": "^14.7.0",
     "twilio": "^4.18.0",
     "ws": "^8.18.3"

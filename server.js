@@ -5819,8 +5819,73 @@ app.post('/api/accounting/bank-statements/upload', isAuthenticated, upload.singl
           reference_number: trn.FITID || trn.CHECKNUM || null
         }));
       }
-    } else {
-      return res.status(400).json({ error: 'Unsupported file format. Please upload CSV, OFX, or QFX files.' });
+    }
+    // Parse PDF bank statements
+    else if (fileType.endsWith('.pdf')) {
+      const pdfParse = (await import('pdf-parse')).default;
+      const pdfData = await pdfParse(fileBuffer);
+      const text = pdfData.text;
+
+      // Extract transactions from PDF text using flexible regex
+      const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 5);
+      const currentYear = new Date().getFullYear();
+
+      // Match: date at start, then description, then amount at end
+      // Supports: MM/DD, MM/DD/YY, MM/DD/YYYY, YYYY-MM-DD, DD-MM-YYYY
+      const dateRx = /^(\d{1,2}[\/\-]\d{1,2}(?:[\/\-]\d{2,4})?|\d{4}[\/\-]\d{2}[\/\-]\d{2})\s+/;
+      const amtRx  = /\(?([\d,]{1,10}\.\d{2})\)?\s*[\+\-]?\s*$/;
+
+      for (const line of lines) {
+        const dMatch = line.match(dateRx);
+        if (!dMatch) continue;
+        const aMatch = line.match(/\(?([\d,]{1,10}\.\d{2})\)?\s*$/);
+        if (!aMatch) continue;
+
+        // Parse date
+        const rawDate = dMatch[1];
+        const parts = rawDate.split(/[\/\-]/);
+        let parsedDate = null;
+        if (parts.length === 3) {
+          // YYYY-MM-DD
+          if (parts[0].length === 4) {
+            parsedDate = `${parts[0]}-${parts[1].padStart(2,'0')}-${parts[2].padStart(2,'0')}`;
+          } else {
+            const yr = parts[2].length === 2 ? '20'+parts[2] : parts[2];
+            parsedDate = `${yr}-${parts[0].padStart(2,'0')}-${parts[1].padStart(2,'0')}`;
+          }
+        } else if (parts.length === 2) {
+          parsedDate = `${currentYear}-${parts[0].padStart(2,'0')}-${parts[1].padStart(2,'0')}`;
+        }
+        if (!parsedDate) continue;
+
+        // Parse amount — parentheses = negative (debit)
+        const rawAmt = aMatch[1].replace(/,/g,'');
+        let amount = parseFloat(rawAmt);
+        if (aMatch[0].includes('(')) amount = -Math.abs(amount);
+        if (isNaN(amount)) continue;
+
+        // Description = line without date prefix and amount suffix
+        const amtIdx = line.lastIndexOf(aMatch[0].trimEnd());
+        let desc = line.slice(dMatch[0].length, amtIdx).trim().replace(/\s{2,}/g,' ');
+        if (!desc || desc.length < 2) desc = 'Transacción';
+
+        statements.push({
+          statement_date: parsedDate,
+          description: desc,
+          amount,
+          balance: null,
+          reference_number: null
+        });
+      }
+
+      if (statements.length === 0) {
+        return res.status(400).json({
+          error: 'No se pudieron extraer transacciones del PDF. Asegúrate de que el PDF contiene texto (no es una imagen escaneada) y tiene el formato estándar de extracto bancario con fechas y montos por línea.'
+        });
+      }
+    }
+    else {
+      return res.status(400).json({ error: 'Formato no soportado. Por favor sube un archivo CSV, OFX, QFX o PDF.' });
     }
 
     if (statements.length === 0) {
