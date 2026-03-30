@@ -801,32 +801,40 @@ async function applyRule(ruleId) {
 async function uploadFile(file) {
     const formData = new FormData();
     formData.append('file', file);
-    
+
+    const uploadZone = document.getElementById('uploadZone');
+    const preview    = document.getElementById('importPreview');
+    const results    = document.getElementById('importResults');
+
+    // Show loading state
+    if (uploadZone) uploadZone.style.opacity = '0.5';
+    if (preview)    preview.style.display    = 'block';
+    if (results)    results.innerHTML        = '<p style="color:#64748b">⏳ Procesando archivo, por favor espera...</p>';
+
     try {
-        const response = await fetch('/api/accounting/bank-statements/import', {
+        const response = await fetch('/api/accounting/bank-statements/upload', {
             method: 'POST',
             body: formData
         });
-        
-        if (!response.ok) throw new Error('Upload failed');
-        
+
         const result = await response.json();
-        
-        // Show preview
-        const preview = document.getElementById('importPreview');
-        const results = document.getElementById('importResults');
-        preview.style.display = 'block';
-        
+
+        if (!response.ok) {
+            results.innerHTML = `<p style="color:#ef4444;font-weight:600">❌ ${result.error || 'Error al importar el archivo'}</p>`;
+            return;
+        }
+
         results.innerHTML = `
-            <p class="badge badge-income">✅ ${result.imported_count} extractos importados</p>
-            <p class="badge badge-suggested">🔍 ${result.auto_matched} emparejados automáticamente</p>
-            <p>Total: ${result.total_rows} filas procesadas</p>
+            <p style="color:#10b981;font-weight:700;font-size:15px">✅ ${result.imported} movimientos importados de <em>${result.fileName}</em></p>
+            <p style="color:#64748b;font-size:13px;margin-top:6px">Ve a la pestaña <strong>🧠 Clasificación Inteligente</strong> para clasificar y registrar los movimientos en contabilidad.</p>
         `;
-        
+
         await loadData();
     } catch (error) {
-        console.error('Error:', error);
-        alert('❌ Error al importar archivo');
+        console.error('Error uploading file:', error);
+        if (results) results.innerHTML = '<p style="color:#ef4444;font-weight:600">❌ Error de conexión al importar el archivo</p>';
+    } finally {
+        if (uploadZone) uploadZone.style.opacity = '1';
     }
 }
 
