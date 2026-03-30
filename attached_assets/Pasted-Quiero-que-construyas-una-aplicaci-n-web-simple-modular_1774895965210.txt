@@ -1,0 +1,184 @@
+Quiero que construyas una aplicación web simple, modular y escalable para gestión operativa de mi negocio náutico.
+
+OBJETIVO
+Crear una agenda de trabajo con timeline de ejecución de tareas, asignación de responsables, categorías de tareas y seguimiento del estado. La app debe ayudarme a organizar:
+1. Reparaciones de botes
+2. Listings de barcos
+3. Contratos para clientes
+4. Publicaciones / marketing / contenido
+
+PRIORIDAD
+Haz primero una versión funcional MVP, evitando complejidad innecesaria, librerías pesadas y funciones secundarias. Optimiza para bajo consumo de recursos en Replit.
+
+REQUISITOS PRINCIPALES
+
+1. MÓDULO DE TAREAS / AGENDA
+- Crear tareas
+- Editar tareas
+- Eliminar tareas
+- Ver lista de tareas
+- Filtro por categoría
+- Filtro por estado
+- Filtro por responsable
+- Filtro por fecha
+- Búsqueda por texto
+
+2. CAMPOS DE CADA TAREA
+Cada tarea debe incluir:
+- Título
+- Descripción
+- Categoría
+- Prioridad (Alta, Media, Baja)
+- Estado (Pendiente, En progreso, Completada, Pausada)
+- Responsable asignado
+- Fecha de inicio
+- Fecha límite
+- Duración estimada
+- Tiempo real invertido
+- Comentarios internos
+- Relación con barco, cliente o listing (si aplica)
+
+3. CATEGORÍAS DE TAREAS
+Crear categorías iniciales editables:
+- Reparaciones
+- Listings
+- Contratos de clientes
+- Publicaciones
+- Administración
+- Seguimiento comercial
+Permitir agregar nuevas categorías desde panel admin.
+
+4. TIMELINE / CRONOGRAMA
+Necesito una vista tipo timeline o calendario simple para visualizar:
+- Inicio de tarea
+- Fin de tarea
+- Duración estimada
+- Estado
+- Responsable
+Debe poder verse por:
+- Día
+- Semana
+- Mes
+Si el timeline complejo consume mucho, empezar con una vista semanal simple y luego escalar.
+
+5. ASIGNACIÓN DE RESPONSABLES
+- Permitir asignar tareas a una persona específica
+- Crear lista básica de miembros/equipo
+- Mostrar tareas por persona
+- Ver carga de trabajo por responsable
+
+6. ENTIDADES RELACIONADAS
+Cada tarea puede estar vinculada a:
+- Un bote/barco
+- Un listing
+- Un cliente
+- Un contrato
+Esto debe ser opcional.
+
+7. DASHBOARD
+Crear un panel principal con:
+- Tareas pendientes
+- Tareas vencidas
+- Tareas por categoría
+- Tareas por responsable
+- Próximas fechas límite
+- Resumen rápido de reparaciones, listings, contratos y publicaciones
+
+8. FLUJO DE TRABAJO RECOMENDADO
+Ordenar la app por este flujo:
+A. Dashboard
+B. Agenda / tareas
+C. Timeline
+D. Categorías
+E. Responsables
+F. Clientes
+G. Barcos / listings
+H. Contratos
+
+9. UX/UI
+- Interfaz simple, limpia y rápida
+- Responsive
+- Formularios fáciles de usar
+- Colores suaves
+- Etiquetas de estado visibles
+- Diseño enfocado en productividad
+No hacer diseño complejo al inicio.
+
+10. TECNOLOGÍA
+Usa una stack liviana.
+Preferencia:
+- Frontend simple
+- Backend simple
+- Base de datos ligera
+Si necesitas decidir, elige la opción más estable y de menor consumo en Replit.
+Evita dependencias pesadas si no son necesarias.
+
+11. BASE DE DATOS
+Estructura mínima:
+- users / responsables
+- tasks
+- categories
+- boats
+- listings
+- clients
+- contracts
+Las relaciones pueden ser simples.
+
+12. MVP PRIMERO
+Fase 1 obligatoria:
+- CRUD de tareas
+- Categorías
+- Responsables
+- Filtros
+- Vista agenda/lista
+- Vista timeline básica
+- Dashboard básico
+
+Fase 2 opcional:
+- Clientes
+- Contratos
+- Barcos
+- Listings relacionados
+- Reportes
+
+Fase 3 opcional:
+- Notificaciones
+- Recordatorios
+- Archivos adjuntos
+- Historial de cambios
+- Permisos por usuario
+
+13. OPTIMIZACIÓN PARA REPLIT
+Muy importante:
+- Minimizar consumo de tokens y recursos
+- No generar código innecesario
+- No sobrearquitectar
+- Crear primero estructura limpia y funcional
+- Reutilizar componentes
+- Mantener nombres claros
+- Comentar solo lo necesario
+- No agregar features no solicitadas
+- Usar seed de datos de ejemplo solo si es mínimo
+
+14. ENTREGABLES
+Quiero que hagas:
+1. Estructura del proyecto
+2. Base de datos
+3. Pantallas principales
+4. CRUD de tareas
+5. Categorías y responsables
+6. Dashboard básico
+7. Timeline básico
+8. Instrucciones para correr el proyecto
+
+15. RESULTADO ESPERADO
+Al final debo poder:
+- Crear tareas
+- Clasificarlas por categoría
+- Asignarlas a personas
+- Ver fechas de ejecución
+- Seguir el avance
+- Visualizar todo en agenda y timeline
+- Organizar pendientes de reparaciones, listings, contratos y publicaciones
+
+Empieza por la arquitectura mínima viable y luego implementa el MVP completo.
