@@ -1,0 +1,86 @@
+Quiero que corrijas el error del módulo de importación de extractos bancarios en PDF dentro de “gestión”.
+
+ERROR ACTUAL
+Vista Previa
+❌ Failed to upload and parse bank statement: pdfParse is not a function
+
+OBJETIVO
+Encontrar la causa exacta y dejar funcionando correctamente la carga y lectura de PDFs bancarios.
+
+IMPORTANTE
+- no quiero una solución superficial
+- no quiero esconder el error con try/catch sin resolverlo
+- revisa imports, versión instalada del paquete y compatibilidad ESM/CommonJS
+- no rompas CSV ni OFX
+- mantén el sistema liviano para Replit
+
+TAREAS OBLIGATORIAS
+
+1. AUDITAR LA IMPLEMENTACIÓN ACTUAL
+- revisar dónde se importa pdf-parse
+- revisar si el código usa algo como:
+  - import pdfParse from 'pdf-parse'
+  - const pdfParse = require('pdf-parse')
+  - import * as pdfParse from 'pdf-parse'
+- revisar cómo se invoca actualmente
+- identificar si se está tratando como función cuando la versión instalada expone otra API
+
+2. VERIFICAR VERSIÓN INSTALADA
+- revisar package.json y lockfile
+- confirmar qué versión exacta de pdf-parse está instalada
+- adaptar el código a ESA versión o fijar una versión compatible
+- no dejar el proyecto en una situación ambigua
+
+3. CORREGIR EL IMPORT SEGÚN LA API REAL
+Si la versión instalada es la nueva API de pdf-parse:
+- usar la forma correcta documentada por el paquete
+- importar PDFParse como export nombrado
+- crear parser con new PDFParse({ data: buffer })
+- extraer texto con getText()
+- destruir el parser al final si aplica
+
+4. SI EL PROYECTO NECESITA COMPATIBILIDAD SIMPLE
+Si es más estable para este proyecto:
+- fijar una versión compatible de pdf-parse y ajustar el import correctamente
+- evitar mezcla incorrecta entre default import y named import
+
+5. REVISAR ESM / COMMONJS
+- confirmar si el proyecto usa "type": "module" o CommonJS
+- corregir imports para ese entorno
+- si hace falta worker/configuración para PDF parsing, aplicarlo correctamente
+
+6. IMPLEMENTAR PARSEO ROBUSTO
+- al subir un PDF bancario, convertir archivo a buffer
+- parsear texto
+- devolver texto extraído o preview de movimientos
+- si el PDF no tiene texto legible, mostrar mensaje claro:
+  “El PDF fue cargado pero requiere revisión manual o extracción asistida”
+
+7. NO ROMPER EL FLUJO ACTUAL
+- CSV debe seguir funcionando
+- OFX debe seguir funcionando
+- PDF debe pasar de “falla al parsear” a “parseado” o “requiere revisión”
+
+8. LOGS CLAROS
+Agregar logs temporales o mensajes claros para depuración:
+- versión de pdf-parse usada
+- tipo de import resuelto
+- tamaño del buffer
+- si se extrajo texto o no
+- error exacto si falla
+
+9. PRUEBAS OBLIGATORIAS
+Antes de cerrar:
+- subir un CSV y confirmar que sigue funcionando
+- subir un OFX y confirmar que sigue funcionando
+- subir un PDF bancario con texto legible y confirmar que ya no aparece “pdfParse is not a function”
+- confirmar que se obtiene texto o preview
+- confirmar que el sistema muestra mensaje útil si el PDF no es legible
+
+10. ENTREGA FINAL
+Quiero que me indiques:
+- cuál era la causa raíz exacta
+- qué archivo(s) corregiste
+- qué import quedó finalmente
+- si fijaste versión del paquete o adaptaste el código
+- prueba confirmada de que el PDF ya no lanza ese error

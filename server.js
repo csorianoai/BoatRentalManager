@@ -12,7 +12,8 @@ const OpenAI = require('openai');
 const multer = require('multer');
 const { parse } = require('csv-parse/sync');
 const ofx = require('ofx-js');
-const pdfParse = require('pdf-parse');
+const { PDFParse } = require('pdf-parse');
+console.log('✅ pdf-parse v2 loaded — PDFParse:', typeof PDFParse);
 // AUTHENTICATION DISABLED - No validation required
 // const { setupAuth, isAuthenticated: replitAuthMiddleware } = require('./replitAuth');
 
@@ -5821,10 +5822,26 @@ app.post('/api/accounting/bank-statements/upload', isAuthenticated, upload.singl
         }));
       }
     }
-    // Parse PDF bank statements
+    // Parse PDF bank statements (pdf-parse v2 API: new PDFParse({ data: buffer }).getText())
     else if (fileType.endsWith('.pdf')) {
-      const pdfData = await pdfParse(fileBuffer);
-      const text = pdfData.text;
+      console.log(`📄 PDF upload — buffer size: ${fileBuffer.length} bytes`);
+      let text = '';
+      try {
+        const parser = new PDFParse({ data: fileBuffer });
+        const pdfResult = await parser.getText();
+        text = pdfResult.text || '';
+        console.log(`📄 PDF text extracted — length: ${text.length} chars`);
+      } catch (pdfErr) {
+        console.error('PDF parse error:', pdfErr.message);
+        return res.status(422).json({
+          error: 'El PDF fue cargado pero no se pudo extraer texto. Asegúrate de que el PDF contiene texto real (no es una imagen escaneada). Si es un estado de cuenta escaneado, descarga la versión digital desde el portal de tu banco.'
+        });
+      }
+      if (!text || text.trim().length < 20) {
+        return res.status(422).json({
+          error: 'El PDF fue cargado pero requiere revisión manual: el contenido extraído está vacío o es ilegible. Descarga el extracto en formato CSV/OFX desde tu banco para mejor compatibilidad.'
+        });
+      }
 
       // Extract transactions from PDF text using flexible regex
       const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 5);
