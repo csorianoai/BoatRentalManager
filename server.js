@@ -1115,6 +1115,10 @@ async function initializeDatabase() {
     `);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_documents_entity ON documents(entity_type, entity_id)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_documents_type ON documents(doc_type)`);
+    // FASE 13 enhancements: boat_id + visible_in_general
+    await pool.query(`ALTER TABLE documents ADD COLUMN IF NOT EXISTS boat_id TEXT`);
+    await pool.query(`ALTER TABLE documents ADD COLUMN IF NOT EXISTS visible_in_general BOOLEAN NOT NULL DEFAULT true`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_documents_boat ON documents(boat_id)`);
     console.log('✅ FASE 13 table created (document management)');
 
     // FASE 14: Captain & Stew Payments + enhanced expenses
@@ -9563,19 +9567,26 @@ app.post('/api/documents/upload', isAuthenticated, (req, res, next) => {
   });
 }, async (req, res) => {
   try {
-    const { doc_type, entity_type, entity_id, notes } = req.body;
+    const { doc_type, entity_type, entity_id, boat_id, visible_in_general, notes } = req.body;
     if (!req.file) return res.status(400).json({ error: 'No se recibió ningún archivo' });
-    if (!doc_type || !entity_type) return res.status(400).json({ error: 'doc_type y entity_type son obligatorios' });
+    if (!doc_type) return res.status(400).json({ error: 'doc_type es obligatorio' });
 
     const { nanoid } = await import('nanoid');
     const id = 'doc_' + nanoid(10);
     const filePath = req.file.path.replace(__dirname + path.sep, '').replace(/\\/g, '/');
 
+    // Derive entity_type: if boat_id provided and no entity_type, use 'boat'
+    const resolvedEntityType = entity_type || (boat_id ? 'boat' : 'global');
+    const resolvedEntityId   = entity_id || boat_id || null;
+    const resolvedBoatId     = boat_id || (entity_type === 'boat' ? entity_id : null) || null;
+    const resolvedVisible    = visible_in_general === 'false' ? false : true;
+
     await pool.query(
-      `INSERT INTO documents (id, original_name, stored_name, file_path, doc_type, entity_type, entity_id, file_size, mime_type, notes, uploaded_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+      `INSERT INTO documents (id, original_name, stored_name, file_path, doc_type, entity_type, entity_id, boat_id, visible_in_general, file_size, mime_type, notes, uploaded_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
       [id, req.file.originalname, req.file.filename, filePath,
-       doc_type, entity_type, entity_id || null,
+       doc_type, resolvedEntityType, resolvedEntityId,
+       resolvedBoatId, resolvedVisible,
        req.file.size, req.file.mimetype, notes || null,
        req.user?.name || req.user?.email || 'sistema']
     );
@@ -9590,15 +9601,34 @@ app.post('/api/documents/upload', isAuthenticated, (req, res, next) => {
 // GET /api/documents — list with optional filters
 app.get('/api/documents', isAuthenticated, async (req, res) => {
   try {
-    const { entity_type, entity_id, doc_type } = req.query;
+    const { entity_type, entity_id, doc_type, boat_id, general_only } = req.query;
     let where = [];
     let params = [];
-    if (entity_type) { params.push(entity_type); where.push(`entity_type = $${params.length}`); }
-    if (entity_id)   { params.push(entity_id);   where.push(`entity_id = $${params.length}`); }
-    if (doc_type)    { params.push(doc_type);     where.push(`doc_type = $${params.length}`); }
+    if (entity_type)  { params.push(entity_type);  where.push(`entity_type = $${params.length}`); }
+    if (entity_id)    { params.push(entity_id);    where.push(`entity_id = $${params.length}`); }
+    if (doc_type)     { params.push(doc_type);     where.push(`doc_type = $${params.length}`); }
+    if (boat_id)      { params.push(boat_id);      where.push(`boat_id = $${params.length}`); }
+    if (general_only === 'true') { where.push(`visible_in_general = true`); }
     const sql = `SELECT * FROM documents${where.length ? ' WHERE ' + where.join(' AND ') : ''} ORDER BY created_at DESC`;
     const result = await pool.query(sql, params);
     res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/documents/:id/view — serve file inline for PDF/image preview
+app.get('/api/documents/:id/view', isAuthenticated, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM documents WHERE id=$1', [req.params.id]);
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Documento no encontrado' });
+    const doc = result.rows[0];
+    const fullPath = path.join(__dirname, doc.file_path);
+    if (!require('fs').existsSync(fullPath)) return res.status(404).json({ error: 'Archivo no encontrado en el servidor' });
+    res.setHeader('Content-Type', doc.mime_type || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(doc.original_name)}"`);
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    require('fs').createReadStream(fullPath).pipe(res);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

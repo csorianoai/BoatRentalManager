@@ -22,9 +22,7 @@
       --warning: #d97706;
       --radius: 8px;
     }
-
     * { box-sizing: border-box; margin: 0; padding: 0; }
-
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       background: var(--surface);
@@ -66,7 +64,7 @@
     /* ── Layout ── */
     .main-layout {
       display: grid;
-      grid-template-columns: 280px 1fr;
+      grid-template-columns: 270px 1fr;
       gap: 0;
       min-height: calc(100vh - 68px);
     }
@@ -75,154 +73,202 @@
     .sidebar {
       background: var(--card-bg);
       border-right: 1px solid var(--border);
-      padding: 20px 16px;
+      padding: 16px 14px;
       display: flex;
       flex-direction: column;
       gap: 20px;
+      overflow-y: auto;
+      max-height: calc(100vh - 68px);
+      position: sticky;
+      top: 68px;
     }
-
     .sidebar-section-title {
-      font-size: 11px;
+      font-size: 10px;
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.08em;
       color: var(--text-muted);
       margin-bottom: 6px;
     }
-
-    .filter-group { display: flex; flex-direction: column; gap: 4px; }
-
+    .filter-group { display: flex; flex-direction: column; gap: 2px; }
     .filter-btn {
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 8px 10px;
+      padding: 7px 10px;
       border-radius: 6px;
       border: none;
       background: none;
-      cursor: pointer;
-      font-size: 13px;
       color: var(--text);
+      font-size: 13px;
+      cursor: pointer;
       text-align: left;
+      width: 100%;
       transition: background 0.15s;
     }
     .filter-btn:hover { background: #f1f5f9; }
-    .filter-btn.active { background: #eff6ff; color: var(--ocean); font-weight: 600; }
-    .filter-btn .filter-icon { font-size: 16px; width: 20px; text-align: center; }
-    .filter-btn .filter-count {
+    .filter-btn.active { background: #e0f2fe; color: var(--ocean); font-weight: 600; }
+    .filter-icon { font-size: 14px; flex-shrink: 0; }
+    .filter-count {
       margin-left: auto;
       background: #e2e8f0;
-      border-radius: 10px;
+      color: var(--text-muted);
       font-size: 11px;
-      padding: 1px 6px;
       font-weight: 600;
+      padding: 1px 7px;
+      border-radius: 20px;
+      min-width: 20px;
+      text-align: center;
     }
-    .filter-btn.active .filter-count { background: var(--ocean); color: #fff; }
+    .filter-btn.active .filter-count { background: #bae6fd; color: var(--ocean-dark); }
 
-    /* Stats */
-    .stat-cards { display: flex; flex-direction: column; gap: 8px; }
-    .stat-card {
-      background: var(--surface);
+    /* Boats in sidebar */
+    .boat-filter-list { display: flex; flex-direction: column; gap: 2px; }
+    .boat-filter-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
       border-radius: 6px;
-      padding: 10px 12px;
-      border: 1px solid var(--border);
+      border: none;
+      background: none;
+      color: var(--text);
+      font-size: 12px;
+      cursor: pointer;
+      text-align: left;
+      width: 100%;
+      transition: background 0.15s;
     }
-    .stat-card .stat-label { font-size: 11px; color: var(--text-muted); }
-    .stat-card .stat-value { font-size: 20px; font-weight: 700; color: var(--ocean); margin-top: 2px; }
+    .boat-filter-item:hover { background: #f1f5f9; }
+    .boat-filter-item.active { background: #e0f2fe; color: var(--ocean); font-weight: 600; }
+    .boat-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--ocean);
+      flex-shrink: 0;
+    }
+    .boat-doc-count {
+      margin-left: auto;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .stat-cards { display: flex; flex-direction: column; gap: 6px; }
+    .stat-card {
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 10px;
+    }
+    .stat-label { font-size: 11px; color: var(--text-muted); }
+    .stat-value { font-size: 18px; font-weight: 700; color: var(--text); }
 
     /* ── Content ── */
-    .content-area {
-      padding: 24px;
-      display: flex;
-      flex-direction: column;
-      gap: 20px;
-    }
+    .content-area { padding: 20px 24px; overflow-y: auto; }
 
-    /* Toolbar */
+    /* ── Toolbar ── */
     .toolbar {
       display: flex;
       align-items: center;
+      justify-content: space-between;
       gap: 12px;
+      margin-bottom: 18px;
       flex-wrap: wrap;
     }
-    .toolbar-left { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 200px; }
+    .toolbar-left { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
     .search-input {
-      flex: 1;
       padding: 8px 12px;
       border: 1px solid var(--border);
       border-radius: 6px;
       font-size: 13px;
+      width: 220px;
       outline: none;
-      background: #fff;
+      transition: border-color 0.15s;
     }
-    .search-input:focus { border-color: var(--ocean); box-shadow: 0 0 0 2px rgba(0,119,182,0.12); }
-
+    .search-input:focus { border-color: var(--ocean); }
     .select-filter {
-      padding: 8px 12px;
+      padding: 8px 10px;
       border: 1px solid var(--border);
       border-radius: 6px;
       font-size: 13px;
       background: #fff;
-      color: var(--text);
-      outline: none;
       cursor: pointer;
+      outline: none;
     }
-    .select-filter:focus { border-color: var(--ocean); }
-
-    /* Upload button */
     .upload-btn {
       display: flex;
       align-items: center;
       gap: 6px;
+      padding: 8px 16px;
       background: var(--ocean);
       color: #fff;
       border: none;
       border-radius: 6px;
-      padding: 8px 16px;
       font-size: 13px;
       font-weight: 600;
       cursor: pointer;
-      white-space: nowrap;
-      transition: background 0.2s;
+      transition: background 0.15s;
     }
     .upload-btn:hover { background: var(--ocean-dark); }
 
-    /* Document grid */
+    /* Section header */
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .section-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .section-badge {
+      background: #e2e8f0;
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 20px;
+    }
+
+    /* ── Doc Grid ── */
     .doc-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-      gap: 16px;
+      gap: 14px;
     }
 
     .doc-card {
       background: var(--card-bg);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      padding: 16px;
+      padding: 14px;
       display: flex;
       flex-direction: column;
       gap: 10px;
-      transition: box-shadow 0.2s;
+      transition: box-shadow 0.15s, transform 0.15s;
     }
-    .doc-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+    .doc-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); transform: translateY(-1px); }
 
-    .doc-card-header { display: flex; align-items: flex-start; gap: 12px; }
+    .doc-card-header { display: flex; align-items: flex-start; gap: 10px; }
     .doc-icon {
-      width: 44px;
-      height: 44px;
+      width: 40px;
+      height: 40px;
       border-radius: 8px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 22px;
+      font-size: 18px;
       flex-shrink: 0;
     }
-    .doc-icon.pdf    { background: #fee2e2; color: #dc2626; }
-    .doc-icon.word   { background: #dbeafe; color: #2563eb; }
-    .doc-icon.excel  { background: #dcfce7; color: #16a34a; }
-    .doc-icon.image  { background: #fef9c3; color: #ca8a04; }
-    .doc-icon.text   { background: #f3f4f6; color: #6b7280; }
-    .doc-icon.other  { background: #f3f4f6; color: #6b7280; }
+    .doc-icon.pdf    { background: #fef2f2; }
+    .doc-icon.word   { background: #eff6ff; }
+    .doc-icon.excel  { background: #f0fdf4; }
+    .doc-icon.image  { background: #fdf4ff; }
+    .doc-icon.text   { background: #fafafa; }
+    .doc-icon.other  { background: #f8fafc; }
 
     .doc-info { flex: 1; min-width: 0; }
     .doc-name {
@@ -233,87 +279,94 @@
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    .doc-meta { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+    .doc-meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
 
     .doc-tags { display: flex; gap: 6px; flex-wrap: wrap; }
     .tag {
       font-size: 11px;
       font-weight: 500;
       padding: 2px 8px;
-      border-radius: 10px;
+      border-radius: 20px;
       background: #f1f5f9;
-      color: #475569;
+      color: var(--text-muted);
     }
     .tag.contract  { background: #eff6ff; color: #1d4ed8; }
     .tag.insurance { background: #fef3c7; color: #92400e; }
-    .tag.maintenance { background: #d1fae5; color: #065f46; }
-    .tag.permit    { background: #fce7f3; color: #9d174d; }
-    .tag.payment   { background: #ecfdf5; color: #047857; }
-    .tag.id        { background: #faf5ff; color: #6d28d9; }
-    .tag.attachment{ background: #f0fdf4; color: #166534; }
-    .tag.boat { background: #e0f2fe; color: #0369a1; }
-    .tag.client { background: #fdf4ff; color: #7e22ce; }
-    .tag.task { background: #fff7ed; color: #c2410c; }
-    .tag.global { background: #f0fdf4; color: #15803d; }
+    .tag.maintenance { background: #f0fdf4; color: #15803d; }
+    .tag.permit    { background: #fdf4ff; color: #7e22ce; }
+    .tag.payment   { background: #ecfdf5; color: #065f46; }
+    .tag.boat-tag  { background: #e0f2fe; color: #0369a1; }
+    .tag.general-tag { background: #f0fdf4; color: #15803d; }
 
-    .doc-notes { font-size: 12px; color: var(--text-muted); line-height: 1.4; }
+    .doc-notes { font-size: 12px; color: var(--text-muted); font-style: italic; }
 
-    .doc-actions { display: flex; gap: 8px; padding-top: 4px; border-top: 1px solid var(--border); }
+    .doc-actions { display: flex; gap: 6px; margin-top: 2px; }
     .doc-action-btn {
       flex: 1;
+      padding: 6px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: #fff;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 5px;
-      padding: 6px 10px;
-      border-radius: 5px;
-      border: 1px solid var(--border);
-      background: none;
-      cursor: pointer;
-      font-size: 12px;
-      font-weight: 500;
-      color: var(--text-muted);
-      transition: all 0.15s;
+      gap: 4px;
     }
-    .doc-action-btn:hover { background: #f8fafc; color: var(--text); }
-    .doc-action-btn.download:hover { border-color: var(--ocean); color: var(--ocean); }
-    .doc-action-btn.delete:hover { border-color: var(--danger); color: var(--danger); }
+    .doc-action-btn:hover { background: #f8fafc; }
+    .doc-action-btn.view { color: var(--ocean); border-color: #bae6fd; background: #f0f9ff; }
+    .doc-action-btn.view:hover { background: #e0f2fe; }
+    .doc-action-btn.download { color: var(--text-muted); }
+    .doc-action-btn.delete { color: var(--danger); border-color: #fecaca; background: #fff5f5; }
+    .doc-action-btn.delete:hover { background: #fef2f2; }
 
-    /* Empty state */
+    /* ── Empty / Loading ── */
     .empty-state {
       text-align: center;
-      padding: 60px 24px;
+      padding: 60px 20px;
       color: var(--text-muted);
+      grid-column: 1/-1;
     }
-    .empty-state .empty-icon { font-size: 48px; margin-bottom: 12px; }
-    .empty-state h3 { font-size: 16px; color: var(--text); margin-bottom: 6px; }
+    .empty-icon { font-size: 48px; margin-bottom: 12px; }
+    .empty-state h3 { font-size: 16px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+    .empty-state p { font-size: 13px; }
+    .loading-state { text-align: center; padding: 40px; color: var(--text-muted); grid-column:1/-1; }
+    .spinner {
+      width: 20px; height: 20px;
+      border: 2px solid #e2e8f0;
+      border-top-color: var(--ocean);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: inline-block;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* Loading */
-    .loading-state { text-align: center; padding: 40px; color: var(--text-muted); }
-
-    /* ── Modal ── */
+    /* ── Modal shared ── */
     .modal-overlay {
       position: fixed;
       inset: 0;
-      background: rgba(0,0,0,0.45);
+      background: rgba(0,0,0,0.5);
       display: none;
       align-items: center;
       justify-content: center;
       z-index: 1000;
-      padding: 16px;
     }
     .modal-overlay.open { display: flex; }
     .modal {
       background: #fff;
       border-radius: 12px;
-      width: 100%;
-      max-width: 520px;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+      width: 520px;
+      max-width: 95vw;
+      max-height: 90vh;
       display: flex;
       flex-direction: column;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.2);
     }
     .modal-header {
-      padding: 20px 24px 16px;
+      padding: 18px 20px 14px;
       border-bottom: 1px solid var(--border);
       display: flex;
       align-items: center;
@@ -326,79 +379,77 @@
       font-size: 20px;
       cursor: pointer;
       color: var(--text-muted);
-      padding: 4px;
+      padding: 2px 6px;
       border-radius: 4px;
-      line-height: 1;
     }
-    .modal-close:hover { background: #f1f5f9; color: var(--text); }
-    .modal-body { padding: 20px 24px; display: flex; flex-direction: column; gap: 14px; }
+    .modal-close:hover { background: #f1f5f9; }
+    .modal-body { padding: 20px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 14px; }
     .modal-footer {
-      padding: 16px 24px;
+      padding: 14px 20px;
       border-top: 1px solid var(--border);
       display: flex;
       justify-content: flex-end;
       gap: 10px;
     }
 
+    /* ── Drop zone ── */
+    .drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: 8px;
+      padding: 28px 16px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .drop-zone:hover, .drop-zone.dragging { border-color: var(--ocean); background: #f0f9ff; }
+    .drop-zone.has-file { border-color: var(--success); background: #f0fdf4; }
+    .dz-icon { font-size: 28px; margin-bottom: 6px; }
+    .dz-text { font-size: 13px; font-weight: 500; color: var(--text); }
+    .dz-hint { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+
+    /* ── Form elements ── */
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     .form-group { display: flex; flex-direction: column; gap: 5px; }
-    .form-label { font-size: 12px; font-weight: 600; color: var(--text); }
+    .form-label { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
     .form-control {
-      padding: 8px 12px;
+      padding: 8px 10px;
       border: 1px solid var(--border);
       border-radius: 6px;
       font-size: 13px;
       outline: none;
+      transition: border-color 0.15s;
+      width: 100%;
       background: #fff;
-      color: var(--text);
     }
-    .form-control:focus { border-color: var(--ocean); box-shadow: 0 0 0 2px rgba(0,119,182,0.12); }
+    .form-control:focus { border-color: var(--ocean); }
+    textarea.form-control { resize: vertical; }
 
-    /* Drop zone */
-    .drop-zone {
-      border: 2px dashed var(--border);
-      border-radius: 8px;
-      padding: 28px;
-      text-align: center;
-      cursor: pointer;
-      transition: all 0.2s;
-      background: var(--surface);
-    }
-    .drop-zone:hover, .drop-zone.dragging {
-      border-color: var(--ocean);
-      background: #eff6ff;
-    }
-    .drop-zone .dz-icon { font-size: 32px; margin-bottom: 8px; }
-    .drop-zone .dz-text { font-size: 13px; color: var(--text-muted); }
-    .drop-zone .dz-hint { font-size: 11px; color: #94a3b8; margin-top: 4px; }
-    .drop-zone.has-file { border-color: var(--success); background: #f0fdf4; }
-    .drop-zone.has-file .dz-icon { color: var(--success); }
-
-    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-
-    /* Upload progress */
-    .upload-progress {
-      display: none;
-      background: #eff6ff;
-      border: 1px solid #bfdbfe;
-      border-radius: 6px;
-      padding: 10px 14px;
-      font-size: 13px;
-      color: var(--ocean);
+    .checkbox-row {
+      display: flex;
       align-items: center;
       gap: 8px;
+      padding: 8px 12px;
+      background: #f8fafc;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+    }
+    .checkbox-row input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; }
+    .checkbox-row label { font-size: 13px; color: var(--text); cursor: pointer; }
+    .checkbox-hint { font-size: 11px; color: var(--text-muted); }
+
+    .upload-progress {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      padding: 10px;
+      background: #f0f9ff;
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--ocean);
     }
     .upload-progress.show { display: flex; }
-    .spinner {
-      width: 16px;
-      height: 16px;
-      border: 2px solid rgba(0,119,182,0.2);
-      border-top-color: var(--ocean);
-      border-radius: 50%;
-      animation: spin 0.6s linear infinite;
-      flex-shrink: 0;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
 
+    /* ── Buttons ── */
     .btn {
       padding: 8px 18px;
       border-radius: 6px;
@@ -415,28 +466,88 @@
     .btn-ghost:hover { background: #f1f5f9; color: var(--text); }
     .btn-danger { background: var(--danger); color: #fff; border-color: var(--danger); }
     .btn-danger:hover { background: #b91c1c; }
+    .btn-outline { background: #fff; color: var(--ocean); border-color: var(--ocean); }
+    .btn-outline:hover { background: #f0f9ff; }
 
-    /* Toast */
-    #toast {
+    /* ── PDF Viewer Modal ── */
+    .viewer-overlay {
       position: fixed;
-      bottom: 20px;
-      right: 20px;
+      inset: 0;
+      background: rgba(0,0,0,0.85);
+      display: none;
+      flex-direction: column;
+      z-index: 2000;
+    }
+    .viewer-overlay.open { display: flex; }
+    .viewer-header {
       background: #1e293b;
       color: #fff;
-      padding: 10px 18px;
-      border-radius: 8px;
-      font-size: 13px;
-      z-index: 9999;
-      transform: translateY(80px);
-      opacity: 0;
-      transition: all 0.3s;
-      pointer-events: none;
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-shrink: 0;
     }
-    #toast.show { transform: translateY(0); opacity: 1; }
-    #toast.success { background: var(--success); }
-    #toast.error { background: var(--danger); }
+    .viewer-title {
+      flex: 1;
+      font-size: 14px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .viewer-actions { display: flex; gap: 8px; align-items: center; }
+    .viewer-btn {
+      padding: 6px 14px;
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.2);
+      background: rgba(255,255,255,0.08);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .viewer-btn:hover { background: rgba(255,255,255,0.18); }
+    .viewer-btn.close-btn { background: rgba(220,38,38,0.3); border-color: rgba(220,38,38,0.5); }
+    .viewer-btn.close-btn:hover { background: rgba(220,38,38,0.5); }
+    .viewer-body { flex: 1; overflow: hidden; position: relative; }
+    .viewer-iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      display: block;
+    }
+    .viewer-image-wrap {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      overflow: auto;
+    }
+    .viewer-image-wrap img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 4px; }
+    .viewer-unsupported {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: rgba(255,255,255,0.7);
+      gap: 16px;
+      text-align: center;
+      padding: 40px;
+    }
+    .viewer-unsupported .icon { font-size: 56px; }
+    .viewer-unsupported h3 { font-size: 18px; font-weight: 600; color: #fff; }
+    .viewer-unsupported p { font-size: 14px; max-width: 360px; line-height: 1.5; }
+    .viewer-unsupported .actions { display: flex; gap: 10px; margin-top: 8px; }
 
-    /* Delete confirm */
+    /* ── Delete confirm ── */
     .confirm-overlay {
       position: fixed;
       inset: 0;
@@ -460,6 +571,26 @@
     .confirm-box p { font-size: 13px; color: var(--text-muted); margin-bottom: 20px; line-height: 1.5; }
     .confirm-btns { display: flex; gap: 10px; justify-content: center; }
 
+    /* Toast */
+    #toast {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: #1e293b;
+      color: #fff;
+      padding: 10px 18px;
+      border-radius: 8px;
+      font-size: 13px;
+      z-index: 9999;
+      transform: translateY(80px);
+      opacity: 0;
+      transition: all 0.3s;
+      pointer-events: none;
+    }
+    #toast.show { transform: translateY(0); opacity: 1; }
+    #toast.success { background: var(--success); }
+    #toast.error { background: var(--danger); }
+
     @media (max-width: 768px) {
       .main-layout { grid-template-columns: 1fr; }
       .sidebar { display: none; }
@@ -473,12 +604,10 @@
 <!-- Header -->
 <div class="page-header">
   <div class="header-left">
-    <a href="/dashboard.html" class="back-btn">
-      &#8592; Dashboard
-    </a>
+    <a href="/dashboard.html" class="back-btn">&#8592; Dashboard</a>
     <div>
-      <div class="page-title" data-i18n="docs.title">Documentos</div>
-      <div class="page-subtitle" data-i18n="docs.subtitle">Contratos, seguros, permisos y archivos de barcos y clientes</div>
+      <div class="page-title">Documentos</div>
+      <div class="page-subtitle">Contratos, seguros, permisos y archivos de barcos</div>
     </div>
   </div>
 </div>
@@ -488,92 +617,90 @@
 
   <!-- Sidebar -->
   <aside class="sidebar">
+
+    <!-- General / Por barco -->
     <div>
-      <div class="sidebar-section-title" data-i18n="docs.filter_entity">Por entidad</div>
-      <div class="filter-group" id="entityFilters">
-        <button class="filter-btn active" data-entity="" onclick="filterBy('entity', '')">
+      <div class="sidebar-section-title">Vista</div>
+      <div class="filter-group">
+        <button class="filter-btn active" data-view="all" onclick="setView('all', this)">
           <span class="filter-icon">&#128196;</span>
-          <span data-i18n="docs.all">Todos</span>
+          <span>Todos los documentos</span>
           <span class="filter-count" id="count-all">0</span>
         </button>
-        <button class="filter-btn" data-entity="boat" onclick="filterBy('entity', 'boat')">
-          <span class="filter-icon">&#9875;</span>
-          <span data-i18n="docs.entity_boat">Barcos</span>
-          <span class="filter-count" id="count-boat">0</span>
-        </button>
-        <button class="filter-btn" data-entity="client" onclick="filterBy('entity', 'client')">
-          <span class="filter-icon">&#128100;</span>
-          <span data-i18n="docs.entity_client">Clientes</span>
-          <span class="filter-count" id="count-client">0</span>
-        </button>
-        <button class="filter-btn" data-entity="task" onclick="filterBy('entity', 'task')">
-          <span class="filter-icon">&#9989;</span>
-          <span data-i18n="docs.entity_task">Tareas</span>
-          <span class="filter-count" id="count-task">0</span>
-        </button>
-        <button class="filter-btn" data-entity="global" onclick="filterBy('entity', 'global')">
-          <span class="filter-icon">&#127758;</span>
-          <span data-i18n="docs.entity_global">Contratos globales</span>
-          <span class="filter-count" id="count-global">0</span>
+        <button class="filter-btn" data-view="general" onclick="setView('general', this)">
+          <span class="filter-icon">&#128194;</span>
+          <span>Carpeta general</span>
+          <span class="filter-count" id="count-general">0</span>
         </button>
       </div>
     </div>
 
+    <!-- Por barco -->
     <div>
-      <div class="sidebar-section-title" data-i18n="docs.filter_type">Por tipo</div>
+      <div class="sidebar-section-title">Por barco</div>
+      <div class="boat-filter-list" id="boatFilterList">
+        <div style="font-size:12px;color:var(--text-muted);padding:4px 10px;">Cargando...</div>
+      </div>
+    </div>
+
+    <!-- Por tipo -->
+    <div>
+      <div class="sidebar-section-title">Por tipo</div>
       <div class="filter-group" id="typeFilters">
-        <button class="filter-btn active-type" data-type="" onclick="filterBy('type', '')">
+        <button class="filter-btn active" data-type="" onclick="setType('', this)">
           <span class="filter-icon">&#128195;</span>
-          <span data-i18n="docs.all_types">Todos los tipos</span>
+          <span>Todos los tipos</span>
         </button>
-        <button class="filter-btn" data-type="contract" onclick="filterBy('type', 'contract')">
+        <button class="filter-btn" data-type="contract" onclick="setType('contract', this)">
           <span class="filter-icon">&#128221;</span>
-          <span data-i18n="docs.type_contract">Contratos</span>
+          <span>Contratos</span>
         </button>
-        <button class="filter-btn" data-type="insurance" onclick="filterBy('type', 'insurance')">
+        <button class="filter-btn" data-type="insurance" onclick="setType('insurance', this)">
           <span class="filter-icon">&#128737;</span>
-          <span data-i18n="docs.type_insurance">Seguros</span>
+          <span>Seguros</span>
         </button>
-        <button class="filter-btn" data-type="maintenance" onclick="filterBy('type', 'maintenance')">
+        <button class="filter-btn" data-type="maintenance" onclick="setType('maintenance', this)">
           <span class="filter-icon">&#128295;</span>
-          <span data-i18n="docs.type_maintenance">Mantenimiento</span>
+          <span>Mantenimiento</span>
         </button>
-        <button class="filter-btn" data-type="permit" onclick="filterBy('type', 'permit')">
+        <button class="filter-btn" data-type="permit" onclick="setType('permit', this)">
           <span class="filter-icon">&#128220;</span>
-          <span data-i18n="docs.type_permit">Permisos</span>
+          <span>Permisos</span>
         </button>
-        <button class="filter-btn" data-type="id" onclick="filterBy('type', 'id')">
+        <button class="filter-btn" data-type="id" onclick="setType('id', this)">
           <span class="filter-icon">&#127899;</span>
-          <span data-i18n="docs.type_id">Identificaciones</span>
+          <span>Identificaciones</span>
         </button>
-        <button class="filter-btn" data-type="payment" onclick="filterBy('type', 'payment')">
+        <button class="filter-btn" data-type="payment" onclick="setType('payment', this)">
           <span class="filter-icon">&#128176;</span>
-          <span data-i18n="docs.type_payment">Pagos</span>
+          <span>Pagos</span>
         </button>
-        <button class="filter-btn" data-type="attachment" onclick="filterBy('type', 'attachment')">
+        <button class="filter-btn" data-type="attachment" onclick="setType('attachment', this)">
           <span class="filter-icon">&#128206;</span>
-          <span data-i18n="docs.type_attachment">Adjuntos</span>
+          <span>Adjuntos</span>
         </button>
-        <button class="filter-btn" data-type="other" onclick="filterBy('type', 'other')">
+        <button class="filter-btn" data-type="other" onclick="setType('other', this)">
           <span class="filter-icon">&#128193;</span>
-          <span data-i18n="docs.type_other">Otros</span>
+          <span>Otros</span>
         </button>
       </div>
     </div>
 
+    <!-- Stats -->
     <div>
-      <div class="sidebar-section-title" data-i18n="docs.stats_title">Estadísticas</div>
+      <div class="sidebar-section-title">Estadísticas</div>
       <div class="stat-cards">
         <div class="stat-card">
-          <div class="stat-label" data-i18n="docs.stats_total">Total documentos</div>
+          <div class="stat-label">Total documentos</div>
           <div class="stat-value" id="stat-total">—</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label" data-i18n="docs.stats_size">Espacio usado</div>
+          <div class="stat-label">Espacio usado</div>
           <div class="stat-value" id="stat-size">—</div>
         </div>
       </div>
     </div>
+
   </aside>
 
   <!-- Content -->
@@ -582,66 +709,84 @@
     <!-- Toolbar -->
     <div class="toolbar">
       <div class="toolbar-left">
-        <input
-          type="text"
-          class="search-input"
-          id="searchInput"
-          placeholder="Buscar documentos..."
-          data-i18n-placeholder="docs.search_placeholder"
-          oninput="applySearch()"
-        >
-        <select class="select-filter" id="sortSelect" onchange="applySearch()">
-          <option value="newest" data-i18n="docs.sort_newest">Más recientes</option>
-          <option value="oldest" data-i18n="docs.sort_oldest">Más antiguos</option>
-          <option value="name" data-i18n="docs.sort_name">Nombre A-Z</option>
+        <input type="text" class="search-input" id="searchInput"
+          placeholder="Buscar documentos..." oninput="renderDocs(allDocs)">
+        <select class="select-filter" id="sortSelect" onchange="renderDocs(allDocs)">
+          <option value="newest">Más recientes</option>
+          <option value="oldest">Más antiguos</option>
+          <option value="name">Nombre A-Z</option>
         </select>
       </div>
       <button class="upload-btn" onclick="openUploadModal()" data-testid="button-upload-doc">
-        &#43; <span data-i18n="docs.upload_btn">Subir documento</span>
+        &#43; Subir documento
       </button>
+    </div>
+
+    <!-- Section header (dynamic) -->
+    <div class="section-header">
+      <div class="section-title" id="sectionTitle">Todos los documentos</div>
+      <div class="section-badge" id="sectionBadge">0</div>
     </div>
 
     <!-- Doc Grid -->
     <div id="docGrid" class="doc-grid">
       <div class="loading-state">
         <div class="spinner" style="width:24px;height:24px;border-width:3px;margin:0 auto 8px;"></div>
-        <span data-i18n="docs.loading">Cargando documentos...</span>
+        Cargando documentos...
       </div>
     </div>
 
   </main>
 </div>
 
-<!-- Upload Modal -->
+<!-- ═══════════════════════════════════════════════════════
+     PDF / IMAGE VIEWER MODAL
+══════════════════════════════════════════════════════════ -->
+<div class="viewer-overlay" id="viewerOverlay">
+  <div class="viewer-header">
+    <div class="viewer-title" id="viewerTitle">Documento</div>
+    <div class="viewer-actions">
+      <button class="viewer-btn" onclick="viewerNewTab()" data-testid="button-viewer-newtab">
+        &#128279; Nueva pestaña
+      </button>
+      <button class="viewer-btn" onclick="viewerDownload()" data-testid="button-viewer-download">
+        &#11015; Descargar
+      </button>
+      <button class="viewer-btn close-btn" onclick="closeViewer()" data-testid="button-viewer-close">
+        &#10005; Cerrar
+      </button>
+    </div>
+  </div>
+  <div class="viewer-body" id="viewerBody">
+    <!-- Content injected by JS -->
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     UPLOAD MODAL
+══════════════════════════════════════════════════════════ -->
 <div class="modal-overlay" id="uploadModal">
   <div class="modal">
     <div class="modal-header">
-      <h3 data-i18n="docs.modal_title">Subir documento</h3>
+      <h3>Subir documento</h3>
       <button class="modal-close" onclick="closeUploadModal()">&#215;</button>
     </div>
     <div class="modal-body">
 
       <!-- Drop zone -->
       <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
-        <input type="file" id="fileInput" style="display:none" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.jpg,.jpeg,.png" onchange="onFileSelect(this)">
+        <input type="file" id="fileInput" style="display:none"
+          accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.jpg,.jpeg,.png"
+          onchange="onFileSelect(this)">
         <div class="dz-icon" id="dzIcon">&#128196;</div>
-        <div class="dz-text" id="dzText" data-i18n="docs.drop_text">Haz clic o arrastra un archivo aquí</div>
-        <div class="dz-hint" data-i18n="docs.drop_hint">PDF, Word, Excel, Imagen — máximo 20 MB</div>
+        <div class="dz-text" id="dzText">Haz clic o arrastra un archivo aquí</div>
+        <div class="dz-hint">PDF, Word, Excel, Imagen — máximo 20 MB</div>
       </div>
 
       <div class="form-row">
         <div class="form-group">
-          <label class="form-label" data-i18n="docs.label_entity_type">Entidad</label>
-          <select class="form-control" id="entityType" onchange="onEntityTypeChange()">
-            <option value="boat" data-i18n="docs.entity_boat">Barco</option>
-            <option value="client" data-i18n="docs.entity_client">Cliente</option>
-            <option value="task" data-i18n="docs.entity_task">Tarea</option>
-            <option value="global" data-i18n="docs.entity_global">Global</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label" data-i18n="docs.label_doc_type">Tipo de documento</label>
-          <select class="form-control" id="docType">
+          <label class="form-label">Tipo de documento</label>
+          <select class="form-control" id="docType" data-testid="select-doc-type">
             <option value="contract">Contrato</option>
             <option value="insurance">Seguro</option>
             <option value="maintenance">Mantenimiento</option>
@@ -652,30 +797,38 @@
             <option value="other">Otro</option>
           </select>
         </div>
+        <div class="form-group">
+          <label class="form-label">Barco (opcional)</label>
+          <select class="form-control" id="boatSelect" data-testid="select-boat">
+            <option value="">-- Sin asignar (general) --</option>
+          </select>
+        </div>
       </div>
 
-      <div class="form-group" id="entityIdGroup">
-        <label class="form-label" id="entityIdLabel" data-i18n="docs.label_entity_id">ID del barco</label>
-        <input type="text" class="form-control" id="entityId" placeholder="boat_NRnnvi3q_C" data-testid="input-entity-id">
+      <div class="checkbox-row">
+        <input type="checkbox" id="visibleGeneral" checked data-testid="check-visible-general">
+        <div>
+          <label for="visibleGeneral">Visible en carpeta general</label>
+          <div class="checkbox-hint">Si está marcado, aparece también en la vista general de documentos</div>
+        </div>
       </div>
 
       <div class="form-group">
-        <label class="form-label" data-i18n="docs.label_notes">Notas (opcional)</label>
-        <textarea class="form-control" id="docNotes" rows="2" placeholder="Descripción breve del documento..." data-testid="input-doc-notes"></textarea>
+        <label class="form-label">Notas (opcional)</label>
+        <textarea class="form-control" id="docNotes" rows="2"
+          placeholder="Descripción breve del documento..." data-testid="input-doc-notes"></textarea>
       </div>
 
       <div class="upload-progress" id="uploadProgress">
         <div class="spinner"></div>
-        <span data-i18n="docs.uploading">Subiendo archivo...</span>
+        Subiendo archivo...
       </div>
 
     </div>
     <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeUploadModal()" data-testid="button-cancel-upload">
-        <span data-i18n="docs.cancel">Cancelar</span>
-      </button>
+      <button class="btn btn-ghost" onclick="closeUploadModal()" data-testid="button-cancel-upload">Cancelar</button>
       <button class="btn btn-primary" id="submitUpload" onclick="submitUpload()" data-testid="button-submit-upload">
-        <span data-i18n="docs.upload_btn">Subir documento</span>
+        Subir documento
       </button>
     </div>
   </div>
@@ -684,15 +837,11 @@
 <!-- Delete confirm -->
 <div class="confirm-overlay" id="confirmModal">
   <div class="confirm-box">
-    <h4 data-i18n="docs.delete_confirm_title">Eliminar documento</h4>
-    <p data-i18n="docs.delete_confirm_text">Esta acción es permanente. El archivo será eliminado del servidor y de la base de datos.</p>
+    <h4>Eliminar documento</h4>
+    <p>Esta acción es permanente. El archivo será eliminado del servidor y de la base de datos.</p>
     <div class="confirm-btns">
-      <button class="btn btn-ghost" onclick="closeConfirmModal()" data-testid="button-cancel-delete">
-        <span data-i18n="docs.cancel">Cancelar</span>
-      </button>
-      <button class="btn btn-danger" id="confirmDeleteBtn" onclick="confirmDelete()" data-testid="button-confirm-delete">
-        <span data-i18n="docs.delete">Eliminar</span>
-      </button>
+      <button class="btn btn-ghost" onclick="closeConfirmModal()" data-testid="button-cancel-delete">Cancelar</button>
+      <button class="btn btn-danger" onclick="confirmDelete()" data-testid="button-confirm-delete">Eliminar</button>
     </div>
   </div>
 </div>
@@ -700,48 +849,80 @@
 <div id="toast"></div>
 
 <script>
-  // ── State ──────────────────────────────────
-  let allDocs = [];
-  let activeEntity = '';
-  let activeType = '';
+  // ── State ──────────────────────────────────────────────
+  let allDocs      = [];
+  let allBoats     = [];
+  let boatDocCounts = {};
+  let activeView   = 'all';   // 'all' | 'general' | boat_id
+  let activeType   = '';
   let pendingDeleteId = null;
-  let selectedFile = null;
+  let selectedFile    = null;
+  let viewerCurrentId = null;
+  let viewerCurrentName = null;
 
-  const ENTITY_LABELS = { boat: 'Barco', client: 'Cliente', task: 'Tarea', global: 'Global', temp: 'Temporal' };
   const TYPE_LABELS = {
     contract: 'Contrato', insurance: 'Seguro', maintenance: 'Mantenimiento',
     permit: 'Permiso', id: 'Identificación', payment: 'Pago',
     attachment: 'Adjunto', other: 'Otro'
   };
-  const TYPE_ICONS = {
-    contract: '📄', insurance: '🛡️', maintenance: '🔧',
-    permit: '📜', id: '🪪', payment: '💰',
-    attachment: '📎', other: '📁'
-  };
 
-  // ── Init ──────────────────────────────────
+  // ── Boot ───────────────────────────────────────────────
   async function init() {
-    await loadDocuments();
-    await loadStats();
+    await Promise.all([loadBoats(), loadDocuments(), loadStats()]);
     setupDragDrop();
   }
 
+  // ── Load boats for sidebar + upload dropdown ───────────
+  async function loadBoats() {
+    try {
+      const res = await fetch('/api/fleet/boats');
+      if (!res.ok) return;
+      allBoats = await res.json();
+      renderBoatSidebar();
+      populateBoatSelect();
+    } catch (e) { /* non-fatal */ }
+  }
+
+  function renderBoatSidebar() {
+    const list = document.getElementById('boatFilterList');
+    if (!allBoats.length) {
+      list.innerHTML = '<div style="font-size:12px;color:var(--text-muted);padding:4px 10px;">Sin barcos registrados</div>';
+      return;
+    }
+    list.innerHTML = allBoats.map(b => `
+      <button class="boat-filter-item" data-boat="${b.id}"
+        onclick="setView('${b.id}', this)" data-testid="filter-boat-${b.id}">
+        <span class="boat-dot"></span>
+        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(b.name)}</span>
+        <span class="boat-doc-count" id="bcount-${b.id}">0</span>
+      </button>`).join('');
+  }
+
+  function populateBoatSelect() {
+    const sel = document.getElementById('boatSelect');
+    const existing = sel.innerHTML;
+    sel.innerHTML = '<option value="">-- Sin asignar (general) --</option>' +
+      allBoats.map(b => `<option value="${b.id}">${escHtml(b.name)}</option>`).join('');
+  }
+
+  // ── Load documents ─────────────────────────────────────
   async function loadDocuments() {
     try {
-      let url = '/api/documents';
-      const params = [];
-      if (activeEntity) params.push('entity_type=' + encodeURIComponent(activeEntity));
-      if (activeType)   params.push('doc_type='    + encodeURIComponent(activeType));
-      if (params.length) url += '?' + params.join('&');
-
+      const params = new URLSearchParams();
+      if (activeType) params.set('doc_type', activeType);
+      if (activeView === 'general') {
+        params.set('general_only', 'true');
+      } else if (activeView !== 'all') {
+        params.set('boat_id', activeView);
+      }
+      const url = '/api/documents' + (params.toString() ? '?' + params.toString() : '');
       const res = await fetch(url);
       if (!res.ok) throw new Error('HTTP ' + res.status);
       allDocs = await res.json();
       renderDocs(allDocs);
     } catch (e) {
-      console.error('[Docs] loadDocuments error:', e);
       document.getElementById('docGrid').innerHTML =
-        '<div class="empty-state"><div class="empty-icon">⚠️</div><h3>Error al cargar documentos</h3><p>' + e.message + '</p></div>';
+        '<div class="empty-state"><div class="empty-icon">&#9888;</div><h3>Error al cargar</h3><p>' + escHtml(e.message) + '</p></div>';
     }
   }
 
@@ -751,20 +932,29 @@
       if (!res.ok) return;
       const s = await res.json();
       document.getElementById('stat-total').textContent = s.total || 0;
-      document.getElementById('stat-size').textContent = formatSize(s.totalSize || 0);
+      document.getElementById('stat-size').textContent  = formatSize(s.totalSize || 0);
+      document.getElementById('count-all').textContent  = s.total || 0;
 
-      // Update entity counts
-      const countMap = {};
-      (s.byEntity || []).forEach(r => { countMap[r.entity_type] = parseInt(r.count); });
-      document.getElementById('count-all').textContent = s.total || 0;
-      ['boat','client','task','global'].forEach(e => {
-        const el = document.getElementById('count-' + e);
-        if (el) el.textContent = countMap[e] || 0;
-      });
+      // Count general docs
+      const genRes = await fetch('/api/documents?general_only=true');
+      if (genRes.ok) {
+        const genDocs = await genRes.json();
+        document.getElementById('count-general').textContent = genDocs.length;
+      }
+
+      // Per-boat counts
+      for (const boat of allBoats) {
+        const br = await fetch('/api/documents?boat_id=' + boat.id);
+        if (br.ok) {
+          const bd = await br.json();
+          const el = document.getElementById('bcount-' + boat.id);
+          if (el) el.textContent = bd.length;
+        }
+      }
     } catch (e) { /* non-fatal */ }
   }
 
-  // ── Render ────────────────────────────────
+  // ── Render ─────────────────────────────────────────────
   function renderDocs(docs) {
     const search = document.getElementById('searchInput').value.toLowerCase();
     const sort   = document.getElementById('sortSelect').value;
@@ -775,47 +965,67 @@
       (d.notes || '').toLowerCase().includes(search)
     );
 
-    if (sort === 'newest') filtered.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-    else if (sort === 'oldest') filtered.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-    else if (sort === 'name') filtered.sort((a, b) => a.original_name.localeCompare(b.original_name));
+    if (sort === 'newest') filtered.sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+    else if (sort === 'oldest') filtered.sort((a,b) => new Date(a.created_at) - new Date(b.created_at));
+    else if (sort === 'name') filtered.sort((a,b) => a.original_name.localeCompare(b.original_name));
+
+    // Update section header
+    const titles = {
+      all: 'Todos los documentos',
+      general: 'Carpeta general'
+    };
+    const boat = allBoats.find(b => b.id === activeView);
+    const sectionTitle = boat ? boat.name : (titles[activeView] || 'Documentos');
+    document.getElementById('sectionTitle').textContent = sectionTitle;
+    document.getElementById('sectionBadge').textContent = filtered.length;
 
     const grid = document.getElementById('docGrid');
     if (filtered.length === 0) {
       grid.innerHTML = `
-        <div class="empty-state" style="grid-column:1/-1">
-          <div class="empty-icon">📂</div>
-          <h3>No hay documentos</h3>
+        <div class="empty-state">
+          <div class="empty-icon">&#128194;</div>
+          <h3>Sin documentos</h3>
           <p>Sube el primer documento usando el botón de arriba.</p>
         </div>`;
       return;
     }
-
     grid.innerHTML = filtered.map(doc => buildDocCard(doc)).join('');
   }
 
   function buildDocCard(doc) {
     const ext = (doc.stored_name || '').split('.').pop().toLowerCase();
-    const iconClass = ext === 'pdf' ? 'pdf'
+    const isPdf   = ext === 'pdf' || doc.mime_type === 'application/pdf';
+    const isImage = ['jpg','jpeg','png','gif','webp'].includes(ext) || (doc.mime_type||'').startsWith('image/');
+    const canView = isPdf || isImage;
+
+    const iconClass = isPdf ? 'pdf'
       : ['doc','docx'].includes(ext) ? 'word'
       : ['xls','xlsx'].includes(ext) ? 'excel'
-      : ['jpg','jpeg','png'].includes(ext) ? 'image'
+      : isImage ? 'image'
       : ext === 'txt' ? 'text' : 'other';
 
-    const iconEmoji = ext === 'pdf' ? '📕'
-      : ['doc','docx'].includes(ext) ? '📘'
-      : ['xls','xlsx'].includes(ext) ? '📗'
-      : ['jpg','jpeg','png'].includes(ext) ? '🖼️'
-      : '📄';
+    const iconChar = isPdf ? '&#128209;'
+      : ['doc','docx'].includes(ext) ? '&#128196;'
+      : ['xls','xlsx'].includes(ext) ? '&#128200;'
+      : isImage ? '&#128444;'
+      : '&#128196;';
 
-    const date = new Date(doc.created_at).toLocaleDateString('es', { day:'2-digit', month:'short', year:'numeric' });
+    const date = new Date(doc.created_at).toLocaleDateString('es', {day:'2-digit',month:'short',year:'numeric'});
     const size = formatSize(doc.file_size || 0);
     const typeLabel = TYPE_LABELS[doc.doc_type] || doc.doc_type;
-    const entityLabel = ENTITY_LABELS[doc.entity_type] || doc.entity_type;
+
+    const boatName = doc.boat_id ? (allBoats.find(b => b.id === doc.boat_id)?.name || doc.boat_id.slice(-8)) : null;
+
+    const viewBtn = canView ? `
+      <button class="doc-action-btn view" onclick="openViewer('${doc.id}', '${escHtml(doc.original_name).replace(/'/g,"\\'")}', '${doc.mime_type||''}', ${isPdf}, ${isImage})"
+        data-testid="button-view-${doc.id}">
+        &#128065; Ver
+      </button>` : '';
 
     return `
       <div class="doc-card" data-testid="card-doc-${doc.id}">
         <div class="doc-card-header">
-          <div class="doc-icon ${iconClass}">${iconEmoji}</div>
+          <div class="doc-icon ${iconClass}">${iconChar}</div>
           <div class="doc-info">
             <div class="doc-name" title="${escHtml(doc.original_name)}">${escHtml(doc.original_name)}</div>
             <div class="doc-meta">${date} · ${size}${doc.uploaded_by ? ' · ' + escHtml(doc.uploaded_by) : ''}</div>
@@ -823,79 +1033,120 @@
         </div>
         <div class="doc-tags">
           <span class="tag ${doc.doc_type}">${typeLabel}</span>
-          <span class="tag ${doc.entity_type}">${entityLabel}${doc.entity_id ? ': ' + doc.entity_id.slice(-8) : ''}</span>
+          ${boatName ? `<span class="tag boat-tag">&#9875; ${escHtml(boatName)}</span>` : ''}
+          ${doc.visible_in_general ? '<span class="tag general-tag">General</span>' : ''}
         </div>
         ${doc.notes ? `<div class="doc-notes">${escHtml(doc.notes)}</div>` : ''}
         <div class="doc-actions">
-          <button class="doc-action-btn download" onclick="downloadDoc('${doc.id}')" data-testid="button-download-${doc.id}">
-            ⬇ Descargar
+          ${viewBtn}
+          <button class="doc-action-btn download" onclick="downloadDoc('${doc.id}')"
+            data-testid="button-download-${doc.id}">
+            &#11015; Descargar
           </button>
-          <button class="doc-action-btn delete" onclick="promptDelete('${doc.id}', '${escHtml(doc.original_name)}')" data-testid="button-delete-${doc.id}">
-            🗑 Eliminar
+          <button class="doc-action-btn delete" onclick="promptDelete('${doc.id}')"
+            data-testid="button-delete-${doc.id}">
+            &#128465; Eliminar
           </button>
         </div>
       </div>`;
   }
 
-  function escHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str || '';
-    return div.innerHTML;
-  }
+  // ── Viewer ─────────────────────────────────────────────
+  function openViewer(id, name, mime, isPdf, isImage) {
+    viewerCurrentId   = id;
+    viewerCurrentName = name;
+    document.getElementById('viewerTitle').textContent = name;
+    const body = document.getElementById('viewerBody');
 
-  function formatSize(bytes) {
-    if (!bytes) return '0 B';
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
-  }
+    const viewUrl = '/api/documents/' + id + '/view';
 
-  // ── Filters ───────────────────────────────
-  function filterBy(filterType, value) {
-    if (filterType === 'entity') {
-      activeEntity = value;
-      document.querySelectorAll('[data-entity]').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.entity === value);
-      });
+    if (isPdf) {
+      body.innerHTML = `<iframe class="viewer-iframe" src="${viewUrl}" data-testid="iframe-pdf-viewer"></iframe>`;
+    } else if (isImage) {
+      body.innerHTML = `<div class="viewer-image-wrap"><img src="${viewUrl}" alt="${escHtml(name)}" data-testid="img-doc-viewer"></div>`;
     } else {
-      activeType = value;
-      document.querySelectorAll('[data-type]').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.type === value);
-      });
+      body.innerHTML = `
+        <div class="viewer-unsupported">
+          <div class="icon">&#128196;</div>
+          <h3>Vista previa no disponible</h3>
+          <p>Este tipo de archivo no puede mostrarse directamente en el navegador. Puedes descargarlo o abrirlo en una nueva pestaña.</p>
+          <div class="actions">
+            <button class="viewer-btn" onclick="viewerDownload()">&#11015; Descargar</button>
+            <button class="viewer-btn" onclick="viewerNewTab()">&#128279; Nueva pestaña</button>
+          </div>
+        </div>`;
     }
+
+    document.getElementById('viewerOverlay').classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeViewer() {
+    document.getElementById('viewerOverlay').classList.remove('open');
+    document.getElementById('viewerBody').innerHTML = '';
+    document.body.style.overflow = '';
+    viewerCurrentId = null;
+  }
+
+  function viewerDownload() {
+    if (viewerCurrentId) window.location.href = '/api/documents/' + viewerCurrentId + '/download';
+  }
+
+  function viewerNewTab() {
+    if (viewerCurrentId) window.open('/api/documents/' + viewerCurrentId + '/view', '_blank');
+  }
+
+  // Close viewer with Escape
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      if (document.getElementById('viewerOverlay').classList.contains('open')) closeViewer();
+      else if (document.getElementById('uploadModal').classList.contains('open')) closeUploadModal();
+      else if (document.getElementById('confirmModal').classList.contains('open')) closeConfirmModal();
+    }
+  });
+
+  // ── Filters ────────────────────────────────────────────
+  function setView(view, btn) {
+    activeView = view;
+    // Clear all view/boat buttons
+    document.querySelectorAll('[data-view]').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.boat-filter-item').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
     loadDocuments();
   }
 
-  function applySearch() {
-    renderDocs(allDocs);
+  function setType(type, btn) {
+    activeType = type;
+    document.querySelectorAll('[data-type]').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    loadDocuments();
   }
 
-  // ── Upload Modal ──────────────────────────
-  function openUploadModal() {
+  // ── Upload modal ───────────────────────────────────────
+  function openUploadModal(preselectedBoatId) {
     selectedFile = null;
     resetDropZone();
     document.getElementById('docNotes').value = '';
-    document.getElementById('entityId').value = '';
+    document.getElementById('docType').selectedIndex = 0;
+    document.getElementById('visibleGeneral').checked = true;
     document.getElementById('uploadProgress').classList.remove('show');
     document.getElementById('submitUpload').disabled = false;
+
+    // Preselect boat if viewing a specific boat
+    const boatSel = document.getElementById('boatSelect');
+    if (preselectedBoatId && boatSel.querySelector(`option[value="${preselectedBoatId}"]`)) {
+      boatSel.value = preselectedBoatId;
+    } else if (activeView !== 'all' && activeView !== 'general') {
+      boatSel.value = activeView;
+    } else {
+      boatSel.value = '';
+    }
+
     document.getElementById('uploadModal').classList.add('open');
   }
 
   function closeUploadModal() {
     document.getElementById('uploadModal').classList.remove('open');
-  }
-
-  function onEntityTypeChange() {
-    const et = document.getElementById('entityType').value;
-    const group = document.getElementById('entityIdGroup');
-    const label = document.getElementById('entityIdLabel');
-    if (et === 'global') {
-      group.style.display = 'none';
-    } else {
-      group.style.display = 'flex';
-      const labels = { boat: 'ID del barco', client: 'ID del cliente', task: 'ID de la tarea' };
-      label.textContent = labels[et] || 'ID';
-    }
   }
 
   function onFileSelect(input) {
@@ -908,14 +1159,14 @@
   function updateDropZoneFile(file) {
     const dz = document.getElementById('dropZone');
     dz.classList.add('has-file');
-    document.getElementById('dzIcon').textContent = '✅';
+    document.getElementById('dzIcon').textContent = '';
     document.getElementById('dzText').textContent = file.name + ' (' + formatSize(file.size) + ')';
   }
 
   function resetDropZone() {
     const dz = document.getElementById('dropZone');
     dz.classList.remove('has-file', 'dragging');
-    document.getElementById('dzIcon').textContent = '📄';
+    document.getElementById('dzIcon').innerHTML = '&#128196;';
     document.getElementById('dzText').textContent = 'Haz clic o arrastra un archivo aquí';
     document.getElementById('fileInput').value = '';
     selectedFile = null;
@@ -923,9 +1174,9 @@
 
   function setupDragDrop() {
     const dz = document.getElementById('dropZone');
-    dz.addEventListener('dragover', (e) => { e.preventDefault(); dz.classList.add('dragging'); });
+    dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragging'); });
     dz.addEventListener('dragleave', () => dz.classList.remove('dragging'));
-    dz.addEventListener('drop', (e) => {
+    dz.addEventListener('drop', e => {
       e.preventDefault();
       dz.classList.remove('dragging');
       const f = e.dataTransfer.files[0];
@@ -935,27 +1186,29 @@
 
   async function submitUpload() {
     if (!selectedFile) { showToast('Selecciona un archivo primero', 'error'); return; }
-    const entityType = document.getElementById('entityType').value;
-    const docType    = document.getElementById('docType').value;
-    const entityId   = document.getElementById('entityId').value.trim();
-    const notes      = document.getElementById('docNotes').value.trim();
-
-    if (entityType !== 'global' && !entityId) {
-      showToast('Ingresa el ID de la entidad', 'error'); return;
-    }
+    const docType       = document.getElementById('docType').value;
+    const boatId        = document.getElementById('boatSelect').value;
+    const visibleGeneral = document.getElementById('visibleGeneral').checked;
+    const notes         = document.getElementById('docNotes').value.trim();
 
     const formData = new FormData();
     formData.append('file', selectedFile);
-    formData.append('entity_type', entityType);
     formData.append('doc_type', docType);
-    if (entityId) formData.append('entity_id', entityId);
-    if (notes)    formData.append('notes', notes);
+    if (boatId) {
+      formData.append('boat_id', boatId);
+      formData.append('entity_type', 'boat');
+      formData.append('entity_id', boatId);
+    } else {
+      formData.append('entity_type', 'global');
+    }
+    formData.append('visible_in_general', visibleGeneral ? 'true' : 'false');
+    if (notes) formData.append('notes', notes);
 
     document.getElementById('uploadProgress').classList.add('show');
     document.getElementById('submitUpload').disabled = true;
 
     try {
-      const res = await fetch('/api/documents/upload', { method: 'POST', body: formData });
+      const res  = await fetch('/api/documents/upload', { method: 'POST', body: formData });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Error al subir');
       showToast('Documento subido correctamente', 'success');
@@ -970,40 +1223,44 @@
     }
   }
 
-  // ── Download ──────────────────────────────
+  // ── Download / Delete ──────────────────────────────────
   function downloadDoc(id) {
     window.location.href = '/api/documents/' + id + '/download';
   }
 
-  // ── Delete ────────────────────────────────
-  function promptDelete(id, name) {
+  function promptDelete(id) {
     pendingDeleteId = id;
     document.getElementById('confirmModal').classList.add('open');
   }
-
   function closeConfirmModal() {
     pendingDeleteId = null;
     document.getElementById('confirmModal').classList.remove('open');
   }
-
   async function confirmDelete() {
     if (!pendingDeleteId) return;
     try {
       const res = await fetch('/api/documents/' + pendingDeleteId, { method: 'DELETE' });
-      if (!res.ok) {
-        const d = await res.json();
-        throw new Error(d.error || 'Error al eliminar');
-      }
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Error al eliminar'); }
       showToast('Documento eliminado', 'success');
       closeConfirmModal();
       await loadDocuments();
       await loadStats();
-    } catch (e) {
-      showToast(e.message, 'error');
-    }
+    } catch (e) { showToast(e.message, 'error'); }
   }
 
-  // ── Toast ─────────────────────────────────
+  // ── Helpers ────────────────────────────────────────────
+  function escHtml(str) {
+    const d = document.createElement('div');
+    d.textContent = str || '';
+    return d.innerHTML;
+  }
+  function formatSize(bytes) {
+    if (!bytes) return '0 B';
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+  }
+
   let toastTimer;
   function showToast(msg, type) {
     const t = document.getElementById('toast');
@@ -1013,7 +1270,7 @@
     toastTimer = setTimeout(() => { t.className = ''; }, 3500);
   }
 
-  // ── Bootstrap ─────────────────────────────
+  // ── Bootstrap ──────────────────────────────────────────
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
   } else {
