@@ -803,7 +803,10 @@ async function saveExpense(event) {
     description: document.getElementById('expense-description').value,
     mechanic_id: document.getElementById('expense-mechanic').value || null,
     fuel_gallons: parseFloat(document.getElementById('expense-fuel-gallons').value) || null,
-    fuel_station: document.getElementById('expense-fuel-station').value || null
+    fuel_station: document.getElementById('expense-fuel-station').value || null,
+    vendor: document.getElementById('expense-vendor').value || null,
+    payment_method: document.getElementById('expense-payment-method').value || null,
+    notes: document.getElementById('expense-notes').value || null
   };
   
   try {
@@ -1026,6 +1029,9 @@ async function editExpense(id) {
   document.getElementById('expense-mechanic').value = expense.mechanic_id || '';
   document.getElementById('expense-fuel-gallons').value = expense.fuel_gallons || '';
   document.getElementById('expense-fuel-station').value = expense.fuel_station || '';
+  document.getElementById('expense-vendor').value = expense.vendor || '';
+  document.getElementById('expense-payment-method').value = expense.payment_method || '';
+  document.getElementById('expense-notes').value = expense.notes || '';
 }
 
 async function deleteWorkOrder(id) {

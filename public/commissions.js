@@ -77,25 +77,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Event Listeners
 function setupEventListeners() {
-    elements.calculateBtn.addEventListener('click', calculateCommissions);
-    elements.refreshBtn.addEventListener('click', loadInitialData);
-    elements.themeToggle.addEventListener('click', toggleTheme);
+    if (elements.calculateBtn) elements.calculateBtn.addEventListener('click', calculateCommissions);
+    if (elements.refreshBtn) elements.refreshBtn.addEventListener('click', loadInitialData);
+    if (elements.themeToggle) elements.themeToggle.addEventListener('click', toggleTheme);
     
-    elements.statusFilter.addEventListener('change', loadPayments);
-    elements.captainFilter.addEventListener('change', loadPayments);
-    elements.startDate.addEventListener('change', loadPayments);
-    elements.endDate.addEventListener('change', loadPayments);
+    if (elements.statusFilter) elements.statusFilter.addEventListener('change', loadPayments);
+    if (elements.captainFilter) elements.captainFilter.addEventListener('change', loadPayments);
+    if (elements.startDate) elements.startDate.addEventListener('change', loadPayments);
+    if (elements.endDate) elements.endDate.addEventListener('change', loadPayments);
     
-    elements.closeModal.addEventListener('click', closeEditModal);
-    elements.cancelEdit.addEventListener('click', closeEditModal);
-    elements.editRuleForm.addEventListener('submit', saveRule);
+    if (elements.closeModal) elements.closeModal.addEventListener('click', closeEditModal);
+    if (elements.cancelEdit) elements.cancelEdit.addEventListener('click', closeEditModal);
+    if (elements.editRuleForm) elements.editRuleForm.addEventListener('submit', saveRule);
     
     // Close modal on outside click
-    elements.editRuleModal.addEventListener('click', (e) => {
-        if (e.target === elements.editRuleModal) {
-            closeEditModal();
-        }
-    });
+    if (elements.editRuleModal) {
+        elements.editRuleModal.addEventListener('click', (e) => {
+            if (e.target === elements.editRuleModal) {
+                closeEditModal();
+            }
+        });
+    }
 }
 
 // Theme Toggle

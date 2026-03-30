@@ -1117,6 +1117,72 @@ async function initializeDatabase() {
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_documents_type ON documents(doc_type)`);
     console.log('✅ FASE 13 table created (document management)');
 
+    // FASE 14: Captain & Stew Payments + enhanced expenses
+    // Add optional columns to boat_expenses if missing
+    await pool.query(`ALTER TABLE boat_expenses ADD COLUMN IF NOT EXISTS vendor TEXT`);
+    await pool.query(`ALTER TABLE boat_expenses ADD COLUMN IF NOT EXISTS payment_method TEXT`);
+    await pool.query(`ALTER TABLE boat_expenses ADD COLUMN IF NOT EXISTS notes TEXT`);
+
+    // Stews catalog table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS stews (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        phone TEXT,
+        email TEXT,
+        status TEXT NOT NULL DEFAULT 'active',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+
+    // Captain payments (linked to boat)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS captain_payments (
+        id TEXT PRIMARY KEY,
+        captain_id TEXT,
+        captain_name TEXT NOT NULL,
+        boat_id TEXT NOT NULL,
+        boat_name TEXT,
+        hours NUMERIC(6,2),
+        work_date DATE NOT NULL,
+        description TEXT,
+        amount NUMERIC(12,2) NOT NULL,
+        status TEXT NOT NULL DEFAULT 'paid',
+        reference TEXT,
+        registered_by TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_cap_pay_boat ON captain_payments(boat_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_cap_pay_captain ON captain_payments(captain_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_cap_pay_date ON captain_payments(work_date DESC)`);
+
+    // Stew payments (parallel to captain payments)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS stew_payments (
+        id TEXT PRIMARY KEY,
+        stew_id TEXT,
+        stew_name TEXT NOT NULL,
+        boat_id TEXT NOT NULL,
+        boat_name TEXT,
+        hours NUMERIC(6,2),
+        work_date DATE NOT NULL,
+        description TEXT,
+        amount NUMERIC(12,2) NOT NULL,
+        status TEXT NOT NULL DEFAULT 'paid',
+        reference TEXT,
+        registered_by TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_stew_pay_boat ON stew_payments(boat_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_stew_pay_stew ON stew_payments(stew_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_stew_pay_date ON stew_payments(work_date DESC)`);
+
+    console.log('✅ FASE 14 tables created (captain/stew payments)');
+
     // Seed chart of accounts if empty
     const accountsCheck = await pool.query('SELECT COUNT(*) FROM chart_of_accounts');
     if (parseInt(accountsCheck.rows[0].count) === 0) {
@@ -7769,7 +7835,8 @@ app.post('/api/boat-expenses', async (req, res) => {
     const { nanoid } = await import('nanoid');
     const {
       boat_id, category, amount, expense_date, description,
-      mechanic_id, fuel_gallons, fuel_station, invoice_number, is_tax_deductible
+      mechanic_id, fuel_gallons, fuel_station, invoice_number, is_tax_deductible,
+      vendor, payment_method, notes
     } = req.body;
     
     if (!boat_id || !category || !amount || !expense_date || !description) {
@@ -7784,13 +7851,15 @@ app.post('/api/boat-expenses', async (req, res) => {
     const result = await pool.query(`
       INSERT INTO boat_expenses 
       (id, boat_id, category, amount, expense_date, description, mechanic_id, 
-       fuel_gallons, fuel_station, invoice_number, is_tax_deductible)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       fuel_gallons, fuel_station, invoice_number, is_tax_deductible,
+       vendor, payment_method, notes)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       RETURNING *
     `, [
       id, boat_id, category, amount, expense_date, description,
       mechanic_id || null, fuel_gallons || null, fuel_station || null,
-      invoice_number || null, is_tax_deductible !== undefined ? is_tax_deductible : 1
+      invoice_number || null, is_tax_deductible !== undefined ? is_tax_deductible : 1,
+      vendor || null, payment_method || null, notes || null
     ]);
     
     // Auto-sync to accounting system (FASE 8 integration)
@@ -7818,7 +7887,8 @@ app.patch('/api/boat-expenses/:id', async (req, res) => {
     
     const allowedFields = [
       'category', 'amount', 'expense_date', 'description', 'mechanic_id',
-      'fuel_gallons', 'fuel_station', 'invoice_number', 'is_tax_deductible', 'receipt_image'
+      'fuel_gallons', 'fuel_station', 'invoice_number', 'is_tax_deductible', 'receipt_image',
+      'boat_id', 'vendor', 'payment_method', 'notes'
     ];
     
     const setClause = [];
@@ -9202,6 +9272,237 @@ app.delete('/api/operations/assignees/:id', isAuthenticated, async (req, res) =>
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// ========================================
+// FASE 14: CAPTAIN & STEW PAYMENTS + EXPENSE ENHANCEMENTS
+// ========================================
+
+// ── Stews catalog ──────────────────────
+app.get('/api/stews', isAuthenticated, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM stews WHERE status=$1 ORDER BY name ASC', ['active']);
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/stews', isAuthenticated, async (req, res) => {
+  try {
+    const { name, phone, email } = req.body;
+    if (!name) return res.status(400).json({ error: 'El nombre es obligatorio' });
+    const { nanoid } = await import('nanoid');
+    const id = 'stew_' + nanoid(8);
+    const result = await pool.query(
+      'INSERT INTO stews (id, name, phone, email) VALUES ($1,$2,$3,$4) RETURNING *',
+      [id, name, phone||null, email||null]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.patch('/api/stews/:id', isAuthenticated, async (req, res) => {
+  try {
+    const { name, phone, email, status } = req.body;
+    const result = await pool.query(
+      `UPDATE stews SET name=COALESCE($1,name), phone=COALESCE($2,phone), email=COALESCE($3,email),
+       status=COALESCE($4,status) WHERE id=$5 RETURNING *`,
+      [name||null, phone||null, email||null, status||null, req.params.id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Stew no encontrado' });
+    res.json(result.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── Captain Payments ───────────────────
+app.get('/api/captain-payments', isAuthenticated, async (req, res) => {
+  try {
+    const { boat_id, captain_id, start_date, end_date } = req.query;
+    let where = []; let params = [];
+    if (boat_id)    { params.push(boat_id);    where.push(`boat_id = $${params.length}`); }
+    if (captain_id) { params.push(captain_id); where.push(`captain_id = $${params.length}`); }
+    if (start_date) { params.push(start_date); where.push(`work_date >= $${params.length}`); }
+    if (end_date)   { params.push(end_date);   where.push(`work_date <= $${params.length}`); }
+    const sql = `SELECT * FROM captain_payments${where.length?' WHERE '+where.join(' AND '):''} ORDER BY work_date DESC`;
+    const result = await pool.query(sql, params);
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/captain-payments', isAuthenticated, async (req, res) => {
+  try {
+    const { captain_id, captain_name, boat_id, hours, work_date, description, amount, status, reference } = req.body;
+    if (!captain_name || !boat_id || !work_date || !amount) {
+      return res.status(400).json({ error: 'captain_name, boat_id, work_date y amount son obligatorios' });
+    }
+    const boatRes = await pool.query('SELECT name FROM boats WHERE id=$1', [boat_id]);
+    const boat_name = boatRes.rows[0]?.name || boat_id;
+    const { nanoid } = await import('nanoid');
+    const id = 'cpay_' + nanoid(10);
+    const result = await pool.query(
+      `INSERT INTO captain_payments (id, captain_id, captain_name, boat_id, boat_name, hours, work_date, description, amount, status, reference, registered_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+      [id, captain_id||null, captain_name, boat_id, boat_name, hours||null, work_date,
+       description||null, amount, status||'paid', reference||null,
+       req.user?.name || req.user?.email || 'sistema']
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.patch('/api/captain-payments/:id', isAuthenticated, async (req, res) => {
+  try {
+    const { captain_name, boat_id, hours, work_date, description, amount, status, reference } = req.body;
+    let boat_name = null;
+    if (boat_id) {
+      const boatRes = await pool.query('SELECT name FROM boats WHERE id=$1', [boat_id]);
+      boat_name = boatRes.rows[0]?.name || boat_id;
+    }
+    const result = await pool.query(
+      `UPDATE captain_payments SET
+         captain_name=COALESCE($1,captain_name), boat_id=COALESCE($2,boat_id),
+         boat_name=COALESCE($3,boat_name), hours=COALESCE($4,hours),
+         work_date=COALESCE($5,work_date), description=COALESCE($6,description),
+         amount=COALESCE($7,amount), status=COALESCE($8,status),
+         reference=COALESCE($9,reference), updated_at=CURRENT_TIMESTAMP
+       WHERE id=$10 RETURNING *`,
+      [captain_name||null, boat_id||null, boat_name, hours||null, work_date||null,
+       description||null, amount||null, status||null, reference||null, req.params.id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Pago no encontrado' });
+    res.json(result.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/captain-payments/:id', isAuthenticated, async (req, res) => {
+  try {
+    const result = await pool.query('DELETE FROM captain_payments WHERE id=$1 RETURNING id', [req.params.id]);
+    if (result.rows.length === 0) return res.status(404).json({ error: 'No encontrado' });
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/captain-payments/summary', isAuthenticated, async (req, res) => {
+  try {
+    const byBoat = await pool.query(
+      `SELECT boat_id, boat_name, COUNT(*) AS payments, SUM(amount) AS total, SUM(COALESCE(hours,0)) AS total_hours
+       FROM captain_payments GROUP BY boat_id, boat_name ORDER BY total DESC`
+    );
+    const byCaptain = await pool.query(
+      `SELECT captain_name, COUNT(*) AS payments, SUM(amount) AS total, SUM(COALESCE(hours,0)) AS total_hours
+       FROM captain_payments GROUP BY captain_name ORDER BY total DESC`
+    );
+    const totals = await pool.query(
+      `SELECT COUNT(*) AS count, SUM(amount) AS total, SUM(COALESCE(hours,0)) AS total_hours FROM captain_payments`
+    );
+    res.json({ byBoat: byBoat.rows, byCaptain: byCaptain.rows, totals: totals.rows[0] });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── Stew Payments ──────────────────────
+app.get('/api/stew-payments', isAuthenticated, async (req, res) => {
+  try {
+    const { boat_id, stew_id, start_date, end_date } = req.query;
+    let where = []; let params = [];
+    if (boat_id)   { params.push(boat_id);   where.push(`boat_id = $${params.length}`); }
+    if (stew_id)   { params.push(stew_id);   where.push(`stew_id = $${params.length}`); }
+    if (start_date){ params.push(start_date); where.push(`work_date >= $${params.length}`); }
+    if (end_date)  { params.push(end_date);   where.push(`work_date <= $${params.length}`); }
+    const sql = `SELECT * FROM stew_payments${where.length?' WHERE '+where.join(' AND '):''} ORDER BY work_date DESC`;
+    const result = await pool.query(sql, params);
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/stew-payments', isAuthenticated, async (req, res) => {
+  try {
+    const { stew_id, stew_name, boat_id, hours, work_date, description, amount, status, reference } = req.body;
+    if (!stew_name || !boat_id || !work_date || !amount) {
+      return res.status(400).json({ error: 'stew_name, boat_id, work_date y amount son obligatorios' });
+    }
+    const boatRes = await pool.query('SELECT name FROM boats WHERE id=$1', [boat_id]);
+    const boat_name = boatRes.rows[0]?.name || boat_id;
+    const { nanoid } = await import('nanoid');
+    const id = 'spay_' + nanoid(10);
+    const result = await pool.query(
+      `INSERT INTO stew_payments (id, stew_id, stew_name, boat_id, boat_name, hours, work_date, description, amount, status, reference, registered_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+      [id, stew_id||null, stew_name, boat_id, boat_name, hours||null, work_date,
+       description||null, amount, status||'paid', reference||null,
+       req.user?.name || req.user?.email || 'sistema']
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.patch('/api/stew-payments/:id', isAuthenticated, async (req, res) => {
+  try {
+    const { stew_name, boat_id, hours, work_date, description, amount, status, reference } = req.body;
+    let boat_name = null;
+    if (boat_id) {
+      const boatRes = await pool.query('SELECT name FROM boats WHERE id=$1', [boat_id]);
+      boat_name = boatRes.rows[0]?.name || boat_id;
+    }
+    const result = await pool.query(
+      `UPDATE stew_payments SET
+         stew_name=COALESCE($1,stew_name), boat_id=COALESCE($2,boat_id),
+         boat_name=COALESCE($3,boat_name), hours=COALESCE($4,hours),
+         work_date=COALESCE($5,work_date), description=COALESCE($6,description),
+         amount=COALESCE($7,amount), status=COALESCE($8,status),
+         reference=COALESCE($9,reference), updated_at=CURRENT_TIMESTAMP
+       WHERE id=$10 RETURNING *`,
+      [stew_name||null, boat_id||null, boat_name, hours||null, work_date||null,
+       description||null, amount||null, status||null, reference||null, req.params.id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Pago no encontrado' });
+    res.json(result.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/stew-payments/:id', isAuthenticated, async (req, res) => {
+  try {
+    const result = await pool.query('DELETE FROM stew_payments WHERE id=$1 RETURNING id', [req.params.id]);
+    if (result.rows.length === 0) return res.status(404).json({ error: 'No encontrado' });
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/stew-payments/summary', isAuthenticated, async (req, res) => {
+  try {
+    const byBoat = await pool.query(
+      `SELECT boat_id, boat_name, COUNT(*) AS payments, SUM(amount) AS total, SUM(COALESCE(hours,0)) AS total_hours
+       FROM stew_payments GROUP BY boat_id, boat_name ORDER BY total DESC`
+    );
+    const byStew = await pool.query(
+      `SELECT stew_name, COUNT(*) AS payments, SUM(amount) AS total, SUM(COALESCE(hours,0)) AS total_hours
+       FROM stew_payments GROUP BY stew_name ORDER BY total DESC`
+    );
+    const totals = await pool.query(
+      `SELECT COUNT(*) AS count, SUM(amount) AS total, SUM(COALESCE(hours,0)) AS total_hours FROM stew_payments`
+    );
+    res.json({ byBoat: byBoat.rows, byStew: byStew.rows, totals: totals.rows[0] });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── Expense summary by boat ────────────
+app.get('/api/boat-expenses/by-boat', isAuthenticated, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT be.boat_id, b.name AS boat_name,
+             COUNT(*) AS expense_count,
+             SUM(be.amount) AS total_amount,
+             MAX(be.expense_date) AS last_expense_date,
+             json_agg(json_build_object('category', be.category, 'total', cat_totals.cat_total) ORDER BY cat_totals.cat_total DESC) AS by_category
+      FROM boat_expenses be
+      JOIN boats b ON be.boat_id = b.id
+      JOIN (
+        SELECT boat_id, category, SUM(amount) AS cat_total
+        FROM boat_expenses GROUP BY boat_id, category
+      ) cat_totals ON cat_totals.boat_id = be.boat_id AND cat_totals.category = be.category
+      GROUP BY be.boat_id, b.name
+      ORDER BY total_amount DESC
+    `);
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // ========================================

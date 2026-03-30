@@ -1,0 +1,246 @@
+Quiero modificar el sistema existente “gestión”. No quiero una app nueva. Quiero mejorar el módulo de documentos para que los archivos no solo se descarguen, sino que también se puedan abrir y visualizar dentro de la plataforma.
+
+OBJETIVO
+Crear un sistema de documentos integrado dentro de “gestión” que permita:
+- subir documentos
+- abrirlos dentro de la plataforma
+- descargarlos si hace falta
+- asignarlos a un barco específico
+- mantener una carpeta general de documentos
+- mantener también carpetas individuales por barco
+- poder acceder a documentos generales y a documentos específicos de cada embarcación
+
+REGLAS
+- no crear aplicación separada
+- integrar dentro del sistema actual
+- mantener la UI consistente con “gestión”
+- no usar librerías pesadas
+- optimizar para bajo consumo en Replit
+- reutilizar estructura actual si ya existe
+- primero construir un MVP funcional y simple
+
+==================================================
+1. VISUALIZACIÓN DE DOCUMENTOS DENTRO DE LA PLATAFORMA
+==================================================
+
+Actualmente los documentos solo se descargan. Quiero agregar la opción de abrirlos dentro de la plataforma.
+
+REQUISITOS
+- permitir abrir PDFs dentro de la plataforma
+- usar visor embebido simple
+- no depender de librerías pesadas si no son necesarias
+- permitir también descargar el archivo
+- si el archivo no puede visualizarse embebido, mostrar opción de abrir en nueva pestaña o descargar
+
+FUNCIONALIDAD
+- botón “Ver”
+- botón “Descargar”
+- vista previa embebida para PDF
+- modal o panel simple para abrir el documento dentro del sistema
+
+ALCANCE MVP
+- PDFs primero
+- dejar preparado para imágenes después
+- no implementar OCR
+- no implementar edición de PDF todavía
+
+==================================================
+2. ESTRUCTURA DE DOCUMENTOS
+==================================================
+
+Quiero dos niveles de organización:
+
+A. CARPETA GENERAL
+Debe existir una carpeta general de documentos donde podamos ver todos los archivos del sistema.
+
+Ruta sugerida:
+/storage/documents/general/
+
+B. CARPETAS INDIVIDUALES POR BARCO
+Cada barco debe tener su propia carpeta individual para guardar todo lo relacionado con esa embarcación.
+
+Ruta sugerida:
+/storage/boats/{boat_id}/documents/
+
+Dentro del barco, organizar por categorías si hace falta:
+/storage/boats/{boat_id}/documents/contracts/
+/storage/boats/{boat_id}/documents/insurance/
+/storage/boats/{boat_id}/documents/maintenance/
+/storage/boats/{boat_id}/documents/permits/
+/storage/boats/{boat_id}/documents/other/
+
+OBJETIVO
+- tener una vista global de todos los documentos
+- y al mismo tiempo una vista específica por barco
+- poder encontrar rápido los documentos de una embarcación concreta
+
+==================================================
+3. ASIGNACIÓN DE DOCUMENTOS A BARCOS
+==================================================
+
+Cuando se suba un documento, debe existir la opción de:
+
+- dejarlo como documento general
+- asignarlo a un barco específico
+- o ambas cosas, si aplica
+
+REQUISITOS
+- selector de barco al subir documento
+- lista de barcos conectada al módulo o carpeta de barcos existente
+- guardar el vínculo del documento con el barco seleccionado
+- permitir cambiar esa asignación después si hace falta
+
+LÓGICA
+- un documento puede estar solo en general
+- un documento puede estar relacionado a un barco
+- un documento relacionado a un barco debe aparecer:
+  1. en la carpeta general si así se decide
+  2. en la carpeta individual del barco
+
+IMPORTANTE
+No quiero duplicación innecesaria de archivos si puede resolverse con referencia lógica.
+Si es posible, guardar una sola vez el archivo y manejar la relación desde base de datos para que aparezca en ambas vistas.
+
+==================================================
+4. INTEGRACIÓN CON OTRAS CARPETAS / MÓDULOS
+==================================================
+
+El sistema de documentos debe poder conectarse con las otras partes del sistema, especialmente con la selección de barcos.
+
+Necesito que:
+- al subir documento se pueda elegir un barco existente
+- el selector use la data real de barcos del sistema
+- al entrar en la ficha o carpeta de un barco se puedan ver sus documentos
+- al entrar al módulo general de documentos se vea todo el conjunto
+
+Dejar preparado para futuras relaciones con:
+- clientes
+- contratos
+- tareas
+- gastos
+
+Pero en este MVP la prioridad es:
+- general
+- barco
+
+==================================================
+5. BASE DE DATOS / METADATA
+==================================================
+
+Guardar metadata de cada documento para no depender solo de carpetas físicas.
+
+Campos mínimos:
+- id
+- nombre_original
+- nombre_guardado
+- ruta_fisica
+- tipo_documento
+- entidad_relacionada
+- entity_id
+- visible_en_general (true/false)
+- boat_id opcional
+- fecha_subida
+- usuario_subida
+- mime_type
+- tamaño
+- estado
+
+TIPOS INICIALES
+- contract
+- insurance
+- maintenance
+- permit
+- attachment
+- other
+
+==================================================
+6. INTERFAZ
+==================================================
+
+Crear o modificar una vista simple de documentos con:
+
+A. VISTA GENERAL
+- lista de todos los documentos
+- filtro por tipo
+- filtro por barco
+- botón subir
+- botón ver
+- botón descargar
+- botón eliminar o desvincular si aplica
+
+B. VISTA POR BARCO
+Dentro de cada barco, agregar una sección o tab “Documentos” con:
+- lista de documentos de ese barco
+- botón subir documento para ese barco
+- botón ver
+- botón descargar
+
+C. FORMULARIO DE SUBIDA
+Debe incluir:
+- archivo
+- tipo de documento
+- opción “visible en carpeta general”
+- selector de barco opcional
+- notas opcionales
+
+==================================================
+7. COMPORTAMIENTO ESPERADO
+==================================================
+
+Quiero que el sistema permita este flujo:
+
+1. subir un PDF
+2. seleccionar si va a general
+3. seleccionar si pertenece a un barco específico
+4. guardar metadata
+5. luego poder abrirlo dentro de la plataforma
+6. verlo también desde la carpeta del barco si está asignado
+7. descargarlo si hace falta
+
+==================================================
+8. IMPLEMENTACIÓN TÉCNICA
+==================================================
+
+Quiero una implementación simple y eficiente.
+
+REGLAS TÉCNICAS
+- usar visor embebido nativo para PDF si es posible
+- evitar librerías pesadas de PDF
+- reutilizar sistema de storage existente si ya existe
+- no duplicar archivos sin necesidad
+- manejar la relación documento-barco desde base de datos
+- mantener nombres de archivo seguros y únicos
+
+NOMBRE DE ARCHIVO SUGERIDO
+tipo-entidad-id-fecha-timestamp.pdf
+
+==================================================
+9. MVP OBLIGATORIO
+==================================================
+
+Implementar primero:
+1. subida de PDFs
+2. vista previa dentro de plataforma
+3. descarga
+4. carpeta general de documentos
+5. carpeta o vista de documentos por barco
+6. selector de barco al subir archivo
+7. relación documento-barco en base de datos
+8. visualización del mismo documento en general y en barco mediante referencia lógica
+
+==================================================
+10. ENTREGABLE
+==================================================
+
+Necesito:
+- documentos que se puedan abrir dentro de la plataforma
+- carpeta general de documentos
+- carpeta o vista individual por barco
+- selector de barco al subir documentos
+- vínculo entre documentos y embarcación
+- acceso a documentos desde la vista del barco
+- descarga opcional
+- código limpio, simple e integrado en “gestión”
+
+RESULTADO FINAL ESPERADO
+Debo poder subir un contrato o PDF, abrirlo dentro del sistema, asignarlo a un barco específico y verlo tanto en la vista general de documentos como dentro de la carpeta/documentos del barco correspondiente.

@@ -1,219 +1,746 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nadaki Excursions - Sistema de Comisiones</title>
-    <link rel="stylesheet" href="commissions.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nadaki Excursions — Comisiones y Pagos</title>
+  <link rel="stylesheet" href="commissions.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    .main-tabs { display:flex; gap:4px; margin:0 0 0; border-bottom:2px solid #e0e0e0; flex-wrap:wrap; padding:0 20px; background:#fff; }
+    .main-tab {
+      padding:14px 22px; cursor:pointer; border:none; background:none;
+      font-size:15px; color:#666; border-bottom:3px solid transparent;
+      margin-bottom:-2px; transition:all .2s; font-weight:500;
+    }
+    .main-tab.active { color:#0066cc; border-bottom-color:#0066cc; font-weight:700; }
+    .main-tab-pane { display:none; padding:20px 20px 40px; }
+    .main-tab-pane.active { display:block; }
+
+    /* KPI mini cards */
+    .kpi-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:14px; margin-bottom:20px; }
+    .kpi-mini { background:#fff; border:1px solid #e8e8e8; border-radius:10px; padding:16px 20px; }
+    .kpi-mini .km-label { font-size:11px; color:#888; font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
+    .kpi-mini .km-val { font-size:26px; font-weight:800; color:#0066cc; margin-top:4px; }
+    .kpi-mini .km-sub { font-size:11px; color:#aaa; margin-top:2px; }
+
+    /* Filters bar */
+    .fbar { background:#fff; border:1px solid #e8e8e8; border-radius:10px; padding:14px 18px; margin-bottom:18px; display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; }
+    .fbar .fg { display:flex; flex-direction:column; gap:5px; min-width:130px; }
+    .fbar label { font-size:12px; font-weight:600; color:#555; }
+    .fbar select, .fbar input[type=text], .fbar input[type=date] { padding:8px 10px; border:1px solid #ddd; border-radius:6px; font-size:13px; outline:none; }
+    .fbar .fbar-actions { display:flex; gap:8px; margin-left:auto; align-items:flex-end; }
+
+    /* Table */
+    .tbl-card { background:#fff; border:1px solid #e8e8e8; border-radius:10px; overflow:hidden; margin-bottom:20px; }
+    .tbl-card-header { display:flex; align-items:center; justify-content:space-between; padding:14px 18px; border-bottom:1px solid #f0f0f0; }
+    .tbl-card-header h3 { font-size:15px; font-weight:700; color:#222; margin:0; }
+    .tbl-wrap { overflow-x:auto; }
+    table { width:100%; border-collapse:collapse; font-size:13px; }
+    thead tr { background:#f8f9fa; }
+    th, td { padding:11px 14px; text-align:left; border-bottom:1px solid #f5f5f5; vertical-align:middle; }
+    th { font-weight:700; color:#666; font-size:11px; text-transform:uppercase; letter-spacing:.03em; }
+    tr:last-child td { border-bottom:none; }
+    tr:hover td { background:#fafcff; }
+
+    .badge { display:inline-block; padding:3px 9px; border-radius:12px; font-size:11px; font-weight:700; }
+    .badge-paid { background:#d4edda; color:#155724; }
+    .badge-pending { background:#fff3cd; color:#856404; }
+    .badge-cancelled { background:#f8d7da; color:#721c24; }
+
+    /* Boat summary grid */
+    .boat-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:12px; margin-bottom:20px; }
+    .bsc { background:#fff; border:1px solid #e0e0e0; border-radius:10px; padding:16px 18px; }
+    .bsc-name { font-size:14px; font-weight:700; color:#0066cc; margin-bottom:8px; }
+    .bsc-row { display:flex; justify-content:space-between; font-size:12px; color:#666; margin-bottom:4px; }
+    .bsc-total { font-size:20px; font-weight:800; color:#222; margin-top:10px; }
+
+    /* Action buttons */
+    .btn { padding:8px 16px; border:none; border-radius:6px; cursor:pointer; font-size:13px; font-weight:600; transition:background .18s; line-height:1.4; }
+    .btn-primary { background:#0066cc; color:#fff; }
+    .btn-primary:hover { background:#0052a3; }
+    .btn-sm { padding:5px 10px; font-size:12px; }
+    .btn-danger { background:#dc3545; color:#fff; }
+    .btn-danger:hover { background:#c82333; }
+    .btn-ghost { background:#fff; border:1px solid #ddd; color:#555; }
+    .btn-ghost:hover { background:#f5f5f5; }
+
+    /* Modals */
+    .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.45); display:none; align-items:center; justify-content:center; z-index:1000; padding:16px; }
+    .modal-overlay.open { display:flex; }
+    .modal-box { background:#fff; border-radius:12px; width:100%; max-width:500px; box-shadow:0 20px 60px rgba(0,0,0,.2); max-height:90vh; overflow-y:auto; }
+    .mh { padding:16px 20px 12px; border-bottom:1px solid #eee; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; background:#fff; z-index:1; }
+    .mh h3 { font-size:16px; font-weight:700; margin:0; }
+    .modal-close { background:none; border:none; font-size:24px; cursor:pointer; color:#999; line-height:1; padding:0; }
+    .mb { padding:18px 20px; display:flex; flex-direction:column; gap:14px; }
+    .mf { padding:14px 20px; border-top:1px solid #eee; display:flex; justify-content:flex-end; gap:10px; }
+    .fg2 { display:flex; flex-direction:column; gap:5px; }
+    .fg2 label { font-size:12px; font-weight:700; color:#444; }
+    .fg2 input, .fg2 select, .fg2 textarea { padding:9px 11px; border:1px solid #ddd; border-radius:6px; font-size:13px; outline:none; }
+    .fg2 input:focus, .fg2 select:focus, .fg2 textarea:focus { border-color:#0066cc; box-shadow:0 0 0 2px rgba(0,102,204,.1); }
+    .frow { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .req { color:#dc3545; }
+
+    /* Empty state */
+    .empty-state { text-align:center; padding:44px 20px; color:#aaa; }
+    .empty-icon { font-size:38px; margin-bottom:10px; }
+
+    /* Toast */
+    #toast { position:fixed; bottom:20px; right:20px; background:#1e293b; color:#fff; padding:10px 18px; border-radius:8px; font-size:13px; z-index:9999; transform:translateY(80px); opacity:0; transition:all .3s; pointer-events:none; }
+
+    /* Platform tab tweaks */
+    #pane-platforms .filters-panel { margin:0 0 18px; }
+    #pane-platforms .dashboard-grid { padding:0; }
+
+    .section-label { font-size:14px; font-weight:700; color:#333; margin:0 0 10px; }
+
+    @media(max-width:640px) {
+      .frow { grid-template-columns:1fr; }
+      .kpi-row { grid-template-columns:1fr 1fr; }
+      .fbar { flex-direction:column; }
+    }
+  </style>
 </head>
 <body class="light-mode">
-    <!-- Header -->
-    <header class="dashboard-header">
-        <div class="header-content">
-            <div class="logo-section">
-                <h1>💰 Nadaki Excursions</h1>
-                <p class="subtitle">Sistema de Comisiones</p>
-            </div>
-            <div class="header-controls">
-                <a href="dashboard.html" class="btn-secondary" data-testid="link-dashboard">📊 Dashboard</a>
-                <a href="/schedule.html" class="btn-secondary" data-testid="link-schedule">📅 Calendario</a>
-                <a href="/pricing.html" class="btn-secondary" data-testid="link-pricing">💵 Precios</a>
-                <button class="btn-icon" id="themeToggle" title="Cambiar tema" data-testid="button-theme-toggle">
-                    <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
-                        <path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z"/>
-                    </svg>
-                </button>
-                <button class="btn-primary" id="calculateBtn" data-testid="button-calculate">
-                    🧮 Calcular Comisiones
-                </button>
-                <button class="btn-primary" id="refreshBtn" data-testid="button-refresh">
-                    🔄 Actualizar
-                </button>
-                <a href="/api/logout" class="btn-secondary" data-testid="button-logout" style="text-decoration: none;">
-                    🚪 Cerrar Sesión
-                </a>
-            </div>
-        </div>
-    </header>
 
-    <!-- Filters Panel -->
-    <section class="filters-panel">
-        <div class="filter-group">
-            <label>Estado de Pago:</label>
-            <select id="statusFilter" class="filter-select" data-testid="select-status-filter">
-                <option value="all">Todos</option>
-                <option value="pending" selected>Pendientes</option>
-                <option value="paid">Pagados</option>
-            </select>
-        </div>
-        <div class="filter-group">
-            <label>Capitán:</label>
-            <select id="captainFilter" class="filter-select" data-testid="select-captain-filter">
-                <option value="all">Todos los Capitanes</option>
-            </select>
-        </div>
-        <div class="filter-group">
-            <label>Fecha Inicio:</label>
-            <input type="date" id="startDate" class="filter-input" data-testid="input-start-date">
-        </div>
-        <div class="filter-group">
-            <label>Fecha Fin:</label>
-            <input type="date" id="endDate" class="filter-input" data-testid="input-end-date">
-        </div>
-    </section>
+<!-- Header -->
+<header class="dashboard-header">
+  <div class="header-content">
+    <div class="logo-section">
+      <h1>💰 Nadaki Excursions</h1>
+      <p class="subtitle">Comisiones y Pagos</p>
+    </div>
+    <div class="header-controls">
+      <a href="/dashboard.html" class="btn-secondary" data-testid="link-dashboard">📊 Dashboard</a>
+      <a href="/boat-maintenance.html" class="btn-secondary" data-testid="link-expenses">💼 Gastos</a>
+      <button class="btn-icon" id="themeToggle" title="Cambiar tema" data-testid="button-theme">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+          <path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z"/>
+        </svg>
+      </button>
+      <a href="/api/logout" class="btn-secondary" data-testid="button-logout" style="text-decoration:none">🚪 Salir</a>
+    </div>
+  </div>
+</header>
 
-    <!-- Main Dashboard Grid -->
-    <main class="dashboard-grid">
-        <!-- KPI Cards -->
-        <div class="kpi-card wave-gradient">
-            <div class="kpi-icon">💵</div>
-            <div class="kpi-content">
-                <h3>Total Bruto</h3>
-                <p class="kpi-value" id="totalGross" data-testid="text-total-gross">$0</p>
-                <span class="kpi-sublabel" id="paymentCount" data-testid="text-payment-count">0 pagos</span>
-            </div>
-        </div>
+<!-- Main Tab Navigation -->
+<nav>
+  <div class="main-tabs">
+    <button class="main-tab active" data-pane="captains" data-testid="tab-captains">⚓ Capitanes</button>
+    <button class="main-tab" data-pane="stew" data-testid="tab-stew">👥 Stew</button>
+    <button class="main-tab" data-pane="platforms" data-testid="tab-platforms">🌐 Plataformas</button>
+  </div>
+</nav>
 
-        <div class="kpi-card wave-gradient">
-            <div class="kpi-icon">📊</div>
-            <div class="kpi-content">
-                <h3>Total Comisiones</h3>
-                <p class="kpi-value" id="totalCommission" data-testid="text-total-commission">$0</p>
-                <span class="kpi-sublabel" id="commissionPercent" data-testid="text-commission-percent">0% avg</span>
-            </div>
-        </div>
+<!-- ═══════════════════════ TAB: CAPITANES ═══════════════════════ -->
+<div class="main-tab-pane active" id="pane-captains">
 
-        <div class="kpi-card wave-gradient">
-            <div class="kpi-icon">💰</div>
-            <div class="kpi-content">
-                <h3>Total Neto</h3>
-                <p class="kpi-value" id="totalNet" data-testid="text-total-net">$0</p>
-                <span class="kpi-sublabel">Para capitanes</span>
-            </div>
-        </div>
+  <div class="kpi-row" id="cap-kpis">
+    <div class="kpi-mini"><div class="km-label">Total pagado</div><div class="km-val" id="cap-total">$0</div><div class="km-sub" id="cap-count">0 pagos</div></div>
+    <div class="kpi-mini"><div class="km-label">Horas totales</div><div class="km-val" id="cap-hours">0h</div><div class="km-sub">trabajadas</div></div>
+    <div class="kpi-mini"><div class="km-label">Barcos</div><div class="km-val" id="cap-boats">0</div><div class="km-sub">distintos</div></div>
+    <div class="kpi-mini"><div class="km-label">Capitanes</div><div class="km-val" id="cap-people">0</div><div class="km-sub">distintos</div></div>
+  </div>
 
-        <div class="kpi-card wave-gradient">
-            <div class="kpi-icon">⏳</div>
-            <div class="kpi-content">
-                <h3>Pendientes de Pago</h3>
-                <p class="kpi-value" id="totalPending" data-testid="text-total-pending">$0</p>
-                <span class="kpi-sublabel" id="paidAmount" data-testid="text-paid-amount">$0 pagado</span>
-            </div>
-        </div>
+  <div class="section-label">Acumulado por barco</div>
+  <div class="boat-grid" id="cap-boat-grid"></div>
 
-        <!-- Commission by Platform Chart -->
-        <div class="chart-card medium">
-            <div class="card-header">
-                <h2>💼 Comisiones por Plataforma</h2>
-            </div>
-            <div class="chart-container">
-                <canvas id="platformChart"></canvas>
-            </div>
-        </div>
+  <div class="fbar">
+    <div class="fg"><label>Barco</label><select id="cap-filter-boat" data-testid="select-cap-boat"><option value="">Todos</option></select></div>
+    <div class="fg"><label>Capitán</label><input type="text" id="cap-filter-captain" placeholder="Nombre..." data-testid="input-cap-captain"></div>
+    <div class="fg"><label>Desde</label><input type="date" id="cap-filter-start" data-testid="input-cap-start"></div>
+    <div class="fg"><label>Hasta</label><input type="date" id="cap-filter-end" data-testid="input-cap-end"></div>
+    <div class="fbar-actions">
+      <button class="btn btn-ghost" onclick="loadCaptainPayments()" data-testid="button-cap-filter">Filtrar</button>
+      <button class="btn btn-primary" onclick="openCapModal()" data-testid="button-new-cap">+ Registrar pago</button>
+    </div>
+  </div>
 
-        <!-- Commission by Captain Chart -->
-        <div class="chart-card medium">
-            <div class="card-header">
-                <h2>👨‍✈️ Comisiones por Capitán</h2>
-            </div>
-            <div class="chart-container">
-                <canvas id="captainChart"></canvas>
-            </div>
-        </div>
+  <div class="tbl-card">
+    <div class="tbl-card-header"><h3>Registro de pagos</h3><span id="cap-rec-count" style="font-size:12px;color:#aaa">0 registros</span></div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Fecha</th><th>Capitán</th><th>Barco</th><th>Horas</th><th>Descripción</th><th>Monto</th><th>Estado</th><th>Acciones</th></tr></thead>
+        <tbody id="cap-tbody"><tr><td colspan="8" style="text-align:center;padding:30px;color:#aaa">Cargando...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
 
-        <!-- Payments Table -->
-        <div class="table-card full-width">
-            <div class="card-header">
-                <h2>💳 Pagos de Comisiones</h2>
-                <div class="card-actions">
-                    <span id="paymentsCount" data-testid="text-payments-table-count">0 pagos</span>
-                </div>
-            </div>
-            <div class="table-container">
-                <table class="data-table" id="paymentsTable">
-                    <thead>
-                        <tr>
-                            <th>Fecha</th>
-                            <th>Plataforma</th>
-                            <th>Cliente</th>
-                            <th>Capitán</th>
-                            <th>Bruto</th>
-                            <th>Comisión</th>
-                            <th>Neto</th>
-                            <th>Estado</th>
-                            <th>Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody id="paymentsTableBody">
-                        <tr>
-                            <td colspan="9" class="text-center">Cargando...</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
+<!-- ═══════════════════════ TAB: STEW ═══════════════════════ -->
+<div class="main-tab-pane" id="pane-stew">
 
-        <!-- Commission Rules Table -->
-        <div class="table-card full-width">
-            <div class="card-header">
-                <h2>⚙️ Reglas de Comisión por Plataforma</h2>
-                <div class="card-actions">
-                    <span id="rulesCount" data-testid="text-rules-count">0 reglas</span>
-                </div>
-            </div>
-            <div class="table-container">
-                <table class="data-table" id="rulesTable">
-                    <thead>
-                        <tr>
-                            <th>Plataforma</th>
-                            <th>Porcentaje (%)</th>
-                            <th>Tarifa Fija</th>
-                            <th>Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody id="rulesTableBody">
-                        <tr>
-                            <td colspan="4" class="text-center">Cargando...</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </main>
+  <div class="kpi-row">
+    <div class="kpi-mini"><div class="km-label">Total pagado</div><div class="km-val" id="stew-total">$0</div><div class="km-sub" id="stew-count">0 pagos</div></div>
+    <div class="kpi-mini"><div class="km-label">Horas totales</div><div class="km-val" id="stew-hours">0h</div><div class="km-sub">trabajadas</div></div>
+    <div class="kpi-mini"><div class="km-label">Barcos</div><div class="km-val" id="stew-boats">0</div><div class="km-sub">distintos</div></div>
+    <div class="kpi-mini"><div class="km-label">Stew</div><div class="km-val" id="stew-people">0</div><div class="km-sub">distintos</div></div>
+  </div>
 
-    <!-- Edit Rule Modal -->
-    <div id="editRuleModal" class="modal" data-testid="modal-edit-rule">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>Editar Regla de Comisión</h2>
-                <button class="modal-close" id="closeModal" data-testid="button-close-modal">&times;</button>
-            </div>
-            <div class="modal-body">
-                <form id="editRuleForm">
-                    <input type="hidden" id="editPlatform">
-                    <div class="form-group">
-                        <label>Plataforma:</label>
-                        <p id="editPlatformName" class="form-value"></p>
-                    </div>
-                    <div class="form-group">
-                        <label for="editPercentage">Porcentaje de Comisión (%):</label>
-                        <input type="number" id="editPercentage" min="0" max="100" step="1" required data-testid="input-edit-percentage">
-                    </div>
-                    <div class="form-group">
-                        <label for="editFixedFee">Tarifa Fija ($):</label>
-                        <input type="number" id="editFixedFee" min="0" step="1" required data-testid="input-edit-fixed-fee">
-                    </div>
-                    <div class="form-actions">
-                        <button type="button" class="btn-secondary" id="cancelEdit" data-testid="button-cancel-edit">Cancelar</button>
-                        <button type="submit" class="btn-primary" data-testid="button-save-rule">Guardar Cambios</button>
-                    </div>
-                </form>
-            </div>
-        </div>
+  <div class="section-label">Acumulado por barco</div>
+  <div class="boat-grid" id="stew-boat-grid"></div>
+
+  <div class="fbar">
+    <div class="fg"><label>Barco</label><select id="stew-filter-boat" data-testid="select-stew-boat"><option value="">Todos</option></select></div>
+    <div class="fg"><label>Stew</label><input type="text" id="stew-filter-name" placeholder="Nombre..." data-testid="input-stew-filter-name"></div>
+    <div class="fg"><label>Desde</label><input type="date" id="stew-filter-start" data-testid="input-stew-start"></div>
+    <div class="fg"><label>Hasta</label><input type="date" id="stew-filter-end" data-testid="input-stew-end"></div>
+    <div class="fbar-actions">
+      <button class="btn btn-ghost" onclick="loadStewPayments()" data-testid="button-stew-filter">Filtrar</button>
+      <button class="btn btn-primary" onclick="openStewModal()" data-testid="button-new-stew">+ Registrar pago</button>
+    </div>
+  </div>
+
+  <div class="tbl-card">
+    <div class="tbl-card-header"><h3>Registro de pagos</h3><span id="stew-rec-count" style="font-size:12px;color:#aaa">0 registros</span></div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Fecha</th><th>Stew</th><th>Barco</th><th>Horas</th><th>Descripción</th><th>Monto</th><th>Estado</th><th>Acciones</th></tr></thead>
+        <tbody id="stew-tbody"><tr><td colspan="8" style="text-align:center;padding:30px;color:#aaa">Cargando...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════ TAB: PLATAFORMAS ═══════════════════════ -->
+<div class="main-tab-pane" id="pane-platforms">
+  <!-- Filters Panel -->
+  <section class="filters-panel">
+    <div class="filter-group">
+      <label>Estado de Pago:</label>
+      <select id="statusFilter" class="filter-select" data-testid="select-status-filter">
+        <option value="all">Todos</option>
+        <option value="pending" selected>Pendientes</option>
+        <option value="paid">Pagados</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label>Capitán:</label>
+      <select id="captainFilter" class="filter-select" data-testid="select-captain-filter">
+        <option value="all">Todos los Capitanes</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label>Fecha Inicio:</label>
+      <input type="date" id="startDate" class="filter-input" data-testid="input-start-date">
+    </div>
+    <div class="filter-group">
+      <label>Fecha Fin:</label>
+      <input type="date" id="endDate" class="filter-input" data-testid="input-end-date">
+    </div>
+  </section>
+
+  <!-- Main Dashboard Grid -->
+  <main class="dashboard-grid">
+    <div class="kpi-card wave-gradient">
+      <div class="kpi-icon">💵</div>
+      <div class="kpi-content">
+        <h3>Total Bruto</h3>
+        <p class="kpi-value" id="totalGross" data-testid="text-total-gross">$0</p>
+        <span class="kpi-sublabel" id="paymentCount" data-testid="text-payment-count">0 pagos</span>
+      </div>
+    </div>
+    <div class="kpi-card wave-gradient">
+      <div class="kpi-icon">🏦</div>
+      <div class="kpi-content">
+        <h3>Total Comisiones</h3>
+        <p class="kpi-value" id="totalCommission" data-testid="text-total-commission">$0</p>
+        <span class="kpi-sublabel" id="commissionPercent" data-testid="text-commission-percent">0%</span>
+      </div>
+    </div>
+    <div class="kpi-card wave-gradient">
+      <div class="kpi-icon">💰</div>
+      <div class="kpi-content">
+        <h3>Neto Capitanes</h3>
+        <p class="kpi-value" id="totalNet" data-testid="text-total-net">$0</p>
+        <span class="kpi-sublabel" id="paidAmount" data-testid="text-paid-amount">Pagado: $0</span>
+      </div>
+    </div>
+    <div class="kpi-card wave-gradient">
+      <div class="kpi-icon">⏳</div>
+      <div class="kpi-content">
+        <h3>Pendiente Pago</h3>
+        <p class="kpi-value" id="totalPending" data-testid="text-total-pending">$0</p>
+        <span class="kpi-sublabel">Por pagar</span>
+      </div>
     </div>
 
-    <script src="/i18n.js"></script>
-  <script src="commissions.js"></script>
+    <div class="chart-card">
+      <h3>Comisiones por Plataforma</h3>
+      <canvas id="platformChart" data-testid="chart-platform"></canvas>
+    </div>
+    <div class="chart-card">
+      <h3>Comisiones por Capitán</h3>
+      <canvas id="captainChart" data-testid="chart-captain"></canvas>
+    </div>
+
+    <div class="data-table">
+      <div class="table-header">
+        <h3>Pagos de Comisiones <span class="count-badge" id="paymentsCount" data-testid="text-payments-count">0</span></h3>
+        <div style="display:flex;gap:8px">
+          <button class="btn-primary btn-sm" onclick="calculateCommissions()" data-testid="button-calculate">🧮 Calcular</button>
+          <button class="btn-secondary btn-sm" onclick="loadInitialData()" data-testid="button-refresh">🔄 Actualizar</button>
+        </div>
+      </div>
+      <table>
+        <thead><tr><th>Reserva</th><th>Capitán</th><th>Monto Bruto</th><th>Comisión</th><th>Monto Neto</th><th>Estado</th><th>Acciones</th></tr></thead>
+        <tbody id="paymentsTableBody" data-testid="table-payments"><tr><td colspan="7" class="text-center">Cargando...</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="data-table">
+      <div class="table-header">
+        <h3>Reglas de Comisión <span class="count-badge" id="rulesCount" data-testid="text-rules-count">0</span></h3>
+      </div>
+      <table>
+        <thead><tr><th>Plataforma</th><th>Estado</th><th>Porcentaje (%)</th><th>Tarifa Fija</th><th>Acciones</th></tr></thead>
+        <tbody id="rulesTableBody" data-testid="table-rules"><tr><td colspan="5" class="text-center">Cargando...</td></tr></tbody>
+      </table>
+    </div>
+  </main>
+</div>
+
+<!-- ═══ CAPTAIN MODAL ═══ -->
+<div class="modal-overlay" id="capModal">
+  <div class="modal-box">
+    <div class="mh">
+      <h3 id="capModalTitle">Registrar Pago a Capitán</h3>
+      <button class="modal-close" onclick="closeCapModal()">&#215;</button>
+    </div>
+    <div class="mb">
+      <input type="hidden" id="cap-edit-id">
+      <div class="frow">
+        <div class="fg2"><label>Capitán <span class="req">*</span></label><input type="text" id="cap-name" placeholder="Nombre del capitán" data-testid="input-cap-name"></div>
+        <div class="fg2"><label>Barco <span class="req">*</span></label><select id="cap-boat" data-testid="select-cap-boat-modal"><option value="">Seleccionar...</option></select></div>
+      </div>
+      <div class="frow">
+        <div class="fg2"><label>Fecha de trabajo <span class="req">*</span></label><input type="date" id="cap-work-date" data-testid="input-cap-date"></div>
+        <div class="fg2"><label>Horas trabajadas</label><input type="number" id="cap-hours" step="0.5" min="0" placeholder="0" data-testid="input-cap-hours"></div>
+      </div>
+      <div class="fg2"><label>Descripción</label><textarea id="cap-description" rows="2" placeholder="Descripción del servicio..." data-testid="input-cap-desc"></textarea></div>
+      <div class="frow">
+        <div class="fg2"><label>Monto pagado <span class="req">*</span></label><input type="number" id="cap-amount" step="0.01" min="0" placeholder="0.00" data-testid="input-cap-amount"></div>
+        <div class="fg2"><label>Estado</label>
+          <select id="cap-status" data-testid="select-cap-status">
+            <option value="paid">Pagado</option>
+            <option value="pending">Pendiente</option>
+          </select>
+        </div>
+      </div>
+      <div class="fg2"><label>Referencia</label><input type="text" id="cap-reference" placeholder="Número de transferencia, referencia..." data-testid="input-cap-ref"></div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-ghost" onclick="closeCapModal()" data-testid="button-cancel-cap">Cancelar</button>
+      <button class="btn btn-primary" onclick="submitCapPayment()" data-testid="button-save-cap">Guardar pago</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ STEW MODAL ═══ -->
+<div class="modal-overlay" id="stewModal">
+  <div class="modal-box">
+    <div class="mh">
+      <h3 id="stewModalTitle">Registrar Pago a Stew</h3>
+      <button class="modal-close" onclick="closeStewModal()">&#215;</button>
+    </div>
+    <div class="mb">
+      <input type="hidden" id="stew-edit-id">
+      <div class="frow">
+        <div class="fg2"><label>Stew <span class="req">*</span></label><input type="text" id="stew-name" placeholder="Nombre del stew" data-testid="input-stew-name"></div>
+        <div class="fg2"><label>Barco <span class="req">*</span></label><select id="stew-boat" data-testid="select-stew-boat-modal"><option value="">Seleccionar...</option></select></div>
+      </div>
+      <div class="frow">
+        <div class="fg2"><label>Fecha de trabajo <span class="req">*</span></label><input type="date" id="stew-work-date" data-testid="input-stew-date"></div>
+        <div class="fg2"><label>Horas trabajadas</label><input type="number" id="stew-hours" step="0.5" min="0" placeholder="0" data-testid="input-stew-hours"></div>
+      </div>
+      <div class="fg2"><label>Descripción</label><textarea id="stew-description" rows="2" placeholder="Descripción del servicio..." data-testid="input-stew-desc"></textarea></div>
+      <div class="frow">
+        <div class="fg2"><label>Monto pagado <span class="req">*</span></label><input type="number" id="stew-amount" step="0.01" min="0" placeholder="0.00" data-testid="input-stew-amount"></div>
+        <div class="fg2"><label>Estado</label>
+          <select id="stew-status" data-testid="select-stew-status">
+            <option value="paid">Pagado</option>
+            <option value="pending">Pendiente</option>
+          </select>
+        </div>
+      </div>
+      <div class="fg2"><label>Referencia</label><input type="text" id="stew-reference" placeholder="Número de transferencia, referencia..." data-testid="input-stew-ref"></div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-ghost" onclick="closeStewModal()" data-testid="button-cancel-stew">Cancelar</button>
+      <button class="btn btn-primary" onclick="submitStewPayment()" data-testid="button-save-stew">Guardar pago</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Rule Modal (Platforms) -->
+<div id="editRuleModal" class="modal" data-testid="modal-edit-rule">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>Editar Regla de Comisión</h2>
+      <button class="modal-close" id="closeModal" data-testid="button-close-modal">&times;</button>
+    </div>
+    <div class="modal-body">
+      <form id="editRuleForm">
+        <input type="hidden" id="editPlatform">
+        <div class="form-group"><label>Plataforma:</label><p id="editPlatformName" class="form-value"></p></div>
+        <div class="form-group"><label for="editPercentage">Porcentaje (%):</label><input type="number" id="editPercentage" min="0" max="100" step="1" required data-testid="input-edit-percentage"></div>
+        <div class="form-group"><label for="editFixedFee">Tarifa Fija ($):</label><input type="number" id="editFixedFee" min="0" step="1" required data-testid="input-edit-fixed-fee"></div>
+        <div class="form-actions">
+          <button type="button" class="btn-secondary" id="cancelEdit" data-testid="button-cancel-edit">Cancelar</button>
+          <button type="submit" class="btn-primary" data-testid="button-save-rule">Guardar Cambios</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="/i18n.js"></script>
+<script src="commissions.js"></script>
+<script>
+// ══════════════════════════════════════════════════════
+// FASE 14 — Captain & Stew Payments
+// ══════════════════════════════════════════════════════
+
+// Tab switcher
+document.querySelectorAll('.main-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.main-tab').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.main-tab-pane').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('pane-' + btn.dataset.pane).classList.add('active');
+    if (btn.dataset.pane === 'captains') { loadCaptainPayments(); loadCapSummary(); }
+    if (btn.dataset.pane === 'stew')     { loadStewPayments();    loadStewSummary(); }
+    if (btn.dataset.pane === 'platforms'){ loadInitialData(); }
+  });
+});
+
+// ── Shared ───────────────────────────────────────────
+let allBoats = [];
+
+async function loadBoats() {
+  try {
+    const res = await fetch('/api/fleet/boats');
+    if (!res.ok) return;
+    allBoats = await res.json();
+    ['cap-filter-boat','stew-filter-boat','cap-boat','stew-boat'].forEach(id => {
+      const sel = document.getElementById(id);
+      if (!sel) return;
+      const saved = sel.value;
+      while (sel.options.length > 1) sel.remove(1);
+      allBoats.forEach(b => {
+        const o = document.createElement('option');
+        o.value = b.id; o.textContent = b.name; sel.appendChild(o);
+      });
+      if (saved) sel.value = saved;
+    });
+  } catch(e) { console.warn('Could not load boats:', e.message); }
+}
+
+function fmt(v) { return '$' + parseFloat(v||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function fmtDate(d) {
+  if (!d) return '—';
+  return new Date(d).toLocaleDateString('es',{day:'2-digit',month:'short',year:'numeric'});
+}
+function badgeHtml(s) {
+  const cls = s==='paid'?'paid':s==='pending'?'pending':'cancelled';
+  const lbl = s==='paid'?'Pagado':s==='pending'?'Pendiente':'Cancelado';
+  return `<span class="badge badge-${cls}">${lbl}</span>`;
+}
+function esc(str) { const d=document.createElement('div'); d.textContent=str||''; return d.innerHTML; }
+
+let toastTimer;
+function showToast(msg, ok) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  Object.assign(t.style, {
+    background: ok===false?'#dc2626':ok===true?'#16a34a':'#1e293b',
+    color:'#fff', padding:'10px 18px', borderRadius:'8px',
+    fontSize:'13px', zIndex:'9999', transform:'translateY(0)',
+    opacity:'1', transition:'all .3s', position:'fixed',
+    bottom:'20px', right:'20px', pointerEvents:'none'
+  });
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.style.transform='translateY(80px)'; t.style.opacity='0'; }, 3500);
+}
+
+// ── CAPTAIN PAYMENTS ──────────────────────────────────
+let capPayments = [];
+
+async function loadCaptainPayments() {
+  const boat  = document.getElementById('cap-filter-boat').value;
+  const name  = document.getElementById('cap-filter-captain').value.trim();
+  const start = document.getElementById('cap-filter-start').value;
+  const end   = document.getElementById('cap-filter-end').value;
+  let url = '/api/captain-payments?';
+  if (boat)  url += `boat_id=${encodeURIComponent(boat)}&`;
+  if (start) url += `start_date=${start}&`;
+  if (end)   url += `end_date=${end}&`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('Error de red');
+    let data = await res.json();
+    if (name) data = data.filter(p => p.captain_name.toLowerCase().includes(name.toLowerCase()));
+    capPayments = data;
+    renderCapTable(data);
+    updateCapKpis(data);
+  } catch(e) { showToast('Error al cargar pagos de capitanes', false); }
+}
+
+async function loadCapSummary() {
+  try {
+    const res = await fetch('/api/captain-payments/summary');
+    if (!res.ok) return;
+    const { byBoat } = await res.json();
+    const grid = document.getElementById('cap-boat-grid');
+    if (!byBoat || !byBoat.length) {
+      grid.innerHTML = '<p style="color:#aaa;font-size:13px">Sin datos acumulados todavía.</p>';
+      return;
+    }
+    grid.innerHTML = byBoat.map(r => `
+      <div class="bsc">
+        <div class="bsc-name">⚓ ${esc(r.boat_name || r.boat_id)}</div>
+        <div class="bsc-row"><span>Pagos registrados</span><strong>${r.payments}</strong></div>
+        <div class="bsc-row"><span>Horas</span><strong>${parseFloat(r.total_hours||0).toFixed(1)}h</strong></div>
+        <div class="bsc-total">${fmt(r.total)}</div>
+      </div>`).join('');
+  } catch(e) { /* non-fatal */ }
+}
+
+function updateCapKpis(data) {
+  const total  = data.reduce((s,r)=>s+parseFloat(r.amount||0),0);
+  const hours  = data.reduce((s,r)=>s+parseFloat(r.hours||0),0);
+  const boats  = new Set(data.map(r=>r.boat_id)).size;
+  const people = new Set(data.map(r=>r.captain_name)).size;
+  document.getElementById('cap-total').textContent  = fmt(total);
+  document.getElementById('cap-count').textContent  = data.length + ' pagos';
+  document.getElementById('cap-hours').textContent  = hours.toFixed(1) + 'h';
+  document.getElementById('cap-boats').textContent  = boats;
+  document.getElementById('cap-people').textContent = people;
+}
+
+function renderCapTable(data) {
+  const tbody = document.getElementById('cap-tbody');
+  document.getElementById('cap-rec-count').textContent = data.length + ' registros';
+  if (!data.length) {
+    tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><div class="empty-icon">⚓</div><h4 style="color:#666">No hay pagos registrados</h4><p>Usa "+ Registrar pago" para agregar el primero.</p></div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = data.map(p => `
+    <tr>
+      <td>${fmtDate(p.work_date)}</td>
+      <td><strong>${esc(p.captain_name)}</strong></td>
+      <td>${esc(p.boat_name || p.boat_id)}</td>
+      <td>${p.hours ? parseFloat(p.hours).toFixed(1)+'h' : '—'}</td>
+      <td style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.description ? esc(p.description) : '—'}</td>
+      <td><strong>${fmt(p.amount)}</strong></td>
+      <td>${badgeHtml(p.status)}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-sm btn-ghost" onclick="editCapPayment('${p.id}')" data-testid="button-edit-cap-${p.id}">Editar</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteCapPayment('${p.id}')" data-testid="button-delete-cap-${p.id}" style="margin-left:4px">Eliminar</button>
+      </td>
+    </tr>`).join('');
+}
+
+function openCapModal(payment) {
+  document.getElementById('cap-edit-id').value    = payment?.id || '';
+  document.getElementById('capModalTitle').textContent = payment ? 'Editar Pago a Capitán' : 'Registrar Pago a Capitán';
+  document.getElementById('cap-name').value        = payment?.captain_name || '';
+  document.getElementById('cap-boat').value        = payment?.boat_id || '';
+  document.getElementById('cap-work-date').value   = payment?.work_date?.slice(0,10) || new Date().toISOString().slice(0,10);
+  document.getElementById('cap-hours').value       = payment?.hours || '';
+  document.getElementById('cap-description').value = payment?.description || '';
+  document.getElementById('cap-amount').value      = payment?.amount || '';
+  document.getElementById('cap-status').value      = payment?.status || 'paid';
+  document.getElementById('cap-reference').value   = payment?.reference || '';
+  document.getElementById('capModal').classList.add('open');
+}
+function closeCapModal() { document.getElementById('capModal').classList.remove('open'); }
+function editCapPayment(id) { const p = capPayments.find(x=>x.id===id); if(p) openCapModal(p); }
+
+async function submitCapPayment() {
+  const id = document.getElementById('cap-edit-id').value;
+  const body = {
+    captain_name: document.getElementById('cap-name').value.trim(),
+    boat_id:      document.getElementById('cap-boat').value,
+    work_date:    document.getElementById('cap-work-date').value,
+    hours:        document.getElementById('cap-hours').value || null,
+    description:  document.getElementById('cap-description').value.trim() || null,
+    amount:       parseFloat(document.getElementById('cap-amount').value),
+    status:       document.getElementById('cap-status').value,
+    reference:    document.getElementById('cap-reference').value.trim() || null,
+  };
+  if (!body.captain_name || !body.boat_id || !body.work_date || !body.amount) {
+    showToast('Capitán, barco, fecha y monto son obligatorios', false); return;
+  }
+  try {
+    const url = id ? `/api/captain-payments/${id}` : '/api/captain-payments';
+    const res = await fetch(url, { method: id?'PATCH':'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error al guardar');
+    showToast(id ? 'Pago actualizado' : 'Pago registrado exitosamente', true);
+    closeCapModal();
+    loadCaptainPayments(); loadCapSummary();
+  } catch(e) { showToast(e.message, false); }
+}
+
+async function deleteCapPayment(id) {
+  if (!confirm('¿Eliminar este pago de capitán?')) return;
+  try {
+    const res = await fetch(`/api/captain-payments/${id}`, { method:'DELETE' });
+    if (!res.ok) throw new Error('Error al eliminar');
+    showToast('Pago eliminado', true);
+    loadCaptainPayments(); loadCapSummary();
+  } catch(e) { showToast(e.message, false); }
+}
+
+// ── STEW PAYMENTS ─────────────────────────────────────
+let stewPayments = [];
+
+async function loadStewPayments() {
+  const boat  = document.getElementById('stew-filter-boat').value;
+  const name  = document.getElementById('stew-filter-name').value.trim();
+  const start = document.getElementById('stew-filter-start').value;
+  const end   = document.getElementById('stew-filter-end').value;
+  let url = '/api/stew-payments?';
+  if (boat)  url += `boat_id=${encodeURIComponent(boat)}&`;
+  if (start) url += `start_date=${start}&`;
+  if (end)   url += `end_date=${end}&`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('Error de red');
+    let data = await res.json();
+    if (name) data = data.filter(p => p.stew_name.toLowerCase().includes(name.toLowerCase()));
+    stewPayments = data;
+    renderStewTable(data);
+    updateStewKpis(data);
+  } catch(e) { showToast('Error al cargar pagos de stew', false); }
+}
+
+async function loadStewSummary() {
+  try {
+    const res = await fetch('/api/stew-payments/summary');
+    if (!res.ok) return;
+    const { byBoat } = await res.json();
+    const grid = document.getElementById('stew-boat-grid');
+    if (!byBoat || !byBoat.length) {
+      grid.innerHTML = '<p style="color:#aaa;font-size:13px">Sin datos acumulados todavía.</p>';
+      return;
+    }
+    grid.innerHTML = byBoat.map(r => `
+      <div class="bsc">
+        <div class="bsc-name">👥 ${esc(r.boat_name || r.boat_id)}</div>
+        <div class="bsc-row"><span>Pagos registrados</span><strong>${r.payments}</strong></div>
+        <div class="bsc-row"><span>Horas</span><strong>${parseFloat(r.total_hours||0).toFixed(1)}h</strong></div>
+        <div class="bsc-total">${fmt(r.total)}</div>
+      </div>`).join('');
+  } catch(e) { /* non-fatal */ }
+}
+
+function updateStewKpis(data) {
+  const total  = data.reduce((s,r)=>s+parseFloat(r.amount||0),0);
+  const hours  = data.reduce((s,r)=>s+parseFloat(r.hours||0),0);
+  const boats  = new Set(data.map(r=>r.boat_id)).size;
+  const people = new Set(data.map(r=>r.stew_name)).size;
+  document.getElementById('stew-total').textContent  = fmt(total);
+  document.getElementById('stew-count').textContent  = data.length + ' pagos';
+  document.getElementById('stew-hours').textContent  = hours.toFixed(1) + 'h';
+  document.getElementById('stew-boats').textContent  = boats;
+  document.getElementById('stew-people').textContent = people;
+}
+
+function renderStewTable(data) {
+  const tbody = document.getElementById('stew-tbody');
+  document.getElementById('stew-rec-count').textContent = data.length + ' registros';
+  if (!data.length) {
+    tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><div class="empty-icon">👥</div><h4 style="color:#666">No hay pagos registrados</h4><p>Usa "+ Registrar pago" para agregar el primero.</p></div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = data.map(p => `
+    <tr>
+      <td>${fmtDate(p.work_date)}</td>
+      <td><strong>${esc(p.stew_name)}</strong></td>
+      <td>${esc(p.boat_name || p.boat_id)}</td>
+      <td>${p.hours ? parseFloat(p.hours).toFixed(1)+'h' : '—'}</td>
+      <td style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.description ? esc(p.description) : '—'}</td>
+      <td><strong>${fmt(p.amount)}</strong></td>
+      <td>${badgeHtml(p.status)}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-sm btn-ghost" onclick="editStewPayment('${p.id}')" data-testid="button-edit-stew-${p.id}">Editar</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteStewPayment('${p.id}')" data-testid="button-delete-stew-${p.id}" style="margin-left:4px">Eliminar</button>
+      </td>
+    </tr>`).join('');
+}
+
+function openStewModal(payment) {
+  document.getElementById('stew-edit-id').value    = payment?.id || '';
+  document.getElementById('stewModalTitle').textContent = payment ? 'Editar Pago a Stew' : 'Registrar Pago a Stew';
+  document.getElementById('stew-name').value        = payment?.stew_name || '';
+  document.getElementById('stew-boat').value        = payment?.boat_id || '';
+  document.getElementById('stew-work-date').value   = payment?.work_date?.slice(0,10) || new Date().toISOString().slice(0,10);
+  document.getElementById('stew-hours').value       = payment?.hours || '';
+  document.getElementById('stew-description').value = payment?.description || '';
+  document.getElementById('stew-amount').value      = payment?.amount || '';
+  document.getElementById('stew-status').value      = payment?.status || 'paid';
+  document.getElementById('stew-reference').value   = payment?.reference || '';
+  document.getElementById('stewModal').classList.add('open');
+}
+function closeStewModal() { document.getElementById('stewModal').classList.remove('open'); }
+function editStewPayment(id) { const p = stewPayments.find(x=>x.id===id); if(p) openStewModal(p); }
+
+async function submitStewPayment() {
+  const id = document.getElementById('stew-edit-id').value;
+  const body = {
+    stew_name:   document.getElementById('stew-name').value.trim(),
+    boat_id:     document.getElementById('stew-boat').value,
+    work_date:   document.getElementById('stew-work-date').value,
+    hours:       document.getElementById('stew-hours').value || null,
+    description: document.getElementById('stew-description').value.trim() || null,
+    amount:      parseFloat(document.getElementById('stew-amount').value),
+    status:      document.getElementById('stew-status').value,
+    reference:   document.getElementById('stew-reference').value.trim() || null,
+  };
+  if (!body.stew_name || !body.boat_id || !body.work_date || !body.amount) {
+    showToast('Stew, barco, fecha y monto son obligatorios', false); return;
+  }
+  try {
+    const url = id ? `/api/stew-payments/${id}` : '/api/stew-payments';
+    const res = await fetch(url, { method: id?'PATCH':'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error al guardar');
+    showToast(id ? 'Pago actualizado' : 'Pago registrado exitosamente', true);
+    closeStewModal();
+    loadStewPayments(); loadStewSummary();
+  } catch(e) { showToast(e.message, false); }
+}
+
+async function deleteStewPayment(id) {
+  if (!confirm('¿Eliminar este pago de stew?')) return;
+  try {
+    const res = await fetch(`/api/stew-payments/${id}`, { method:'DELETE' });
+    if (!res.ok) throw new Error('Error al eliminar');
+    showToast('Pago eliminado', true);
+    loadStewPayments(); loadStewSummary();
+  } catch(e) { showToast(e.message, false); }
+}
+
+// Close modals on backdrop click
+['capModal','stewModal'].forEach(id => {
+  document.getElementById(id).addEventListener('click', e => {
+    if (e.target.id === id) {
+      if (id === 'capModal')  closeCapModal();
+      if (id === 'stewModal') closeStewModal();
+    }
+  });
+});
+
+// ── INIT ──────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadBoats();
+  loadCaptainPayments();
+  loadCapSummary();
+});
+</script>
 </body>
 </html>

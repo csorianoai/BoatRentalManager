@@ -789,6 +789,24 @@
                     <label>Estación de Combustible</label>
                     <input type="text" id="expense-fuel-station" data-testid="input-fuel-station">
                 </div>
+                <div class="form-group">
+                    <label>Proveedor / Vendedor</label>
+                    <input type="text" id="expense-vendor" placeholder="Nombre del proveedor..." data-testid="input-expense-vendor">
+                </div>
+                <div class="form-group">
+                    <label>Método de pago</label>
+                    <select id="expense-payment-method" data-testid="select-expense-payment-method">
+                        <option value="">Sin especificar</option>
+                        <option value="efectivo">Efectivo</option>
+                        <option value="tarjeta">Tarjeta</option>
+                        <option value="transferencia">Transferencia</option>
+                        <option value="cheque">Cheque</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Notas internas</label>
+                    <textarea id="expense-notes" rows="2" placeholder="Observaciones, detalles adicionales..." data-testid="textarea-expense-notes"></textarea>
+                </div>
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" onclick="closeExpenseModal()" data-testid="button-cancel-expense">Cancelar</button>
                     <button type="submit" class="btn btn-primary" data-testid="button-save-expense">Guardar</button>

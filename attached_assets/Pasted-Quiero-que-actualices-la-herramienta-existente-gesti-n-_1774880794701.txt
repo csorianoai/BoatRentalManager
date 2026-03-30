@@ -1,0 +1,279 @@
+Quiero que actualices la herramienta existente “gestión”. No quiero una app nueva. Quiero que modifiques e integres estas funciones dentro de los módulos actuales de Gastos, Comisiones y Gestión de Capitanía.
+
+OBJETIVO
+Mejorar el control operativo y financiero para que los gastos, pagos de capitanes, pagos de stew y comisiones queden vinculados correctamente con cada embarcación y puedan analizarse de forma acumulativa.
+
+REGLAS
+- no crear aplicación separada
+- integrar dentro del sistema actual
+- mantener la UI consistente con “gestión”
+- no usar librerías pesadas
+- mantener código simple y modular
+- optimizar para bajo consumo en Replit
+- reutilizar componentes y estructuras actuales si ya existen
+
+==================================================
+1. MÓDULO DE GASTOS
+==================================================
+
+Necesito que en la sección de Gastos:
+
+1. se pueda CREAR un gasto
+2. se pueda EDITAR un gasto después de haber sido creado
+3. cada gasto quede vinculado obligatoriamente al barco que generó ese gasto
+4. los gastos de cada barco se acumulen automáticamente
+5. podamos analizar todos los gastos históricos por embarcación
+
+CAMPOS MÍNIMOS DEL GASTO
+- id
+- fecha
+- barco_id
+- barco_nombre
+- categoría
+- descripción
+- monto
+- proveedor opcional
+- método de pago opcional
+- notas opcionales
+- usuario que creó el gasto
+- fecha de creación
+- fecha de actualización
+
+FUNCIONALIDAD REQUERIDA
+- editar gasto existente
+- cambiar monto, descripción, categoría o barco si hace falta
+- ver historial acumulado de gastos por barco
+- ver total de gastos por embarcación
+- filtrar gastos por:
+  - barco
+  - fecha
+  - categoría
+  - proveedor
+- mostrar resumen de gastos por barco
+
+OBJETIVO DE NEGOCIO
+Quiero poder evaluar cuánto dinero se ha invertido en cada embarcación y analizar sus gastos acumulados.
+
+==================================================
+2. PAGOS A CAPITANES
+==================================================
+
+En la parte de pago a capitanes necesito que al registrar un pago exista la opción obligatoria de seleccionar el barco.
+
+Ese pago debe quedar vinculado al barco y además debe ir directamente a la sección de Comisiones, dentro de una vista o categoría de:
+- comisiones pagadas
+- gestión de capitanía
+
+CAMPOS PARA PAGO DE CAPITÁN
+- id
+- fecha
+- capitán
+- barco_id
+- barco_nombre
+- horas
+- día o fecha de trabajo
+- descripción
+- monto pagado
+- estado
+- referencia opcional
+- usuario que registró el pago
+
+FUNCIONALIDAD
+- registrar pago a capitán
+- seleccionar barco obligatoriamente
+- guardar horas trabajadas
+- guardar día/fecha
+- guardar descripción
+- enviar automáticamente ese registro a Comisiones
+- mostrarlo en una sección tipo “Capitanes”
+- permitir filtrar por barco, capitán y fecha
+
+IMPORTANTE
+El pago debe quedar visible y acumulado dentro de Comisiones.
+
+==================================================
+3. NUEVA OPCIÓN: STEW
+==================================================
+
+Debes crear una opción nueva llamada:
+- Stew
+
+Debe ser similar a la de Capitanes y tener las mismas funciones.
+
+CAMPOS PARA PAGO DE STEW
+- id
+- fecha
+- stew
+- barco_id
+- barco_nombre
+- horas
+- día o fecha de trabajo
+- descripción
+- monto pagado
+- estado
+- referencia opcional
+- usuario que registró el pago
+
+FUNCIONALIDAD
+- registrar pago a stew
+- seleccionar barco obligatoriamente
+- guardar horas trabajadas
+- guardar día/fecha
+- guardar descripción
+- enviar automáticamente ese registro a Comisiones
+- mostrarlo en una sección tipo “Stew”
+- permitir filtrar por barco, stew y fecha
+
+IMPORTANTE
+La lógica debe ser equivalente a la de Capitanes.
+
+==================================================
+4. COMISIONES
+==================================================
+
+En la sección de Comisiones debes habilitar ventanas o vistas similares para:
+
+- Capitanes
+- Stew
+- Plataformas
+
+Cada una debe tener comportamiento similar y estructura consistente.
+
+A. CAPITANES
+- mostrar pagos registrados desde Gestión de Capitanía
+- ver por barco
+- ver por capitán
+- ver por fecha
+- ver monto total pagado
+- ver horas y descripción
+
+B. STEW
+- nueva ventana similar a Capitanes
+- mostrar pagos registrados desde la nueva opción Stew
+- ver por barco
+- ver por persona
+- ver por fecha
+- ver monto total pagado
+- ver horas y descripción
+
+C. PLATAFORMAS
+- mantener o continuar la creación de esta sección
+- que tenga estructura coherente con Capitanes y Stew
+- dejar lista para registrar comisiones o pagos de plataformas
+- filtrar y resumir igual que las otras vistas
+
+==================================================
+5. RELACIONES ENTRE MÓDULOS
+==================================================
+
+Necesito que todo quede relacionado correctamente.
+
+RELACIONES OBLIGATORIAS
+- cada gasto debe estar vinculado a un barco
+- cada pago de capitán debe estar vinculado a un barco
+- cada pago de stew debe estar vinculado a un barco
+- pagos de capitán y stew deben reflejarse en Comisiones
+- Comisiones debe permitir análisis por barco
+
+OBJETIVO
+Poder analizar por embarcación:
+- gastos acumulados
+- pagos a capitanes
+- pagos a stew
+- otros pagos o comisiones relacionadas
+
+==================================================
+6. INTERFAZ
+==================================================
+
+Mantén la UI simple y coherente con “gestión”.
+
+Necesito:
+- formularios claros
+- selector de barco visible
+- listas con filtros
+- resumen por barco
+- edición simple de registros
+- vistas separadas o tabs para:
+  - Gastos
+  - Capitanes
+  - Stew
+  - Plataformas
+
+==================================================
+7. BASE DE DATOS / MODELOS
+==================================================
+
+Ajusta la base de datos o modelos existentes para soportar:
+
+GASTOS
+- relation con boat_id
+
+CAPTAIN_PAYMENTS
+- relation con boat_id
+- horas
+- fecha_trabajo
+- descripción
+
+STEW_PAYMENTS
+- relation con boat_id
+- horas
+- fecha_trabajo
+- descripción
+
+COMMISSIONS
+- tipo: captain / stew / platform
+- referencia al registro original
+- boat_id
+- persona
+- monto
+- horas si aplica
+- descripción
+
+==================================================
+8. MVP OBLIGATORIO
+==================================================
+
+Implementa primero esto:
+
+1. editar gastos existentes
+2. vincular gastos a barco
+3. resumen acumulado de gastos por barco
+4. pago de capitán con selección de barco
+5. envío automático a Comisiones
+6. nueva opción Stew con misma lógica
+7. nueva vista en Comisiones para Stew
+8. dejar Plataformas lista o avanzada con misma estructura
+
+==================================================
+9. ENTREGABLE
+==================================================
+
+Necesito que entregues:
+
+- actualización del módulo de Gastos con edición y vínculo a barco
+- acumulado de gastos por embarcación
+- actualización de pago a Capitanes con selección de barco
+- nueva opción Stew con mismas funciones
+- integración automática de Capitanes y Stew en Comisiones
+- vistas o ventanas dentro de Comisiones para:
+  - Capitanes
+  - Stew
+  - Plataformas
+- filtros por barco, persona y fecha
+- código limpio, integrado y funcional dentro de “gestión”
+
+==================================================
+10. CRITERIO FINAL
+==================================================
+
+El resultado debe permitirme:
+
+- crear y editar gastos
+- saber qué barco generó cada gasto
+- ver cuánto gasto acumulado lleva cada embarcación
+- registrar pagos a capitanes con barco, horas, día y descripción
+- registrar pagos a stew con barco, horas, día y descripción
+- ver esos pagos reflejados automáticamente en Comisiones
+- tener una vista clara y separada para Capitanes, Stew y Plataformas
+- analizar costos y pagos por embarcación
