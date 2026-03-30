@@ -6232,93 +6232,170 @@ app.post('/api/accounting/bank-statements/smart-auto-match', isAuthenticated, as
 // ============================================================
 // SMART CLASSIFICATION ENGINE
 // ============================================================
-function smartClassify(description, amount, transactionType, patterns = []) {
+function smartClassify(description, amount, transactionType, patterns = [], boats = []) {
   const desc = (description || '').toLowerCase();
   const amt  = Math.abs(parseFloat(amount) || 0);
   const isCredit = transactionType === 'credit' || parseFloat(amount) > 0;
 
-  const out = (accounting_type, category, confidence_level, reason, debit, credit) => ({
+  const out = (accounting_type, category, confidence_level, reason, debit, credit, vendor = null, module_dest = null, boat_id = null) => ({
     accounting_type, category, confidence_level,
     confidence_reason: reason,
     suggested_account_debit: debit,
     suggested_account_credit: credit,
+    vendor_suggestion: vendor,
+    module_destination: module_dest || deriveModule(accounting_type, category),
+    boat_id: boat_id || null,
     classification_status: 'suggested'
   });
 
-  // --- Learned patterns (highest priority) ---
-  for (const p of patterns.sort((a,b)=>(b.use_count||0)-(a.use_count||0))) {
-    if (desc.includes((p.description_pattern||'').toLowerCase())) {
-      const lbl = p.accounting_type==='expense'?'Gasto':p.accounting_type==='asset'?'Activo':p.accounting_type==='income'?'Ingreso':'Otro';
-      return out(p.accounting_type, p.category, 'high', 'Patrón aprendido',
-        isCredit?'Cuenta Bancaria':`${lbl} — ${p.category}`,
-        isCredit?`${lbl} — ${p.category}`:'Cuenta Bancaria');
+  function deriveModule(type, cat) {
+    if (type === 'income') return 'income';
+    if (type === 'asset') return cat === 'boat_purchase' ? 'fleet' : 'assets';
+    if (type === 'transfer') return 'transfer';
+    if (cat === 'inventory') return 'inventory';
+    if (cat === 'booking_deposit' || cat === 'deferred_deposit') return 'deposits';
+    return 'expenses';
+  }
+
+  // --- Try to match a boat name from description ---
+  let detectedBoatId = null;
+  for (const b of boats) {
+    const boatName = (b.name || b.boat_name || '').toLowerCase().replace(/\s+/g,'');
+    if (boatName.length > 2 && desc.replace(/\s+/g,'').includes(boatName)) {
+      detectedBoatId = b.id;
+      break;
     }
   }
 
+  // --- Learned patterns (highest priority) ---
+  const sortedPatterns = [...patterns].sort((a,b)=>(b.use_count||0)-(a.use_count||0));
+  for (const p of sortedPatterns) {
+    const pat = (p.description_pattern||'').toLowerCase();
+    if (pat.length > 1 && desc.includes(pat)) {
+      const lbl = p.accounting_type==='expense'?'Gasto':p.accounting_type==='asset'?'Activo':p.accounting_type==='income'?'Ingreso':'Otro';
+      return out(p.accounting_type, p.category, 'high', `Patrón aprendido (${p.use_count}x)`,
+        isCredit?'Cuenta Bancaria':`${lbl} — ${p.category}`,
+        isCredit?`${lbl} — ${p.category}`:'Cuenta Bancaria',
+        p.vendor_pattern || null, p.module_destination || null,
+        detectedBoatId || p.boat_id || null);
+    }
+  }
+
+  // --- Vendor detection helpers ---
+  function detectVendor(d) {
+    if (/shell\b/.test(d)) return 'Shell';
+    if (/exxon/.test(d)) return 'ExxonMobil';
+    if (/mobil\b/.test(d)) return 'Mobil';
+    if (/chevron/.test(d)) return 'Chevron';
+    if (/sunoco/.test(d)) return 'Sunoco';
+    if (/citgo/.test(d)) return 'Citgo';
+    if (/bp\b/.test(d)) return 'BP';
+    if (/amazon/.test(d)) return 'Amazon';
+    if (/home depot/.test(d)) return 'Home Depot';
+    if (/lowes?/.test(d)) return 'Lowe\'s';
+    if (/walmart/.test(d)) return 'Walmart';
+    if (/costco/.test(d)) return 'Costco';
+    if (/west marine/.test(d)) return 'West Marine';
+    if (/harbor freight/.test(d)) return 'Harbor Freight';
+    if (/airbnb/.test(d)) return 'Airbnb';
+    if (/getmyboat/.test(d)) return 'GetMyBoat';
+    if (/boatsetter/.test(d)) return 'BoatSetter';
+    if (/viator/.test(d)) return 'Viator';
+    if (/stripe/.test(d)) return 'Stripe';
+    if (/paypal/.test(d)) return 'PayPal';
+    if (/zelle/.test(d)) return 'Zelle';
+    return null;
+  }
+  const vendor = detectVendor(desc);
+
   // --- Keyword rules ---
-  if (/fuel|gas(?:oline)?|diesel|petro|gasolina|shell\b|exxon|mobil\b|chevron|sunoco|bp\b|citgo/.test(desc))
-    return out('expense','fuel','high','Palabra clave: combustible','Gastos de Combustible','Cuenta Bancaria');
+  if (/fuel|gas(?:oline)?|diesel|petro|gasolina|shell\b|exxon|mobil\b|chevron|sunoco|bp\b|citgo|combustible/.test(desc))
+    return out('expense','fuel','high','Combustible detectado','Gastos de Combustible','Cuenta Bancaria', vendor||'Estación de Combustible','expenses',detectedBoatId);
 
   if (/marina|dock(?:age)?|harbour?|slip\b|mooring|anchorage|pier\b/.test(desc))
-    return out('expense','marina_fees','high','Palabra clave: marina/dock','Gastos de Marina','Cuenta Bancaria');
+    return out('expense','marina_fees','high','Marina/dock detectado','Gastos de Marina','Cuenta Bancaria', vendor||'Marina','expenses',detectedBoatId);
 
-  if (/repair|service|maintenance|maint\b|mechanic|engine\b|motor\b|propel|reparacion|servicio/.test(desc))
-    return out('expense','maintenance_parts','high','Palabra clave: mantenimiento','Gastos de Mantenimiento','Cuenta Bancaria');
+  if (/repair|service|maintenance|maint\b|mechanic|engine\b|motor\b|propel|reparacion|servicio|overhaul/.test(desc))
+    return out('expense','maintenance_repair','high','Mantenimiento/reparación','Gastos de Mantenimiento','Cuenta Bancaria', vendor,'expenses',detectedBoatId);
 
-  if (/clean(?:ing)?|laundry|wash\b|detail(?:ing)?|sanitiz/.test(desc))
-    return out('expense','cleaning','high','Palabra clave: limpieza','Gastos de Limpieza','Cuenta Bancaria');
+  if (/clean(?:ing)?|laundry|wash\b|detail(?:ing)?|sanitiz|limpieza/.test(desc))
+    return out('expense','cleaning','high','Limpieza detectada','Gastos de Limpieza','Cuenta Bancaria', vendor,'expenses',detectedBoatId);
 
   if (/insurance|insur\b|poliz|premium\b|seguro/.test(desc))
-    return out('expense','insurance','high','Palabra clave: seguro','Gastos de Seguro','Cuenta Bancaria');
+    return out('expense','insurance','high','Seguro detectado','Gastos de Seguro','Cuenta Bancaria', vendor,'expenses',null);
 
-  if (/office|supply|supplies|staples|fedex|ups\b|printing|papel|oficina/.test(desc))
-    return out('expense','office','medium','Palabra clave: oficina','Gastos de Oficina','Cuenta Bancaria');
+  if (/crew|captain|staff|salary|payroll|nomina|sueldo/.test(desc))
+    return out('expense','crew_payroll','high','Nómina/crew detectada','Gastos de Nómina','Cuenta Bancaria', vendor,'expenses',detectedBoatId);
+
+  if (/subscription|suscripcion|netflix|spotify|dropbox|google\s+cloud|aws\b|hosting/.test(desc))
+    return out('expense','subscriptions','medium','Suscripción detectada','Gastos de Suscripciones','Cuenta Bancaria', vendor,'expenses',null);
+
+  if (/office|supply|supplies|staples|fedex|ups\b|printing|papel|oficina|admin/.test(desc))
+    return out('expense','office','medium','Gastos de oficina','Gastos de Oficina','Cuenta Bancaria', vendor,'expenses',null);
+
+  if (/west marine/.test(desc))
+    return out('expense','marine_supplies','high','West Marine — suministros náuticos','Gastos de Suministros Marinos','Cuenta Bancaria','West Marine','expenses',detectedBoatId);
 
   if (/amazon|home depot|lowes?|walmart|costco|sam\'s club|harbor freight/.test(desc)) {
-    if (amt > 500) return out('asset','equipment','medium','Proveedor+monto: activo probable','Activos — Equipos','Cuenta Bancaria');
-    return out('expense','inventory','medium','Proveedor tipo inventario/suministros','Gastos de Inventario','Cuenta Bancaria');
+    if (amt > 1000) return out('asset','equipment','medium','Proveedor grande + monto alto → activo probable','Activos — Equipos','Cuenta Bancaria', vendor,'assets',detectedBoatId);
+    if (amt > 200) return out('expense','inventory','medium','Proveedor tipo inventario/partes','Gastos de Inventario','Cuenta Bancaria', vendor,'inventory',detectedBoatId);
+    return out('expense','office','medium','Proveedor suministros generales','Gastos Generales','Cuenta Bancaria', vendor,'expenses',null);
   }
 
-  if (/equipment|radio\b|gps\b|device|electronic|sensor|camera|sonar|equipo/.test(desc))
-    return out('asset','equipment','high','Palabra clave: equipo/dispositivo','Activos — Equipos','Cuenta Bancaria');
+  if (/equipment|radio\b|gps\b|device|electronic|sensor|camera|sonar|equipo|chart plotter|autopilot/.test(desc))
+    return out('asset','equipment','high','Equipo náutico/electrónico','Activos — Equipos','Cuenta Bancaria', vendor,'assets',detectedBoatId);
 
-  if ((/boat|yacht|hull|vessel|embarcacion/.test(desc)) && amt > 5000)
-    return out('asset','boat_purchase','medium','Palabra clave: barco + monto alto','Activos — Barco','Cuenta Bancaria');
+  if ((/boat|yacht|hull|vessel|embarcacion|outboard|motor\s*boat/.test(desc)) && amt > 5000)
+    return out('asset','boat_purchase','medium','Barco + monto alto → activo fijo','Activos — Embarcación','Cuenta Bancaria', vendor,'fleet',null);
 
-  if (/transfer|zelle|wire\b|ach\b|electronic transfer|trasnfer/.test(desc))
-    return out('transfer','bank_transfer','medium','Palabra clave: transferencia','Cuenta Destino','Cuenta Origen');
+  if (/transfer|zelle|wire\b|ach\b|electronic transfer|trasnfer|internal|interbancari/.test(desc))
+    return out('transfer','bank_transfer','medium','Transferencia detectada','Cuenta Destino','Cuenta Origen', vendor,'transfer',null);
+
+  if (/deposit|deposito/.test(desc) && !isCredit)
+    return out('expense','deposit','medium','Depósito/garantía','Depósito — Activo','Cuenta Bancaria', vendor,'expenses',null);
 
   if (isCredit) {
-    if (/airbnb|getmyboat|boatsetter|viator|booking|stripe|paypal|payment|charter|trip\b|reserva/.test(desc))
-      return out('income','booking_income','high','Ingreso plataforma detectado','Cuenta Bancaria','Ingresos de Reservas');
+    if (/airbnb|getmyboat|boatsetter|viator|booking\.com|expedia|tripadvisor|fareharbor|bokun|rezdy|peek\b|xola/.test(desc))
+      return out('income','booking_income','high','Plataforma de reservas detectada','Cuenta Bancaria','Ingresos de Reservas', vendor,'income',null);
+    if (/charter|trip\b|reserva|excursion|tour/.test(desc))
+      return out('income','charter_income','high','Ingreso de charter/tour','Cuenta Bancaria','Ingresos de Charter', vendor,'income',null);
+    if (/deposit|anticipo|down payment/.test(desc))
+      return out('income','deferred_deposit','medium','Depósito anticipado — revisar si es diferido','Cuenta Bancaria','Depósitos Diferidos de Reservas', vendor,'deposits',null);
     if (amt > 0)
-      return out('income','other_income','medium','Crédito sin patrón específico','Cuenta Bancaria','Otros Ingresos');
+      return out('income','other_income','medium','Crédito — sin patrón específico','Cuenta Bancaria','Otros Ingresos', vendor,'income',null);
   }
 
-  if (amt > 1000 && !isCredit)
-    return out('asset','equipment','low','Monto alto — revisar si es activo','Activos — Equipos','Cuenta Bancaria');
+  if (amt > 2000 && !isCredit)
+    return out('asset','equipment','low','Monto alto — revisar si es activo','Activos — Equipos','Cuenta Bancaria', vendor,'assets',detectedBoatId);
 
   return out(isCredit?'income':'expense', isCredit?'other_income':'other_expense',
-    'low','Sin patrón detectado',
+    'low','Sin patrón — requiere revisión manual',
     isCredit?'Cuenta Bancaria':'Gastos Generales',
-    isCredit?'Otros Ingresos':'Cuenta Bancaria');
+    isCredit?'Otros Ingresos':'Cuenta Bancaria',
+    vendor, null, detectedBoatId);
 }
 
 // --- Classify all unclassified bank statements ---
 app.post('/api/accounting/bank-statements/smart-classify', isAuthenticated, async (req, res) => {
   try {
     const patterns = await pool.query('SELECT * FROM classification_patterns ORDER BY use_count DESC');
+    const boatsQ  = await pool.query('SELECT id, boat_name as name FROM boats');
     const stmts = await pool.query(
       `SELECT * FROM bank_statements WHERE (classification_status IS NULL OR classification_status='unclassified') ORDER BY statement_date DESC`
     );
     let updated = 0;
     for (const s of stmts.rows) {
-      const r = smartClassify(s.description, s.amount, s.transaction_type, patterns.rows);
+      const r = smartClassify(s.description, s.amount, s.transaction_type, patterns.rows, boatsQ.rows);
       await pool.query(
         `UPDATE bank_statements SET accounting_type=$1, category=$2, confidence_level=$3,
-         suggested_account_debit=$4, suggested_account_credit=$5, classification_status='suggested', updated_at=CURRENT_TIMESTAMP
-         WHERE id=$6`,
-        [r.accounting_type, r.category, r.confidence_level, r.suggested_account_debit, r.suggested_account_credit, s.id]
+         suggested_account_debit=$4, suggested_account_credit=$5,
+         vendor_suggestion=$6, module_destination=$7, boat_id=COALESCE($8, boat_id),
+         confidence_reason=$9, classification_status='suggested', updated_at=CURRENT_TIMESTAMP
+         WHERE id=$10`,
+        [r.accounting_type, r.category, r.confidence_level,
+         r.suggested_account_debit, r.suggested_account_credit,
+         r.vendor_suggestion, r.module_destination, r.boat_id,
+         r.confidence_reason, s.id]
       );
       updated++;
     }
@@ -6362,7 +6439,11 @@ app.get('/api/accounting/bank-statements/classification-stats', isAuthenticated,
 app.patch('/api/accounting/bank-statements/:id/classify', isAuthenticated, async (req, res) => {
   try {
     const { id } = req.params;
-    const { accounting_type, category, confidence_level, boat_id, suggested_account_debit, suggested_account_credit, notes, status } = req.body;
+    const {
+      accounting_type, category, confidence_level, boat_id,
+      suggested_account_debit, suggested_account_credit, notes, status,
+      vendor_suggestion, module_destination
+    } = req.body;
     const newStatus = status || 'confirmed';
     const r = await pool.query(
       `UPDATE bank_statements SET
@@ -6374,31 +6455,173 @@ app.patch('/api/accounting/bank-statements/:id/classify', isAuthenticated, async
          suggested_account_credit=COALESCE($6,suggested_account_credit),
          notes=COALESCE($7,notes),
          classification_status=$8,
+         vendor_suggestion=COALESCE($9,vendor_suggestion),
+         module_destination=COALESCE($10,module_destination),
          updated_at=CURRENT_TIMESTAMP
-       WHERE id=$9 RETURNING *`,
-      [accounting_type, category, confidence_level, boat_id, suggested_account_debit, suggested_account_credit, notes, newStatus, id]
+       WHERE id=$11 RETURNING *`,
+      [accounting_type, category, confidence_level, boat_id,
+       suggested_account_debit, suggested_account_credit, notes, newStatus,
+       vendor_suggestion, module_destination, id]
     );
     if (!r.rows.length) return res.status(404).json({ error: 'Not found' });
 
-    // Learn from this confirmation: upsert a pattern
+    // Learn from this confirmation: upsert a pattern with full context
     if (newStatus === 'confirmed' || newStatus === 'posted') {
       const stmt = r.rows[0];
       const words = (stmt.description||'').toLowerCase().split(/\s+/).filter(w=>w.length>3).slice(0,2).join(' ');
       if (words.length > 2) {
         const { nanoid } = await import('nanoid');
         await pool.query(
-          `INSERT INTO classification_patterns (id, description_pattern, accounting_type, category, boat_id, use_count)
-           VALUES ($1,$2,$3,$4,$5,1)
+          `INSERT INTO classification_patterns
+             (id, description_pattern, accounting_type, category, boat_id, vendor_pattern, module_destination, use_count)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,1)
            ON CONFLICT (description_pattern) DO UPDATE SET
              accounting_type=EXCLUDED.accounting_type, category=EXCLUDED.category,
+             boat_id=COALESCE(EXCLUDED.boat_id, classification_patterns.boat_id),
+             vendor_pattern=COALESCE(EXCLUDED.vendor_pattern, classification_patterns.vendor_pattern),
+             module_destination=COALESCE(EXCLUDED.module_destination, classification_patterns.module_destination),
              use_count=classification_patterns.use_count+1, updated_at=CURRENT_TIMESTAMP`,
-          [nanoid(), words, stmt.accounting_type, stmt.category, stmt.boat_id||null]
+          [nanoid(), words, stmt.accounting_type, stmt.category,
+           stmt.boat_id||null, stmt.vendor_suggestion||null, stmt.module_destination||null]
         );
       }
     }
     res.json(r.rows[0]);
   } catch(err) {
     console.error('classify error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Bulk classify: apply same classification to multiple statements ---
+app.post('/api/accounting/bank-statements/bulk-classify', isAuthenticated, async (req, res) => {
+  try {
+    const { ids, accounting_type, category, confidence_level, boat_id,
+            suggested_account_debit, suggested_account_credit, vendor_suggestion, module_destination } = req.body;
+    if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'ids array required' });
+    const r = await pool.query(
+      `UPDATE bank_statements SET
+         accounting_type=$1, category=$2,
+         confidence_level=COALESCE($3,'medium'),
+         boat_id=COALESCE($4,boat_id),
+         suggested_account_debit=COALESCE($5,suggested_account_debit),
+         suggested_account_credit=COALESCE($6,suggested_account_credit),
+         vendor_suggestion=COALESCE($7,vendor_suggestion),
+         module_destination=COALESCE($8,module_destination),
+         classification_status='confirmed', updated_at=CURRENT_TIMESTAMP
+       WHERE id=ANY($9::text[]) RETURNING id`,
+      [accounting_type, category, confidence_level, boat_id,
+       suggested_account_debit, suggested_account_credit,
+       vendor_suggestion, module_destination, ids]
+    );
+    res.json({ success: true, updated: r.rowCount });
+  } catch(err) {
+    console.error('bulk-classify error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Quick accept: accept the current suggestion for a statement ---
+app.post('/api/accounting/bank-statements/:id/quick-accept', isAuthenticated, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const r = await pool.query(
+      `UPDATE bank_statements SET classification_status='confirmed', updated_at=CURRENT_TIMESTAMP
+       WHERE id=$1 AND classification_status='suggested' RETURNING *`,
+      [id]
+    );
+    if (!r.rows.length) return res.status(404).json({ error: 'Not found or not in suggested state' });
+    const stmt = r.rows[0];
+    // Learn from it
+    const words = (stmt.description||'').toLowerCase().split(/\s+/).filter(w=>w.length>3).slice(0,2).join(' ');
+    if (words.length > 2) {
+      const { nanoid } = await import('nanoid');
+      await pool.query(
+        `INSERT INTO classification_patterns
+           (id, description_pattern, accounting_type, category, boat_id, vendor_pattern, module_destination, use_count)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,1)
+         ON CONFLICT (description_pattern) DO UPDATE SET
+           use_count=classification_patterns.use_count+1, updated_at=CURRENT_TIMESTAMP`,
+        [nanoid(), words, stmt.accounting_type, stmt.category,
+         stmt.boat_id||null, stmt.vendor_suggestion||null, stmt.module_destination||null]
+      );
+    }
+    res.json({ success: true, statement: stmt });
+  } catch(err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Detect and flag duplicate bank statements ---
+app.post('/api/accounting/bank-statements/detect-duplicates', isAuthenticated, async (req, res) => {
+  try {
+    // Find pairs with same amount and date within 1 day
+    const dups = await pool.query(`
+      SELECT a.id as id_a, b.id as id_b, a.description as desc_a, b.description as desc_b,
+             a.amount, a.statement_date
+      FROM bank_statements a
+      JOIN bank_statements b ON a.id < b.id
+        AND ABS(a.amount - b.amount) < 0.01
+        AND ABS(a.statement_date::date - b.statement_date::date) <= 1
+        AND a.is_duplicate IS NOT TRUE
+      ORDER BY a.statement_date DESC
+      LIMIT 50
+    `);
+    let flagged = 0;
+    for (const pair of dups.rows) {
+      await pool.query(
+        `UPDATE bank_statements SET is_duplicate=TRUE, duplicate_of=$1, updated_at=CURRENT_TIMESTAMP WHERE id=$2`,
+        [pair.id_a, pair.id_b]
+      );
+      flagged++;
+    }
+    res.json({ success: true, duplicates_found: dups.rows.length, flagged, pairs: dups.rows.slice(0,20) });
+  } catch(err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Conciliation summary ---
+app.get('/api/accounting/bank-statements/conciliation-summary', isAuthenticated, async (req, res) => {
+  try {
+    const stats = await pool.query(`
+      SELECT
+        COUNT(*) as total,
+        COALESCE(SUM(ABS(amount)),0) as total_amount,
+        COUNT(*) FILTER (WHERE classification_status='unclassified' OR classification_status IS NULL) as pending_review,
+        COUNT(*) FILTER (WHERE classification_status='suggested') as auto_suggested,
+        COUNT(*) FILTER (WHERE classification_status='confirmed') as confirmed,
+        COUNT(*) FILTER (WHERE classification_status='posted') as posted,
+        COUNT(*) FILTER (WHERE classification_status='ignored') as ignored,
+        COUNT(*) FILTER (WHERE is_duplicate=TRUE) as duplicates,
+        COUNT(*) FILTER (WHERE confidence_level='high') as high_conf,
+        COUNT(*) FILTER (WHERE confidence_level='medium') as medium_conf,
+        COUNT(*) FILTER (WHERE confidence_level='low') as low_conf,
+        COALESCE(SUM(ABS(amount)) FILTER (WHERE classification_status='posted'),0) as posted_amount,
+        COUNT(*) FILTER (WHERE module_destination='expenses') as module_expenses,
+        COUNT(*) FILTER (WHERE module_destination='income') as module_income,
+        COUNT(*) FILTER (WHERE module_destination='assets') as module_assets,
+        COUNT(*) FILTER (WHERE module_destination='inventory') as module_inventory,
+        COUNT(*) FILTER (WHERE module_destination='deposits') as module_deposits,
+        COUNT(*) FILTER (WHERE module_destination='transfer') as module_transfer
+      FROM bank_statements
+    `);
+    const row = stats.rows[0];
+    const total = parseInt(row.total) || 1;
+    const classified = parseInt(row.confirmed||0) + parseInt(row.posted||0);
+    const pctClassified = Math.round(classified / total * 100);
+    const pctPosted = Math.round(parseInt(row.posted||0) / total * 100);
+
+    // Checklist items
+    const checklist = [
+      { label: 'Sin clasificar = 0', ok: parseInt(row.pending_review||0) === 0 },
+      { label: 'Sin duplicados', ok: parseInt(row.duplicates||0) === 0 },
+      { label: 'Confianza baja = 0', ok: parseInt(row.low_conf||0) === 0 },
+      { label: 'Todo registrado en contabilidad', ok: parseInt(row.posted||0) === total },
+    ];
+
+    res.json({ ...row, pct_classified: pctClassified, pct_posted: pctPosted, checklist });
+  } catch(err) {
     res.status(500).json({ error: err.message });
   }
 });

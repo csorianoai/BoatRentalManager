@@ -342,6 +342,9 @@
             <button class="tab" data-tab="clasificacion" data-testid="tab-clasificacion">
                 🧠 Clasificación Inteligente
             </button>
+            <button class="tab" data-tab="conciliacion-final" data-testid="tab-conciliacion-final">
+                🎯 Conciliación Final
+            </button>
             <button class="tab" data-tab="reconciliation" data-testid="tab-reconciliation">
                 🔄 Reconciliación
             </button>
@@ -603,16 +606,19 @@
             </div>
           </div>
 
-          <!-- Controls -->
-          <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid #e5e7eb">
-            <button class="btn-primary" onclick="runSmartClassify()" data-testid="button-smart-classify" style="font-size:13px;padding:8px 16px">
-              🧠 Clasificar Todo Automáticamente
+          <!-- Controls Row 1: Actions + Status Filters -->
+          <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px">
+            <button class="btn-primary" onclick="runSmartClassify()" data-testid="button-smart-classify" style="font-size:13px;padding:8px 14px">
+              🧠 Clasificar Automáticamente
             </button>
-            <button class="btn-primary" onclick="postAllConfirmed()" data-testid="button-post-all" style="font-size:13px;padding:8px 16px;background:#10b981">
-              ✅ Registrar Confirmados en Contabilidad
+            <button class="btn-primary" onclick="runDuplicateCheck()" data-testid="button-detect-dupes" style="font-size:13px;padding:8px 14px;background:#f59e0b">
+              🔍 Detectar Duplicados
+            </button>
+            <button class="btn-primary" onclick="postAllConfirmed()" data-testid="button-post-all" style="font-size:13px;padding:8px 14px;background:#10b981">
+              ✅ Registrar Confirmados
             </button>
             <div style="flex:1"></div>
-            <div style="display:flex;gap:4px;background:#f1f5f9;padding:3px;border-radius:8px">
+            <div style="display:flex;gap:3px;background:#f1f5f9;padding:3px;border-radius:8px">
               <button class="csf-filter active" onclick="setClassifFilter('all')" data-testid="filter-all">Todos</button>
               <button class="csf-filter" onclick="setClassifFilter('unclassified')" data-testid="filter-unclassified">Sin clasificar</button>
               <button class="csf-filter" onclick="setClassifFilter('suggested')" data-testid="filter-suggested">Sugeridos</button>
@@ -621,24 +627,89 @@
             </div>
           </div>
 
-          <div id="classif-notice" style="display:none;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px 16px;font-size:13px;color:#1e40af;margin-bottom:12px"></div>
+          <!-- Controls Row 2: Confidence + Search -->
+          <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid #e5e7eb">
+            <span style="font-size:12px;color:#64748b;font-weight:600">Confianza:</span>
+            <div style="display:flex;gap:3px;background:#f1f5f9;padding:3px;border-radius:8px">
+              <button class="csf-filter active" onclick="setConfFilter('all')" data-testid="conf-filter-all" style="font-size:11px">Todas</button>
+              <button class="csf-filter" onclick="setConfFilter('high')" data-testid="conf-filter-high" style="font-size:11px;color:#065f46">Alta</button>
+              <button class="csf-filter" onclick="setConfFilter('medium')" data-testid="conf-filter-medium" style="font-size:11px;color:#92400e">Media</button>
+              <button class="csf-filter" onclick="setConfFilter('low')" data-testid="conf-filter-low" style="font-size:11px;color:#991b1b">Baja</button>
+            </div>
+            <input id="classif-search" type="text" placeholder="Buscar por descripción o proveedor…"
+              onkeyup="filterClassifBySearch(this.value)"
+              style="padding:5px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;min-width:220px" data-testid="input-classif-search">
+            <div style="flex:1"></div>
+            <span id="classif-sel-count" style="font-size:12px;color:#64748b;display:none"></span>
+            <button id="bulk-classify-btn" onclick="openBulkPanel()" data-testid="button-bulk-classify"
+              style="display:none;padding:6px 12px;background:#7c3aed;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600">
+              ⚡ Clasificar Seleccionados
+            </button>
+          </div>
+
+          <div id="classif-notice" style="display:none;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;font-size:13px;color:#1e40af;margin-bottom:10px"></div>
+
+          <!-- Bulk Classification Panel (hidden by default) -->
+          <div id="bulk-panel" style="display:none;background:#faf5ff;border:1px solid #e9d5ff;border-radius:8px;padding:14px;margin-bottom:12px">
+            <div style="font-size:13px;font-weight:700;color:#6d28d9;margin-bottom:10px">⚡ Clasificación Masiva — aplicar a todos los seleccionados</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:end">
+              <div>
+                <label style="font-size:11px;color:#64748b;font-weight:600">Tipo Contable</label>
+                <select id="bulk-type" style="width:100%;padding:6px 8px;border:1px solid #e9d5ff;border-radius:6px;font-size:12px;margin-top:4px" data-testid="bulk-type">
+                  <option value="expense">Gasto</option>
+                  <option value="income">Ingreso</option>
+                  <option value="asset">Activo</option>
+                  <option value="transfer">Transferencia</option>
+                </select>
+              </div>
+              <div>
+                <label style="font-size:11px;color:#64748b;font-weight:600">Categoría</label>
+                <select id="bulk-category" style="width:100%;padding:6px 8px;border:1px solid #e9d5ff;border-radius:6px;font-size:12px;margin-top:4px" data-testid="bulk-category">
+                  <option value="fuel">Combustible</option>
+                  <option value="marina_fees">Marina</option>
+                  <option value="maintenance_repair">Mantenimiento</option>
+                  <option value="cleaning">Limpieza</option>
+                  <option value="insurance">Seguro</option>
+                  <option value="office">Oficina</option>
+                  <option value="inventory">Inventario</option>
+                  <option value="equipment">Equipo</option>
+                  <option value="booking_income">Ingreso Reserva</option>
+                  <option value="other_expense">Otro Gasto</option>
+                </select>
+              </div>
+              <div>
+                <label style="font-size:11px;color:#64748b;font-weight:600">Barco (opcional)</label>
+                <select id="bulk-boat" style="width:100%;padding:6px 8px;border:1px solid #e9d5ff;border-radius:6px;font-size:12px;margin-top:4px" data-testid="bulk-boat">
+                  <option value="">— Sin asignar —</option>
+                </select>
+              </div>
+              <div style="display:flex;gap:6px">
+                <button onclick="applyBulkClassify()" data-testid="button-apply-bulk"
+                  style="padding:7px 14px;background:#6d28d9;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600;white-space:nowrap">Aplicar</button>
+                <button onclick="closeBulkPanel()" style="padding:7px 10px;border:1px solid #e9d5ff;background:#fff;border-radius:6px;font-size:12px;cursor:pointer">✕</button>
+              </div>
+            </div>
+          </div>
 
           <!-- Classification Table -->
           <div class="table-container" style="overflow-x:auto">
-            <table id="classif-table" style="min-width:900px">
+            <table id="classif-table" style="min-width:960px">
               <thead>
                 <tr>
-                  <th style="width:90px">Fecha</th>
+                  <th style="width:32px;text-align:center">
+                    <input type="checkbox" onchange="toggleSelectAll(this.checked)" data-testid="checkbox-select-all" title="Seleccionar todos">
+                  </th>
+                  <th style="width:88px">Fecha</th>
                   <th>Descripción</th>
-                  <th style="width:100px;text-align:right">Monto</th>
-                  <th style="width:60px;text-align:center">Tipo</th>
-                  <th style="min-width:200px">Sugerencia</th>
-                  <th style="min-width:180px">Impacto Contable</th>
-                  <th style="width:160px;text-align:center">Acciones</th>
+                  <th style="width:95px;text-align:right">Monto</th>
+                  <th style="min-width:160px">Sugerencia</th>
+                  <th style="min-width:110px">Proveedor/Módulo</th>
+                  <th style="min-width:160px">Impacto Contable</th>
+                  <th style="width:140px;text-align:center">Acciones</th>
                 </tr>
               </thead>
               <tbody id="classif-tbody" data-testid="classif-table-body">
-                <tr><td colspan="7" class="empty-state">Cargando movimientos...</td></tr>
+                <tr><td colspan="8" class="empty-state">Cargando movimientos...</td></tr>
               </tbody>
             </table>
           </div>
@@ -705,6 +776,22 @@
                   <option value="low">Baja</option>
                 </select>
               </div>
+              <div>
+                <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Proveedor Detectado</label>
+                <input id="cm-vendor" data-testid="input-classif-vendor" type="text" style="width:100%;margin-top:4px;padding:7px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:13px" placeholder="Ej: Shell, Amazon, Marina…">
+              </div>
+              <div>
+                <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Módulo Destino</label>
+                <select id="cm-module" data-testid="select-classif-module" style="width:100%;margin-top:4px;padding:7px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:13px">
+                  <option value="expenses">Gastos Operativos</option>
+                  <option value="income">Ingresos</option>
+                  <option value="assets">Activos</option>
+                  <option value="inventory">Inventario</option>
+                  <option value="deposits">Depósitos de Reserva</option>
+                  <option value="fleet">Flota</option>
+                  <option value="transfer">Transferencia</option>
+                </select>
+              </div>
             </div>
             <div style="margin-top:12px">
               <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Notas</label>
@@ -724,6 +811,108 @@
               <button onclick="closeClassifModal()" style="padding:8px 16px;border:1px solid #e5e7eb;border-radius:6px;background:#fff;cursor:pointer;font-size:13px">Cancelar</button>
               <button onclick="confirmClassification()" data-testid="button-confirm-classif" style="padding:8px 18px;background:#0066cc;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600">Confirmar Clasificación</button>
             </div>
+          </div>
+        </div>
+
+        <!-- Conciliación Final Tab -->
+        <div class="tab-content" id="conciliacion-final" data-testid="tab-content-conciliacion-final" style="display:none">
+
+          <!-- Metrics Grid -->
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px">
+            <div class="classif-stat-card" data-testid="conc-total">
+              <div class="csf-label">Total Movimientos</div>
+              <div class="csf-val" id="conc-total">—</div>
+            </div>
+            <div class="classif-stat-card">
+              <div class="csf-label">Auto-sugeridos</div>
+              <div class="csf-val" id="conc-suggested" style="color:#f59e0b">—</div>
+            </div>
+            <div class="classif-stat-card">
+              <div class="csf-label">Confirmados</div>
+              <div class="csf-val" id="conc-confirmed" style="color:#0066cc">—</div>
+            </div>
+            <div class="classif-stat-card">
+              <div class="csf-label">Registrados</div>
+              <div class="csf-val" id="conc-posted" style="color:#10b981">—</div>
+            </div>
+            <div class="classif-stat-card">
+              <div class="csf-label">Pendientes Revisión</div>
+              <div class="csf-val" id="conc-pending" style="color:#ef4444">—</div>
+            </div>
+            <div class="classif-stat-card">
+              <div class="csf-label">Duplicados Detectados</div>
+              <div class="csf-val" id="conc-dupes" style="color:#dc2626">—</div>
+            </div>
+          </div>
+
+          <!-- Confidence Distribution -->
+          <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:16px;margin-bottom:20px">
+            <div style="font-weight:700;color:#1a1a2e;font-size:14px;margin-bottom:12px">Distribución por Confianza</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+              <div style="text-align:center">
+                <div style="font-size:24px;font-weight:800;color:#065f46" id="conc-high">—</div>
+                <div style="font-size:11px;color:#64748b;margin-top:2px">Confianza Alta</div>
+                <div style="background:#d1fae5;border-radius:4px;height:6px;margin-top:6px">
+                  <div id="conc-high-bar" style="background:#059669;border-radius:4px;height:100%;width:0%;transition:width .4s"></div>
+                </div>
+              </div>
+              <div style="text-align:center">
+                <div style="font-size:24px;font-weight:800;color:#92400e" id="conc-medium">—</div>
+                <div style="font-size:11px;color:#64748b;margin-top:2px">Confianza Media</div>
+                <div style="background:#fde68a;border-radius:4px;height:6px;margin-top:6px">
+                  <div id="conc-medium-bar" style="background:#d97706;border-radius:4px;height:100%;width:0%;transition:width .4s"></div>
+                </div>
+              </div>
+              <div style="text-align:center">
+                <div style="font-size:24px;font-weight:800;color:#991b1b" id="conc-low">—</div>
+                <div style="font-size:11px;color:#64748b;margin-top:2px">Confianza Baja</div>
+                <div style="background:#fecaca;border-radius:4px;height:6px;margin-top:6px">
+                  <div id="conc-low-bar" style="background:#dc2626;border-radius:4px;height:100%;width:0%;transition:width .4s"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Module Distribution -->
+          <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:16px;margin-bottom:20px">
+            <div style="font-weight:700;color:#1a1a2e;font-size:14px;margin-bottom:12px">Destino por Módulo Contable</div>
+            <div id="conc-modules" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+          </div>
+
+          <!-- Completion Progress -->
+          <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:16px;margin-bottom:20px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+              <div style="font-weight:700;color:#1a1a2e;font-size:14px">Progreso de Conciliación</div>
+              <div id="conc-pct-label" style="font-size:20px;font-weight:800;color:#0066cc">0%</div>
+            </div>
+            <div style="background:#f1f5f9;border-radius:6px;height:12px;overflow:hidden;margin-bottom:6px">
+              <div id="conc-progress-bar" style="height:100%;background:linear-gradient(90deg,#0066cc,#10b981);border-radius:6px;width:0%;transition:width .6s"></div>
+            </div>
+            <div style="font-size:11px;color:#64748b">Movimientos registrados en contabilidad vs total importados</div>
+          </div>
+
+          <!-- Checklist -->
+          <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:16px;margin-bottom:20px">
+            <div style="font-weight:700;color:#1a1a2e;font-size:14px;margin-bottom:12px">Checklist de Cierre</div>
+            <div id="conc-checklist" style="display:flex;flex-direction:column;gap:8px">
+              <div style="color:#64748b;font-size:13px">Cargando checklist…</div>
+            </div>
+          </div>
+
+          <!-- Actions -->
+          <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+            <button onclick="loadConciliationSummary()" data-testid="button-refresh-conc"
+              style="padding:8px 16px;border:1px solid #e5e7eb;border-radius:6px;background:#fff;font-size:13px;cursor:pointer;font-weight:600">
+              🔄 Actualizar Datos
+            </button>
+            <button onclick="runDuplicateCheck()" data-testid="button-run-dupes"
+              style="padding:8px 16px;background:#f59e0b;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer;font-weight:600">
+              🔍 Detectar Duplicados
+            </button>
+            <button onclick="runSmartClassify();loadConciliationSummary();" data-testid="button-auto-all"
+              style="padding:8px 16px;background:#0066cc;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer;font-weight:600">
+              🧠 Clasificar Todo y Actualizar
+            </button>
           </div>
         </div>
 
@@ -1518,7 +1707,10 @@
         // ═══════════════════════════════════════════════════════════════
         let classifData = [];
         let classifFilter = 'all';
+        let classifConfFilter = 'all';
+        let classifSearch = '';
         let classifEditId = null;
+        let classifSelected = new Set();
 
         // Load on tab switch
         document.querySelectorAll('.tab[data-tab="clasificacion"]').forEach(btn => {
@@ -1526,6 +1718,12 @@
             loadClassifStats();
             loadClassifStatements();
             loadBoatsIntoClassifModal();
+          });
+        });
+
+        document.querySelectorAll('.tab[data-tab="conciliacion-final"]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            loadConciliationSummary();
           });
         });
 
@@ -1548,89 +1746,207 @@
           } catch(e) { console.error('stats error', e); }
         }
 
+        // ── Render classification table ──────────────────────────────────
         async function loadClassifStatements() {
           const tbody = document.getElementById('classif-tbody');
-          tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Cargando...</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Cargando...</td></tr>';
           try {
-            let url = '/api/accounting/bank-statements?limit=500';
-            if (classifFilter !== 'all') url += `&status=${classifFilter}`;
-            const r = await fetch(url);
+            const r = await fetch('/api/accounting/bank-statements?limit=500');
             if (!r.ok) throw new Error(await r.text());
             const data = await r.json();
             classifData = (data.statements || data || []);
-
-            // Filter client-side too
-            let rows = classifData;
-            if (classifFilter === 'unclassified') rows = classifData.filter(s=>!s.classification_status||s.classification_status==='unclassified');
-            else if (classifFilter === 'suggested') rows = classifData.filter(s=>s.classification_status==='suggested');
-            else if (classifFilter === 'confirmed') rows = classifData.filter(s=>s.classification_status==='confirmed');
-            else if (classifFilter === 'posted') rows = classifData.filter(s=>s.classification_status==='posted');
-
-            if (!rows.length) {
-              tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No hay movimientos para este filtro.</td></tr>';
-              return;
-            }
-
-            tbody.innerHTML = rows.map(s => {
-              const status = s.classification_status || 'unclassified';
-              const amt = parseFloat(s.amount)||0;
-              const amtFmt = (amt<0?'-':'+')+'$'+Math.abs(amt).toFixed(2);
-              const amtColor = amt>=0?'#10b981':'#ef4444';
-              const typeLabel = {expense:'Gasto',asset:'Activo',inventory:'Inventario',income:'Ingreso',liability:'Pasivo',transfer:'Transferencia','':'—'}[s.accounting_type||'']||s.accounting_type||'—';
-              const catLabel = (s.category||'').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase()) || '—';
-              const confBadge = s.confidence_level
-                ? `<span class="conf-badge conf-${s.confidence_level}">${{high:'Alta',medium:'Media',low:'Baja'}[s.confidence_level]}</span>`
-                : '';
-              const statusBadge = `<span class="classif-status-badge status-${status}">${{unclassified:'Sin clasificar',suggested:'Sugerido',confirmed:'Confirmado',posted:'Registrado',ignored:'Ignorado'}[status]||status}</span>`;
-
-              const suggestion = s.accounting_type
-                ? `<div><span class="classif-type-pill">${typeLabel}</span> <span style="color:#64748b;font-size:11px">${catLabel}</span></div><div style="margin-top:3px">${confBadge}</div>`
-                : `<span style="color:#94a3b8;font-size:12px">Sin clasificar</span>`;
-
-              const preview = (s.suggested_account_debit||s.suggested_account_credit)
-                ? `<div style="font-size:11px;line-height:1.6">
-                     <div><span style="color:#6b7280">D:</span> <span style="color:#1a1a2e;font-weight:600">${s.suggested_account_debit||'—'}</span></div>
-                     <div><span style="color:#6b7280">C:</span> <span style="color:#1a1a2e;font-weight:600">${s.suggested_account_credit||'—'}</span></div>
-                   </div>`
-                : '<span style="color:#94a3b8;font-size:11px">—</span>';
-
-              const canPost = status==='confirmed';
-              const canAccept = status==='suggested'||status==='unclassified';
-
-              const actions = `
-                <div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:center">
-                  ${canAccept?`<button class="classif-action-btn btn-accept" onclick="acceptClassif('${s.id}')" data-testid="accept-${s.id}">✓ Aceptar</button>`:''}
-                  <button class="classif-action-btn btn-edit" onclick="openClassifModal('${s.id}')" data-testid="edit-${s.id}">✏ Editar</button>
-                  ${canPost?`<button class="classif-action-btn btn-post" onclick="postStatement('${s.id}')" data-testid="post-${s.id}">📒 Registrar</button>`:''}
-                  ${status!=='posted'&&status!=='ignored'?`<button class="classif-action-btn btn-ignore" onclick="ignoreClassif('${s.id}')" data-testid="ignore-${s.id}">✕</button>`:''}
-                </div>`;
-
-              return `<tr data-id="${s.id}">
-                <td style="font-size:12px;color:#64748b">${(s.statement_date||'').slice(0,10)}</td>
-                <td>
-                  <div style="font-weight:600;font-size:13px;color:#1a1a2e;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${s.description}">${s.description||'—'}</div>
-                  <div style="margin-top:3px">${statusBadge}</div>
-                </td>
-                <td style="text-align:right;font-weight:700;font-size:14px;color:${amtColor}">${amtFmt}</td>
-                <td style="text-align:center;font-size:11px;color:#64748b;text-transform:uppercase">${s.transaction_type||'—'}</td>
-                <td>${suggestion}</td>
-                <td>${preview}</td>
-                <td style="text-align:center">${actions}</td>
-              </tr>`;
-            }).join('');
+            renderClassifTable();
           } catch(e) {
-            tbody.innerHTML = `<tr><td colspan="7" class="empty-state" style="color:#ef4444">Error: ${e.message}</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="8" class="empty-state" style="color:#ef4444">Error: ${e.message}</td></tr>`;
           }
         }
 
+        function renderClassifTable() {
+          const tbody = document.getElementById('classif-tbody');
+          let rows = classifData;
+
+          // Status filter
+          if (classifFilter === 'unclassified') rows = rows.filter(s=>!s.classification_status||s.classification_status==='unclassified');
+          else if (classifFilter === 'suggested') rows = rows.filter(s=>s.classification_status==='suggested');
+          else if (classifFilter === 'confirmed') rows = rows.filter(s=>s.classification_status==='confirmed');
+          else if (classifFilter === 'posted') rows = rows.filter(s=>s.classification_status==='posted');
+
+          // Confidence filter
+          if (classifConfFilter !== 'all') rows = rows.filter(s=>s.confidence_level===classifConfFilter);
+
+          // Search filter
+          if (classifSearch.trim()) {
+            const q = classifSearch.toLowerCase();
+            rows = rows.filter(s=>
+              (s.description||'').toLowerCase().includes(q) ||
+              (s.vendor_suggestion||'').toLowerCase().includes(q) ||
+              (s.category||'').toLowerCase().includes(q)
+            );
+          }
+
+          if (!rows.length) {
+            tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No hay movimientos para este filtro.</td></tr>';
+            return;
+          }
+
+          const LABELS = { expense:'Gasto',asset:'Activo',inventory:'Inventario',income:'Ingreso',liability:'Pasivo',transfer:'Transferencia','':'—' };
+          const CONF_LABELS = { high:'Alta', medium:'Media', low:'Baja' };
+          const STATUS_LABELS = { unclassified:'Sin clasificar',suggested:'Sugerido',confirmed:'Confirmado',posted:'Registrado',ignored:'Ignorado' };
+          const MODULE_LABELS = { expenses:'Gastos',income:'Ingresos',assets:'Activos',inventory:'Inventario',deposits:'Depósitos',fleet:'Flota',transfer:'Transf.' };
+          const MODULE_COLORS = { expenses:'#f1f5f9',income:'#f0fdf4',assets:'#eff6ff',inventory:'#fefce8',deposits:'#fdf4ff',fleet:'#fff7ed',transfer:'#f1f5f9' };
+          const MODULE_TEXT = { expenses:'#475569',income:'#065f46',assets:'#1e40af',inventory:'#854d0e',deposits:'#7e22ce',fleet:'#92400e',transfer:'#475569' };
+
+          tbody.innerHTML = rows.map(s => {
+            const status = s.classification_status || 'unclassified';
+            const amt = parseFloat(s.amount)||0;
+            const amtFmt = (amt<0?'-':'+')+'$'+Math.abs(amt).toFixed(2);
+            const amtColor = amt>=0?'#10b981':'#ef4444';
+            const typeLabel = LABELS[s.accounting_type||'']||s.accounting_type||'—';
+            const catLabel = (s.category||'').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())||'—';
+            const confBadge = s.confidence_level
+              ? `<span class="conf-badge conf-${s.confidence_level}">${CONF_LABELS[s.confidence_level]}</span>`
+              : '';
+            const statusBadge = `<span class="classif-status-badge status-${status}">${STATUS_LABELS[status]||status}</span>`;
+            const dupeBadge = s.is_duplicate
+              ? `<span style="background:#fef2f2;color:#991b1b;border:1px solid #fecaca;border-radius:4px;font-size:10px;padding:1px 5px;margin-left:4px">DUPLICADO</span>` : '';
+
+            const suggestion = s.accounting_type
+              ? `<div><span class="classif-type-pill">${typeLabel}</span> <span style="color:#64748b;font-size:11px">${catLabel}</span></div>
+                 <div style="margin-top:3px;display:flex;align-items:center;gap:4px">${confBadge}
+                 ${s.confidence_reason?`<span style="font-size:10px;color:#94a3b8" title="${s.confidence_reason}">ℹ</span>`:''}</div>`
+              : `<span style="color:#94a3b8;font-size:12px">Sin clasificar</span>`;
+
+            const mod = s.module_destination||'';
+            const vendorMod = `
+              ${s.vendor_suggestion?`<div style="font-size:11px;color:#1a1a2e;font-weight:600">${s.vendor_suggestion}</div>`:''}
+              ${mod?`<span style="background:${MODULE_COLORS[mod]||'#f1f5f9'};color:${MODULE_TEXT[mod]||'#475569'};border-radius:4px;padding:2px 7px;font-size:10px;font-weight:700">${MODULE_LABELS[mod]||mod}</span>`:'<span style="color:#94a3b8;font-size:11px">—</span>'}`;
+
+            const preview = (s.suggested_account_debit||s.suggested_account_credit)
+              ? `<div style="font-size:10px;line-height:1.6">
+                   <div><span style="color:#6b7280">D:</span> <span style="color:#1a1a2e;font-weight:600">${s.suggested_account_debit||'—'}</span></div>
+                   <div><span style="color:#6b7280">C:</span> <span style="color:#1a1a2e;font-weight:600">${s.suggested_account_credit||'—'}</span></div>
+                 </div>`
+              : '<span style="color:#94a3b8;font-size:11px">—</span>';
+
+            const canPost    = status==='confirmed';
+            const canAccept  = status==='suggested';
+            const isSelected = classifSelected.has(s.id);
+
+            const actions = `
+              <div style="display:flex;gap:3px;flex-wrap:wrap;justify-content:center">
+                ${canAccept?`<button class="classif-action-btn btn-accept" onclick="quickAccept('${s.id}')" data-testid="accept-${s.id}" title="Aceptar sugerencia">✓</button>`:''}
+                <button class="classif-action-btn btn-edit" onclick="openClassifModal('${s.id}')" data-testid="edit-${s.id}" title="Editar">✏</button>
+                ${canPost?`<button class="classif-action-btn btn-post" onclick="postStatement('${s.id}')" data-testid="post-${s.id}" title="Registrar en contabilidad">📒</button>`:''}
+                ${status!=='posted'&&status!=='ignored'?`<button class="classif-action-btn btn-ignore" onclick="ignoreClassif('${s.id}')" data-testid="ignore-${s.id}" title="Ignorar">✕</button>`:''}
+              </div>`;
+
+            return `<tr data-id="${s.id}" style="${s.is_duplicate?'background:#fef2f2;':isSelected?'background:#eff6ff;':''}">
+              <td style="text-align:center">
+                <input type="checkbox" ${isSelected?'checked':''} onchange="toggleSelectRow('${s.id}',this.checked)" data-testid="checkbox-${s.id}">
+              </td>
+              <td style="font-size:12px;color:#64748b;white-space:nowrap">${(s.statement_date||'').slice(0,10)}</td>
+              <td>
+                <div style="font-weight:600;font-size:12px;color:#1a1a2e;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(s.description||'').replace(/"/g,'&quot;')}">${s.description||'—'}</div>
+                <div style="margin-top:2px;display:flex;gap:3px;align-items:center">${statusBadge}${dupeBadge}</div>
+              </td>
+              <td style="text-align:right;font-weight:700;font-size:13px;color:${amtColor};white-space:nowrap">${amtFmt}</td>
+              <td>${suggestion}</td>
+              <td>${vendorMod}</td>
+              <td>${preview}</td>
+              <td style="text-align:center">${actions}</td>
+            </tr>`;
+          }).join('');
+        }
+
+        // ── Filters ────────────────────────────────────────────────────────
         function setClassifFilter(f) {
           classifFilter = f;
           document.querySelectorAll('.csf-filter').forEach(b => {
-            b.classList.toggle('active', b.getAttribute('onclick').includes(`'${f}'`));
+            if (b.getAttribute('onclick') && b.getAttribute('onclick').startsWith('setClassifFilter'))
+              b.classList.toggle('active', b.getAttribute('onclick').includes(`'${f}'`));
           });
-          loadClassifStatements();
+          renderClassifTable();
         }
 
+        function setConfFilter(f) {
+          classifConfFilter = f;
+          document.querySelectorAll('.csf-filter').forEach(b => {
+            if (b.getAttribute('onclick') && b.getAttribute('onclick').startsWith('setConfFilter'))
+              b.classList.toggle('active', b.getAttribute('onclick').includes(`'${f}'`));
+          });
+          renderClassifTable();
+        }
+
+        function filterClassifBySearch(q) {
+          classifSearch = q;
+          renderClassifTable();
+        }
+
+        // ── Row selection + bulk actions ───────────────────────────────────
+        function toggleSelectRow(id, checked) {
+          if (checked) classifSelected.add(id);
+          else classifSelected.delete(id);
+          updateBulkUI();
+        }
+
+        function toggleSelectAll(checked) {
+          const visible = document.querySelectorAll('#classif-tbody tr[data-id]');
+          visible.forEach(row => {
+            const id = row.dataset.id;
+            const cb = row.querySelector('input[type=checkbox]');
+            if (checked) { classifSelected.add(id); if(cb) cb.checked=true; }
+            else { classifSelected.delete(id); if(cb) cb.checked=false; }
+          });
+          updateBulkUI();
+        }
+
+        function updateBulkUI() {
+          const n = classifSelected.size;
+          const countEl = document.getElementById('classif-sel-count');
+          const btn = document.getElementById('bulk-classify-btn');
+          if (n > 0) {
+            countEl.textContent = `${n} seleccionados`;
+            countEl.style.display = 'inline';
+            btn.style.display = 'inline-block';
+            btn.textContent = `⚡ Clasificar ${n} seleccionados`;
+          } else {
+            countEl.style.display = 'none';
+            btn.style.display = 'none';
+          }
+        }
+
+        function openBulkPanel() {
+          document.getElementById('bulk-panel').style.display = 'block';
+        }
+
+        function closeBulkPanel() {
+          document.getElementById('bulk-panel').style.display = 'none';
+        }
+
+        async function applyBulkClassify() {
+          const ids = Array.from(classifSelected);
+          if (!ids.length) { showNotice('Selecciona al menos un movimiento.','orange'); return; }
+          const payload = {
+            ids,
+            accounting_type: document.getElementById('bulk-type').value,
+            category: document.getElementById('bulk-category').value,
+            boat_id: document.getElementById('bulk-boat').value||null,
+          };
+          try {
+            const r = await fetch('/api/accounting/bank-statements/bulk-classify', {
+              method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)
+            });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.error||'Error');
+            classifSelected.clear();
+            closeBulkPanel();
+            showNotice(`✅ ${d.updated} movimientos clasificados en bloque.`,'green');
+            await loadClassifStats();
+            await loadClassifStatements();
+          } catch(e) { showNotice('Error: '+e.message,'red'); }
+        }
+
+        // ── Smart classify ─────────────────────────────────────────────────
         async function runSmartClassify() {
           const btn = document.querySelector('[data-testid="button-smart-classify"]');
           const orig = btn.textContent;
@@ -1649,18 +1965,19 @@
           }
         }
 
-        async function acceptClassif(id) {
+        // ── Quick accept ───────────────────────────────────────────────────
+        async function quickAccept(id) {
           try {
-            const r = await fetch(`/api/accounting/bank-statements/${id}/classify`, {
-              method:'PATCH', headers:{'Content-Type':'application/json'},
-              body: JSON.stringify({ status:'confirmed' })
-            });
-            if (!r.ok) throw new Error(await r.text());
-            showNotice('Clasificación confirmada.','green');
+            const r = await fetch(`/api/accounting/bank-statements/${id}/quick-accept`, { method:'POST' });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.error||'Error');
+            showNotice('✅ Sugerencia aceptada y patrón aprendido.','green');
             await loadClassifStats();
             await loadClassifStatements();
           } catch(e) { showNotice('Error: '+e.message,'red'); }
         }
+
+        async function acceptClassif(id) { return quickAccept(id); }
 
         async function ignoreClassif(id) {
           try {
@@ -1669,6 +1986,22 @@
               body: JSON.stringify({ status:'ignored' })
             });
             await loadClassifStats();
+            await loadClassifStatements();
+          } catch(e) { showNotice('Error: '+e.message,'red'); }
+        }
+
+        // ── Duplicate detection ────────────────────────────────────────────
+        async function runDuplicateCheck() {
+          showNotice('🔍 Buscando duplicados...','orange');
+          try {
+            const r = await fetch('/api/accounting/bank-statements/detect-duplicates', { method:'POST' });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.error||'Error');
+            if (d.duplicates_found > 0) {
+              showNotice(`⚠️ Se encontraron ${d.duplicates_found} posibles duplicados (marcados en rojo).`,'orange');
+            } else {
+              showNotice('✅ Sin duplicados detectados.','green');
+            }
             await loadClassifStatements();
           } catch(e) { showNotice('Error: '+e.message,'red'); }
         }
@@ -1702,17 +2035,73 @@
           await loadClassifStatements();
         }
 
+        // ── Conciliación Final ──────────────────────────────────────────────
+        async function loadConciliationSummary() {
+          try {
+            const r = await fetch('/api/accounting/bank-statements/conciliation-summary');
+            if (!r.ok) return;
+            const d = await r.json();
+            const total = parseInt(d.total)||0;
+
+            document.getElementById('conc-total').textContent = total;
+            document.getElementById('conc-suggested').textContent = d.auto_suggested||0;
+            document.getElementById('conc-confirmed').textContent = d.confirmed||0;
+            document.getElementById('conc-posted').textContent = d.posted||0;
+            document.getElementById('conc-pending').textContent = d.pending_review||0;
+            document.getElementById('conc-dupes').textContent = d.duplicates||0;
+
+            const high = parseInt(d.high_conf||0), med = parseInt(d.medium_conf||0), low = parseInt(d.low_conf||0);
+            const confTotal = (high+med+low)||1;
+            document.getElementById('conc-high').textContent = high;
+            document.getElementById('conc-medium').textContent = med;
+            document.getElementById('conc-low').textContent = low;
+            document.getElementById('conc-high-bar').style.width = Math.round(high/confTotal*100)+'%';
+            document.getElementById('conc-medium-bar').style.width = Math.round(med/confTotal*100)+'%';
+            document.getElementById('conc-low-bar').style.width = Math.round(low/confTotal*100)+'%';
+
+            const pct = d.pct_posted||0;
+            document.getElementById('conc-pct-label').textContent = pct+'%';
+            document.getElementById('conc-progress-bar').style.width = pct+'%';
+
+            // Module breakdown
+            const modEl = document.getElementById('conc-modules');
+            const MODULE_LABELS = { module_expenses:'Gastos',module_income:'Ingresos',module_assets:'Activos',module_inventory:'Inventario',module_deposits:'Depósitos',module_fleet:'Flota',module_transfer:'Transferencias' };
+            const MODULE_COLORS = { module_expenses:'#f1f5f9',module_income:'#f0fdf4',module_assets:'#eff6ff',module_inventory:'#fefce8',module_deposits:'#fdf4ff',module_fleet:'#fff7ed',module_transfer:'#f1f5f9' };
+            const MODULE_TEXT = { module_expenses:'#475569',module_income:'#065f46',module_assets:'#1e40af',module_inventory:'#854d0e',module_deposits:'#7e22ce',module_fleet:'#92400e',module_transfer:'#475569' };
+            modEl.innerHTML = Object.keys(MODULE_LABELS).map(k => {
+              const count = parseInt(d[k]||0);
+              if (!count) return '';
+              return `<div style="background:${MODULE_COLORS[k]};color:${MODULE_TEXT[k]};border-radius:6px;padding:6px 12px;font-size:12px;font-weight:700">
+                ${MODULE_LABELS[k]}: ${count}</div>`;
+            }).filter(Boolean).join('') || '<span style="color:#94a3b8;font-size:13px">Sin datos de módulos</span>';
+
+            // Checklist
+            const clEl = document.getElementById('conc-checklist');
+            clEl.innerHTML = (d.checklist||[]).map(item =>
+              `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:${item.ok?'#f0fdf4':'#fef2f2'};border-radius:6px">
+                <span style="font-size:16px">${item.ok?'✅':'⚠️'}</span>
+                <span style="font-size:13px;color:${item.ok?'#065f46':'#991b1b'};font-weight:${item.ok?'400':'600'}">${item.label}</span>
+              </div>`
+            ).join('');
+          } catch(e) { console.error('conciliation summary error',e); }
+        }
+
+        // ── Load boats into modal and bulk selects ─────────────────────────
         async function loadBoatsIntoClassifModal() {
           try {
             const r = await fetch('/api/boats');
             if (!r.ok) return;
             const boats = await r.json();
-            const sel = document.getElementById('cm-boat');
-            sel.innerHTML = '<option value="">— Sin asignar —</option>' +
-              boats.map(b=>`<option value="${b.id}">${b.name}</option>`).join('');
+            const opts = '<option value="">— Sin asignar —</option>' +
+              boats.map(b=>`<option value="${b.id}">${b.name||b.boat_name}</option>`).join('');
+            const cmBoat = document.getElementById('cm-boat');
+            const bulkBoat = document.getElementById('bulk-boat');
+            if (cmBoat) cmBoat.innerHTML = opts;
+            if (bulkBoat) bulkBoat.innerHTML = opts;
           } catch(_) {}
         }
 
+        // ── Classification modal ───────────────────────────────────────────
         function openClassifModal(id) {
           const s = classifData.find(x=>x.id===id);
           if (!s) return;
@@ -1724,12 +2113,18 @@
           document.getElementById('cm-credit').value = s.suggested_account_credit||'';
           document.getElementById('cm-boat').value = s.boat_id||'';
           document.getElementById('cm-notes').value = s.notes||'';
+          document.getElementById('cm-vendor').value = s.vendor_suggestion||'';
+          const moduleEl = document.getElementById('cm-module');
+          if (moduleEl) moduleEl.value = s.module_destination||'expenses';
           const amt = parseFloat(s.amount||0);
+          const confReason = s.confidence_reason ? `<div style="margin-top:4px;font-size:11px;color:#64748b;font-style:italic">Razón: ${s.confidence_reason}</div>` : '';
           document.getElementById('classif-modal-stmt').innerHTML =
             `<div style="display:flex;justify-content:space-between;align-items:center">
-               <div><div style="font-weight:700;color:#1a1a2e">${s.description}</div>
-                    <div style="color:#64748b;font-size:11px;margin-top:2px">${(s.statement_date||'').slice(0,10)} • ${s.transaction_type||''}</div></div>
-               <div style="font-size:18px;font-weight:800;color:${amt>=0?'#10b981':'#ef4444'}">${amt>=0?'+':''}\$${Math.abs(amt).toFixed(2)}</div>
+               <div><div style="font-weight:700;color:#1a1a2e">${s.description||'—'}</div>
+                    <div style="color:#64748b;font-size:11px;margin-top:2px">${(s.statement_date||'').slice(0,10)} ${s.vendor_suggestion?'• '+s.vendor_suggestion:''}</div>
+                    ${confReason}
+               </div>
+               <div style="font-size:18px;font-weight:800;color:${amt>=0?'#10b981':'#ef4444'};white-space:nowrap">${amt>=0?'+':''}\$${Math.abs(amt).toFixed(2)}</div>
              </div>`;
           updateClassifPreview();
           document.getElementById('classif-modal').style.display = 'flex';
@@ -1741,11 +2136,23 @@
         }
 
         function updateClassifPreview() {
-          document.getElementById('preview-debit').textContent = document.getElementById('cm-debit').value||'—';
-          document.getElementById('preview-credit').textContent = document.getElementById('cm-credit').value||'—';
+          const debit = document.getElementById('cm-debit').value||'—';
+          const credit = document.getElementById('cm-credit').value||'—';
+          const type = document.getElementById('cm-type').value;
+          const cat = document.getElementById('cm-category').value||'';
+          document.getElementById('preview-debit').textContent = debit;
+          document.getElementById('preview-credit').textContent = credit;
+          // Update module suggestion based on type
+          const moduleEl = document.getElementById('cm-module');
+          if (moduleEl && !moduleEl._userEdited) {
+            const mod = type==='income'?'income':type==='asset'?'assets':type==='transfer'?'transfer':cat==='inventory'?'inventory':'expenses';
+            moduleEl.value = mod;
+          }
         }
         document.getElementById('cm-debit')?.addEventListener('input', updateClassifPreview);
         document.getElementById('cm-credit')?.addEventListener('input', updateClassifPreview);
+        document.getElementById('cm-type')?.addEventListener('change', updateClassifPreview);
+        document.getElementById('cm-module')?.addEventListener('change', function(){ this._userEdited=true; });
 
         async function confirmClassification() {
           if (!classifEditId) return;
@@ -1757,6 +2164,8 @@
             suggested_account_debit:  document.getElementById('cm-debit').value,
             suggested_account_credit: document.getElementById('cm-credit').value,
             notes:           document.getElementById('cm-notes').value,
+            vendor_suggestion: document.getElementById('cm-vendor').value||null,
+            module_destination: document.getElementById('cm-module')?.value||null,
             status: 'confirmed'
           };
           try {
@@ -1765,7 +2174,7 @@
             });
             if (!r.ok) throw new Error(await r.text());
             closeClassifModal();
-            showNotice('Clasificación confirmada y patrón aprendido.','green');
+            showNotice('✅ Clasificación confirmada y patrón aprendido.','green');
             await loadClassifStats();
             await loadClassifStatements();
           } catch(e) { showNotice('Error: '+e.message,'red'); }
