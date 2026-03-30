@@ -286,6 +286,10 @@ function renderExpenses() {
         </div>
       </div>
       <div class="card-actions">
+        ${expense.invoice_document_id ? `
+        <button class="btn btn-success btn-sm" onclick="openInvoiceViewer('${expense.invoice_document_id}', 'Factura - ${expense.description.replace(/'/g,"\\'")}', '${expense.id}')" data-testid="button-view-invoice-${expense.id}">
+          &#128196; Ver Factura
+        </button>` : ''}
         <button class="btn btn-primary btn-sm" onclick="editExpense('${expense.id}')" data-testid="button-edit-expense-${expense.id}">Editar</button>
         <button class="btn btn-danger btn-sm" onclick="deleteExpense('${expense.id}')" data-testid="button-delete-expense-${expense.id}">Eliminar</button>
       </div>

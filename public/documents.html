@@ -290,6 +290,7 @@
       background: #f1f5f9;
       color: var(--text-muted);
     }
+    .tag.invoice   { background: #fdf4ff; color: #7e22ce; font-weight: 600; }
     .tag.contract  { background: #eff6ff; color: #1d4ed8; }
     .tag.insurance { background: #fef3c7; color: #92400e; }
     .tag.maintenance { background: #f0fdf4; color: #15803d; }
@@ -651,6 +652,10 @@
           <span class="filter-icon">&#128195;</span>
           <span>Todos los tipos</span>
         </button>
+        <button class="filter-btn" data-type="invoice" onclick="setType('invoice', this)">
+          <span class="filter-icon">&#128203;</span>
+          <span>Facturas</span>
+        </button>
         <button class="filter-btn" data-type="contract" onclick="setType('contract', this)">
           <span class="filter-icon">&#128221;</span>
           <span>Contratos</span>
@@ -786,7 +791,8 @@
       <div class="form-row">
         <div class="form-group">
           <label class="form-label">Tipo de documento</label>
-          <select class="form-control" id="docType" data-testid="select-doc-type">
+          <select class="form-control" id="docType" data-testid="select-doc-type" onchange="onDocTypeChange()">
+            <option value="invoice">&#128203; Factura</option>
             <option value="contract">Contrato</option>
             <option value="insurance">Seguro</option>
             <option value="maintenance">Mantenimiento</option>
@@ -798,25 +804,97 @@
           </select>
         </div>
         <div class="form-group">
-          <label class="form-label">Barco (opcional)</label>
-          <select class="form-control" id="boatSelect" data-testid="select-boat">
+          <label class="form-label" id="boatSelectLabel">Barco <span id="boatRequired" style="color:#dc2626;">*</span></label>
+          <select class="form-control" id="boatSelect" data-testid="select-boat" onchange="onBoatSelectChange()">
             <option value="">-- Sin asignar (general) --</option>
           </select>
         </div>
       </div>
 
-      <div class="checkbox-row">
-        <input type="checkbox" id="visibleGeneral" checked data-testid="check-visible-general">
-        <div>
-          <label for="visibleGeneral">Visible en carpeta general</label>
-          <div class="checkbox-hint">Si está marcado, aparece también en la vista general de documentos</div>
+      <!-- ═══ INVOICE SECTION (shown only when type=invoice) ═══ -->
+      <div id="invoiceSection" style="border:1px solid #bae6fd;border-radius:8px;background:#f0f9ff;padding:14px;display:flex;flex-direction:column;gap:12px;">
+        <div style="font-size:12px;font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:0.06em;">
+          &#128203; Datos del gasto contable
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Fecha de la factura *</label>
+            <input type="date" class="form-control" id="invoiceDate" data-testid="input-invoice-date">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Monto (USD) *</label>
+            <input type="number" class="form-control" id="invoiceAmount" min="0" step="0.01"
+              placeholder="0.00" data-testid="input-invoice-amount">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Proveedor *</label>
+            <input type="text" class="form-control" id="invoiceVendor"
+              placeholder="Nombre del proveedor" data-testid="input-invoice-vendor">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Categoría contable *</label>
+            <select class="form-control" id="invoiceCategory" data-testid="select-invoice-category">
+              <option value="fuel">Combustible</option>
+              <option value="maintenance_parts">Repuestos / Partes</option>
+              <option value="labor">Mano de obra</option>
+              <option value="cleaning">Limpieza</option>
+              <option value="marina_fees">Marina / Puerto</option>
+              <option value="insurance">Seguro</option>
+              <option value="emergency_repairs">Reparaciones de emergencia</option>
+              <option value="operational">Operacional</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Descripción del gasto *</label>
+          <input type="text" class="form-control" id="invoiceDescription"
+            placeholder="Ej: Cambio de aceite motor principal" data-testid="input-invoice-description">
+        </div>
+
+        <div style="border-top:1px solid #bae6fd;padding-top:12px;">
+          <div style="font-size:12px;font-weight:600;color:#0369a1;margin-bottom:8px;">Vincular al gasto contable</div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;">
+              <input type="radio" name="invoiceAction" id="actionCreate" value="create" checked onchange="onInvoiceActionChange()">
+              Crear nuevo gasto
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;">
+              <input type="radio" name="invoiceAction" id="actionLink" value="link" onchange="onInvoiceActionChange()">
+              Vincular a gasto existente
+            </label>
+          </div>
+        </div>
+
+        <div id="linkExpenseGroup" style="display:none;">
+          <div class="form-group">
+            <label class="form-label">Seleccionar gasto existente</label>
+            <select class="form-control" id="linkExpenseSelect" data-testid="select-link-expense">
+              <option value="">-- Selecciona primero un barco --</option>
+            </select>
+          </div>
         </div>
       </div>
+      <!-- ═══ END INVOICE SECTION ═══ -->
 
-      <div class="form-group">
-        <label class="form-label">Notas (opcional)</label>
-        <textarea class="form-control" id="docNotes" rows="2"
-          placeholder="Descripción breve del documento..." data-testid="input-doc-notes"></textarea>
+      <div id="generalDocFields">
+        <div class="checkbox-row">
+          <input type="checkbox" id="visibleGeneral" checked data-testid="check-visible-general">
+          <div>
+            <label for="visibleGeneral">Visible en carpeta general</label>
+            <div class="checkbox-hint">Si está marcado, aparece también en la vista general de documentos</div>
+          </div>
+        </div>
+
+        <div class="form-group" style="margin-top:10px;">
+          <label class="form-label">Notas (opcional)</label>
+          <textarea class="form-control" id="docNotes" rows="2"
+            placeholder="Descripción breve del documento..." data-testid="input-doc-notes"></textarea>
+        </div>
       </div>
 
       <div class="upload-progress" id="uploadProgress">
@@ -861,9 +939,9 @@
   let viewerCurrentName = null;
 
   const TYPE_LABELS = {
-    contract: 'Contrato', insurance: 'Seguro', maintenance: 'Mantenimiento',
-    permit: 'Permiso', id: 'Identificación', payment: 'Pago',
-    attachment: 'Adjunto', other: 'Otro'
+    invoice: 'Factura', contract: 'Contrato', insurance: 'Seguro',
+    maintenance: 'Mantenimiento', permit: 'Permiso', id: 'Identificación',
+    payment: 'Pago', attachment: 'Adjunto', other: 'Otro'
   };
 
   // ── Boot ───────────────────────────────────────────────
@@ -1132,6 +1210,16 @@
     document.getElementById('uploadProgress').classList.remove('show');
     document.getElementById('submitUpload').disabled = false;
 
+    // Reset invoice fields
+    document.getElementById('invoiceDate').value = new Date().toISOString().split('T')[0];
+    document.getElementById('invoiceAmount').value = '';
+    document.getElementById('invoiceVendor').value = '';
+    document.getElementById('invoiceDescription').value = '';
+    document.getElementById('invoiceCategory').selectedIndex = 0;
+    document.getElementById('actionCreate').checked = true;
+    document.getElementById('linkExpenseGroup').style.display = 'none';
+    document.getElementById('linkExpenseSelect').innerHTML = '<option value="">-- Selecciona primero un barco --</option>';
+
     // Preselect boat if viewing a specific boat
     const boatSel = document.getElementById('boatSelect');
     if (preselectedBoatId && boatSel.querySelector(`option[value="${preselectedBoatId}"]`)) {
@@ -1142,11 +1230,59 @@
       boatSel.value = '';
     }
 
+    onDocTypeChange();
     document.getElementById('uploadModal').classList.add('open');
   }
 
   function closeUploadModal() {
     document.getElementById('uploadModal').classList.remove('open');
+  }
+
+  function onDocTypeChange() {
+    const type = document.getElementById('docType').value;
+    const isInvoice = type === 'invoice';
+    document.getElementById('invoiceSection').style.display = isInvoice ? 'flex' : 'none';
+    document.getElementById('generalDocFields').style.display = isInvoice ? 'none' : 'block';
+    // When invoice, boat is required
+    document.getElementById('boatRequired').style.display = isInvoice ? 'inline' : 'none';
+    if (isInvoice && document.getElementById('boatSelect').value) {
+      loadBoatExpenses(document.getElementById('boatSelect').value);
+    }
+  }
+
+  function onInvoiceActionChange() {
+    const action = document.querySelector('input[name="invoiceAction"]:checked').value;
+    document.getElementById('linkExpenseGroup').style.display = action === 'link' ? 'block' : 'none';
+  }
+
+  async function onBoatSelectChange() {
+    const boatId = document.getElementById('boatSelect').value;
+    const isInvoice = document.getElementById('docType').value === 'invoice';
+    if (isInvoice && boatId) {
+      await loadBoatExpenses(boatId);
+    }
+  }
+
+  async function loadBoatExpenses(boatId) {
+    try {
+      const res = await fetch('/api/boat-expenses?boat_id=' + encodeURIComponent(boatId));
+      if (!res.ok) return;
+      const expsList = await res.json();
+      const sel = document.getElementById('linkExpenseSelect');
+      if (!expsList.length) {
+        sel.innerHTML = '<option value="">No hay gastos existentes para este barco</option>';
+        return;
+      }
+      const CATS = { fuel:'Combustible', maintenance_parts:'Repuestos', labor:'Mano de obra',
+        cleaning:'Limpieza', marina_fees:'Marina', insurance:'Seguro',
+        emergency_repairs:'Reparaciones', operational:'Operacional' };
+      sel.innerHTML = '<option value="">-- Selecciona un gasto --</option>' +
+        expsList.map(e => {
+          const date = new Date(e.expense_date).toLocaleDateString('es', {day:'2-digit',month:'short',year:'numeric'});
+          const label = `${date} · ${CATS[e.category]||e.category} · $${parseFloat(e.amount).toFixed(2)} · ${e.description.slice(0,35)}`;
+          return `<option value="${e.id}">${label}</option>`;
+        }).join('');
+    } catch(e) { /* non-fatal */ }
   }
 
   function onFileSelect(input) {
@@ -1186,32 +1322,96 @@
 
   async function submitUpload() {
     if (!selectedFile) { showToast('Selecciona un archivo primero', 'error'); return; }
-    const docType       = document.getElementById('docType').value;
-    const boatId        = document.getElementById('boatSelect').value;
-    const visibleGeneral = document.getElementById('visibleGeneral').checked;
-    const notes         = document.getElementById('docNotes').value.trim();
+    const docType = document.getElementById('docType').value;
+    const boatId  = document.getElementById('boatSelect').value;
+    const isInvoice = docType === 'invoice';
 
-    const formData = new FormData();
-    formData.append('file', selectedFile);
-    formData.append('doc_type', docType);
-    if (boatId) {
-      formData.append('boat_id', boatId);
-      formData.append('entity_type', 'boat');
-      formData.append('entity_id', boatId);
-    } else {
-      formData.append('entity_type', 'global');
+    // ── Invoice validation ──
+    if (isInvoice) {
+      if (!boatId) { showToast('Selecciona un barco para la factura', 'error'); return; }
+      const date   = document.getElementById('invoiceDate').value;
+      const amount = document.getElementById('invoiceAmount').value;
+      const vendor = document.getElementById('invoiceVendor').value.trim();
+      const desc   = document.getElementById('invoiceDescription').value.trim();
+      if (!date || !amount || !vendor || !desc) {
+        showToast('Completa todos los campos obligatorios de la factura', 'error'); return;
+      }
+      const action = document.querySelector('input[name="invoiceAction"]:checked').value;
+      if (action === 'link') {
+        const linkId = document.getElementById('linkExpenseSelect').value;
+        if (!linkId) { showToast('Selecciona un gasto existente para vincular', 'error'); return; }
+      }
     }
-    formData.append('visible_in_general', visibleGeneral ? 'true' : 'false');
-    if (notes) formData.append('notes', notes);
 
     document.getElementById('uploadProgress').classList.add('show');
     document.getElementById('submitUpload').disabled = true;
 
     try {
+      // Step 1: Upload file
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+      formData.append('doc_type', docType);
+      formData.append('entity_type', boatId ? 'boat' : 'global');
+      if (boatId) { formData.append('boat_id', boatId); formData.append('entity_id', boatId); }
+      formData.append('visible_in_general', isInvoice ? 'true' : (document.getElementById('visibleGeneral').checked ? 'true' : 'false'));
+      const notesEl = document.getElementById('docNotes');
+      if (!isInvoice && notesEl.value.trim()) formData.append('notes', notesEl.value.trim());
+      if (isInvoice) {
+        const desc = document.getElementById('invoiceDescription').value.trim();
+        const vendor = document.getElementById('invoiceVendor').value.trim();
+        formData.append('notes', `${vendor} — ${desc}`);
+      }
+
       const res  = await fetch('/api/documents/upload', { method: 'POST', body: formData });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Error al subir');
-      showToast('Documento subido correctamente', 'success');
+      if (!res.ok) throw new Error(data.error || 'Error al subir el archivo');
+      const docId = data.document.id;
+
+      // Step 2 (invoice only): Create or link expense
+      if (isInvoice) {
+        const action   = document.querySelector('input[name="invoiceAction"]:checked').value;
+        const date     = document.getElementById('invoiceDate').value;
+        const amount   = parseFloat(document.getElementById('invoiceAmount').value);
+        const vendor   = document.getElementById('invoiceVendor').value.trim();
+        const category = document.getElementById('invoiceCategory').value;
+        const desc     = document.getElementById('invoiceDescription').value.trim();
+
+        if (action === 'create') {
+          const expRes = await fetch('/api/boat-expenses', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              boat_id: boatId,
+              category,
+              amount,
+              expense_date: date,
+              description: desc,
+              vendor,
+              invoice_document_id: docId
+            })
+          });
+          if (!expRes.ok) {
+            const ed = await expRes.json();
+            throw new Error('Factura subida pero error al crear el gasto: ' + (ed.error || ''));
+          }
+          showToast('Factura subida y gasto creado correctamente', 'success');
+        } else {
+          const linkId = document.getElementById('linkExpenseSelect').value;
+          const linkRes = await fetch('/api/boat-expenses/' + linkId, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ invoice_document_id: docId })
+          });
+          if (!linkRes.ok) {
+            const ld = await linkRes.json();
+            throw new Error('Factura subida pero error al vincular: ' + (ld.error || ''));
+          }
+          showToast('Factura subida y vinculada al gasto correctamente', 'success');
+        }
+      } else {
+        showToast('Documento subido correctamente', 'success');
+      }
+
       closeUploadModal();
       await loadDocuments();
       await loadStats();
