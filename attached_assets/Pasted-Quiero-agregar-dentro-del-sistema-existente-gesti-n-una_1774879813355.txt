@@ -1,0 +1,114 @@
+Quiero agregar dentro del sistema existente “gestión” una estructura simple y escalable para guardar documentos, especialmente PDFs, contratos y archivos relacionados con barcos, clientes y operaciones.
+
+OBJETIVO
+Crear un módulo o sistema de almacenamiento de documentos ordenado, fácil de mantener y preparado para crecer, sin crear una app nueva y sin usar soluciones pesadas.
+
+REQUISITOS PRINCIPALES
+- permitir subir documentos PDF y otros archivos básicos
+- permitir guardar y organizar contratos
+- permitir guardar documentos de los barcos
+- permitir guardar documentos de clientes
+- permitir adjuntar documentos a tareas si hace falta
+- mantener una estructura clara de carpetas
+- guardar metadata en base de datos para encontrar archivos fácilmente
+
+ESTRUCTURA RECOMENDADA
+Usar una carpeta raíz simple:
+
+/storage
+
+Dentro de ella, organizar así:
+
+/storage/boats/{boat_id}/documents/contracts/
+/storage/boats/{boat_id}/documents/insurance/
+/storage/boats/{boat_id}/documents/maintenance/
+/storage/boats/{boat_id}/documents/permits/
+/storage/boats/{boat_id}/documents/other/
+
+/storage/clients/{client_id}/documents/contracts/
+/storage/clients/{client_id}/documents/ids/
+/storage/clients/{client_id}/documents/payments/
+/storage/clients/{client_id}/documents/other/
+
+/storage/operations/tasks/{task_id}/attachments/
+
+/storage/contracts/global/
+/storage/temp/
+
+OBJETIVO DE ESTA ESTRUCTURA
+- separar documentos por entidad
+- mantener orden
+- evitar una carpeta única desordenada
+- facilitar búsqueda futura
+- facilitar conexión con barcos, clientes, contratos y tareas
+
+FUNCIONALIDAD MVP
+1. subir documento
+2. guardar documento en la carpeta correcta según tipo y entidad
+3. registrar en base de datos:
+   - id
+   - nombre original
+   - nombre guardado
+   - ruta
+   - tipo de documento
+   - entidad relacionada
+   - entity_id
+   - fecha de carga
+   - usuario que subió el archivo
+4. listar documentos por barco
+5. listar documentos por cliente
+6. listar documentos por tarea
+7. descargar documento
+8. eliminar documento si es necesario
+
+TIPOS DE DOCUMENTO INICIALES
+- contract
+- insurance
+- maintenance
+- permit
+- id
+- payment
+- attachment
+- other
+
+REGLAS
+- no crear app separada
+- integrarlo dentro de “gestión”
+- no usar librerías pesadas
+- mantener código simple y modular
+- optimizar para bajo consumo en Replit
+- validar nombres de archivo
+- evitar colisiones de nombres
+- guardar archivos con nombre limpio y único
+- permitir PDFs primero, y dejar preparado para más tipos después
+
+NOMBRE DE ARCHIVOS
+Guardar con formato seguro y único, por ejemplo:
+tipo-entidad-id-fecha-timestamp.pdf
+
+Ejemplo:
+contract-boat-102-2026-03-30-001.pdf
+
+INTERFAZ SIMPLE
+Crear una vista básica de documentos con:
+- botón subir archivo
+- selector de entidad: barco, cliente, tarea, contrato
+- selector de tipo de documento
+- lista de archivos
+- botón descargar
+- botón eliminar
+- filtro por tipo
+
+ENTREGABLES
+1. estructura de carpetas
+2. lógica de subida de archivos
+3. guardado de metadata en base de datos
+4. listado de documentos
+5. descarga y eliminación
+6. integración dentro de “gestión”
+7. código limpio y liviano
+
+IMPORTANTE
+Empieza con un MVP funcional y simple.
+No agregues previsualizador complejo, OCR, permisos avanzados ni versionado avanzado todavía.
+Primero quiero una estructura estable, ordenada y fácil de usar.

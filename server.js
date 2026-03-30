@@ -1096,6 +1096,27 @@ async function initializeDatabase() {
 
     console.log('✅ FASE 12 tables created (operations module)');
 
+    // FASE 13: Document Management
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS documents (
+        id TEXT PRIMARY KEY,
+        original_name TEXT NOT NULL,
+        stored_name TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        doc_type TEXT NOT NULL,
+        entity_type TEXT NOT NULL,
+        entity_id TEXT,
+        file_size INTEGER,
+        mime_type TEXT,
+        notes TEXT,
+        uploaded_by TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_documents_entity ON documents(entity_type, entity_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_documents_type ON documents(doc_type)`);
+    console.log('✅ FASE 13 table created (document management)');
+
     // Seed chart of accounts if empty
     const accountsCheck = await pool.query('SELECT COUNT(*) FROM chart_of_accounts');
     if (parseInt(accountsCheck.rows[0].count) === 0) {
@@ -9178,6 +9199,152 @@ app.delete('/api/operations/assignees/:id', isAuthenticated, async (req, res) =>
   try {
     await pool.query('DELETE FROM op_assignees WHERE id = $1', [req.params.id]);
     res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ========================================
+// FASE 13: DOCUMENT MANAGEMENT
+// ========================================
+
+const ALLOWED_MIME_TYPES = {
+  'application/pdf': 'pdf',
+  'application/msword': 'doc',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+  'application/vnd.ms-excel': 'xls',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+  'text/plain': 'txt',
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+};
+
+const DOC_ENTITY_DIRS = {
+  boat: (id) => path.join(__dirname, 'storage', 'boats', id, 'documents'),
+  client: (id) => path.join(__dirname, 'storage', 'clients', id, 'documents'),
+  task: (id) => path.join(__dirname, 'storage', 'operations', 'tasks', id, 'attachments'),
+  global: () => path.join(__dirname, 'storage', 'contracts', 'global'),
+  temp: () => path.join(__dirname, 'storage', 'temp'),
+};
+
+const docUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      const { entity_type, entity_id } = req.body;
+      const getDirFn = DOC_ENTITY_DIRS[entity_type] || DOC_ENTITY_DIRS.temp;
+      const dir = getDirFn(entity_id || 'unknown');
+      require('fs').mkdirSync(dir, { recursive: true });
+      cb(null, dir);
+    },
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname).toLowerCase() || '.bin';
+      const docType = (req.body.doc_type || 'other').replace(/[^a-z0-9]/gi, '-');
+      const entityType = (req.body.entity_type || 'unknown').replace(/[^a-z0-9]/gi, '-');
+      const entityId = (req.body.entity_id || 'x').replace(/[^a-z0-9_-]/gi, '-').slice(0, 20);
+      const ts = Date.now();
+      const rand = Math.random().toString(36).slice(2, 6);
+      const storedName = `${docType}-${entityType}-${entityId}-${ts}-${rand}${ext}`;
+      cb(null, storedName);
+    }
+  }),
+  limits: { fileSize: 20 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (ALLOWED_MIME_TYPES[file.mimetype]) return cb(null, true);
+    cb(new Error('Tipo de archivo no permitido'));
+  }
+});
+
+// POST /api/documents/upload
+app.post('/api/documents/upload', isAuthenticated, (req, res, next) => {
+  docUpload.single('file')(req, res, (err) => {
+    if (err) return res.status(400).json({ error: err.message });
+    next();
+  });
+}, async (req, res) => {
+  try {
+    const { doc_type, entity_type, entity_id, notes } = req.body;
+    if (!req.file) return res.status(400).json({ error: 'No se recibió ningún archivo' });
+    if (!doc_type || !entity_type) return res.status(400).json({ error: 'doc_type y entity_type son obligatorios' });
+
+    const { nanoid } = await import('nanoid');
+    const id = 'doc_' + nanoid(10);
+    const filePath = req.file.path.replace(__dirname + path.sep, '').replace(/\\/g, '/');
+
+    await pool.query(
+      `INSERT INTO documents (id, original_name, stored_name, file_path, doc_type, entity_type, entity_id, file_size, mime_type, notes, uploaded_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+      [id, req.file.originalname, req.file.filename, filePath,
+       doc_type, entity_type, entity_id || null,
+       req.file.size, req.file.mimetype, notes || null,
+       req.user?.name || req.user?.email || 'sistema']
+    );
+    const doc = (await pool.query('SELECT * FROM documents WHERE id=$1', [id])).rows[0];
+    res.json({ success: true, document: doc });
+  } catch (err) {
+    console.error('[Documents] Upload error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/documents — list with optional filters
+app.get('/api/documents', isAuthenticated, async (req, res) => {
+  try {
+    const { entity_type, entity_id, doc_type } = req.query;
+    let where = [];
+    let params = [];
+    if (entity_type) { params.push(entity_type); where.push(`entity_type = $${params.length}`); }
+    if (entity_id)   { params.push(entity_id);   where.push(`entity_id = $${params.length}`); }
+    if (doc_type)    { params.push(doc_type);     where.push(`doc_type = $${params.length}`); }
+    const sql = `SELECT * FROM documents${where.length ? ' WHERE ' + where.join(' AND ') : ''} ORDER BY created_at DESC`;
+    const result = await pool.query(sql, params);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/documents/:id/download
+app.get('/api/documents/:id/download', isAuthenticated, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM documents WHERE id=$1', [req.params.id]);
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Documento no encontrado' });
+    const doc = result.rows[0];
+    const fullPath = path.join(__dirname, doc.file_path);
+    if (!require('fs').existsSync(fullPath)) return res.status(404).json({ error: 'Archivo no encontrado en el servidor' });
+    res.download(fullPath, doc.original_name);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/documents/:id
+app.delete('/api/documents/:id', isAuthenticated, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM documents WHERE id=$1', [req.params.id]);
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Documento no encontrado' });
+    const doc = result.rows[0];
+    const fullPath = path.join(__dirname, doc.file_path);
+    try { require('fs').unlinkSync(fullPath); } catch (e) { /* file may already be gone */ }
+    await pool.query('DELETE FROM documents WHERE id=$1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/documents/stats — summary counts
+app.get('/api/documents/stats', isAuthenticated, async (req, res) => {
+  try {
+    const total = await pool.query('SELECT COUNT(*) FROM documents');
+    const byType = await pool.query('SELECT doc_type, COUNT(*) as count FROM documents GROUP BY doc_type ORDER BY count DESC');
+    const byEntity = await pool.query('SELECT entity_type, COUNT(*) as count FROM documents GROUP BY entity_type ORDER BY count DESC');
+    const sizeResult = await pool.query('SELECT SUM(file_size) as total_size FROM documents');
+    res.json({
+      total: parseInt(total.rows[0].count),
+      totalSize: parseInt(sizeResult.rows[0].total_size || 0),
+      byType: byType.rows,
+      byEntity: byEntity.rows
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
