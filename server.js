@@ -12,6 +12,7 @@ const OpenAI = require('openai');
 const multer = require('multer');
 const { parse } = require('csv-parse/sync');
 const ofx = require('ofx-js');
+const pdfParse = require('pdf-parse');
 // AUTHENTICATION DISABLED - No validation required
 // const { setupAuth, isAuthenticated: replitAuthMiddleware } = require('./replitAuth');
 
@@ -5822,7 +5823,6 @@ app.post('/api/accounting/bank-statements/upload', isAuthenticated, upload.singl
     }
     // Parse PDF bank statements
     else if (fileType.endsWith('.pdf')) {
-      const pdfParse = (await import('pdf-parse')).default;
       const pdfData = await pdfParse(fileBuffer);
       const text = pdfData.text;
 
