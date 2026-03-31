@@ -767,6 +767,7 @@ async function initializeDatabase() {
       `ALTER TABLE bank_statements ADD COLUMN IF NOT EXISTS dup_reason TEXT DEFAULT NULL`,
       `ALTER TABLE bank_statements ADD COLUMN IF NOT EXISTS dup_ignored BOOLEAN DEFAULT FALSE`,
       `ALTER TABLE bank_statements ADD COLUMN IF NOT EXISTS confidence_reason TEXT`,
+      `ALTER TABLE bank_statements ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`,
     ];
     for (const q of bsCols) { try { await pool.query(q); } catch(_) {} }
 
