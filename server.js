@@ -1479,10 +1479,17 @@ async function initializeDatabase() {
       INSERT INTO chart_of_accounts (id, account_code, account_name, account_type, parent_account_id, description)
       VALUES
         ('acc_expense_5930', '5930', 'Viáticos', 'expense', $1, 'Viáticos y gastos de viaje del personal'),
-        ('acc_expense_5940', '5940', 'Transportación', 'expense', $1, 'Gastos de transporte, traslados y fletes')
+        ('acc_expense_5940', '5940', 'Transportación', 'expense', $1, 'Gastos de transporte, traslados y fletes'),
+        ('acc_expense_5950', '5950', 'GPS Barcos', 'expense', $1, 'Suscripciones y equipos de GPS para la flota'),
+        ('acc_expense_5960', '5960', 'Publicidad', 'expense', $1, 'Publicidad, anuncios y promoción de servicios'),
+        ('acc_expense_5970', '5970', 'Renta de Oficina', 'expense', $1, 'Alquiler de espacio de oficina'),
+        ('acc_expense_5975', '5975', 'Partes y Piezas', 'expense', $1, 'Partes, piezas y repuestos generales'),
+        ('acc_expense_5980', '5980', 'Sistemas Operativos', 'expense', $1, 'Software, sistemas y plataformas operativas'),
+        ('acc_expense_5985', '5985', 'Comunicaciones', 'expense', $1, 'Teléfono, internet y servicios de comunicación'),
+        ('acc_expense_5990', '5990', 'Electricidad y Luces', 'expense', $1, 'Servicio eléctrico, iluminación y utilidades')
       ON CONFLICT (id) DO NOTHING
     `, [expParentId]);
-    console.log('✅ Cuentas de Viáticos (5930) y Transportación (5940) listas');
+    console.log('✅ Cuentas de gastos adicionales (5930–5990) listas');
 
     // ── Company Assets tables ──────────────────────────────────────────────
     await pool.query(`
