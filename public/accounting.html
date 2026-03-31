@@ -617,6 +617,9 @@
             <button id="btn-delete-dupes" class="btn-primary" onclick="deleteDuplicates()" data-testid="button-delete-dupes" style="font-size:13px;padding:8px 14px;background:#ef4444;display:none">
               🗑 Eliminar Duplicados
             </button>
+            <button id="btn-reset-dupes" class="btn-primary" onclick="resetDuplicateFlags()" data-testid="button-reset-dupes" style="font-size:13px;padding:8px 14px;background:#64748b;display:none">
+              ↩ Desmarcar Todo
+            </button>
             <button class="btn-primary" onclick="openManualEntryModal()" data-testid="button-add-manual" style="font-size:13px;padding:8px 14px;background:#6366f1">
               ➕ Agregar Manual
             </button>
@@ -718,6 +721,54 @@
                 <tr><td colspan="8" class="empty-state">Cargando movimientos...</td></tr>
               </tbody>
             </table>
+          </div>
+        </div>
+
+        <!-- Duplicate Preview Modal -->
+        <div id="dupe-preview-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1002;align-items:flex-start;justify-content:center;padding-top:40px;overflow-y:auto">
+          <div style="background:#fff;border-radius:12px;padding:28px;width:760px;max-width:96vw;box-shadow:0 20px 60px rgba(0,0,0,.35);margin-bottom:40px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+              <div style="font-size:18px;font-weight:700;color:#1a1a2e">Revisión de Duplicados</div>
+              <button onclick="closeDupePreview()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#64748b" data-testid="button-close-dupe-preview">×</button>
+            </div>
+            <div id="dupe-preview-info" style="font-size:13px;color:#64748b;margin-bottom:16px"></div>
+
+            <div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;padding:12px;font-size:12px;color:#92400e;margin-bottom:16px">
+              <strong>Revisa cuidadosamente</strong> — Solo se marcan duplicados con fecha, monto Y descripción idénticos. Desmarca los que no sean duplicados reales antes de confirmar.
+            </div>
+
+            <div style="overflow-x:auto">
+              <table style="width:100%;border-collapse:collapse;font-size:12px">
+                <thead>
+                  <tr style="background:#f1f5f9">
+                    <th style="padding:8px;text-align:left;font-weight:600;color:#374151">
+                      <input type="checkbox" id="dupe-select-all" onchange="toggleAllDupes(this.checked)" data-testid="checkbox-dupe-all"> Todos
+                    </th>
+                    <th style="padding:8px;text-align:left;font-weight:600;color:#374151">Fecha</th>
+                    <th style="padding:8px;text-align:left;font-weight:600;color:#374151">Descripción</th>
+                    <th style="padding:8px;text-align:right;font-weight:600;color:#374151">Monto</th>
+                    <th style="padding:8px;text-align:left;font-weight:600;color:#374151">Lote Original</th>
+                    <th style="padding:8px;text-align:left;font-weight:600;color:#374151">Lote Duplicado</th>
+                  </tr>
+                </thead>
+                <tbody id="dupe-preview-tbody"></tbody>
+              </table>
+            </div>
+
+            <div id="dupe-preview-empty" style="display:none;text-align:center;padding:30px;color:#10b981;font-size:14px;font-weight:600">
+              ✅ No se encontraron duplicados. La tabla está limpia.
+            </div>
+
+            <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:20px">
+              <button onclick="closeDupePreview()" data-testid="button-cancel-dupe-preview"
+                style="padding:9px 20px;border:1px solid #d1d5db;border-radius:6px;background:#fff;font-size:13px;cursor:pointer;font-weight:600;color:#374151">
+                Cancelar
+              </button>
+              <button id="btn-confirm-dupes" onclick="confirmSelectedDupes()" data-testid="button-confirm-dupes"
+                style="padding:9px 22px;background:#ef4444;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer;font-weight:700">
+                Marcar Seleccionados como Duplicados
+              </button>
+            </div>
           </div>
         </div>
 
@@ -983,6 +1034,10 @@
             <button id="btn-delete-dupes-conc" onclick="deleteDuplicates()" data-testid="button-delete-dupes-conc"
               style="padding:8px 16px;background:#ef4444;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer;font-weight:600;display:none">
               🗑 Eliminar Duplicados
+            </button>
+            <button id="btn-reset-dupes-conc" onclick="resetDuplicateFlags()" data-testid="button-reset-dupes-conc"
+              style="padding:8px 16px;background:#64748b;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer;font-weight:600;display:none">
+              ↩ Desmarcar Todo
             </button>
             <button onclick="runSmartClassify();loadConciliationSummary();" data-testid="button-auto-all"
               style="padding:8px 16px;background:#0066cc;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer;font-weight:600">
@@ -1831,6 +1886,9 @@
             const data = await r.json();
             classifData = (data.statements || data || []);
             renderClassifTable();
+            // Restore duplicate action buttons if there are already-marked duplicates
+            const marked = classifData.filter(s=>s.is_duplicate).length;
+            showDupeButtons(marked > 0);
           } catch(e) {
             tbody.innerHTML = `<tr><td colspan="8" class="empty-state" style="color:#ef4444">Error: ${e.message}</td></tr>`;
           }
@@ -2065,47 +2123,162 @@
           } catch(e) { showNotice('Error: '+e.message,'red'); }
         }
 
-        // ── Duplicate detection ────────────────────────────────────────────
+        // ── Duplicate detection — preview-first flow ──────────────────────
+        let dupePreviewPairs = []; // stores the full pairs from last preview
+
+        function showDupeButtons(hasMarked) {
+          ['btn-delete-dupes','btn-delete-dupes-conc'].forEach(id=>{
+            const el = document.getElementById(id);
+            if (el) el.style.display = hasMarked ? 'inline-flex' : 'none';
+          });
+          ['btn-reset-dupes','btn-reset-dupes-conc'].forEach(id=>{
+            const el = document.getElementById(id);
+            if (el) el.style.display = hasMarked ? 'inline-flex' : 'none';
+          });
+        }
+
         async function runDuplicateCheck() {
-          showNotice('🔍 Buscando duplicados...','orange');
+          showNotice('🔍 Analizando transacciones...','orange');
           try {
-            const r = await fetch('/api/accounting/bank-statements/detect-duplicates', { method:'POST' });
+            // Step 1: preview — does NOT mark anything yet
+            const r = await fetch('/api/accounting/bank-statements/preview-duplicates');
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.error||'Error al buscar duplicados');
+
+            dupePreviewPairs = d.pairs || [];
+
+            // Also check if there are already manually-marked duplicates in the table
+            const alreadyMarked = (classifData||[]).filter(s=>s.is_duplicate).length;
+
+            if (dupePreviewPairs.length === 0 && alreadyMarked === 0) {
+              showNotice('✅ Sin duplicados detectados — la tabla está limpia.','green');
+              showDupeButtons(false);
+              return;
+            }
+
+            // Step 2: open preview modal for user to review before marking
+            openDupePreview(dupePreviewPairs, alreadyMarked);
+            showNotice('','');
+
+          } catch(e) { showNotice('❌ Error: '+e.message,'red'); }
+        }
+
+        function openDupePreview(pairs, alreadyMarked) {
+          const modal = document.getElementById('dupe-preview-modal');
+          const tbody = document.getElementById('dupe-preview-tbody');
+          const empty = document.getElementById('dupe-preview-empty');
+          const info  = document.getElementById('dupe-preview-info');
+          const confirmBtn = document.getElementById('btn-confirm-dupes');
+
+          if (pairs.length === 0) {
+            tbody.innerHTML = '';
+            empty.style.display = 'block';
+            tbody.closest('table').style.display = 'none';
+            confirmBtn.style.display = 'none';
+            info.textContent = alreadyMarked
+              ? `${alreadyMarked} transacciones ya están marcadas como duplicadas en la tabla actual.`
+              : 'No se encontraron nuevos duplicados.';
+          } else {
+            empty.style.display = 'none';
+            tbody.closest('table').style.display = '';
+            confirmBtn.style.display = '';
+            info.textContent = `Se encontraron ${pairs.length} par(es) de posibles duplicados (misma fecha, monto Y descripción). Desmarca los que NO sean duplicados reales.`;
+            tbody.innerHTML = pairs.map((p, i) => `
+              <tr style="border-bottom:1px solid #f1f5f9;${i%2===0?'':'background:#f8fafc'}">
+                <td style="padding:8px">
+                  <input type="checkbox" class="dupe-pair-chk" data-i="${i}" checked data-testid="checkbox-dupe-${i}">
+                </td>
+                <td style="padding:8px;color:#374151;white-space:nowrap">${p.statement_date}</td>
+                <td style="padding:8px;color:#374151;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(p.desc_a||'').replace(/"/g,'&quot;')}">${p.desc_a||''}</td>
+                <td style="padding:8px;text-align:right;font-weight:600;color:${parseFloat(p.amount)<0?'#ef4444':'#10b981'}">${parseFloat(p.amount)>=0?'+':''}$${Math.abs(parseFloat(p.amount)).toFixed(2)}</td>
+                <td style="padding:8px;font-size:11px;color:#6366f1">${p.batch_a==='manual'?'Manual':p.batch_a?'Lote '+p.batch_a.slice(-6):'—'}</td>
+                <td style="padding:8px;font-size:11px;color:#f59e0b">${p.batch_b==='manual'?'Manual':p.batch_b?'Lote '+p.batch_b.slice(-6):'—'}</td>
+              </tr>`).join('');
+            document.getElementById('dupe-select-all').checked = true;
+          }
+
+          modal.style.display = 'flex';
+        }
+
+        function closeDupePreview() {
+          document.getElementById('dupe-preview-modal').style.display = 'none';
+        }
+
+        function toggleAllDupes(checked) {
+          document.querySelectorAll('.dupe-pair-chk').forEach(chk => chk.checked = checked);
+        }
+
+        async function confirmSelectedDupes() {
+          const checked = [...document.querySelectorAll('.dupe-pair-chk:checked')];
+          if (checked.length === 0) {
+            showNotice('No hay duplicados seleccionados.','orange');
+            closeDupePreview();
+            return;
+          }
+
+          const confirmIds = checked.map(chk => {
+            const i = parseInt(chk.dataset.i);
+            const pair = dupePreviewPairs[i];
+            return { mark_id: pair.id_b, keep_id: pair.id_a };
+          });
+
+          const btn = document.getElementById('btn-confirm-dupes');
+          const orig = btn.textContent; btn.textContent = 'Marcando...'; btn.disabled = true;
+          try {
+            const r = await fetch('/api/accounting/bank-statements/detect-duplicates', {
+              method: 'POST',
+              headers: {'Content-Type':'application/json'},
+              body: JSON.stringify({ confirm_ids: confirmIds })
+            });
             const d = await r.json();
             if (!r.ok) throw new Error(d.error||'Error');
-            const hasAny = (d.duplicates_found||0) > 0;
-            // Show / hide delete buttons in both tabs
-            ['btn-delete-dupes','btn-delete-dupes-conc'].forEach(id=>{
-              const el = document.getElementById(id);
-              if (el) el.style.display = hasAny ? 'inline-flex' : 'none';
-            });
-            if (hasAny) {
-              showNotice(`⚠️ ${d.duplicates_found} duplicado(s) detectados y marcados. Usa "Eliminar Duplicados" para borrarlos.`,'orange');
-            } else {
-              showNotice('✅ Sin duplicados detectados — la tabla está limpia.','green');
-            }
+            closeDupePreview();
+            showNotice(`⚠️ ${d.flagged} duplicado(s) marcado(s) en rojo. Usa "Eliminar Duplicados" para borrarlos.`,'orange');
+            showDupeButtons(true);
             await loadClassifStatements();
-          } catch(e) { showNotice('❌ Error detectando duplicados: '+e.message,'red'); }
+          } catch(e) {
+            showNotice('❌ Error marcando duplicados: '+e.message,'red');
+          } finally {
+            btn.textContent = orig; btn.disabled = false;
+          }
         }
 
         // ── Delete all flagged duplicates ─────────────────────────────────
         async function deleteDuplicates() {
           const dupeCount = (classifData||[]).filter(s=>s.is_duplicate).length;
-          if (dupeCount === 0) { showNotice('No hay duplicados marcados. Primero usa "Detectar Duplicados".','orange'); return; }
+          if (dupeCount === 0) { showNotice('No hay duplicados marcados. Usa primero "Detectar Duplicados".','orange'); return; }
           if (!confirm(`¿Eliminar ${dupeCount} transacciones marcadas como duplicadas? Esta acción no se puede deshacer.`)) return;
           showNotice('🗑 Eliminando duplicados...','orange');
           try {
             const dr = await fetch('/api/accounting/bank-statements/delete-duplicates', { method:'DELETE' });
             const dd = await dr.json();
             if (!dr.ok) throw new Error(dd.error||'Error');
-            // Hide delete buttons
-            ['btn-delete-dupes','btn-delete-dupes-conc'].forEach(id=>{
-              const el = document.getElementById(id);
-              if (el) el.style.display = 'none';
-            });
+            showDupeButtons(false);
             showNotice(`✅ ${dd.deleted} duplicado(s) eliminados correctamente.`,'green');
             await loadClassifStatements();
           } catch(e) { showNotice('❌ Error eliminando duplicados: '+e.message,'red'); }
         }
+
+        // ── Reset (un-mark) all duplicate flags ───────────────────────────
+        async function resetDuplicateFlags() {
+          const marked = (classifData||[]).filter(s=>s.is_duplicate).length;
+          if (marked === 0) { showNotice('No hay marcas de duplicado que limpiar.','green'); showDupeButtons(false); return; }
+          if (!confirm(`¿Desmarcar ${marked} transacciones? Seguirán en la tabla, solo se quita la marca de duplicado.`)) return;
+          showNotice('↩ Desmarcando...','orange');
+          try {
+            const r = await fetch('/api/accounting/bank-statements/reset-duplicates', { method:'POST' });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.error||'Error');
+            showDupeButtons(false);
+            showNotice(`✅ ${d.reset} transacciones desmarcadas. Ahora puedes volver a detectar duplicados correctamente.`,'green');
+            await loadClassifStatements();
+          } catch(e) { showNotice('❌ Error: '+e.message,'red'); }
+        }
+
+        // Close dupe preview on backdrop click
+        document.getElementById('dupe-preview-modal').addEventListener('click', function(e){
+          if (e.target === this) closeDupePreview();
+        });
 
         // ── Manual transaction entry ──────────────────────────────────────
         function openManualEntryModal() {

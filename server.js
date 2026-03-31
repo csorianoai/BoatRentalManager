@@ -6686,10 +6686,54 @@ app.post('/api/accounting/bank-statements/:id/quick-accept', isAuthenticated, as
   }
 });
 
-// --- Detect and flag duplicate bank statements ---
+// --- Preview duplicates (dry run — does NOT mark anything) ---
+app.get('/api/accounting/bank-statements/preview-duplicates', isAuthenticated, async (req, res) => {
+  try {
+    // A true duplicate: same date, same amount (±0.01), AND same description (normalized)
+    const dups = await pool.query(`
+      SELECT a.id as id_a, b.id as id_b,
+             a.description as desc_a, b.description as desc_b,
+             a.amount, a.statement_date,
+             a.import_batch_id as batch_a, b.import_batch_id as batch_b
+      FROM bank_statements a
+      JOIN bank_statements b ON a.id < b.id
+        AND a.statement_date = b.statement_date
+        AND ABS(a.amount - b.amount) < 0.01
+        AND LOWER(TRIM(a.description)) = LOWER(TRIM(b.description))
+        AND a.is_duplicate IS NOT TRUE
+        AND b.is_duplicate IS NOT TRUE
+      ORDER BY a.statement_date DESC, a.description
+      LIMIT 200
+    `);
+    res.json({ success: true, pairs: dups.rows });
+  } catch(err) {
+    console.error('preview-duplicates error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Confirm and mark specific duplicate IDs ---
 app.post('/api/accounting/bank-statements/detect-duplicates', isAuthenticated, async (req, res) => {
   try {
-    // Find pairs with same amount, same date, and very similar description (or same description)
+    // Accept optional list of {id_to_mark, keep_id} pairs from the UI preview confirmation.
+    // If no body provided, auto-detect with strict 3-field match (date+amount+description).
+    const { confirm_ids } = req.body || {};
+
+    if (confirm_ids && Array.isArray(confirm_ids) && confirm_ids.length > 0) {
+      // Mark only the IDs the user explicitly confirmed
+      let flagged = 0;
+      for (const { mark_id, keep_id } of confirm_ids) {
+        if (!mark_id || !keep_id) continue;
+        await pool.query(
+          `UPDATE bank_statements SET is_duplicate=TRUE, duplicate_of=$1 WHERE id=$2`,
+          [keep_id, mark_id]
+        );
+        flagged++;
+      }
+      return res.json({ success: true, duplicates_found: flagged, flagged });
+    }
+
+    // Fallback: auto-detect with strict 3-field match (safe — no false positives)
     const dups = await pool.query(`
       SELECT a.id as id_a, b.id as id_b,
              a.description as desc_a, b.description as desc_b,
@@ -6698,6 +6742,7 @@ app.post('/api/accounting/bank-statements/detect-duplicates', isAuthenticated, a
       JOIN bank_statements b ON a.id < b.id
         AND a.statement_date = b.statement_date
         AND ABS(a.amount - b.amount) < 0.01
+        AND LOWER(TRIM(a.description)) = LOWER(TRIM(b.description))
         AND a.is_duplicate IS NOT TRUE
         AND b.is_duplicate IS NOT TRUE
       ORDER BY a.statement_date DESC
@@ -6705,7 +6750,6 @@ app.post('/api/accounting/bank-statements/detect-duplicates', isAuthenticated, a
     `);
     let flagged = 0;
     for (const pair of dups.rows) {
-      // Mark the NEWER row (b) as duplicate of the OLDER row (a)
       await pool.query(
         `UPDATE bank_statements SET is_duplicate=TRUE, duplicate_of=$1 WHERE id=$2`,
         [pair.id_a, pair.id_b]
@@ -6715,6 +6759,19 @@ app.post('/api/accounting/bank-statements/detect-duplicates', isAuthenticated, a
     res.json({ success: true, duplicates_found: dups.rows.length, flagged, pairs: dups.rows.slice(0, 20) });
   } catch(err) {
     console.error('detect-duplicates error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Reset all duplicate flags (un-mark everything so user can re-detect cleanly) ---
+app.post('/api/accounting/bank-statements/reset-duplicates', isAuthenticated, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `UPDATE bank_statements SET is_duplicate=FALSE, duplicate_of=NULL WHERE is_duplicate=TRUE`
+    );
+    res.json({ success: true, reset: result.rowCount });
+  } catch(err) {
+    console.error('reset-duplicates error:', err);
     res.status(500).json({ error: err.message });
   }
 });
