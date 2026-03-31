@@ -762,6 +762,10 @@ async function initializeDatabase() {
       `ALTER TABLE bank_statements ADD COLUMN IF NOT EXISTS module_destination TEXT`,
       `ALTER TABLE bank_statements ADD COLUMN IF NOT EXISTS is_duplicate BOOLEAN DEFAULT FALSE`,
       `ALTER TABLE bank_statements ADD COLUMN IF NOT EXISTS duplicate_of TEXT`,
+      `ALTER TABLE bank_statements ADD COLUMN IF NOT EXISTS dup_score INTEGER DEFAULT NULL`,
+      `ALTER TABLE bank_statements ADD COLUMN IF NOT EXISTS dup_level TEXT DEFAULT NULL`,
+      `ALTER TABLE bank_statements ADD COLUMN IF NOT EXISTS dup_reason TEXT DEFAULT NULL`,
+      `ALTER TABLE bank_statements ADD COLUMN IF NOT EXISTS dup_ignored BOOLEAN DEFAULT FALSE`,
       `ALTER TABLE bank_statements ADD COLUMN IF NOT EXISTS confidence_reason TEXT`,
     ];
     for (const q of bsCols) { try { await pool.query(q); } catch(_) {} }
@@ -6688,28 +6692,184 @@ app.post('/api/accounting/bank-statements/:id/quick-accept', isAuthenticated, as
   }
 });
 
-// --- Preview duplicates (dry run — does NOT mark anything) ---
+// ============================================================
+// SMART DUPLICATE SCORING ENGINE
+// ============================================================
+
+function normalizeDesc(s) {
+  if (!s) return '';
+  return s.toLowerCase()
+    // Remove banking noise words
+    .replace(/\b(ach|pos|card|visa|mc|mastercard|amex|debit|credit|purchase|transaction|transfer|wire|payment|pymt|pmt|chk|check|online|mobile|atm|fee|charge|withdrawal|deposit|direct|recurring|auto|autopay|autopago|pago|cargo|compra|retiro|transferencia|electronic|elec|eft|trf|trn|ref|orig|bk|bkg|svc|svce)\b/g, ' ')
+    // Remove generic business type words (keep merchant name, strip type)
+    .replace(/\b(station|service|services|store|market|markets|center|centre|group|corp|inc|llc|ltd|co|company|enterprises|solutions|systems)\b/g, ' ')
+    // Remove reference numbers (4+ digit standalone numbers, #codes)
+    .replace(/(^|\s)(#?[0-9]{4,})(\s|$)/g, ' ')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function tokenSim(a, b) {
+  // Filter: min 3 chars, not purely numeric (noise numbers like 1234)
+  const clean = w => w.length >= 3 && !/^\d+$/.test(w);
+  const ta = new Set((a || '').split(' ').filter(clean));
+  const tb = new Set((b || '').split(' ').filter(clean));
+  if (ta.size === 0 && tb.size === 0) return 1;
+  if (ta.size === 0 || tb.size === 0) return 0;
+  const inter = [...ta].filter(w => tb.has(w)).length;
+  const union = new Set([...ta, ...tb]).size;
+  return inter / union;
+}
+
+function scoreDupePair(a, b) {
+  let score = 0;
+  const reasons = [];
+
+  // Amount match
+  const amtA = Math.abs(parseFloat(a.amount) || 0);
+  const amtB = Math.abs(parseFloat(b.amount) || 0);
+  const amtDiff = Math.abs(amtA - amtB);
+  if (amtDiff < 0.01) {
+    score += 35; reasons.push('Monto idéntico');
+  } else if (amtDiff / (Math.max(amtA, amtB) || 1) < 0.01) {
+    score += 20; reasons.push('Monto casi igual');
+  }
+
+  // Date proximity
+  const dA = new Date(a.statement_date);
+  const dB = new Date(b.statement_date);
+  const daysDiff = Math.abs((dA - dB) / 86400000);
+  if (daysDiff === 0) {
+    score += 20; reasons.push('Misma fecha');
+  } else if (daysDiff <= 3) {
+    score += 10; reasons.push(`Fechas a ${Math.round(daysDiff)} día(s) de diferencia`);
+  }
+
+  // Description similarity (normalized)
+  const normA = normalizeDesc(a.description);
+  const normB = normalizeDesc(b.description);
+  const sim = tokenSim(normA, normB);
+  if (sim >= 0.8) {
+    score += 30; reasons.push('Descripción muy similar');
+  } else if (sim >= 0.5) {
+    score += 15; reasons.push('Descripción similar');
+  } else if (sim >= 0.3) {
+    score += 5; reasons.push('Descripción algo similar');
+  }
+
+  // Same boat
+  if (a.boat_id && b.boat_id && a.boat_id === b.boat_id) {
+    score += 10; reasons.push('Mismo barco');
+  }
+
+  // Same category
+  if (a.category && b.category && a.category === b.category) {
+    score += 5; reasons.push('Misma categoría');
+  }
+
+  // Same transaction type
+  if (a.transaction_type && b.transaction_type && a.transaction_type === b.transaction_type) {
+    score += 5;
+  }
+
+  score = Math.min(score, 100);
+
+  // Detect periodic/recurring pattern (7, 14, 28, 30, 31-day intervals)
+  const isRecurring = daysDiff > 3 && [7, 14, 28, 30, 31].some(d => Math.abs(daysDiff - d) <= 2);
+
+  // Determine level
+  let level = null;
+  if (score >= 80) level = 'probable';
+  else if (score >= 60) level = 'possible';
+
+  // Override to 'recurrent' when periodic interval detected in middle-score range
+  if (isRecurring && score >= 55 && score < 85) {
+    level = 'recurrent';
+    reasons.push('Patrón periódico detectado');
+  }
+
+  return { score, level, reason: reasons.join(' · ') };
+}
+
+// Fetch all eligible records and run JS scoring (avoids O(n²) full scan via amount pre-filter)
+async function runSmartDupeDetection() {
+  const rows = await pool.query(`
+    SELECT id, statement_date, amount, description, boat_id, category, transaction_type
+    FROM bank_statements
+    WHERE is_duplicate IS NOT TRUE AND dup_ignored IS NOT TRUE
+    ORDER BY ABS(amount::numeric), statement_date
+  `);
+  const records = rows.rows;
+  const pairs = [];
+
+  for (let i = 0; i < records.length; i++) {
+    for (let j = i + 1; j < records.length; j++) {
+      const a = records[i], b = records[j];
+      // Quick pre-filter: skip if amount difference too large (saves >90% of comparisons)
+      const amtA = Math.abs(parseFloat(a.amount) || 0);
+      const amtB = Math.abs(parseFloat(b.amount) || 0);
+      if (Math.abs(amtA - amtB) / (Math.max(amtA, amtB) || 1) > 0.05) continue;
+      const { score, level, reason } = scoreDupePair(a, b);
+      if (level) {
+        // Keep the lower id as "keep", higher id as potential duplicate
+        const keepId = a.id < b.id ? a.id : b.id;
+        const dupId  = a.id < b.id ? b.id : a.id;
+        pairs.push({ keepId, dupId, score, level, reason,
+          keep: a.id < b.id ? a : b, dup: a.id < b.id ? b : a });
+      }
+    }
+  }
+  return pairs;
+}
+
+// --- Smart preview (dry run, no writes) ---
 app.get('/api/accounting/bank-statements/preview-duplicates', isAuthenticated, async (req, res) => {
   try {
-    // A true duplicate: same date, same amount (±0.01), AND same description (normalized)
-    const dups = await pool.query(`
-      SELECT a.id as id_a, b.id as id_b,
-             a.description as desc_a, b.description as desc_b,
-             a.amount, a.statement_date,
-             a.import_batch_id as batch_a, b.import_batch_id as batch_b
-      FROM bank_statements a
-      JOIN bank_statements b ON a.id < b.id
-        AND a.statement_date = b.statement_date
-        AND ABS(a.amount - b.amount) < 0.01
-        AND LOWER(TRIM(a.description)) = LOWER(TRIM(b.description))
-        AND a.is_duplicate IS NOT TRUE
-        AND b.is_duplicate IS NOT TRUE
-      ORDER BY a.statement_date DESC, a.description
-      LIMIT 200
-    `);
-    res.json({ success: true, pairs: dups.rows });
+    const pairs = await runSmartDupeDetection();
+    // Map to shape UI expects (backward-compatible)
+    const mapped = pairs.map(p => ({
+      id_a: p.keepId,
+      id_b: p.dupId,
+      desc_a: p.keep.description,
+      desc_b: p.dup.description,
+      amount: p.keep.amount,
+      statement_date: p.keep.statement_date,
+      batch_a: p.keep.import_batch_id,
+      batch_b: p.dup.import_batch_id,
+      dup_score: p.score,
+      dup_level: p.level,
+      dup_reason: p.reason
+    }));
+    res.json({ success: true, pairs: mapped });
   } catch(err) {
     console.error('preview-duplicates error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Smart detect: runs scoring and writes dup_score/dup_level/dup_reason to DB ---
+app.post('/api/accounting/bank-statements/smart-detect', isAuthenticated, async (req, res) => {
+  try {
+    // Clear previous smart scores (not is_duplicate flags — those need explicit confirmation)
+    await pool.query(`UPDATE bank_statements SET dup_score=NULL, dup_level=NULL, dup_reason=NULL WHERE dup_ignored IS NOT TRUE`);
+    const pairs = await runSmartDupeDetection();
+    let written = 0;
+    for (const p of pairs) {
+      await pool.query(
+        `UPDATE bank_statements SET dup_score=$1, dup_level=$2, dup_reason=$3, duplicate_of=$4 WHERE id=$5`,
+        [p.score, p.level, p.reason, p.keepId, p.dupId]
+      );
+      written++;
+    }
+    res.json({ success: true, analyzed: written, pairs: pairs.slice(0, 50).map(p => ({
+      id_a: p.keepId, id_b: p.dupId,
+      desc_a: p.keep.description, desc_b: p.dup.description,
+      amount: p.keep.amount, statement_date: p.keep.statement_date,
+      dup_score: p.score, dup_level: p.level, dup_reason: p.reason
+    })) });
+  } catch(err) {
+    console.error('smart-detect error:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -6717,12 +6877,9 @@ app.get('/api/accounting/bank-statements/preview-duplicates', isAuthenticated, a
 // --- Confirm and mark specific duplicate IDs ---
 app.post('/api/accounting/bank-statements/detect-duplicates', isAuthenticated, async (req, res) => {
   try {
-    // Accept optional list of {id_to_mark, keep_id} pairs from the UI preview confirmation.
-    // If no body provided, auto-detect with strict 3-field match (date+amount+description).
     const { confirm_ids } = req.body || {};
 
     if (confirm_ids && Array.isArray(confirm_ids) && confirm_ids.length > 0) {
-      // Mark only the IDs the user explicitly confirmed
       let flagged = 0;
       for (const { mark_id, keep_id } of confirm_ids) {
         if (!mark_id || !keep_id) continue;
@@ -6735,32 +6892,50 @@ app.post('/api/accounting/bank-statements/detect-duplicates', isAuthenticated, a
       return res.json({ success: true, duplicates_found: flagged, flagged });
     }
 
-    // Fallback: auto-detect with strict 3-field match (safe — no false positives)
-    const dups = await pool.query(`
-      SELECT a.id as id_a, b.id as id_b,
-             a.description as desc_a, b.description as desc_b,
-             a.amount, a.statement_date
-      FROM bank_statements a
-      JOIN bank_statements b ON a.id < b.id
-        AND a.statement_date = b.statement_date
-        AND ABS(a.amount - b.amount) < 0.01
-        AND LOWER(TRIM(a.description)) = LOWER(TRIM(b.description))
-        AND a.is_duplicate IS NOT TRUE
-        AND b.is_duplicate IS NOT TRUE
-      ORDER BY a.statement_date DESC
-      LIMIT 200
+    // Fallback: auto-confirm only 'probable' level detections (score>=80)
+    const candidates = await pool.query(`
+      SELECT id, duplicate_of FROM bank_statements
+      WHERE dup_level='probable' AND is_duplicate IS NOT TRUE AND dup_ignored IS NOT TRUE
+        AND duplicate_of IS NOT NULL
     `);
     let flagged = 0;
-    for (const pair of dups.rows) {
+    for (const row of candidates.rows) {
       await pool.query(
-        `UPDATE bank_statements SET is_duplicate=TRUE, duplicate_of=$1 WHERE id=$2`,
-        [pair.id_a, pair.id_b]
+        `UPDATE bank_statements SET is_duplicate=TRUE WHERE id=$1`,
+        [row.id]
       );
       flagged++;
     }
-    res.json({ success: true, duplicates_found: dups.rows.length, flagged, pairs: dups.rows.slice(0, 20) });
+    res.json({ success: true, duplicates_found: flagged, flagged });
   } catch(err) {
     console.error('detect-duplicates error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Ignore a smart duplicate alert for a specific record ---
+app.post('/api/accounting/bank-statements/:id/ignore-dup', isAuthenticated, async (req, res) => {
+  try {
+    await pool.query(
+      `UPDATE bank_statements SET dup_ignored=TRUE, dup_score=NULL, dup_level=NULL, dup_reason=NULL WHERE id=$1`,
+      [req.params.id]
+    );
+    res.json({ success: true });
+  } catch(err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Confirm a record IS a duplicate (from smart alert, without bulk marking) ---
+app.post('/api/accounting/bank-statements/:id/confirm-dup', isAuthenticated, async (req, res) => {
+  try {
+    const { keep_id } = req.body || {};
+    await pool.query(
+      `UPDATE bank_statements SET is_duplicate=TRUE, duplicate_of=$1 WHERE id=$2`,
+      [keep_id || null, req.params.id]
+    );
+    res.json({ success: true });
+  } catch(err) {
     res.status(500).json({ error: err.message });
   }
 });

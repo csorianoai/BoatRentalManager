@@ -726,15 +726,22 @@
 
         <!-- Duplicate Preview Modal -->
         <div id="dupe-preview-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1002;align-items:flex-start;justify-content:center;padding-top:40px;overflow-y:auto">
-          <div style="background:#fff;border-radius:12px;padding:28px;width:760px;max-width:96vw;box-shadow:0 20px 60px rgba(0,0,0,.35);margin-bottom:40px">
+          <div style="background:#fff;border-radius:12px;padding:28px;width:860px;max-width:97vw;box-shadow:0 20px 60px rgba(0,0,0,.35);margin-bottom:40px">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-              <div style="font-size:18px;font-weight:700;color:#1a1a2e">Revisión de Duplicados</div>
+              <div style="font-size:18px;font-weight:700;color:#1a1a2e">Análisis Inteligente de Duplicados</div>
               <button onclick="closeDupePreview()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#64748b" data-testid="button-close-dupe-preview">×</button>
             </div>
             <div id="dupe-preview-info" style="font-size:13px;color:#64748b;margin-bottom:16px"></div>
 
-            <div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;padding:12px;font-size:12px;color:#92400e;margin-bottom:16px">
-              <strong>Revisa cuidadosamente</strong> — Solo se marcan duplicados con fecha, monto Y descripción idénticos. Desmarca los que no sean duplicados reales antes de confirmar.
+            <!-- Legend -->
+            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+              <span style="background:#fef2f2;color:#991b1b;border:1px solid #fecaca;border-radius:20px;font-size:11px;font-weight:700;padding:3px 10px">PROBABLE — Score ≥80</span>
+              <span style="background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;border-radius:20px;font-size:11px;font-weight:700;padding:3px 10px">POSIBLE — Score 60–79</span>
+              <span style="background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;border-radius:20px;font-size:11px;font-weight:700;padding:3px 10px">RECURRENTE — Patrón periódico</span>
+            </div>
+
+            <div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;padding:10px 14px;font-size:12px;color:#92400e;margin-bottom:16px">
+              <strong>El sistema analiza monto, fecha, descripción, categoría y barco.</strong> Solo selecciona los que sean duplicados reales. Los "Recurrentes" son pagos periódicos legítimos — no los marques como duplicados.
             </div>
 
             <div style="overflow-x:auto">
@@ -742,13 +749,14 @@
                 <thead>
                   <tr style="background:#f1f5f9">
                     <th style="padding:8px;text-align:left;font-weight:600;color:#374151">
-                      <input type="checkbox" id="dupe-select-all" onchange="toggleAllDupes(this.checked)" data-testid="checkbox-dupe-all"> Todos
+                      <input type="checkbox" id="dupe-select-all" onchange="toggleAllDupes(this.checked)" data-testid="checkbox-dupe-all"> Marcar
                     </th>
+                    <th style="padding:8px;text-align:left;font-weight:600;color:#374151">Nivel</th>
+                    <th style="padding:8px;text-align:center;font-weight:600;color:#374151">Score</th>
                     <th style="padding:8px;text-align:left;font-weight:600;color:#374151">Fecha</th>
                     <th style="padding:8px;text-align:left;font-weight:600;color:#374151">Descripción</th>
                     <th style="padding:8px;text-align:right;font-weight:600;color:#374151">Monto</th>
-                    <th style="padding:8px;text-align:left;font-weight:600;color:#374151">Lote Original</th>
-                    <th style="padding:8px;text-align:left;font-weight:600;color:#374151">Lote Duplicado</th>
+                    <th style="padding:8px;text-align:left;font-weight:600;color:#374151">Razón</th>
                   </tr>
                 </thead>
                 <tbody id="dupe-preview-tbody"></tbody>
@@ -1940,8 +1948,26 @@
               ? `<span class="conf-badge conf-${s.confidence_level}">${CONF_LABELS[s.confidence_level]}</span>`
               : '';
             const statusBadge = `<span class="classif-status-badge status-${status}">${STATUS_LABELS[status]||status}</span>`;
-            const dupeBadge = s.is_duplicate
-              ? `<span style="background:#fef2f2;color:#991b1b;border:1px solid #fecaca;border-radius:4px;font-size:10px;padding:1px 5px;margin-left:4px">DUPLICADO</span>` : '';
+            // Smart duplicate badge: is_duplicate (confirmed) | dup_level (smart alert) | nothing
+            let dupeBadge = '';
+            if (s.is_duplicate) {
+              dupeBadge = `<span style="background:#fef2f2;color:#991b1b;border:1px solid #fecaca;border-radius:4px;font-size:10px;padding:1px 5px;margin-left:4px;font-weight:700">DUPLICADO</span>`;
+            } else if (s.dup_level && !s.dup_ignored) {
+              const DUP_STYLES = {
+                probable:  'background:#fef2f2;color:#991b1b;border:1px solid #fecaca',
+                possible:  'background:#fff7ed;color:#c2410c;border:1px solid #fed7aa',
+                recurrent: 'background:#f0fdf4;color:#166534;border:1px solid #bbf7d0'
+              };
+              const DUP_LABELS = { probable:'PROBABLE', possible:'POSIBLE', recurrent:'RECURRENTE' };
+              const st = DUP_STYLES[s.dup_level] || DUP_STYLES.possible;
+              const lb = DUP_LABELS[s.dup_level] || s.dup_level.toUpperCase();
+              const reasonTip = (s.dup_reason||'').replace(/"/g,'&quot;');
+              dupeBadge = `<span style="${st};border-radius:4px;font-size:10px;padding:1px 6px;margin-left:4px;font-weight:700;cursor:help" title="${reasonTip}">
+                  ${lb} ${s.dup_score!=null?`<span style="opacity:.75">(${s.dup_score})</span>`:''}
+                  <button onclick="ignoreDupAlert('${s.id}',event)" style="background:none;border:none;cursor:pointer;font-size:10px;padding:0 0 0 3px;color:inherit;opacity:.7" title="Ignorar esta alerta">✕</button>
+                  <button onclick="confirmDupRecord('${s.id}','${s.duplicate_of||''}',event)" style="background:none;border:none;cursor:pointer;font-size:10px;padding:0 0 0 2px;color:inherit;opacity:.7" title="Sí es duplicado — marcar">✓</button>
+                </span>`;
+            }
 
             const suggestion = s.accounting_type
               ? `<div><span class="classif-type-pill">${typeLabel}</span> <span style="color:#64748b;font-size:11px">${catLabel}</span></div>
@@ -1973,7 +1999,11 @@
                 ${status!=='posted'&&status!=='ignored'?`<button class="classif-action-btn btn-ignore" onclick="ignoreClassif('${s.id}')" data-testid="ignore-${s.id}" title="Ignorar">✕</button>`:''}
               </div>`;
 
-            return `<tr data-id="${s.id}" style="${s.is_duplicate?'background:#fef2f2;':isSelected?'background:#eff6ff;':''}">
+            const rowBg = s.is_duplicate ? 'background:#fef2f2;'
+              : (s.dup_level==='probable'&&!s.dup_ignored) ? 'background:#fff1f1;'
+              : (s.dup_level==='possible'&&!s.dup_ignored) ? 'background:#fff8f1;'
+              : isSelected ? 'background:#eff6ff;' : '';
+            return `<tr data-id="${s.id}" style="${rowBg}">
               <td style="text-align:center">
                 <input type="checkbox" ${isSelected?'checked':''} onchange="toggleSelectRow('${s.id}',this.checked)" data-testid="checkbox-${s.id}">
               </td>
@@ -2138,30 +2168,40 @@
         }
 
         async function runDuplicateCheck() {
-          showNotice('🔍 Analizando transacciones...','orange');
+          showNotice('🔍 Analizando con scoring inteligente...','orange');
           try {
-            // Step 1: preview — does NOT mark anything yet
-            const r = await fetch('/api/accounting/bank-statements/preview-duplicates');
+            // Step 1: run smart detection — writes scores to DB, returns pairs
+            const r = await fetch('/api/accounting/bank-statements/smart-detect', { method:'POST' });
             const d = await r.json();
-            if (!r.ok) throw new Error(d.error||'Error al buscar duplicados');
+            if (!r.ok) throw new Error(d.error||'Error al analizar duplicados');
 
             dupePreviewPairs = d.pairs || [];
 
-            // Also check if there are already manually-marked duplicates in the table
             const alreadyMarked = (classifData||[]).filter(s=>s.is_duplicate).length;
 
             if (dupePreviewPairs.length === 0 && alreadyMarked === 0) {
               showNotice('✅ Sin duplicados detectados — la tabla está limpia.','green');
               showDupeButtons(false);
+              // Reload so badge column updates
+              await loadClassifStatements();
               return;
             }
 
-            // Step 2: open preview modal for user to review before marking
+            // Step 2: reload table so inline badges appear, then open preview modal
+            await loadClassifStatements();
             openDupePreview(dupePreviewPairs, alreadyMarked);
             showNotice('','');
 
           } catch(e) { showNotice('❌ Error: '+e.message,'red'); }
         }
+
+        // Level display config
+        const DUPE_LEVEL_STYLE = {
+          probable:  'background:#fef2f2;color:#991b1b;border:1px solid #fecaca',
+          possible:  'background:#fff7ed;color:#c2410c;border:1px solid #fed7aa',
+          recurrent: 'background:#f0fdf4;color:#166534;border:1px solid #bbf7d0'
+        };
+        const DUPE_LEVEL_LABEL = { probable:'PROBABLE', possible:'POSIBLE', recurrent:'RECURRENTE' };
 
         function openDupePreview(pairs, alreadyMarked) {
           const modal = document.getElementById('dupe-preview-modal');
@@ -2170,31 +2210,70 @@
           const info  = document.getElementById('dupe-preview-info');
           const confirmBtn = document.getElementById('btn-confirm-dupes');
 
+          const nonRecurrent = pairs.filter(p => p.dup_level !== 'recurrent');
+
           if (pairs.length === 0) {
             tbody.innerHTML = '';
             empty.style.display = 'block';
             tbody.closest('table').style.display = 'none';
             confirmBtn.style.display = 'none';
             info.textContent = alreadyMarked
-              ? `${alreadyMarked} transacciones ya están marcadas como duplicadas en la tabla actual.`
-              : 'No se encontraron nuevos duplicados.';
+              ? `${alreadyMarked} transacciones ya confirmadas como duplicadas.`
+              : 'No se encontraron duplicados.';
           } else {
             empty.style.display = 'none';
             tbody.closest('table').style.display = '';
-            confirmBtn.style.display = '';
-            info.textContent = `Se encontraron ${pairs.length} par(es) de posibles duplicados (misma fecha, monto Y descripción). Desmarca los que NO sean duplicados reales.`;
-            tbody.innerHTML = pairs.map((p, i) => `
+            confirmBtn.style.display = nonRecurrent.length > 0 ? '' : 'none';
+
+            const probables = pairs.filter(p=>p.dup_level==='probable').length;
+            const posibles  = pairs.filter(p=>p.dup_level==='possible').length;
+            const recurrentes = pairs.filter(p=>p.dup_level==='recurrent').length;
+            info.innerHTML = `
+              Se analizaron <strong>${pairs.length} par(es)</strong>:
+              <span style="color:#991b1b;font-weight:700">${probables} probable(s)</span> ·
+              <span style="color:#c2410c;font-weight:700">${posibles} posible(s)</span> ·
+              <span style="color:#166534;font-weight:700">${recurrentes} recurrente(s)</span>.
+              ${alreadyMarked>0?`<br>${alreadyMarked} ya marcado(s) como duplicado.`:''}
+            `;
+
+            // Sort: probable first, then possible, then recurrent
+            const sorted = [...pairs].sort((a,b) => {
+              const order = {probable:0,possible:1,recurrent:2};
+              return (order[a.dup_level]||9) - (order[b.dup_level]||9) || b.dup_score - a.dup_score;
+            });
+
+            tbody.innerHTML = sorted.map((p, i) => {
+              const lvlSt = DUPE_LEVEL_STYLE[p.dup_level] || DUPE_LEVEL_STYLE.possible;
+              const lvlLb = DUPE_LEVEL_LABEL[p.dup_level] || p.dup_level;
+              const isRecurrent = p.dup_level === 'recurrent';
+              const scorePct = p.dup_score || 0;
+              const scoreColor = scorePct>=80?'#991b1b':scorePct>=60?'#c2410c':'#166534';
+              return `
               <tr style="border-bottom:1px solid #f1f5f9;${i%2===0?'':'background:#f8fafc'}">
-                <td style="padding:8px">
-                  <input type="checkbox" class="dupe-pair-chk" data-i="${i}" checked data-testid="checkbox-dupe-${i}">
+                <td style="padding:8px;text-align:center">
+                  <input type="checkbox" class="dupe-pair-chk" data-i="${i}" ${isRecurrent?'':'checked'} data-testid="checkbox-dupe-${i}">
                 </td>
-                <td style="padding:8px;color:#374151;white-space:nowrap">${p.statement_date}</td>
-                <td style="padding:8px;color:#374151;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(p.desc_a||'').replace(/"/g,'&quot;')}">${p.desc_a||''}</td>
-                <td style="padding:8px;text-align:right;font-weight:600;color:${parseFloat(p.amount)<0?'#ef4444':'#10b981'}">${parseFloat(p.amount)>=0?'+':''}$${Math.abs(parseFloat(p.amount)).toFixed(2)}</td>
-                <td style="padding:8px;font-size:11px;color:#6366f1">${p.batch_a==='manual'?'Manual':p.batch_a?'Lote '+p.batch_a.slice(-6):'—'}</td>
-                <td style="padding:8px;font-size:11px;color:#f59e0b">${p.batch_b==='manual'?'Manual':p.batch_b?'Lote '+p.batch_b.slice(-6):'—'}</td>
-              </tr>`).join('');
-            document.getElementById('dupe-select-all').checked = true;
+                <td style="padding:8px">
+                  <span style="${lvlSt};border-radius:12px;font-size:10px;font-weight:700;padding:2px 8px;white-space:nowrap">${lvlLb}</span>
+                </td>
+                <td style="padding:8px;text-align:center">
+                  <span style="font-size:13px;font-weight:800;color:${scoreColor}">${scorePct}</span>
+                </td>
+                <td style="padding:8px;color:#374151;white-space:nowrap;font-size:12px">${(p.statement_date||'').slice(0,10)}</td>
+                <td style="padding:8px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px" title="${(p.desc_b||p.desc_a||'').replace(/"/g,'&quot;')}">
+                  <div style="color:#1a1a2e;font-weight:600">${p.desc_b||p.desc_a||'—'}</div>
+                  ${p.desc_a&&p.desc_b&&p.desc_a!==p.desc_b?`<div style="color:#94a3b8;font-size:10px">vs: ${p.desc_a}</div>`:''}
+                </td>
+                <td style="padding:8px;text-align:right;font-weight:700;font-size:13px;color:${parseFloat(p.amount)<0?'#ef4444':'#10b981'};white-space:nowrap">
+                  ${parseFloat(p.amount)>=0?'+':''}$${Math.abs(parseFloat(p.amount)).toFixed(2)}
+                </td>
+                <td style="padding:8px;font-size:11px;color:#64748b;max-width:180px">${p.dup_reason||'—'}</td>
+              </tr>`;
+            }).join('');
+
+            // Store sorted for index lookup on confirm
+            dupePreviewPairs = sorted;
+            document.getElementById('dupe-select-all').checked = false;
           }
 
           modal.style.display = 'flex';
@@ -2241,6 +2320,32 @@
           } finally {
             btn.textContent = orig; btn.disabled = false;
           }
+        }
+
+        // Per-row: ignore a smart dup alert (dismiss without marking)
+        async function ignoreDupAlert(id, evt) {
+          if (evt) { evt.stopPropagation(); evt.preventDefault(); }
+          try {
+            const r = await fetch(`/api/accounting/bank-statements/${id}/ignore-dup`, { method:'POST' });
+            if (!r.ok) throw new Error('Error ignorando alerta');
+            await loadClassifStatements();
+          } catch(e) { showNotice('❌ '+e.message,'red'); }
+        }
+
+        // Per-row: confirm a record IS a duplicate directly from the inline badge
+        async function confirmDupRecord(id, keepId, evt) {
+          if (evt) { evt.stopPropagation(); evt.preventDefault(); }
+          if (!confirm('¿Confirmar que esta transacción es un duplicado real?')) return;
+          try {
+            const r = await fetch(`/api/accounting/bank-statements/${id}/confirm-dup`, {
+              method: 'POST',
+              headers: {'Content-Type':'application/json'},
+              body: JSON.stringify({ keep_id: keepId || null })
+            });
+            if (!r.ok) throw new Error('Error confirmando duplicado');
+            showDupeButtons(true);
+            await loadClassifStatements();
+          } catch(e) { showNotice('❌ '+e.message,'red'); }
         }
 
         // ── Delete all flagged duplicates ─────────────────────────────────

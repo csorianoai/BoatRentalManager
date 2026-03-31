@@ -1,0 +1,184 @@
+Quiero mejorar la detección de duplicados en el sistema de conciliación bancaria dentro de “gestión”. No quiero una app nueva.
+
+PROBLEMA ACTUAL
+El sistema está detectando demasiados duplicados porque parece basarse demasiado en el monto. Eso genera falsos positivos.
+
+OBJETIVO
+Hacer la detección de duplicados mucho más inteligente para que no determine un duplicado solo por el monto, sino por una combinación de factores reales.
+
+REGLAS
+- no usar solo el monto como criterio principal
+- no marcar automáticamente como duplicado si solo coincide el monto
+- diferenciar entre:
+  - duplicado probable
+  - posible duplicado
+  - movimiento repetido legítimo
+- mantener el sistema liviano y optimizado para Replit
+- no romper el flujo actual
+
+==================================================
+1. NUEVA LÓGICA DE DUPLICADOS
+==================================================
+
+Implementar un sistema de score de duplicado usando múltiples señales:
+
+- monto
+- fecha
+- descripción normalizada
+- proveedor detectado
+- tipo de movimiento
+- cuenta bancaria
+- barco asociado
+- categoría contable
+- referencia externa si existe
+
+==================================================
+2. NORMALIZACIÓN DE DESCRIPCIÓN
+==================================================
+
+Antes de comparar, normalizar descripción:
+
+- pasar a minúsculas
+- quitar espacios duplicados
+- quitar caracteres especiales innecesarios
+- quitar palabras genéricas como:
+  - ach
+  - pos
+  - card
+  - visa
+  - debit
+  - purchase
+  - transaction
+- conservar palabras fuertes del proveedor o comercio
+
+Ejemplo:
+“ACH SHELL SERVICE STATION 1234”
+y
+“SHELL MIAMI”
+deben considerarse similares.
+
+==================================================
+3. SCORE DE DUPLICADO
+==================================================
+
+Crear una puntuación basada en reglas como estas:
+
+- mismo monto exacto: +35
+- misma fecha exacta: +20
+- fecha dentro de 1 a 3 días: +10
+- descripción muy similar: +30
+- proveedor igual: +20
+- misma cuenta bancaria: +10
+- mismo barco: +10
+- misma categoría: +5
+
+Resultado sugerido:
+- 80 o más = duplicado probable
+- 60 a 79 = posible duplicado
+- menos de 60 = no duplicado
+
+No hace falta usar exactamente estos pesos, pero sí una lógica similar y razonable.
+
+==================================================
+4. NO MARCAR DUPLICADO SOLO POR MONTO
+==================================================
+
+Si solo coincide el monto pero no coincide suficientemente con:
+- descripción
+- fecha
+- proveedor
+- cuenta
+entonces NO marcar como duplicado.
+
+==================================================
+5. MOVIMIENTOS REPETIDOS LEGÍTIMOS
+==================================================
+
+El sistema debe distinguir cargos recurrentes o repetidos legítimos de duplicados reales.
+
+Ejemplos:
+- marina mensual
+- suscripciones
+- pagos recurrentes
+- combustible con montos iguales en días distintos
+
+Si un patrón aparece con frecuencia periódica, marcar como:
+- repetido legítimo
+o
+- recurrente probable
+pero no como duplicado automático.
+
+==================================================
+6. MATCH CON HISTORIAL REAL
+==================================================
+
+Comparar cada movimiento importado contra:
+- otros movimientos bancarios ya importados
+- gastos ya creados
+- ingresos ya creados
+- pagos recurrentes
+- conciliaciones previas
+
+Pero solo marcar duplicado si hay similitud suficiente.
+
+==================================================
+7. NIVELES DE ALERTA
+==================================================
+
+Mostrar 3 niveles:
+
+1. Duplicado probable
+2. Posible duplicado
+3. Repetido legítimo
+
+Cada uno con color distinto y explicación breve del porqué.
+
+Ejemplo:
+- “Mismo monto, misma fecha y descripción similar”
+- “Mismo monto pero distinto proveedor”
+- “Monto repetido mensual con proveedor frecuente”
+
+==================================================
+8. EXPLICABILIDAD
+==================================================
+
+Quiero que el sistema explique por qué marcó algo como duplicado.
+
+Mostrar algo como:
+- coincidió monto
+- coincidió fecha
+- coincidió proveedor
+- similitud alta en descripción
+
+No quiero una alerta opaca sin razón visible.
+
+==================================================
+9. UI
+==================================================
+
+En la bandeja de movimientos mostrar:
+- badge de duplicado probable / posible / repetido legítimo
+- score de similitud
+- botón para revisar detalle
+- opción de ignorar la alerta
+- opción de confirmar que sí es duplicado
+
+==================================================
+10. VALIDACIONES OBLIGATORIAS
+==================================================
+
+Antes de cerrar, probar estos casos:
+
+1. mismo monto pero distinta descripción → no duplicado
+2. mismo monto y misma descripción → duplicado probable
+3. mismo monto y fecha cercana pero proveedor distinto → posible duplicado
+4. misma marina mensual con mismo monto → repetido legítimo
+5. mismo cargo duplicado el mismo día → duplicado probable
+6. combustible igual en semanas diferentes → no duplicado o repetido legítimo
+7. no romper importación ni conciliación existente
+
+==================================================
+11. RESULTADO FINAL
+==================================================
+
+Quiero que el sistema deje de marcar duplicados solo por monto y use una lógica más inteligente basada en similitud real entre descripción, fecha, proveedor, cuenta y contexto contable.
