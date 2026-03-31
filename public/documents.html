@@ -785,12 +785,12 @@
 
       <!-- Drop zone -->
       <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
-        <input type="file" id="fileInput" style="display:none"
+        <input type="file" id="fileInput" style="display:none" multiple
           accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.jpg,.jpeg,.png"
           onchange="onFileSelect(this)">
         <div class="dz-icon" id="dzIcon">&#128196;</div>
-        <div class="dz-text" id="dzText">Haz clic o arrastra un archivo aquí</div>
-        <div class="dz-hint">PDF, Word, Excel, Imagen — máximo 20 MB</div>
+        <div class="dz-text" id="dzText">Haz clic o arrastra archivos aquí</div>
+        <div class="dz-hint">PDF, Word, Excel, Imagen — máximo 20 MB por archivo</div>
       </div>
 
       <div class="form-row">
@@ -940,7 +940,7 @@
   let activeView   = 'all';   // 'all' | 'general' | boat_id
   let activeType   = '';
   let pendingDeleteId = null;
-  let selectedFile    = null;
+  let selectedFiles   = [];
   let viewerCurrentId = null;
   let viewerCurrentName = null;
 
@@ -1208,7 +1208,7 @@
 
   // ── Upload modal ───────────────────────────────────────
   function openUploadModal(preselectedBoatId) {
-    selectedFile = null;
+    selectedFiles = [];
     resetDropZone();
     document.getElementById('docNotes').value = '';
     document.getElementById('docType').selectedIndex = 0;
@@ -1292,26 +1292,31 @@
   }
 
   function onFileSelect(input) {
-    if (input.files && input.files[0]) {
-      selectedFile = input.files[0];
-      updateDropZoneFile(selectedFile);
+    if (input.files && input.files.length) {
+      selectedFiles = Array.from(input.files);
+      updateDropZone(selectedFiles);
     }
   }
 
-  function updateDropZoneFile(file) {
+  function updateDropZone(files) {
     const dz = document.getElementById('dropZone');
     dz.classList.add('has-file');
     document.getElementById('dzIcon').textContent = '';
-    document.getElementById('dzText').textContent = file.name + ' (' + formatSize(file.size) + ')';
+    if (files.length === 1) {
+      document.getElementById('dzText').textContent = files[0].name + ' (' + formatSize(files[0].size) + ')';
+    } else {
+      const total = files.reduce((s, f) => s + f.size, 0);
+      document.getElementById('dzText').textContent = files.length + ' archivos seleccionados (' + formatSize(total) + ')';
+    }
   }
 
   function resetDropZone() {
     const dz = document.getElementById('dropZone');
     dz.classList.remove('has-file', 'dragging');
     document.getElementById('dzIcon').innerHTML = '&#128196;';
-    document.getElementById('dzText').textContent = 'Haz clic o arrastra un archivo aquí';
+    document.getElementById('dzText').textContent = 'Haz clic o arrastra archivos aquí';
     document.getElementById('fileInput').value = '';
-    selectedFile = null;
+    selectedFiles = [];
   }
 
   function setupDragDrop() {
@@ -1321,18 +1326,18 @@
     dz.addEventListener('drop', e => {
       e.preventDefault();
       dz.classList.remove('dragging');
-      const f = e.dataTransfer.files[0];
-      if (f) { selectedFile = f; updateDropZoneFile(f); }
+      const files = Array.from(e.dataTransfer.files);
+      if (files.length) { selectedFiles = files; updateDropZone(files); }
     });
   }
 
   async function submitUpload() {
-    if (!selectedFile) { showToast('Selecciona un archivo primero', 'error'); return; }
+    if (!selectedFiles.length) { showToast('Selecciona un archivo primero', 'error'); return; }
     const docType = document.getElementById('docType').value;
     const boatId  = document.getElementById('boatSelect').value;
     const isInvoice = docType === 'invoice';
 
-    // ── Invoice validation ──
+    // ── Invoice validation (always single-file for invoice) ──
     if (isInvoice) {
       if (!boatId) { showToast('Selecciona un barco para la factura', 'error'); return; }
       const date   = document.getElementById('invoiceDate').value;
@@ -1352,72 +1357,80 @@
     document.getElementById('uploadProgress').classList.add('show');
     document.getElementById('submitUpload').disabled = true;
 
+    // Determine which files to upload:
+    // - Invoice: always just the first file (metadata is for one document)
+    // - Others: all selected files
+    const filesToUpload = isInvoice ? [selectedFiles[0]] : selectedFiles;
+    const notesEl = document.getElementById('docNotes');
+    const visibleGeneral = document.getElementById('visibleGeneral').checked ? 'true' : 'false';
+    let uploaded = 0;
+
     try {
-      // Step 1: Upload file
-      const formData = new FormData();
-      formData.append('file', selectedFile);
-      formData.append('doc_type', docType);
-      formData.append('entity_type', boatId ? 'boat' : 'global');
-      if (boatId) { formData.append('boat_id', boatId); formData.append('entity_id', boatId); }
-      formData.append('visible_in_general', isInvoice ? 'true' : (document.getElementById('visibleGeneral').checked ? 'true' : 'false'));
-      const notesEl = document.getElementById('docNotes');
-      if (!isInvoice && notesEl.value.trim()) formData.append('notes', notesEl.value.trim());
-      if (isInvoice) {
-        const desc = document.getElementById('invoiceDescription').value.trim();
-        const vendor = document.getElementById('invoiceVendor').value.trim();
-        formData.append('notes', `${vendor} — ${desc}`);
-      }
-
-      const res  = await fetch('/api/documents/upload', { method: 'POST', body: formData });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Error al subir el archivo');
-      const docId = data.document.id;
-
-      // Step 2 (invoice only): Create or link expense
-      if (isInvoice) {
-        const action   = document.querySelector('input[name="invoiceAction"]:checked').value;
-        const date     = document.getElementById('invoiceDate').value;
-        const amount   = parseFloat(document.getElementById('invoiceAmount').value);
-        const vendor   = document.getElementById('invoiceVendor').value.trim();
-        const category = document.getElementById('invoiceCategory').value;
-        const desc     = document.getElementById('invoiceDescription').value.trim();
-
-        if (action === 'create') {
-          const expRes = await fetch('/api/boat-expenses', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              boat_id: boatId,
-              category,
-              amount,
-              expense_date: date,
-              description: desc,
-              vendor,
-              invoice_document_id: docId
-            })
-          });
-          if (!expRes.ok) {
-            const ed = await expRes.json();
-            throw new Error('Factura subida pero error al crear el gasto: ' + (ed.error || ''));
-          }
-          showToast('Factura subida y gasto creado correctamente', 'success');
-        } else {
-          const linkId = document.getElementById('linkExpenseSelect').value;
-          const linkRes = await fetch('/api/boat-expenses/' + linkId, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ invoice_document_id: docId })
-          });
-          if (!linkRes.ok) {
-            const ld = await linkRes.json();
-            throw new Error('Factura subida pero error al vincular: ' + (ld.error || ''));
-          }
-          showToast('Factura subida y vinculada al gasto correctamente', 'success');
+      for (const file of filesToUpload) {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('doc_type', docType);
+        formData.append('entity_type', boatId ? 'boat' : 'global');
+        if (boatId) { formData.append('boat_id', boatId); formData.append('entity_id', boatId); }
+        formData.append('visible_in_general', isInvoice ? 'true' : visibleGeneral);
+        if (!isInvoice && notesEl.value.trim()) formData.append('notes', notesEl.value.trim());
+        if (isInvoice) {
+          const desc = document.getElementById('invoiceDescription').value.trim();
+          const vendor = document.getElementById('invoiceVendor').value.trim();
+          formData.append('notes', `${vendor} — ${desc}`);
         }
-      } else {
-        showToast('Documento subido correctamente', 'success');
+
+        const res  = await fetch('/api/documents/upload', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Error al subir: ' + file.name);
+        const docId = data.document.id;
+        uploaded++;
+
+        // Step 2 (invoice only): Create or link expense for first file
+        if (isInvoice) {
+          const action   = document.querySelector('input[name="invoiceAction"]:checked').value;
+          const date     = document.getElementById('invoiceDate').value;
+          const amount   = parseFloat(document.getElementById('invoiceAmount').value);
+          const vendor   = document.getElementById('invoiceVendor').value.trim();
+          const category = document.getElementById('invoiceCategory').value;
+          const desc     = document.getElementById('invoiceDescription').value.trim();
+
+          if (action === 'create') {
+            const expRes = await fetch('/api/boat-expenses', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ boat_id: boatId, category, amount, expense_date: date, description: desc, vendor, invoice_document_id: docId })
+            });
+            if (!expRes.ok) {
+              const ed = await expRes.json();
+              throw new Error('Factura subida pero error al crear el gasto: ' + (ed.error || ''));
+            }
+            showToast('Factura subida y gasto creado correctamente', 'success');
+          } else {
+            const linkId = document.getElementById('linkExpenseSelect').value;
+            const linkRes = await fetch('/api/boat-expenses/' + linkId, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ invoice_document_id: docId })
+            });
+            if (!linkRes.ok) {
+              const ld = await linkRes.json();
+              throw new Error('Factura subida pero error al vincular: ' + (ld.error || ''));
+            }
+            showToast('Factura subida y vinculada al gasto correctamente', 'success');
+          }
+        }
       }
 
+      if (!isInvoice) {
+        const msg = filesToUpload.length === 1
+          ? 'Documento subido correctamente'
+          : `${uploaded} documentos subidos correctamente`;
+        showToast(msg, 'success');
+      }
+
+      // T3: Reset input so the same files can be re-uploaded if desired
+      document.getElementById('fileInput').value = '';
       closeUploadModal();
       await loadDocuments();
       await loadStats();
