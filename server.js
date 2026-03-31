@@ -1173,6 +1173,8 @@ async function initializeDatabase() {
     await pool.query(`ALTER TABLE documents ADD COLUMN IF NOT EXISTS boat_id TEXT`);
     await pool.query(`ALTER TABLE documents ADD COLUMN IF NOT EXISTS visible_in_general BOOLEAN NOT NULL DEFAULT true`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_documents_boat ON documents(boat_id)`);
+    // Store file content in DB so files survive redeployments (no ephemeral filesystem dependency)
+    await pool.query(`ALTER TABLE documents ADD COLUMN IF NOT EXISTS file_data BYTEA`);
     console.log('✅ FASE 13 table created (document management)');
 
     // FASE 14: Captain & Stew Payments + enhanced expenses
@@ -11468,30 +11470,13 @@ const DOC_ENTITY_DIRS = {
   temp: () => path.join(__dirname, 'storage', 'temp'),
 };
 
+// Documents use memory storage → file content is saved in PostgreSQL (survives redeployments)
 const docUpload = multer({
-  storage: multer.diskStorage({
-    destination: (req, file, cb) => {
-      const { entity_type, entity_id } = req.body;
-      const getDirFn = DOC_ENTITY_DIRS[entity_type] || DOC_ENTITY_DIRS.temp;
-      const dir = getDirFn(entity_id || 'unknown');
-      require('fs').mkdirSync(dir, { recursive: true });
-      cb(null, dir);
-    },
-    filename: (req, file, cb) => {
-      const ext = path.extname(file.originalname).toLowerCase() || '.bin';
-      const docType = (req.body.doc_type || 'other').replace(/[^a-z0-9]/gi, '-');
-      const entityType = (req.body.entity_type || 'unknown').replace(/[^a-z0-9]/gi, '-');
-      const entityId = (req.body.entity_id || 'x').replace(/[^a-z0-9_-]/gi, '-').slice(0, 20);
-      const ts = Date.now();
-      const rand = Math.random().toString(36).slice(2, 6);
-      const storedName = `${docType}-${entityType}-${entityId}-${ts}-${rand}${ext}`;
-      cb(null, storedName);
-    }
-  }),
+  storage: multer.memoryStorage(),
   limits: { fileSize: 20 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     if (ALLOWED_MIME_TYPES[file.mimetype]) return cb(null, true);
-    cb(new Error('Tipo de archivo no permitido'));
+    cb(new Error('Tipo de archivo no permitido. Tipos válidos: PDF, Word, Excel, texto, JPG, PNG.'));
   }
 });
 
@@ -11509,24 +11494,32 @@ app.post('/api/documents/upload', isAuthenticated, (req, res, next) => {
 
     const { nanoid } = await import('nanoid');
     const id = 'doc_' + nanoid(10);
-    const filePath = req.file.path.replace(__dirname + path.sep, '').replace(/\\/g, '/');
 
-    // Derive entity_type: if boat_id provided and no entity_type, use 'boat'
+    const ext = path.extname(req.file.originalname).toLowerCase() || '.bin';
+    const docType = (doc_type || 'other').replace(/[^a-z0-9]/gi, '-');
+    const eType   = (entity_type || 'unknown').replace(/[^a-z0-9]/gi, '-');
+    const eId     = (entity_id || 'x').replace(/[^a-z0-9_-]/gi, '-').slice(0, 20);
+    const storedName = `${docType}-${eType}-${eId}-${Date.now()}-${Math.random().toString(36).slice(2,6)}${ext}`;
+
     const resolvedEntityType = entity_type || (boat_id ? 'boat' : 'global');
     const resolvedEntityId   = entity_id || boat_id || null;
     const resolvedBoatId     = boat_id || (entity_type === 'boat' ? entity_id : null) || null;
     const resolvedVisible    = visible_in_general === 'false' ? false : true;
 
+    // Store file content as BYTEA in PostgreSQL — survives all redeployments
     await pool.query(
-      `INSERT INTO documents (id, original_name, stored_name, file_path, doc_type, entity_type, entity_id, boat_id, visible_in_general, file_size, mime_type, notes, uploaded_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-      [id, req.file.originalname, req.file.filename, filePath,
+      `INSERT INTO documents
+         (id, original_name, stored_name, file_path, doc_type, entity_type, entity_id,
+          boat_id, visible_in_general, file_size, mime_type, notes, uploaded_by, file_data)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+      [id, req.file.originalname, storedName, 'db:' + id,
        doc_type, resolvedEntityType, resolvedEntityId,
        resolvedBoatId, resolvedVisible,
        req.file.size, req.file.mimetype, notes || null,
-       req.user?.name || req.user?.email || 'sistema']
+       req.user?.name || req.user?.email || 'sistema',
+       req.file.buffer]
     );
-    const doc = (await pool.query('SELECT * FROM documents WHERE id=$1', [id])).rows[0];
+    const doc = (await pool.query('SELECT id, original_name, stored_name, doc_type, entity_type, entity_id, boat_id, visible_in_general, file_size, mime_type, notes, uploaded_by, created_at FROM documents WHERE id=$1', [id])).rows[0];
     res.json({ success: true, document: doc });
   } catch (err) {
     console.error('[Documents] Upload error:', err);
@@ -11553,45 +11546,63 @@ app.get('/api/documents', isAuthenticated, async (req, res) => {
   }
 });
 
-// GET /api/documents/:id/view — serve file inline for PDF/image preview
-app.get('/api/documents/:id/view', isAuthenticated, async (req, res) => {
+// Helper: serve a document from DB (primary) or disk (legacy fallback)
+async function serveDocument(req, res, disposition) {
   try {
     const result = await pool.query('SELECT * FROM documents WHERE id=$1', [req.params.id]);
     if (result.rows.length === 0) return res.status(404).json({ error: 'Documento no encontrado' });
     const doc = result.rows[0];
-    const fullPath = path.join(__dirname, doc.file_path);
-    if (!require('fs').existsSync(fullPath)) return res.status(404).json({ error: 'Archivo no encontrado en el servidor' });
-    res.setHeader('Content-Type', doc.mime_type || 'application/octet-stream');
-    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(doc.original_name)}"`);
-    res.setHeader('Cache-Control', 'private, max-age=3600');
-    require('fs').createReadStream(fullPath).pipe(res);
+
+    const contentType = doc.mime_type || 'application/octet-stream';
+    const safeName = encodeURIComponent(doc.original_name || 'documento');
+
+    // PRIMARY: serve from DB bytea (works after any redeployment)
+    if (doc.file_data) {
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Disposition', `${disposition}; filename="${safeName}"`);
+      res.setHeader('Cache-Control', 'private, max-age=3600');
+      res.setHeader('Content-Length', doc.file_data.length);
+      return res.end(doc.file_data);
+    }
+
+    // LEGACY FALLBACK: read from disk (files uploaded before the DB migration)
+    if (doc.file_path && !doc.file_path.startsWith('db:')) {
+      const fullPath = path.join(__dirname, doc.file_path);
+      if (require('fs').existsSync(fullPath)) {
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Content-Disposition', `${disposition}; filename="${safeName}"`);
+        res.setHeader('Cache-Control', 'private, max-age=3600');
+        // Migrate on-the-fly: save to DB so next request uses DB path
+        const buf = require('fs').readFileSync(fullPath);
+        pool.query(`UPDATE documents SET file_data=$1, file_path=$2 WHERE id=$3`,
+          [buf, 'db:' + doc.id, doc.id]).catch(()=>{});
+        return require('fs').createReadStream(fullPath).pipe(res);
+      }
+    }
+
+    res.status(404).json({ error: 'Archivo no disponible — fue subido antes de la migración de almacenamiento. Por favor vuelve a subir el documento.' });
   } catch (err) {
+    console.error('[Documents] serve error:', err);
     res.status(500).json({ error: err.message });
   }
-});
+}
+
+// GET /api/documents/:id/view — serve file inline for PDF/image preview
+app.get('/api/documents/:id/view', isAuthenticated, (req, res) => serveDocument(req, res, 'inline'));
 
 // GET /api/documents/:id/download
-app.get('/api/documents/:id/download', isAuthenticated, async (req, res) => {
-  try {
-    const result = await pool.query('SELECT * FROM documents WHERE id=$1', [req.params.id]);
-    if (result.rows.length === 0) return res.status(404).json({ error: 'Documento no encontrado' });
-    const doc = result.rows[0];
-    const fullPath = path.join(__dirname, doc.file_path);
-    if (!require('fs').existsSync(fullPath)) return res.status(404).json({ error: 'Archivo no encontrado en el servidor' });
-    res.download(fullPath, doc.original_name);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+app.get('/api/documents/:id/download', isAuthenticated, (req, res) => serveDocument(req, res, 'attachment'));
 
 // DELETE /api/documents/:id
 app.delete('/api/documents/:id', isAuthenticated, async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM documents WHERE id=$1', [req.params.id]);
+    const result = await pool.query('SELECT id, file_path FROM documents WHERE id=$1', [req.params.id]);
     if (result.rows.length === 0) return res.status(404).json({ error: 'Documento no encontrado' });
     const doc = result.rows[0];
-    const fullPath = path.join(__dirname, doc.file_path);
-    try { require('fs').unlinkSync(fullPath); } catch (e) { /* file may already be gone */ }
+    // Try to remove from disk if it was a legacy file-path upload (not a DB-stored file)
+    if (doc.file_path && !doc.file_path.startsWith('db:')) {
+      try { require('fs').unlinkSync(path.join(__dirname, doc.file_path)); } catch (_) {}
+    }
     await pool.query('DELETE FROM documents WHERE id=$1', [req.params.id]);
     res.json({ success: true });
   } catch (err) {
