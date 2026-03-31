@@ -732,6 +732,22 @@ async function initializeDatabase() {
     
     console.log('✅ FASE 8 tables created (accounting, transactions, reconciliation, categorization, alerts)');
 
+    // FASE 8B-MIGRATION: Ensure amount/balance columns are NUMERIC(12,2), not INTEGER
+    // (table may have been created before schema was updated to use NUMERIC)
+    try {
+      await pool.query(`
+        ALTER TABLE bank_statements
+          ALTER COLUMN amount TYPE NUMERIC(12,2) USING amount::numeric(12,2),
+          ALTER COLUMN balance TYPE NUMERIC(12,2) USING balance::numeric(12,2)
+      `);
+      console.log('✅ bank_statements amount/balance migrated to NUMERIC(12,2)');
+    } catch(migrErr) {
+      // Columns may already be NUMERIC — not an error
+      if (!migrErr.message.includes('does not exist') && !migrErr.message.includes('already')) {
+        console.log('ℹ️  bank_statements numeric migration skipped:', migrErr.message);
+      }
+    }
+
     // FASE 8B: Smart classification columns for bank_statements + patterns table
     const bsCols = [
       `ALTER TABLE bank_statements ADD COLUMN IF NOT EXISTS category TEXT`,
@@ -5752,6 +5768,19 @@ app.get('/api/accounting/bank-statements/unmatched', isAuthenticated, async (req
   }
 });
 
+// ── Normalize any monetary string/number to a safe float ─────────────────────
+// Handles: 15.16 | -15.16 | $15.16 | 1,215.40 | (15.16) | "  $1,000.00 " | ""
+function normalizeAmount(raw) {
+  if (raw === null || raw === undefined || raw === '') return null;
+  const s = raw.toString().trim();
+  if (s === '' || s === '-' || s === '—') return null;
+  const isNeg = s.startsWith('-') || s.startsWith('(') || /^\(\s*\$?[\d]/.test(s);
+  const clean = s.replace(/[\(\)\$£€,\s\+]/g, '').replace(/^-/, '');
+  const num = parseFloat(clean);
+  if (isNaN(num)) return null;
+  return isNeg ? -num : num;
+}
+
 // Upload and parse bank statement file (CSV/OFX)
 app.post('/api/accounting/bank-statements/upload', isAuthenticated, upload.single('file'), async (req, res) => {
   try {
@@ -5785,22 +5814,23 @@ app.post('/api/accounting/bank-statements/upload', isAuthenticated, upload.singl
         
         // Handle amount - support both single Amount column and separate Debit/Credit columns
         let amount = 0;
-        if (record.Amount || record.amount) {
-          amount = parseFloat((record.Amount || record.amount).toString().replace(/[,$]/g, ''));
+        const rawAmt = record.Amount || record.amount;
+        if (rawAmt !== undefined && rawAmt !== null && rawAmt.toString().trim() !== '') {
+          amount = normalizeAmount(rawAmt) ?? 0;
         } else if (record.Debit || record.debit || record.Credit || record.credit) {
           // Debit = negative (money out), Credit = positive (money in)
-          const debit = record.Debit || record.debit;
+          const debit  = record.Debit  || record.debit;
           const credit = record.Credit || record.credit;
           if (debit && debit.toString().trim() !== '') {
-            amount = -Math.abs(parseFloat(debit.toString().replace(/[,$]/g, '')));
+            amount = -Math.abs(normalizeAmount(debit) ?? 0);
           } else if (credit && credit.toString().trim() !== '') {
-            amount = Math.abs(parseFloat(credit.toString().replace(/[,$]/g, '')));
+            amount = Math.abs(normalizeAmount(credit) ?? 0);
           }
         }
-        
-        // Handle balance - fix lowercase column bug
+
+        // Handle balance
         const balanceRaw = record.Balance || record.balance;
-        const balance = balanceRaw ? parseFloat(balanceRaw.toString().replace(/[,$]/g, '')) : null;
+        const balance = balanceRaw ? normalizeAmount(balanceRaw) : null;
         
         const reference = record.Reference || record.CheckNumber || record['Check Number'] || null;
 
@@ -5826,8 +5856,8 @@ app.post('/api/accounting/bank-statements/upload', isAuthenticated, upload.singl
         statements = (Array.isArray(transactions) ? transactions : [transactions]).map(trn => ({
           statement_date: trn.DTPOSTED ? trn.DTPOSTED.substring(0, 8) : null,
           description: trn.NAME || trn.MEMO || 'Unknown',
-          amount: parseFloat(trn.TRNAMT || 0),
-          balance: null,
+          amount: normalizeAmount(trn.TRNAMT) ?? 0,
+          balance: normalizeAmount(trn.LEDGERBAL?.BALAMT) ?? null,
           reference_number: trn.FITID || trn.CHECKNUM || null
         }));
       }
@@ -6020,13 +6050,16 @@ app.post('/api/accounting/bank-statements/upload', isAuthenticated, upload.singl
       if (!stmt.statement_date || stmt.amount === undefined) continue;
 
       const id = nanoid();
-      const txType = stmt.transaction_type || ((parseFloat(stmt.amount) >= 0) ? 'credit' : 'debit');
+      const safeAmt = normalizeAmount(stmt.amount) ?? 0;
+      const safeBal = (stmt.balance !== undefined && stmt.balance !== null) ? normalizeAmount(stmt.balance) : null;
+      const txType = stmt.transaction_type || (safeAmt >= 0 ? 'credit' : 'debit');
+      console.log(`📥 Importing: "${stmt.description}" | amount: ${stmt.amount} → ${safeAmt} | balance: ${stmt.balance} → ${safeBal} | type: ${txType}`);
       const result = await pool.query(
         `INSERT INTO bank_statements 
          (id, statement_date, description, amount, balance, reference_number, category, transaction_type, reconciliation_status) 
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) 
          RETURNING *`,
-        [id, stmt.statement_date, stmt.description, stmt.amount, stmt.balance,
+        [id, stmt.statement_date, stmt.description, safeAmt, safeBal,
          stmt.reference_number, stmt.category || null, txType, 'unmatched']
       );
       imported.push(result.rows[0]);
@@ -6076,13 +6109,15 @@ app.post('/api/accounting/bank-statements/import', isAuthenticated, async (req, 
     const imported = [];
     for (const stmt of statements) {
       const id = nanoid();
-      const txType = stmt.transaction_type || ((parseFloat(stmt.amount) >= 0) ? 'credit' : 'debit');
+      const safeAmt2 = normalizeAmount(stmt.amount) ?? 0;
+      const safeBal2 = (stmt.balance !== undefined && stmt.balance !== null) ? normalizeAmount(stmt.balance) : null;
+      const txType = stmt.transaction_type || (safeAmt2 >= 0 ? 'credit' : 'debit');
       const result = await pool.query(
         `INSERT INTO bank_statements 
          (id, statement_date, description, amount, balance, reference_number, category, transaction_type, reconciliation_status) 
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) 
          RETURNING *`,
-        [id, stmt.statement_date, stmt.description, stmt.amount, stmt.balance || null,
+        [id, stmt.statement_date, stmt.description, safeAmt2, safeBal2,
          stmt.reference_number || null, stmt.category || null, txType, stmt.reconciliation_status || 'unmatched']
       );
       imported.push(result.rows[0]);

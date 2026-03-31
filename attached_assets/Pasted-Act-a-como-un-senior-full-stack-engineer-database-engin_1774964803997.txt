@@ -1,0 +1,240 @@
+Actúa como un senior full-stack engineer, database engineer y debugging specialist. No quiero una app nueva. Quiero que corrijas definitivamente este error en el sistema existente “gestión”.
+
+ERROR ACTUAL
+Failed to upload and parse bank statement: invalid input syntax for type integer: "15.16"
+
+OBJETIVO
+Encontrar la causa exacta y corregir el flujo completo de importación de extractos bancarios para que valores decimales como 15.16 no vuelvan a romper la inserción en base de datos.
+
+REGLA CRÍTICA
+No quiero un parche superficial.
+Quiero que audites:
+- parser
+- normalización de datos
+- modelo
+- esquema de base de datos
+- insert/update
+- validaciones
+- pruebas
+
+Debes resolver la causa raíz y someterlo a múltiples pruebas antes de cerrar.
+
+==================================================
+1. DIAGNÓSTICO OBLIGATORIO
+==================================================
+
+Debes localizar exactamente dónde entra el valor "15.16" y en qué columna intenta guardarse como integer.
+
+Revisar:
+1. tabla o tablas afectadas por importación bancaria
+2. columnas numéricas del flujo:
+   - amount
+   - debit
+   - credit
+   - balance
+   - fee
+   - hours
+   - transaction_amount
+   - parsed_amount
+   - running_balance
+   - cualquier campo numérico relacionado
+3. modelo ORM / schema validation
+4. parser del PDF/CSV/OFX
+5. transformaciones intermedias
+6. insert exacto que falla
+
+Quiero causa raíz exacta:
+- columna equivocada como integer
+- dato decimal guardado como string
+- parseo defectuoso
+- falta de conversión
+- mezcla entre centavos y decimales
+- otro
+
+==================================================
+2. CORREGIR EL TIPO DE DATO CORRECTAMENTE
+==================================================
+
+Si el campo representa dinero o montos con decimales, NO debe ser integer simple.
+
+Debe revisarse y corregirse para usar el tipo adecuado:
+- numeric(12,2)
+- decimal
+- o sistema consistente de centavos enteros si ya existe esa arquitectura
+
+Regla:
+- si el sistema usa montos monetarios normales, usar numeric/decimal
+- no truncar ni redondear sin control
+- no perder precisión
+
+Si el proyecto usa integer en centavos:
+- convertir 15.16 a 1516 antes de guardar
+- hacerlo de forma consistente en todo el flujo
+- nunca intentar insertar "15.16" directo en integer
+
+==================================================
+3. AUDITAR CONSISTENCIA DE MONTOS
+==================================================
+
+Revisar si hay inconsistencia entre:
+- parser devuelve string decimal
+- backend espera integer
+- DB espera integer
+- frontend muestra decimal
+
+Definir una sola convención y aplicarla de punta a punta:
+- o decimal/numeric
+- o integer en centavos
+pero no mezcla ambigua.
+
+==================================================
+4. NORMALIZACIÓN DE DATOS
+==================================================
+
+Antes de guardar cualquier movimiento bancario:
+- limpiar strings
+- remover símbolos de moneda
+- remover comas si son separadores de miles
+- convertir correctamente a número
+- validar si tiene decimales
+- manejar negativos
+- manejar paréntesis contables si aparecen
+- manejar campos vacíos
+
+Ejemplos a soportar:
+- 15.16
+- -15.16
+- $15.16
+- 1,215.40
+- (15.16)
+
+==================================================
+5. CORREGIR EL PARSER
+==================================================
+
+Si el parser está mandando strings crudos, corregirlo.
+
+Debe producir valores normalizados:
+- amount_decimal
+o
+- amount_cents
+
+No dejar que llegue a la capa de persistencia un valor ambiguo como string no normalizado.
+
+==================================================
+6. CORREGIR ESQUEMA / MIGRACIÓN SI HACE FALTA
+==================================================
+
+Si la columna afectada está mal como integer y debería aceptar decimales:
+- crear migración segura
+- convertir a numeric/decimal
+- migrar datos existentes si aplica
+- no romper registros previos
+
+Si la arquitectura correcta es integer en centavos:
+- mantener DB integer
+- pero corregir backend para convertir antes de guardar
+
+Decide la solución correcta según la arquitectura real del proyecto, no según suposición.
+
+==================================================
+7. VALIDACIONES ROBUSTAS
+==================================================
+
+Agregar validaciones antes del insert:
+- si un campo integer recibe decimal y no debe, convertir o rechazar claramente
+- si un campo monetario viene vacío, usar null o 0 según corresponda
+- si el parser detecta formato inválido, marcar requires_review en vez de romper todo el flujo
+
+==================================================
+8. NO ROMPER EL SISTEMA EXISTENTE
+==================================================
+
+La corrección no debe romper:
+- importación PDF
+- importación CSV
+- importación OFX
+- preview de movimientos
+- contabilidad posterior
+- conciliación
+- filtros
+- cálculos de totales
+
+==================================================
+9. PRUEBAS OBLIGATORIAS — MÍNIMO 20
+==================================================
+
+No cierres el caso hasta ejecutar pruebas reales.
+
+PRUEBAS DE PARSEO Y NORMALIZACIÓN
+1. parsear 15.16
+2. parsear -15.16
+3. parsear $15.16
+4. parsear 1,215.40
+5. parsear (15.16)
+6. parsear 0.00
+7. parsear string vacío
+8. parsear monto con espacios
+
+PRUEBAS DE PERSISTENCIA
+9. guardar movimiento con 15.16 sin error
+10. guardar movimiento con 1215.40 sin error
+11. guardar movimiento negativo sin error
+12. verificar que DB almacena correctamente el monto
+13. verificar que preview muestra el mismo valor correcto
+14. verificar que no se trunca el decimal
+15. verificar que no aparece nuevamente “invalid input syntax for type integer”
+
+PRUEBAS DE FLUJO
+16. importar PDF y confirmar que no rompe
+17. importar CSV y confirmar que no rompe
+18. importar OFX y confirmar que no rompe
+19. confirmar que conciliación sigue funcionando
+20. confirmar que totales y balances siguen coherentes
+
+PRUEBAS ADICIONALES SI APLICAN
+21. prueba con múltiples transacciones decimales
+22. prueba con centavos exactos .10, .50, .99
+23. prueba con cargo y abono
+24. prueba de regresión en cálculos del dashboard/contabilidad
+
+==================================================
+10. LOGS Y EVIDENCIA
+==================================================
+
+Quiero logs claros para depuración temporal:
+- valor original parseado
+- valor normalizado
+- tipo de dato final
+- columna destino
+- si se convirtió a decimal o a centavos
+- query/insert afectado si es seguro mostrarlo
+
+==================================================
+11. REPORTE FINAL OBLIGATORIO
+==================================================
+
+Al terminar, entrega:
+1. causa raíz exacta
+2. columna exacta afectada
+3. archivos modificados
+4. si cambiaste DB o solo backend
+5. convención final elegida:
+   - decimal/numeric
+   - integer en centavos
+6. lista de pruebas ejecutadas
+7. resultado de cada prueba: OK / FAIL
+8. confirmación explícita de que el error fue eliminado
+
+==================================================
+12. CRITERIO DE CIERRE
+==================================================
+
+NO cierres el caso hasta demostrar con pruebas reales que:
+- valores como 15.16 ya no rompen el sistema
+- el flujo PDF/CSV/OFX funciona
+- los montos se guardan correctamente
+- la contabilidad sigue consistente
+- no se pierde precisión
+
+Empieza localizando exactamente qué columna está intentando recibir "15.16" como integer y corrige la arquitectura completa de ese valor en todo el flujo.
