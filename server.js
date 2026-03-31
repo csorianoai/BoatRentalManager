@@ -1472,6 +1472,18 @@ async function initializeDatabase() {
       ON CONFLICT (id) DO NOTHING
     `);
 
+    // ── Viáticos & Transportación expense accounts (idempotent) ───────────
+    const expParent = await pool.query(`SELECT id FROM chart_of_accounts WHERE account_code='5000' LIMIT 1`);
+    const expParentId = expParent.rows[0]?.id || null;
+    await pool.query(`
+      INSERT INTO chart_of_accounts (id, account_code, account_name, account_type, parent_account_id, description)
+      VALUES
+        ('acc_expense_5930', '5930', 'Viáticos', 'expense', $1, 'Viáticos y gastos de viaje del personal'),
+        ('acc_expense_5940', '5940', 'Transportación', 'expense', $1, 'Gastos de transporte, traslados y fletes')
+      ON CONFLICT (id) DO NOTHING
+    `, [expParentId]);
+    console.log('✅ Cuentas de Viáticos (5930) y Transportación (5940) listas');
+
     // ── Company Assets tables ──────────────────────────────────────────────
     await pool.query(`
       CREATE TABLE IF NOT EXISTS company_assets (
