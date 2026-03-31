@@ -1,0 +1,240 @@
+Actúa como un senior full-stack engineer, data parsing specialist, database engineer y QA lead. No quiero una app nueva. Quiero que corrijas definitivamente este error dentro del sistema existente “gestión”.
+
+ERROR ACTUAL
+❌ Failed to upload and parse bank statement: date/time field value out of range: "2026-03-42"
+
+OBJETIVO
+Encontrar la causa exacta del error y corregir todo el flujo de parsing de fechas en la importación de extractos bancarios para que nunca vuelva a intentar guardar fechas inválidas como 2026-03-42.
+
+REGLA CRÍTICA
+No quiero un parche superficial con try/catch.
+Quiero una solución completa en:
+- parser
+- normalización de fechas
+- validación
+- backend
+- persistencia
+- manejo de errores
+- pruebas múltiples
+
+Debes someter la solución a varias pruebas y no cerrar el caso hasta confirmar que el error desapareció.
+
+==================================================
+1. DIAGNÓSTICO OBLIGATORIO
+==================================================
+
+Primero localiza exactamente dónde se genera o transforma la fecha inválida "2026-03-42".
+
+Debes revisar:
+1. parser del PDF
+2. parser del CSV
+3. parser del OFX
+4. función que detecta fechas
+5. función que normaliza fechas
+6. mapeo de campos antes del insert
+7. columna destino en DB
+8. cualquier transformación intermedia
+9. logs actuales del valor original y valor final de fecha
+
+Quiero causa raíz exacta:
+- regex incorrecta
+- lectura errónea de día
+- mezcla de formatos
+- split mal hecho
+- concatenación defectuosa
+- mala interpretación de texto bancario
+- falta de validación previa al insert
+- otro
+
+==================================================
+2. CORREGIR EL PARSER DE FECHAS
+==================================================
+
+El sistema debe soportar formatos comunes reales de bancos, por ejemplo:
+- MM/DD/YYYY
+- DD/MM/YYYY
+- YYYY-MM-DD
+- DD MMM YYYY
+- MMM DD, YYYY
+- MM/DD
+- DD/MM
+- fechas en líneas cercanas al monto/descripción
+
+Debes:
+- detectar formatos válidos
+- convertirlos a un formato interno consistente
+- no asumir un solo formato para todos los bancos
+- evitar interpretar números arbitrarios como fechas
+
+==================================================
+3. VALIDACIÓN ESTRICTA DE FECHAS
+==================================================
+
+Antes de guardar cualquier fecha en DB:
+
+- validar que sea una fecha real
+- validar que el día exista para el mes
+- validar que el mes esté entre 1 y 12
+- validar años razonables
+- rechazar o marcar para revisión cualquier fecha inválida
+
+Ejemplos que deben fallar correctamente:
+- 2026-03-42
+- 2026-13-10
+- 2026-02-30
+- 99/99/9999
+
+Si la fecha no es válida:
+- NO intentar insertarla en DB
+- marcar movimiento o statement como requires_review
+- mostrar mensaje claro
+- conservar texto original para corrección manual si aplica
+
+==================================================
+4. NORMALIZACIÓN ROBUSTA
+==================================================
+
+Implementar una función de normalización central de fechas.
+
+Debe:
+- recibir texto crudo
+- identificar posible formato
+- parsear con reglas seguras
+- devolver:
+  - fecha válida normalizada
+  - o null / invalid con razón clara
+
+No dejar parsing de fechas repartido en varias funciones inconsistentes.
+
+==================================================
+5. FALLBACK Y REVISIÓN MANUAL
+==================================================
+
+Si una fecha no puede interpretarse con confianza:
+- no romper toda la importación
+- marcar esa transacción como requires_review
+- permitir revisión manual de la fecha
+- si el statement puede continuar parcialmente, continuar con las otras transacciones válidas
+
+No quiero que una sola fecha inválida tumbe todo el archivo si el resto es usable.
+
+==================================================
+6. LOGS CLAROS DE DEPURACIÓN
+==================================================
+
+Agregar logs temporales o debug claro para:
+- texto original detectado como fecha
+- formato asumido
+- fecha normalizada resultante
+- motivo del rechazo si es inválida
+- línea o bloque del PDF/CSV/OFX donde se detectó
+
+Ejemplo:
+- raw_date: "03/42/2026"
+- parsed_format: "MM/DD/YYYY"
+- normalized_date: invalid
+- reason: day out of range
+
+==================================================
+7. NO ROMPER EL SISTEMA EXISTENTE
+==================================================
+
+La corrección no debe romper:
+- importación de PDF
+- importación de CSV
+- importación de OFX
+- preview de movimientos
+- conciliación
+- clasificación contable
+- transacciones ya válidas
+
+==================================================
+8. COMPORTAMIENTO CORRECTO DEL SISTEMA
+==================================================
+
+Quiero este comportamiento:
+
+A. Si la fecha se interpreta bien:
+- continuar normalmente
+- guardar fecha válida
+- seguir flujo de preview/importación
+
+B. Si la fecha es inválida:
+- no insertar valor inválido en DB
+- marcar la transacción o archivo como requires_review
+- mostrar mensaje claro
+- permitir corrección o importación parcial si es posible
+
+==================================================
+9. PRUEBAS OBLIGATORIAS — MÍNIMO 20
+==================================================
+
+No cierres el caso hasta ejecutar y documentar pruebas reales.
+
+PRUEBAS DE FECHAS VÁLIDAS
+1. 03/23/2026
+2. 23/03/2026
+3. 2026-03-23
+4. Mar 23 2026
+5. 23 Mar 2026
+6. 03/23
+7. 23/03 con año inferido razonablemente si aplica
+
+PRUEBAS DE FECHAS INVÁLIDAS
+8. 2026-03-42
+9. 2026-13-01
+10. 2026-02-30
+11. 99/99/9999
+12. 03/42/2026
+13. texto no fecha
+
+PRUEBAS DE FLUJO
+14. importar PDF con fechas válidas
+15. importar CSV con fechas válidas
+16. importar OFX con fechas válidas
+17. importar PDF con una fecha inválida y confirmar que no rompe todo el flujo
+18. confirmar que movimientos válidos sí pasan
+19. confirmar que movimientos inválidos quedan en requires_review o equivalente
+20. confirmar que ya no aparece el error “date/time field value out of range”
+
+PRUEBAS EXTRA
+21. archivo con mezcla de fechas válidas e inválidas
+22. archivo con formato ambiguo DD/MM vs MM/DD
+23. archivo con fechas en múltiples líneas
+24. regresión general del preview y conciliación
+
+==================================================
+10. MIGRAR A UNA FUNCIÓN ÚNICA DE FECHAS
+==================================================
+
+Si hoy hay varias funciones parseando fechas en distintos lugares:
+- unifícalas en una sola utilidad robusta
+- reutilízala en PDF, CSV y OFX
+- evita lógica duplicada o inconsistente
+
+==================================================
+11. REPORTE FINAL OBLIGATORIO
+==================================================
+
+Al terminar, entrega:
+1. causa raíz exacta
+2. archivo(s) modificados
+3. función(es) corregidas o creadas
+4. estrategia final de parsing de fechas
+5. manejo de fechas inválidas
+6. lista de pruebas ejecutadas
+7. resultado de cada prueba: OK / FAIL
+8. confirmación explícita de que el error fue eliminado
+
+==================================================
+12. CRITERIO DE CIERRE
+==================================================
+
+NO cierres el caso hasta demostrar con pruebas reales que:
+- el sistema ya no intenta guardar fechas inválidas como 2026-03-42
+- las fechas válidas siguen funcionando
+- PDF, CSV y OFX siguen funcionando
+- una fecha mala ya no rompe toda la importación
+- el usuario puede revisar o corregir fechas problemáticas cuando sea necesario
+
+Empieza por localizar exactamente dónde se construyó la fecha 2026-03-42 y corrige de raíz el parser + normalización + validación + fallback.

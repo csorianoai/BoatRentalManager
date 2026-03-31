@@ -5768,6 +5768,98 @@ app.get('/api/accounting/bank-statements/unmatched', isAuthenticated, async (req
   }
 });
 
+// ── Unified safe date parser ──────────────────────────────────────────────────
+// Returns "YYYY-MM-DD" or null. Never throws. Validates real calendar ranges.
+const MONTH_NAMES = { jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12,
+                      ene:1,abr:4,ago:8,dic:12 };
+
+function isValidDate(y, m, d) {
+  y = parseInt(y); m = parseInt(m); d = parseInt(d);
+  if (isNaN(y)||isNaN(m)||isNaN(d)) return false;
+  if (y < 2000 || y > 2099) return false;   // reasonable bank statement range
+  if (m < 1 || m > 12) return false;
+  if (d < 1 || d > 31) return false;
+  const maxDay = [0,31,y%4===0&&(y%100!==0||y%400===0)?29:28,31,30,31,30,31,31,30,31,30,31][m];
+  if (d > maxDay) return false;
+  return true;
+}
+
+function isoDate(y, m, d) {
+  return `${String(y).padStart(4,'0')}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+}
+
+function parseDateSafe(raw) {
+  if (!raw) return null;
+  const s = raw.toString().trim();
+  if (!s) return null;
+
+  let m;
+
+  // ── OFX format: YYYYMMDD or YYYYMMDDHHMMSS[.000][+offset]
+  m = s.match(/^(\d{4})(\d{2})(\d{2})/);
+  if (m && parseInt(m[1]) >= 2000) {
+    const [,y,mo,d] = m;
+    if (isValidDate(y,mo,d)) return isoDate(y,mo,d);
+  }
+
+  // ── YYYY-MM-DD or YYYY/MM/DD
+  m = s.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
+  if (m) {
+    if (isValidDate(m[1],m[2],m[3])) return isoDate(m[1],m[2],m[3]);
+    console.warn(`⚠️  parseDateSafe: invalid calendar value in "${s}" → y=${m[1]} m=${m[2]} d=${m[3]}`);
+    return null;
+  }
+
+  // ── MM/DD/YYYY or MM/DD/YY (N.American: month ≤ 12 first)
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+  if (m) {
+    let [,a,b,yr] = m;
+    if (yr.length === 2) yr = '20' + yr;
+    // Prefer MM/DD/YYYY interpretation; if month >12 try DD/MM/YYYY
+    if (parseInt(a) <= 12 && isValidDate(yr,a,b)) return isoDate(yr,a,b);
+    if (parseInt(b) <= 12 && isValidDate(yr,b,a)) return isoDate(yr,b,a);
+    console.warn(`⚠️  parseDateSafe: both MM/DD and DD/MM invalid for "${s}"`);
+    return null;
+  }
+
+  // ── MM/DD (no year) — require both parts ≤ valid ranges
+  m = s.match(/^(\d{1,2})\/(\d{1,2})$/);
+  if (m) {
+    const CY = new Date().getFullYear();
+    if (parseInt(m[1]) <= 12 && isValidDate(CY,m[1],m[2])) return isoDate(CY,m[1],m[2]);
+    if (parseInt(m[2]) <= 12 && isValidDate(CY,m[2],m[1])) return isoDate(CY,m[2],m[1]);
+    console.warn(`⚠️  parseDateSafe: no-year date invalid "${s}"`);
+    return null;
+  }
+
+  // ── DD-MM-YYYY or MM-DD-YYYY (dash separated, has year)
+  m = s.match(/^(\d{1,2})-(\d{1,2})-(\d{2,4})/);
+  if (m) {
+    let [,a,b,yr] = m;
+    if (yr.length === 2) yr = '20' + yr;
+    if (parseInt(a) <= 12 && isValidDate(yr,a,b)) return isoDate(yr,a,b);
+    if (parseInt(b) <= 12 && isValidDate(yr,b,a)) return isoDate(yr,b,a);
+    console.warn(`⚠️  parseDateSafe: dash-separated invalid "${s}"`);
+    return null;
+  }
+
+  // ── DD Mon YYYY or Mon DD, YYYY
+  m = s.match(/^(\d{1,2})\s+([a-z]{3})\w*[\s,]*(\d{4})?/i);
+  if (m) {
+    const mn = MONTH_NAMES[m[2].toLowerCase().slice(0,3)];
+    const yr = m[3] || new Date().getFullYear();
+    if (mn && isValidDate(yr,mn,m[1])) return isoDate(yr,mn,m[1]);
+  }
+  m = s.match(/^([a-z]{3})\w*[\s,]+(\d{1,2})[\s,]+(\d{4})/i);
+  if (m) {
+    const mn = MONTH_NAMES[m[1].toLowerCase().slice(0,3)];
+    if (mn && isValidDate(m[3],mn,m[2])) return isoDate(m[3],mn,m[2]);
+  }
+
+  console.warn(`⚠️  parseDateSafe: unrecognized format "${s}"`);
+  return null;
+}
+
 // ── Normalize any monetary string/number to a safe float ─────────────────────
 // Handles: 15.16 | -15.16 | $15.16 | 1,215.40 | (15.16) | "  $1,000.00 " | ""
 function normalizeAmount(raw) {
@@ -5834,15 +5926,20 @@ app.post('/api/accounting/bank-statements/upload', isAuthenticated, upload.singl
         
         const reference = record.Reference || record.CheckNumber || record['Check Number'] || null;
 
+        const safeDate = parseDateSafe(date);
+        if (!safeDate) {
+          console.warn(`⚠️  CSV: skipped row with invalid date raw="${date}" desc="${description}"`);
+          return null;
+        }
         return {
-          statement_date: date,
+          statement_date: safeDate,
           description: description || 'Unknown',
           amount: amount,
           balance: balance,
           reference_number: reference
         };
-      });
-    } 
+      }).filter(Boolean); // remove null (invalid-date) rows
+    }
     // Parse OFX/QFX files
     else if (fileType.endsWith('.ofx') || fileType.endsWith('.qfx')) {
       const fileContent = fileBuffer.toString('utf-8');
@@ -5853,13 +5950,21 @@ app.post('/api/accounting/bank-statements/upload', isAuthenticated, upload.singl
         const stmtrs = ofxData.OFX.BANKMSGSRSV1.STMTTRNRS.STMTRS;
         const transactions = stmtrs.BANKTRANLIST.STMTTRN;
         
-        statements = (Array.isArray(transactions) ? transactions : [transactions]).map(trn => ({
-          statement_date: trn.DTPOSTED ? trn.DTPOSTED.substring(0, 8) : null,
-          description: trn.NAME || trn.MEMO || 'Unknown',
-          amount: normalizeAmount(trn.TRNAMT) ?? 0,
-          balance: normalizeAmount(trn.LEDGERBAL?.BALAMT) ?? null,
-          reference_number: trn.FITID || trn.CHECKNUM || null
-        }));
+        statements = (Array.isArray(transactions) ? transactions : [transactions]).map(trn => {
+          const rawDt = trn.DTPOSTED || trn.DTAVAIL || '';
+          const safeDate = parseDateSafe(rawDt);
+          if (!safeDate) {
+            console.warn(`⚠️  OFX: skipped transaction with invalid date raw="${rawDt}" name="${trn.NAME||'?'}"`);
+            return null;
+          }
+          return {
+            statement_date: safeDate,
+            description: trn.NAME || trn.MEMO || 'Unknown',
+            amount: normalizeAmount(trn.TRNAMT) ?? 0,
+            balance: normalizeAmount(trn.LEDGERBAL?.BALAMT) ?? null,
+            reference_number: trn.FITID || trn.CHECKNUM || null
+          };
+        }).filter(Boolean);
       }
     }
     // Parse PDF bank statements (pdf-parse v2 API: new PDFParse({ data: buffer }).getText())
@@ -5904,35 +6009,15 @@ app.post('/api/accounting/bank-statements/upload', isAuthenticated, upload.singl
       ];
 
       // Date patterns that anchor a transaction line
+      // Tightened DATE_RXS — month 01-12, day 01-31 only; prevents false positives like 03/42
       const DATE_RXS = [
-        /^(\d{1,2}\/\d{1,2}\/\d{2,4})/,   // MM/DD/YYYY or MM/DD/YY
-        /^(\d{1,2}\/\d{1,2})(?!\d)/,        // MM/DD (no year)
-        /^(\d{4}-\d{2}-\d{2})/,             // YYYY-MM-DD
-        /^(\d{1,2}-\d{1,2}-\d{2,4})/,       // DD-MM-YYYY
+        /^((0?[1-9]|1[0-2])\/(0?[1-9]|[12]\d|3[01])\/(\d{2,4}))/,  // MM/DD/YYYY (month 1-12, day 1-31)
+        /^((0?[1-9]|1[0-2])\/(0?[1-9]|[12]\d|3[01]))(?![\d\/])/,    // MM/DD no year (month 1-12, day 1-31)
+        /^(\d{4}-\d{2}-\d{2})/,                                       // YYYY-MM-DD
+        /^((0?[1-9]|[12]\d|3[01])-(0?[1-9]|1[0-2])-(\d{2,4}))/,     // DD-MM-YYYY
         /^(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|Ene|Abr|Ago|Dic)\w*(?:\s+\d{4})?)/i,
       ];
-
-      function parseDate(raw) {
-        if (!raw) return null;
-        raw = raw.trim();
-        // MM/DD/YYYY or MM/DD/YY
-        let m = raw.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/);
-        if (m) {
-          const yr = m[3] ? (m[3].length===2?'20'+m[3]:m[3]) : CY;
-          return `${yr}-${m[1].padStart(2,'0')}-${m[2].padStart(2,'0')}`;
-        }
-        // YYYY-MM-DD
-        m = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
-        if (m) return `${m[1]}-${m[2]}-${m[3]}`;
-        // DD-MM-YYYY
-        m = raw.match(/^(\d{1,2})-(\d{1,2})-(\d{2,4})/);
-        if (m) { const yr = m[3].length===2?'20'+m[3]:m[3]; return `${yr}-${m[1].padStart(2,'0')}-${m[2].padStart(2,'0')}`; }
-        // DD Mon YYYY
-        const MONTHS = {jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12,ene:1,abr:4,ago:8,dic:12};
-        m = raw.match(/^(\d{1,2})\s+([a-z]{3})\w*(?:\s+(\d{4}))?/i);
-        if (m) { const mn = MONTHS[m[2].toLowerCase().slice(0,3)]; if (mn) return `${m[3]||CY}-${String(mn).padStart(2,'0')}-${m[1].padStart(2,'0')}`; }
-        return null;
-      }
+      // Use central parseDateSafe — drop inline parseDate entirely
 
       // Find ALL monetary amounts in a string, with their position and sign
       function findAmounts(str) {
@@ -5969,9 +6054,10 @@ app.post('/api/accounting/bank-statements/upload', isAuthenticated, upload.singl
       if (blk) blocks.push(blk);
       console.log(`📄 PDF strategy-1 blocks found: ${blocks.length}`);
 
+      let skippedBadDate = 0;
       for (const b of blocks) {
-        const pd = parseDate(b.dateRaw);
-        if (!pd) continue;
+        const pd = parseDateSafe(b.dateRaw);
+        if (!pd) { skippedBadDate++; console.warn(`⚠️  PDF S1: skipped invalid date raw="${b.dateRaw}"`); continue; }
         // Combine rest + extras into one text
         const combined = [b.rest, ...b.extras].join(' ').replace(/\s+/g,' ').trim();
         const amounts = findAmounts(combined);
@@ -6004,8 +6090,8 @@ app.post('/api/accounting/bank-statements/upload', isAuthenticated, upload.singl
           const rest = line.slice(dateMatch[0].length).trim();
           const amounts = findAmounts(rest);
           if (!amounts.length) continue;
-          const pd = parseDate(dateMatch[1]);
-          if (!pd) continue;
+          const pd = parseDateSafe(dateMatch[1]);
+          if (!pd) { skippedBadDate++; console.warn(`⚠️  PDF S2: skipped invalid date raw="${dateMatch[1]}"`); continue; }
           let chosen = amounts.find(a=>a.val<0) || amounts[0];
           let desc = rest.slice(0, chosen.start).trim();
           if (!desc) desc = 'Transacción';
@@ -6045,9 +6131,16 @@ app.post('/api/accounting/bank-statements/upload', isAuthenticated, upload.singl
 
     // Import parsed statements into database
     const imported = [];
+    const requiresReview = [];
     for (const stmt of statements) {
-      // Skip invalid entries
-      if (!stmt.statement_date || stmt.amount === undefined) continue;
+      // Final safety: validate date one more time before DB insert
+      const finalDate = parseDateSafe(stmt.statement_date);
+      if (!finalDate) {
+        console.warn(`⚠️  INSERT skipped: invalid date "${stmt.statement_date}" for "${stmt.description}"`);
+        requiresReview.push({ description: stmt.description, raw_date: stmt.statement_date, reason: 'invalid_date' });
+        continue;
+      }
+      if (!finalDate || stmt.amount === undefined) continue;
 
       const id = nanoid();
       const safeAmt = normalizeAmount(stmt.amount) ?? 0;
@@ -6065,18 +6158,22 @@ app.post('/api/accounting/bank-statements/upload', isAuthenticated, upload.singl
       imported.push(result.rows[0]);
     }
 
-    console.log(`✅ Imported ${imported.length} bank statements from ${fileName}`);
+    console.log(`✅ Imported ${imported.length} bank statements from ${fileName}. Skipped ${requiresReview.length} due to invalid dates.`);
     const isPdf = fileName.toLowerCase().endsWith('.pdf');
+    const hasSkipped = requiresReview.length > 0;
+    let message = isPdf
+      ? `Se detectaron y guardaron ${imported.length} transacciones del PDF. Revisa y confirma en la tabla.`
+      : `${imported.length} movimientos importados correctamente.`;
+    if (hasSkipped) message += ` ${requiresReview.length} movimiento(s) omitidos por fecha inválida — requieren revisión manual.`;
     res.json({ 
       success: true, 
       imported: imported.length, 
       statements: imported,
       fileName: fileName,
-      needsReview: isPdf && imported.length > 0,
+      needsReview: (isPdf && imported.length > 0) || hasSkipped,
+      requiresReview: requiresReview,
       rawTextPreview: isPdf ? pdfRawText.slice(0, 2000) : '',
-      message: isPdf
-        ? `Se detectaron y guardaron ${imported.length} transacciones del PDF. Revisa y confirma en la tabla.`
-        : `${imported.length} movimientos importados correctamente.`
+      message
     });
   } catch (error) {
     console.error('Error uploading bank statement:', error);
