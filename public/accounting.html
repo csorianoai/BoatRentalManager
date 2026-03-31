@@ -688,6 +688,15 @@
                   <option value="office">Oficina</option>
                   <option value="inventory">Inventario</option>
                   <option value="equipment">Equipo</option>
+                  <option value="viaticos">Viáticos</option>
+                  <option value="transportation">Transportación</option>
+                  <option value="gps_boats">GPS Barcos</option>
+                  <option value="publicidad">Publicidad</option>
+                  <option value="office_rent">Renta de Oficina</option>
+                  <option value="parts">Partes y Piezas</option>
+                  <option value="operating_systems">Sistemas Operativos</option>
+                  <option value="communications">Comunicaciones</option>
+                  <option value="electricity">Electricidad y Luces</option>
                   <option value="booking_income">Ingreso Reserva</option>
                   <option value="other_expense">Otro Gasto</option>
                 </select>
@@ -902,20 +911,43 @@
               </div>
               <div>
                 <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Categoría *</label>
-                <select id="cm-category" data-testid="select-classif-category" style="width:100%;margin-top:4px;padding:7px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:13px">
-                  <option value="fuel">Combustible</option>
-                  <option value="marina_fees">Marina / Docking</option>
-                  <option value="maintenance_parts">Mantenimiento / Reparación</option>
-                  <option value="cleaning">Limpieza</option>
-                  <option value="insurance">Seguro</option>
-                  <option value="office">Oficina / Suministros</option>
-                  <option value="inventory">Inventario</option>
-                  <option value="equipment">Equipo / Activo</option>
-                  <option value="boat_purchase">Compra de Barco</option>
-                  <option value="booking_income">Ingreso de Reserva</option>
-                  <option value="other_income">Otro Ingreso</option>
-                  <option value="bank_transfer">Transferencia Bancaria</option>
-                  <option value="other_expense">Otro Gasto</option>
+                <select id="cm-category" data-testid="select-classif-category" onchange="onCmCategoryChange()" style="width:100%;margin-top:4px;padding:7px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:13px">
+                  <optgroup label="── Gastos Operativos ──">
+                    <option value="fuel">Combustible</option>
+                    <option value="marina_fees">Marina / Docking</option>
+                    <option value="maintenance_parts">Mantenimiento / Reparación</option>
+                    <option value="cleaning">Limpieza</option>
+                    <option value="insurance">Seguro</option>
+                    <option value="parts">Partes y Piezas</option>
+                    <option value="gps_boats">GPS Barcos</option>
+                  </optgroup>
+                  <optgroup label="── Personal y Viajes ──">
+                    <option value="crew_payroll">Nómina / Tripulación</option>
+                    <option value="viaticos">Viáticos</option>
+                    <option value="transportation">Transportación</option>
+                  </optgroup>
+                  <optgroup label="── Administrativos ──">
+                    <option value="office">Oficina / Suministros</option>
+                    <option value="office_rent">Renta de Oficina</option>
+                    <option value="communications">Comunicaciones</option>
+                    <option value="electricity">Electricidad y Luces</option>
+                    <option value="operating_systems">Sistemas Operativos</option>
+                    <option value="publicidad">Publicidad</option>
+                    <option value="subscriptions">Suscripciones</option>
+                  </optgroup>
+                  <optgroup label="── Inventario y Equipos ──">
+                    <option value="inventory">Inventario</option>
+                    <option value="equipment">Equipo / Activo</option>
+                    <option value="boat_purchase">Compra de Barco</option>
+                  </optgroup>
+                  <optgroup label="── Ingresos ──">
+                    <option value="booking_income">Ingreso de Reserva</option>
+                    <option value="other_income">Otro Ingreso</option>
+                  </optgroup>
+                  <optgroup label="── Otros ──">
+                    <option value="bank_transfer">Transferencia Bancaria</option>
+                    <option value="other_expense">Otro Gasto</option>
+                  </optgroup>
                 </select>
               </div>
               <div>
@@ -2651,6 +2683,46 @@
           } catch(_) {}
         }
 
+        // ── Mapa categoría → cuenta contable (para auto-fill del Débito) ───
+        const CATEGORY_ACCOUNT_MAP = {
+          fuel:              'Gastos de Combustible',
+          marina_fees:       'Gastos de Marina',
+          maintenance_parts: 'Gastos de Mantenimiento',
+          maintenance_repair:'Gastos de Mantenimiento',
+          cleaning:          'Gastos de Limpieza',
+          insurance:         'Gastos de Seguro',
+          office:            'Gastos Administrativos',
+          subscriptions:     'Gastos Administrativos',
+          inventory:         'Inventario',
+          equipment:         'Equipo',
+          boat_purchase:     'Compra de Barco',
+          crew_payroll:      'Sueldos — Tripulación',
+          viaticos:          'Viáticos',
+          transportation:    'Transportación',
+          gps_boats:         'GPS Barcos',
+          publicidad:        'Publicidad',
+          office_rent:       'Renta de Oficina',
+          parts:             'Partes y Piezas',
+          operating_systems: 'Sistemas Operativos',
+          communications:    'Comunicaciones',
+          electricity:       'Electricidad y Luces',
+          booking_income:    'Ingresos por Reservas',
+          other_income:      'Otros Ingresos',
+          bank_transfer:     'Cuenta Bancaria',
+          other_expense:     'Gastos Generales',
+        };
+
+        function onCmCategoryChange() {
+          const cat = document.getElementById('cm-category').value;
+          const debitEl = document.getElementById('cm-debit');
+          // Only auto-fill if the field is empty or was previously auto-filled
+          if (cat && CATEGORY_ACCOUNT_MAP[cat] && (!debitEl.value || debitEl.dataset.autoFilled === 'true')) {
+            debitEl.value = CATEGORY_ACCOUNT_MAP[cat];
+            debitEl.dataset.autoFilled = 'true';
+          }
+          updateClassifPreview();
+        }
+
         // ── Classification modal ───────────────────────────────────────────
         function openClassifModal(id) {
           const s = classifData.find(x=>x.id===id);
@@ -2659,7 +2731,9 @@
           document.getElementById('cm-type').value = s.accounting_type||'expense';
           document.getElementById('cm-category').value = s.category||'other_expense';
           document.getElementById('cm-confidence').value = s.confidence_level||'medium';
-          document.getElementById('cm-debit').value = s.suggested_account_debit||'';
+          const cmDebit = document.getElementById('cm-debit');
+          cmDebit.value = s.suggested_account_debit||'';
+          cmDebit.dataset.autoFilled = s.suggested_account_debit ? 'false' : 'true';
           document.getElementById('cm-credit').value = s.suggested_account_credit||'';
           document.getElementById('cm-boat').value = s.boat_id||'';
           document.getElementById('cm-notes').value = s.notes||'';
@@ -2811,11 +2885,33 @@
                 <option value="">Sin categoría</option>
                 <option value="booking">Reserva</option>
                 <option value="commission">Comisión</option>
-                <option value="fuel">Combustible</option>
-                <option value="maintenance">Mantenimiento</option>
-                <option value="bank_transfer">Transferencia bancaria</option>
-                <option value="manual">Manual</option>
-                <option value="other">Otro</option>
+                <optgroup label="── Gastos Operativos ──">
+                  <option value="fuel">Combustible</option>
+                  <option value="maintenance">Mantenimiento</option>
+                  <option value="parts">Partes y Piezas</option>
+                  <option value="cleaning">Limpieza</option>
+                  <option value="insurance">Seguro</option>
+                  <option value="marina_fees">Marina / Docking</option>
+                  <option value="gps_boats">GPS Barcos</option>
+                </optgroup>
+                <optgroup label="── Personal y Viajes ──">
+                  <option value="crew_payroll">Nómina / Tripulación</option>
+                  <option value="viaticos">Viáticos</option>
+                  <option value="transportation">Transportación</option>
+                </optgroup>
+                <optgroup label="── Administrativos ──">
+                  <option value="office">Oficina / Suministros</option>
+                  <option value="office_rent">Renta de Oficina</option>
+                  <option value="communications">Comunicaciones</option>
+                  <option value="electricity">Electricidad y Luces</option>
+                  <option value="operating_systems">Sistemas Operativos</option>
+                  <option value="publicidad">Publicidad</option>
+                </optgroup>
+                <optgroup label="── Otros ──">
+                  <option value="bank_transfer">Transferencia bancaria</option>
+                  <option value="manual">Manual</option>
+                  <option value="other">Otro</option>
+                </optgroup>
               </select>
             </div>
 
