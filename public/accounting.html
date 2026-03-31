@@ -626,6 +626,12 @@
             <button class="btn-primary" onclick="postAllConfirmed()" data-testid="button-post-all" style="font-size:13px;padding:8px 14px;background:#10b981">
               ✅ Registrar Confirmados
             </button>
+            <button class="btn-primary" onclick="deleteSelectedStatements()" data-testid="button-delete-selected" style="font-size:13px;padding:8px 14px;background:#dc2626">
+              🗑 Eliminar Seleccionados
+            </button>
+            <button class="btn-primary" onclick="openBatchManager()" data-testid="button-manage-batches" style="font-size:13px;padding:8px 14px;background:#374151">
+              📂 Gestionar Lotes
+            </button>
             <div style="flex:1"></div>
             <div style="display:flex;gap:3px;background:#f1f5f9;padding:3px;border-radius:8px">
               <button class="csf-filter active" onclick="setClassifFilter('all')" data-testid="filter-all">Todos</button>
@@ -776,6 +782,34 @@
                 style="padding:9px 22px;background:#ef4444;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer;font-weight:700">
                 Marcar Seleccionados como Duplicados
               </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Batch Manager Modal -->
+        <div id="batch-manager-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1003;align-items:flex-start;justify-content:center;padding-top:40px;overflow-y:auto">
+          <div style="background:#fff;border-radius:12px;padding:28px;width:700px;max-width:95vw;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+              <div style="font-size:18px;font-weight:700;color:#1a1a2e">Gestionar Lotes Importados</div>
+              <button onclick="document.getElementById('batch-manager-modal').style.display='none'" style="background:none;border:none;font-size:22px;cursor:pointer;color:#64748b" data-testid="button-close-batch-manager">×</button>
+            </div>
+            <div style="font-size:13px;color:#64748b;margin-bottom:16px">Cada fila es un archivo de estado de cuenta que importaste. Puedes eliminar un lote completo si lo subiste por error.</div>
+            <div style="overflow-x:auto">
+              <table style="width:100%;border-collapse:collapse;font-size:13px">
+                <thead>
+                  <tr style="background:#f8fafc;border-bottom:2px solid #e5e7eb">
+                    <th style="text-align:left;padding:8px 10px;color:#374151;font-weight:600">ID de Lote</th>
+                    <th style="text-align:center;padding:8px 10px;color:#374151;font-weight:600">Filas</th>
+                    <th style="text-align:left;padding:8px 10px;color:#374151;font-weight:600">Rango de fechas</th>
+                    <th style="text-align:center;padding:8px 10px;color:#dc2626;font-weight:600">Duplicados</th>
+                    <th style="text-align:center;padding:8px 10px;color:#059669;font-weight:600">Registrados</th>
+                    <th style="text-align:center;padding:8px 10px;color:#374151;font-weight:600">Acción</th>
+                  </tr>
+                </thead>
+                <tbody id="batch-manager-tbody">
+                  <tr><td colspan="6" style="text-align:center;padding:20px;color:#64748b">Cargando...</td></tr>
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
@@ -1997,6 +2031,7 @@
                 <button class="classif-action-btn btn-edit" onclick="openClassifModal('${s.id}')" data-testid="edit-${s.id}" title="Editar">✏</button>
                 ${canPost?`<button class="classif-action-btn btn-post" onclick="postStatement('${s.id}')" data-testid="post-${s.id}" title="Registrar en contabilidad">📒</button>`:''}
                 ${status!=='posted'&&status!=='ignored'?`<button class="classif-action-btn btn-ignore" onclick="ignoreClassif('${s.id}')" data-testid="ignore-${s.id}" title="Ignorar">✕</button>`:''}
+                <button class="classif-action-btn btn-delete" onclick="deleteSingleStatement('${s.id}')" data-testid="delete-stmt-${s.id}" title="Eliminar esta transacción" style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5">🗑</button>
               </div>`;
 
             const rowBg = s.is_duplicate ? 'background:#fef2f2;'
@@ -2376,6 +2411,80 @@
             if (!r.ok) throw new Error(d.error||'Error');
             showDupeButtons(false);
             showNotice(`✅ ${d.reset} transacciones desmarcadas. Ahora puedes volver a detectar duplicados correctamente.`,'green');
+            await loadClassifStatements();
+          } catch(e) { showNotice('❌ Error: '+e.message,'red'); }
+        }
+
+        // ── Eliminar transacción individual ──────────────────────────────
+        async function deleteSingleStatement(id) {
+          if (!confirm('¿Eliminar esta transacción del estado de cuenta? Esta acción no se puede deshacer.')) return;
+          try {
+            const r = await fetch(`/api/accounting/bank-statements/${id}`, { method:'DELETE' });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.error||'Error');
+            showNotice('✅ Transacción eliminada.','green');
+            await loadClassifStatements();
+          } catch(e) { showNotice('❌ Error: '+e.message,'red'); }
+        }
+
+        // ── Eliminar transacciones seleccionadas ─────────────────────────
+        async function deleteSelectedStatements() {
+          const ids = Array.from(classifSelected);
+          if (ids.length === 0) { showNotice('Selecciona al menos una transacción con el checkbox.','orange'); return; }
+          if (!confirm(`¿Eliminar ${ids.length} transacciones seleccionadas? Esta acción no se puede deshacer.`)) return;
+          try {
+            const r = await fetch('/api/accounting/bank-statements/delete-selected', {
+              method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ids})
+            });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.error||'Error');
+            classifSelected.clear();
+            showNotice(`✅ ${d.deleted} transacciones eliminadas.`,'green');
+            await loadClassifStatements();
+          } catch(e) { showNotice('❌ Error: '+e.message,'red'); }
+        }
+
+        // ── Gestionar lotes de estado de cuenta ──────────────────────────
+        async function openBatchManager() {
+          const modal = document.getElementById('batch-manager-modal');
+          modal.style.display = 'flex';
+          const tbody = document.getElementById('batch-manager-tbody');
+          tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:#64748b">Cargando lotes...</td></tr>';
+          try {
+            const r = await fetch('/api/accounting/bank-statements/batches');
+            const d = await r.json();
+            if (!r.ok || !d.batches) throw new Error(d.error||'Error');
+            if (d.batches.length === 0) {
+              tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:#64748b">No hay lotes importados.</td></tr>';
+              return;
+            }
+            tbody.innerHTML = d.batches.map(b => {
+              const importedDate = b.imported_at ? new Date(b.imported_at).toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
+              const rangeDate = `${(b.date_from||'').slice(0,10)} → ${(b.date_to||'').slice(0,10)}`;
+              return `<tr>
+                <td style="font-size:11px;font-family:monospace;color:#64748b;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${b.id}">${b.id||'—'}</td>
+                <td style="text-align:center;font-weight:600">${b.total}</td>
+                <td style="font-size:11px;color:#64748b">${rangeDate}</td>
+                <td style="text-align:center;color:#dc2626">${b.duplicates>0?b.duplicates:'—'}</td>
+                <td style="text-align:center;color:#059669">${b.posted>0?b.posted:'—'}</td>
+                <td style="text-align:center">
+                  <button onclick="deleteBatch('${b.id}',${b.total})" data-testid="delete-batch-${b.id}" style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;border-radius:5px;padding:4px 10px;cursor:pointer;font-size:12px">🗑 Eliminar lote</button>
+                </td>
+              </tr>`;
+            }).join('');
+          } catch(e) {
+            tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:#dc2626">Error: ${e.message}</td></tr>`;
+          }
+        }
+
+        async function deleteBatch(batchId, count) {
+          if (!confirm(`¿Eliminar el lote completo (${count} transacciones)? Esta acción no se puede deshacer.`)) return;
+          try {
+            const r = await fetch(`/api/accounting/bank-statements/by-batch/${encodeURIComponent(batchId)}`, { method:'DELETE' });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.error||'Error');
+            showNotice(`✅ ${d.deleted} transacciones eliminadas.`,'green');
+            openBatchManager();
             await loadClassifStatements();
           } catch(e) { showNotice('❌ Error: '+e.message,'red'); }
         }

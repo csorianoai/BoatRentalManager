@@ -6964,6 +6964,70 @@ app.delete('/api/accounting/bank-statements/delete-duplicates', isAuthenticated,
   }
 });
 
+// --- Delete a single bank statement ---
+app.delete('/api/accounting/bank-statements/:id', isAuthenticated, async (req, res) => {
+  try {
+    const result = await pool.query(`DELETE FROM bank_statements WHERE id=$1 RETURNING id`, [req.params.id]);
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Transacción no encontrada' });
+    res.json({ success: true, deleted: 1 });
+  } catch(err) {
+    console.error('delete-statement error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Bulk delete selected bank statements by IDs ---
+app.post('/api/accounting/bank-statements/delete-selected', isAuthenticated, async (req, res) => {
+  try {
+    const { ids } = req.body || {};
+    if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'Se requiere lista de IDs' });
+    const result = await pool.query(
+      `DELETE FROM bank_statements WHERE id = ANY($1::text[])`,
+      [ids]
+    );
+    res.json({ success: true, deleted: result.rowCount });
+  } catch(err) {
+    console.error('delete-selected error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- List all import batches (unique batches with counts and date range) ---
+app.get('/api/accounting/bank-statements/batches', isAuthenticated, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT import_batch_id as id,
+             COUNT(*) as total,
+             MIN(statement_date) as date_from,
+             MAX(statement_date) as date_to,
+             SUM(CASE WHEN is_duplicate THEN 1 ELSE 0 END) as duplicates,
+             SUM(CASE WHEN classification_status='posted' THEN 1 ELSE 0 END) as posted,
+             MIN(created_at) as imported_at
+      FROM bank_statements
+      WHERE import_batch_id IS NOT NULL AND import_batch_id != 'manual'
+      GROUP BY import_batch_id
+      ORDER BY MIN(created_at) DESC
+    `);
+    res.json({ success: true, batches: result.rows });
+  } catch(err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Delete all statements from a specific import batch ---
+app.delete('/api/accounting/bank-statements/by-batch/:batchId', isAuthenticated, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `DELETE FROM bank_statements WHERE import_batch_id=$1 RETURNING id`,
+      [req.params.batchId]
+    );
+    res.json({ success: true, deleted: result.rowCount });
+  } catch(err) {
+    console.error('delete-batch error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // --- Add manual transaction (for missing entries) ---
 app.post('/api/accounting/bank-statements/manual', isAuthenticated, async (req, res) => {
   try {
