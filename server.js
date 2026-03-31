@@ -6023,11 +6023,11 @@ app.post('/api/accounting/bank-statements/upload', isAuthenticated, upload.singl
       const txType = stmt.transaction_type || ((parseFloat(stmt.amount) >= 0) ? 'credit' : 'debit');
       const result = await pool.query(
         `INSERT INTO bank_statements 
-         (id, statement_date, description, amount, balance, reference_number, category, transaction_type) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
+         (id, statement_date, description, amount, balance, reference_number, category, transaction_type, reconciliation_status) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) 
          RETURNING *`,
         [id, stmt.statement_date, stmt.description, stmt.amount, stmt.balance,
-         stmt.reference_number, stmt.category || null, txType]
+         stmt.reference_number, stmt.category || null, txType, 'unmatched']
       );
       imported.push(result.rows[0]);
     }
@@ -6079,11 +6079,11 @@ app.post('/api/accounting/bank-statements/import', isAuthenticated, async (req, 
       const txType = stmt.transaction_type || ((parseFloat(stmt.amount) >= 0) ? 'credit' : 'debit');
       const result = await pool.query(
         `INSERT INTO bank_statements 
-         (id, statement_date, description, amount, balance, reference_number, category, transaction_type) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
+         (id, statement_date, description, amount, balance, reference_number, category, transaction_type, reconciliation_status) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) 
          RETURNING *`,
         [id, stmt.statement_date, stmt.description, stmt.amount, stmt.balance || null,
-         stmt.reference_number || null, stmt.category || null, txType]
+         stmt.reference_number || null, stmt.category || null, txType, stmt.reconciliation_status || 'unmatched']
       );
       imported.push(result.rows[0]);
     }
