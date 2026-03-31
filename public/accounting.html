@@ -614,6 +614,12 @@
             <button class="btn-primary" onclick="runDuplicateCheck()" data-testid="button-detect-dupes" style="font-size:13px;padding:8px 14px;background:#f59e0b">
               🔍 Detectar Duplicados
             </button>
+            <button id="btn-delete-dupes" class="btn-primary" onclick="deleteDuplicates()" data-testid="button-delete-dupes" style="font-size:13px;padding:8px 14px;background:#ef4444;display:none">
+              🗑 Eliminar Duplicados
+            </button>
+            <button class="btn-primary" onclick="openManualEntryModal()" data-testid="button-add-manual" style="font-size:13px;padding:8px 14px;background:#6366f1">
+              ➕ Agregar Manual
+            </button>
             <button class="btn-primary" onclick="postAllConfirmed()" data-testid="button-post-all" style="font-size:13px;padding:8px 14px;background:#10b981">
               ✅ Registrar Confirmados
             </button>
@@ -712,6 +718,71 @@
                 <tr><td colspan="8" class="empty-state">Cargando movimientos...</td></tr>
               </tbody>
             </table>
+          </div>
+        </div>
+
+        <!-- Manual Transaction Entry Modal -->
+        <div id="manual-entry-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1001;align-items:center;justify-content:center">
+          <div style="background:#fff;border-radius:12px;padding:28px;width:520px;max-width:95vw;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+              <div style="font-size:18px;font-weight:700;color:#1a1a2e">Agregar Transacción Manual</div>
+              <button onclick="closeManualEntryModal()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#64748b" data-testid="button-close-manual">×</button>
+            </div>
+            <div style="background:#f0f4ff;border:1px solid #c7d2fe;border-radius:8px;padding:12px;margin-bottom:18px;font-size:12px;color:#4338ca">
+              <strong>¿Para qué sirve?</strong> Agrega aquí cualquier transacción que no fue detectada automáticamente en el archivo importado. Queda en estado "Sin clasificar" para que la proceses normalmente.
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+              <div style="grid-column:1/-1">
+                <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">Descripción *</label>
+                <input id="me-description" type="text" placeholder="Ej: PURCHASE AMAZON PRIME" data-testid="input-me-description"
+                  style="width:100%;padding:9px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;box-sizing:border-box">
+              </div>
+              <div>
+                <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">Fecha *</label>
+                <input id="me-date" type="date" data-testid="input-me-date"
+                  style="width:100%;padding:9px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;box-sizing:border-box">
+              </div>
+              <div>
+                <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">Monto * <span style="color:#64748b;font-weight:400">(negativo = gasto)</span></label>
+                <input id="me-amount" type="number" step="0.01" placeholder="Ej: -45.00 o 1500.00" data-testid="input-me-amount"
+                  style="width:100%;padding:9px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;box-sizing:border-box">
+              </div>
+              <div>
+                <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">Tipo</label>
+                <select id="me-type" data-testid="select-me-type"
+                  style="width:100%;padding:9px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;box-sizing:border-box">
+                  <option value="">Automático (por monto)</option>
+                  <option value="debit">Débito (gasto / salida)</option>
+                  <option value="credit">Crédito (ingreso / entrada)</option>
+                </select>
+              </div>
+              <div>
+                <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">Balance (opcional)</label>
+                <input id="me-balance" type="number" step="0.01" placeholder="Balance tras movimiento" data-testid="input-me-balance"
+                  style="width:100%;padding:9px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;box-sizing:border-box">
+              </div>
+              <div>
+                <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">Referencia (opcional)</label>
+                <input id="me-reference" type="text" placeholder="Nro. cheque o referencia" data-testid="input-me-reference"
+                  style="width:100%;padding:9px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;box-sizing:border-box">
+              </div>
+              <div style="grid-column:1/-1">
+                <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">Notas (opcional)</label>
+                <textarea id="me-notes" rows="2" placeholder="Notas adicionales..." data-testid="input-me-notes"
+                  style="width:100%;padding:9px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;box-sizing:border-box;resize:vertical"></textarea>
+              </div>
+            </div>
+            <div id="me-error" style="display:none;background:#fee2e2;border:1px solid #fca5a5;border-radius:6px;padding:10px;margin-top:14px;font-size:12px;color:#dc2626"></div>
+            <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:20px">
+              <button onclick="closeManualEntryModal()" data-testid="button-cancel-manual"
+                style="padding:9px 20px;border:1px solid #d1d5db;border-radius:6px;background:#fff;font-size:13px;cursor:pointer;font-weight:600;color:#374151">
+                Cancelar
+              </button>
+              <button onclick="submitManualEntry()" data-testid="button-submit-manual"
+                style="padding:9px 20px;background:#6366f1;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer;font-weight:700">
+                Guardar Transacción
+              </button>
+            </div>
           </div>
         </div>
 
@@ -908,6 +979,10 @@
             <button onclick="runDuplicateCheck()" data-testid="button-run-dupes"
               style="padding:8px 16px;background:#f59e0b;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer;font-weight:600">
               🔍 Detectar Duplicados
+            </button>
+            <button id="btn-delete-dupes-conc" onclick="deleteDuplicates()" data-testid="button-delete-dupes-conc"
+              style="padding:8px 16px;background:#ef4444;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer;font-weight:600;display:none">
+              🗑 Eliminar Duplicados
             </button>
             <button onclick="runSmartClassify();loadConciliationSummary();" data-testid="button-auto-all"
               style="padding:8px 16px;background:#0066cc;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer;font-weight:600">
@@ -1997,14 +2072,102 @@
             const r = await fetch('/api/accounting/bank-statements/detect-duplicates', { method:'POST' });
             const d = await r.json();
             if (!r.ok) throw new Error(d.error||'Error');
-            if (d.duplicates_found > 0) {
-              showNotice(`⚠️ Se encontraron ${d.duplicates_found} posibles duplicados (marcados en rojo).`,'orange');
+            const hasAny = (d.duplicates_found||0) > 0;
+            // Show / hide delete buttons in both tabs
+            ['btn-delete-dupes','btn-delete-dupes-conc'].forEach(id=>{
+              const el = document.getElementById(id);
+              if (el) el.style.display = hasAny ? 'inline-flex' : 'none';
+            });
+            if (hasAny) {
+              showNotice(`⚠️ ${d.duplicates_found} duplicado(s) detectados y marcados. Usa "Eliminar Duplicados" para borrarlos.`,'orange');
             } else {
-              showNotice('✅ Sin duplicados detectados.','green');
+              showNotice('✅ Sin duplicados detectados — la tabla está limpia.','green');
             }
             await loadClassifStatements();
-          } catch(e) { showNotice('Error: '+e.message,'red'); }
+          } catch(e) { showNotice('❌ Error detectando duplicados: '+e.message,'red'); }
         }
+
+        // ── Delete all flagged duplicates ─────────────────────────────────
+        async function deleteDuplicates() {
+          const dupeCount = (classifData||[]).filter(s=>s.is_duplicate).length;
+          if (dupeCount === 0) { showNotice('No hay duplicados marcados. Primero usa "Detectar Duplicados".','orange'); return; }
+          if (!confirm(`¿Eliminar ${dupeCount} transacciones marcadas como duplicadas? Esta acción no se puede deshacer.`)) return;
+          showNotice('🗑 Eliminando duplicados...','orange');
+          try {
+            const dr = await fetch('/api/accounting/bank-statements/delete-duplicates', { method:'DELETE' });
+            const dd = await dr.json();
+            if (!dr.ok) throw new Error(dd.error||'Error');
+            // Hide delete buttons
+            ['btn-delete-dupes','btn-delete-dupes-conc'].forEach(id=>{
+              const el = document.getElementById(id);
+              if (el) el.style.display = 'none';
+            });
+            showNotice(`✅ ${dd.deleted} duplicado(s) eliminados correctamente.`,'green');
+            await loadClassifStatements();
+          } catch(e) { showNotice('❌ Error eliminando duplicados: '+e.message,'red'); }
+        }
+
+        // ── Manual transaction entry ──────────────────────────────────────
+        function openManualEntryModal() {
+          const modal = document.getElementById('manual-entry-modal');
+          modal.style.display = 'flex';
+          // Pre-fill date to today
+          const today = new Date().toISOString().split('T')[0];
+          document.getElementById('me-date').value = today;
+          document.getElementById('me-description').value = '';
+          document.getElementById('me-amount').value = '';
+          document.getElementById('me-balance').value = '';
+          document.getElementById('me-reference').value = '';
+          document.getElementById('me-notes').value = '';
+          document.getElementById('me-type').value = '';
+          document.getElementById('me-error').style.display = 'none';
+          setTimeout(()=>document.getElementById('me-description').focus(), 100);
+        }
+
+        function closeManualEntryModal() {
+          document.getElementById('manual-entry-modal').style.display = 'none';
+        }
+
+        async function submitManualEntry() {
+          const errEl = document.getElementById('me-error');
+          errEl.style.display = 'none';
+          const description = document.getElementById('me-description').value.trim();
+          const statement_date = document.getElementById('me-date').value;
+          const amount = document.getElementById('me-amount').value;
+          const transaction_type = document.getElementById('me-type').value || null;
+          const balance = document.getElementById('me-balance').value || null;
+          const reference_number = document.getElementById('me-reference').value.trim() || null;
+          const notes = document.getElementById('me-notes').value.trim() || null;
+
+          if (!description) { errEl.textContent = 'La descripción es obligatoria.'; errEl.style.display='block'; return; }
+          if (!statement_date) { errEl.textContent = 'La fecha es obligatoria.'; errEl.style.display='block'; return; }
+          if (amount === '' || amount === null) { errEl.textContent = 'El monto es obligatorio.'; errEl.style.display='block'; return; }
+
+          const btn = document.querySelector('[data-testid="button-submit-manual"]');
+          const orig = btn.textContent; btn.textContent = 'Guardando...'; btn.disabled = true;
+          try {
+            const r = await fetch('/api/accounting/bank-statements/manual', {
+              method: 'POST',
+              headers: {'Content-Type':'application/json'},
+              body: JSON.stringify({ description, statement_date, amount: parseFloat(amount), transaction_type, balance: balance ? parseFloat(balance) : null, reference_number, notes })
+            });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.error||'Error');
+            closeManualEntryModal();
+            showNotice(`✅ Transacción "${description}" agregada manualmente.`,'green');
+            await loadClassifStatements();
+          } catch(e) {
+            errEl.textContent = 'Error: ' + e.message;
+            errEl.style.display = 'block';
+          } finally {
+            btn.textContent = orig; btn.disabled = false;
+          }
+        }
+
+        // Close modals when clicking backdrop
+        document.getElementById('manual-entry-modal').addEventListener('click', function(e){
+          if (e.target === this) closeManualEntryModal();
+        });
 
         async function postStatement(id) {
           try {

@@ -6689,28 +6689,74 @@ app.post('/api/accounting/bank-statements/:id/quick-accept', isAuthenticated, as
 // --- Detect and flag duplicate bank statements ---
 app.post('/api/accounting/bank-statements/detect-duplicates', isAuthenticated, async (req, res) => {
   try {
-    // Find pairs with same amount and date within 1 day
+    // Find pairs with same amount, same date, and very similar description (or same description)
     const dups = await pool.query(`
-      SELECT a.id as id_a, b.id as id_b, a.description as desc_a, b.description as desc_b,
+      SELECT a.id as id_a, b.id as id_b,
+             a.description as desc_a, b.description as desc_b,
              a.amount, a.statement_date
       FROM bank_statements a
       JOIN bank_statements b ON a.id < b.id
+        AND a.statement_date = b.statement_date
         AND ABS(a.amount - b.amount) < 0.01
-        AND ABS(a.statement_date::date - b.statement_date::date) <= 1
         AND a.is_duplicate IS NOT TRUE
+        AND b.is_duplicate IS NOT TRUE
       ORDER BY a.statement_date DESC
-      LIMIT 50
+      LIMIT 200
     `);
     let flagged = 0;
     for (const pair of dups.rows) {
+      // Mark the NEWER row (b) as duplicate of the OLDER row (a)
       await pool.query(
-        `UPDATE bank_statements SET is_duplicate=TRUE, duplicate_of=$1, updated_at=CURRENT_TIMESTAMP WHERE id=$2`,
+        `UPDATE bank_statements SET is_duplicate=TRUE, duplicate_of=$1 WHERE id=$2`,
         [pair.id_a, pair.id_b]
       );
       flagged++;
     }
-    res.json({ success: true, duplicates_found: dups.rows.length, flagged, pairs: dups.rows.slice(0,20) });
+    res.json({ success: true, duplicates_found: dups.rows.length, flagged, pairs: dups.rows.slice(0, 20) });
   } catch(err) {
+    console.error('detect-duplicates error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Delete all flagged duplicates ---
+app.delete('/api/accounting/bank-statements/delete-duplicates', isAuthenticated, async (req, res) => {
+  try {
+    const result = await pool.query(`DELETE FROM bank_statements WHERE is_duplicate=TRUE`);
+    res.json({ success: true, deleted: result.rowCount });
+  } catch(err) {
+    console.error('delete-duplicates error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Add manual transaction (for missing entries) ---
+app.post('/api/accounting/bank-statements/manual', isAuthenticated, async (req, res) => {
+  try {
+    const { nanoid } = await import('nanoid');
+    const { statement_date, description, amount, transaction_type, balance, reference_number, notes } = req.body;
+    if (!statement_date || !description || amount === undefined || amount === null) {
+      return res.status(400).json({ error: 'Campos obligatorios: fecha, descripción y monto' });
+    }
+    const safeDate = statement_date; // already validated on frontend
+    const safeAmt = parseFloat(amount);
+    if (isNaN(safeAmt)) return res.status(400).json({ error: 'Monto inválido' });
+    const txType = transaction_type || (safeAmt >= 0 ? 'credit' : 'debit');
+    const id = nanoid();
+    const result = await pool.query(
+      `INSERT INTO bank_statements
+        (id, statement_date, description, amount, transaction_type, balance, reference_number,
+         reconciliation_status, classification_status, notes, import_batch_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'unmatched','unclassified',$8,'manual')
+       RETURNING *`,
+      [id, safeDate, description.trim(), safeAmt, txType,
+       balance ? parseFloat(balance) : null,
+       reference_number || null,
+       notes || null]
+    );
+    res.json({ success: true, statement: result.rows[0] });
+  } catch(err) {
+    console.error('manual-statement error:', err);
     res.status(500).json({ error: err.message });
   }
 });
