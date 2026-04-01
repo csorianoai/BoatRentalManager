@@ -11786,7 +11786,7 @@ app.post('/api/documents/upload', isAuthenticated, (req, res, next) => {
   }
 });
 
-// GET /api/documents — list with optional filters
+// GET /api/documents — list with optional filters (NEVER include file_data — it's binary and breaks JSON serialization)
 app.get('/api/documents', isAuthenticated, async (req, res) => {
   try {
     const { entity_type, entity_id, doc_type, boat_id, general_only } = req.query;
@@ -11797,10 +11797,13 @@ app.get('/api/documents', isAuthenticated, async (req, res) => {
     if (doc_type)     { params.push(doc_type);     where.push(`doc_type = $${params.length}`); }
     if (boat_id)      { params.push(boat_id);      where.push(`boat_id = $${params.length}`); }
     if (general_only === 'true') { where.push(`visible_in_general = true`); }
-    const sql = `SELECT * FROM documents${where.length ? ' WHERE ' + where.join(' AND ') : ''} ORDER BY created_at DESC`;
+    // Explicitly exclude file_data (BYTEA) — never serialize binary blobs to JSON
+    const cols = 'id, original_name, stored_name, doc_type, entity_type, entity_id, boat_id, visible_in_general, file_size, mime_type, notes, uploaded_by, created_at';
+    const sql = `SELECT ${cols} FROM documents${where.length ? ' WHERE ' + where.join(' AND ') : ''} ORDER BY created_at DESC`;
     const result = await pool.query(sql, params);
     res.json(result.rows);
   } catch (err) {
+    console.error('[Documents] List error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
