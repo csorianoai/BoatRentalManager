@@ -1,0 +1,253 @@
+Actúa como un Senior Full-Stack Debugging Engineer especializado en recuperación de módulos de documentos, APIs, storage, bases de datos, multitenancy y errores críticos de producción.
+
+Necesito que diagnostiques y corrijas el módulo de documentos de mi sistema.
+
+## Síntoma actual confirmado
+
+Al entrar o cargar la sección de documentos aparece:
+
+- "Error al cargar"
+- HTTP 500
+
+Además:
+- no se muestran los documentos ya subidos
+- no permite subir más documentos
+- necesito recuperar todos los documentos existentes y restaurar el módulo completo
+
+---
+
+## Objetivo
+
+Debes encontrar la causa raíz exacta del HTTP 500, corregirla, recuperar la visibilidad de los documentos ya existentes y dejar funcionando nuevamente:
+
+1. listado de documentos
+2. subida de documentos
+3. lectura/descarga de documentos
+4. integridad entre frontend, backend, DB y storage
+
+---
+
+## Instrucción principal
+
+NO quiero una hipótesis genérica.
+Quiero que inspecciones el código real, localices el endpoint exacto que devuelve 500, traces el error real, apliques el fix y valides que funciona.
+
+---
+
+## Fase 1 — Identificar exactamente dónde ocurre el HTTP 500
+
+Haz lo siguiente:
+
+1. Localiza qué request dispara el frontend al cargar la pantalla de documentos.
+2. Identifica:
+   - URL exacta
+   - método HTTP
+   - payload o query params
+   - headers
+3. Revisa el controlador/backend que atiende esa ruta.
+4. Reproduce el error y captura:
+   - stack trace completo
+   - mensaje real de excepción
+   - archivo y línea exacta
+5. Si no hay logs suficientes, agrégalos temporalmente para exponer la causa raíz.
+
+---
+
+## Fase 2 — Auditar el flujo completo del módulo de documentos
+
+Revisa de extremo a extremo:
+
+- componente frontend de documentos
+- hook/service/API client usado para cargar documentos
+- endpoint backend de listado
+- endpoint de upload
+- endpoint de visualización/descarga
+- middleware de auth
+- middleware de tenant
+- validación de organization_id / tenant_id / user_id
+- tabla/colección de documentos
+- storage local o remoto
+- mapeo entre metadata y archivo físico
+- variables de entorno necesarias
+- control de errores
+
+---
+
+## Fase 3 — Buscar específicamente estas posibles causas del HTTP 500
+
+Investiga si el error se debe a alguno de estos puntos:
+
+- consulta SQL/ORM con columnas que ya no existen
+- tenant_id incorrecto o nulo
+- filtro que usa "default" en lugar del tenant real
+- relación rota entre documentos y tenant
+- registros con campos null no contemplados
+- path de archivo inexistente
+- bucket o directorio no disponible
+- permisos de lectura en storage
+- variable de entorno faltante
+- migración incompleta
+- error al deserializar metadata JSON
+- respuesta con formato inválido para el frontend
+- fallo de autenticación que termina mal manejado como 500
+- excepción silenciosa en el servicio de documentos
+- import roto o servicio cambiado
+- soft delete ocultando registros y rompiendo la consulta
+- paginación o sorting sobre campo inexistente
+- error de frontend por esperar una propiedad que backend ya no entrega
+- mismatch entre schema DB y modelo backend
+
+---
+
+## Fase 4 — Recuperación de documentos existentes
+
+Necesito que recuperes TODOS los documentos posibles.
+
+Haz esto:
+
+1. inspecciona la base de datos y localiza todos los registros documentales
+2. inspecciona el storage y localiza todos los archivos físicos existentes
+3. compara DB vs storage
+4. detecta:
+   - archivos existentes sin metadata
+   - metadata existente sin archivo físico
+   - documentos asociados al tenant incorrecto
+   - documentos ocultos por filtros erróneos
+5. repara lo recuperable:
+   - reconstruye índices
+   - corrige rutas
+   - repara referencias
+   - reasocia tenant_id si el error es evidente y validable
+6. vuelve a exponer los documentos en el listado del sistema
+7. genera un reporte final con:
+   - recuperados
+   - visibles nuevamente
+   - faltantes
+   - corruptos
+   - no recuperables
+
+Si hace falta, crea un script de reindexación o recuperación.
+
+---
+
+## Fase 5 — Reparar el listado de documentos
+
+Corrige el flujo para que el módulo vuelva a mostrar documentos existentes.
+
+Valida:
+
+- query correcta
+- filtros correctos por tenant
+- manejo de nulls
+- serialización correcta
+- permisos correctos
+- paths/URLs válidas
+- respuesta estable para el frontend
+- manejo de error claro si algo falla
+
+---
+
+## Fase 6 — Reparar el upload de documentos
+
+Restablece la subida de archivos.
+
+Verifica y corrige:
+
+- selector de archivo frontend
+- request multipart/form-data
+- endpoint correcto
+- validaciones MIME/type
+- límite de tamaño
+- escritura en storage
+- registro en DB
+- asociación al tenant correcto
+- refresh del listado tras subir
+- mensajes de error útiles
+
+---
+
+## Fase 7 — Mejoras obligatorias de robustez
+
+Agrega o mejora:
+
+- logs útiles en backend
+- manejo explícito de errores
+- mensajes claros en frontend
+- validación de tenant_id antes de consultar
+- fallback seguro si faltan campos opcionales
+- protección para que un documento corrupto no rompa todo el listado
+- monitoreo del endpoint que estaba devolviendo 500
+
+---
+
+## Fase 8 — Validación final obligatoria
+
+Debes probar o simular estas validaciones:
+
+1. abrir pantalla de documentos sin HTTP 500
+2. listar documentos existentes
+3. abrir/descargar un documento existente
+4. subir un documento nuevo
+5. confirmar que aparece en el listado
+6. confirmar que el archivo físico se guardó bien
+7. validar que no se mezclan documentos entre tenants
+8. validar que documentos corruptos no tumben toda la pantalla
+
+---
+
+## Entregables
+
+Quiero que entregues al final:
+
+### A. Diagnóstico exacto
+- endpoint que devolvía 500
+- error real encontrado
+- archivo y línea afectada
+- causa raíz técnica
+
+### B. Fix aplicado
+- archivos modificados
+- cambios implementados
+- scripts auxiliares creados
+
+### C. Recuperación
+- total de documentos encontrados en DB
+- total de archivos encontrados en storage
+- documentos recuperados
+- documentos visibles de nuevo
+- documentos faltantes o corruptos
+
+### D. Validación final
+- evidencia de que ya no hay HTTP 500
+- evidencia de que listado funciona
+- evidencia de que upload funciona
+
+---
+
+## Reglas críticas
+
+- No hagas parches temporales.
+- No borres datos.
+- No limpies tablas sin backup o validación.
+- No rompas multitenancy.
+- No asumas que el problema es solo frontend.
+- Encuentra la causa real del HTTP 500.
+- Si detectas riesgo de pérdida de información, protege primero los datos.
+- Prioriza recuperación y estabilidad productiva.
+
+---
+
+## Forma de ejecución
+
+Trabaja en este orden:
+
+1. localizar request exacto que da 500
+2. capturar stack trace real
+3. identificar causa raíz
+4. proteger datos
+5. recuperar documentos existentes
+6. aplicar fix estructural
+7. validar flujo completo
+8. entregar resumen técnico final
+
+Empieza ahora por rastrear el endpoint exacto del módulo de documentos que está lanzando HTTP 500 al cargar la pantalla y corrige el error real desde el código.

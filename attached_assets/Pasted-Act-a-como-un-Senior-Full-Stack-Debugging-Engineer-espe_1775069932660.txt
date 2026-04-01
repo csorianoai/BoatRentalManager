@@ -1,0 +1,229 @@
+Actúa como un Senior Full-Stack Debugging Engineer especializado en recuperación de módulos documentales, storage, file indexing, backend APIs, multitenancy, y sistemas con panel administrativo.
+
+Necesito que revises y repares el módulo de documentos de mi sistema.
+
+## Problema actual
+
+El archivo / módulo de documentos presenta estas fallas:
+
+1. Ya no permite subir más documentos.
+2. Tampoco muestra los documentos que ya fueron subidos anteriormente.
+3. Necesito revisar el flujo completo, detectar la causa raíz, reparar el sistema y recuperar todos los documentos ya existentes.
+4. No quiero una solución temporal ni superficial. Quiero diagnóstico real, corrección estructural y validación final.
+
+---
+
+## Objetivo principal
+
+Debes:
+
+- diagnosticar por qué falló la subida de documentos
+- diagnosticar por qué no se listan los documentos ya guardados
+- recuperar la visibilidad y acceso a todos los documentos previamente subidos
+- restaurar la capacidad de subir nuevos documentos
+- verificar integridad entre frontend, backend, base de datos y storage
+- dejar el módulo estable, seguro y listo para producción
+
+---
+
+## Tareas obligatorias
+
+### 1. Auditoría completa del flujo documental
+
+Revisa de punta a punta:
+
+- frontend del módulo de documentos
+- componente de carga de archivos
+- componente/listado de documentos
+- endpoints API usados para upload, list, read, delete, update
+- servicios backend relacionados con documentos
+- middleware de autenticación/autorización
+- validación de tenant_id / organization_id / user_id
+- base de datos
+- tabla o colección de documentos
+- rutas físicas o storage bucket donde están los archivos
+- variables de entorno relacionadas con storage
+- lógica de mapeo entre metadata y archivo físico
+
+---
+
+### 2. Detecta posibles causas raíz
+
+Busca específicamente si el fallo se debe a alguno de estos problemas:
+
+- endpoint roto o cambiado
+- error de frontend que no consume la API correcta
+- filtro incorrecto por tenant_id
+- consulta SQL/ORM defectuosa
+- documentos existentes sin índice o sin metadata visible
+- archivos guardados físicamente pero no registrados en base de datos
+- registros en base de datos apuntando a rutas inválidas
+- error de permisos
+- límite de tamaño o validación de archivos bloqueando uploads
+- fallo de paginación o renderizado en frontend
+- mismatch entre nombres de campos
+- uso accidental de valores default
+- corrupción parcial del módulo
+- error en estado global/store/context
+- problema de sincronización entre storage y DB
+- problemas por migraciones recientes
+- soft delete aplicado por error
+- filtros activos que ocultan todo
+- errores silenciosos no visibles en UI
+
+---
+
+### 3. Recuperación de documentos existentes
+
+Necesito que recuperes TODOS los documentos posibles.
+
+Haz lo siguiente:
+
+- inspecciona la base de datos y encuentra todos los registros documentales
+- inspecciona el storage local o remoto y localiza todos los archivos existentes
+- compara metadata vs archivos físicos
+- detecta documentos huérfanos:
+  - archivos que existen pero no aparecen en DB
+  - registros en DB cuyo archivo no se encuentra
+- reconstruye los índices faltantes cuando sea posible
+- repara rutas, nombres o referencias rotas
+- vuelve a exponer los documentos en el listado del sistema
+- genera un reporte claro con:
+  - documentos recuperados
+  - documentos visibles otra vez
+  - documentos faltantes
+  - documentos corruptos o no recuperables
+  - causa exacta del problema
+
+Si hace falta crear un script de recuperación, hazlo.
+
+---
+
+### 4. Reparación del upload
+
+Corrige el flujo de carga para que permita subir documentos nuevamente.
+
+Verifica:
+
+- selección de archivo en frontend
+- validación MIME/type
+- límite de peso
+- envío multipart/form-data
+- endpoint correcto
+- parsing del archivo en backend
+- guardado físico o en bucket
+- inserción correcta en base de datos
+- respuesta al frontend
+- actualización automática del listado luego de subir
+
+---
+
+### 5. Reparación del listado de documentos
+
+Corrige el listado para que muestre correctamente los documentos existentes.
+
+Verifica:
+
+- query de lectura
+- filtros por tenant/cliente/usuario
+- ordenamiento
+- estado del frontend
+- renderizado
+- paginación
+- errores de serialización
+- campos null o inconsistentes
+- permisos de visualización
+- URL firmadas o paths de descarga
+
+---
+
+### 6. Logs y debugging real
+
+No asumas. Debes revisar el sistema de forma real.
+
+Quiero que:
+
+- identifiques el archivo exacto o archivos exactos donde está el problema
+- expliques la causa raíz específica
+- muestres qué corregiste
+- agregues logs útiles si faltan
+- elimines fallos silenciosos
+- manejes errores con mensajes claros
+
+---
+
+### 7. Validación final obligatoria
+
+Al terminar, ejecuta o simula estas pruebas:
+
+1. listar documentos existentes
+2. abrir un documento existente
+3. subir un documento nuevo
+4. confirmar que aparece en el listado
+5. descargar o visualizar el documento nuevo
+6. validar que no se perdieron documentos previos
+7. validar que el tenant correcto ve sus documentos
+8. validar que no se mezclan documentos de otros tenants
+
+---
+
+## Entregables esperados
+
+Quiero que entregues:
+
+### A. Diagnóstico
+- causa raíz exacta
+- archivos afectados
+- flujo roto detectado
+
+### B. Fix implementado
+- cambios realizados
+- código corregido
+- scripts de recuperación si aplican
+
+### C. Resultado de recuperación
+- cuántos documentos se recuperaron
+- cuántos estaban ocultos
+- cuántos siguen faltando
+- cuáles requieren intervención manual
+
+### D. Validación final
+- evidencia de que upload y listado ya funcionan
+
+---
+
+## Reglas importantes
+
+- No hagas un parche temporal.
+- No ocultes errores.
+- No borres documentos existentes.
+- No reinicies ni limpies tablas sin validar recuperación primero.
+- Si detectas riesgo de pérdida de datos, detente y protege los datos antes de modificar.
+- Prioriza recuperación e integridad.
+- Mantén compatibilidad con la arquitectura actual.
+- Si hay multitenancy, respétalo estrictamente.
+
+---
+
+## Forma de trabajo
+
+Trabaja en este orden:
+
+1. inspección
+2. diagnóstico
+3. recuperación
+4. reparación
+5. validación
+6. resumen final
+
+Primero analiza el sistema actual y ubica la causa raíz real. Luego aplica los cambios necesarios directamente en el código. Después verifica que el módulo quede funcionando.
+
+Al finalizar, dame un resumen técnico claro con:
+- problema encontrado
+- archivos modificados
+- cambios aplicados
+- documentos recuperados
+- pruebas realizadas
+- estado final del módulo
+
+Si es necesario, crea scripts auxiliares de recuperación, migración o reindexación.
