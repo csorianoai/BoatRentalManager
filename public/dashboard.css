@@ -484,6 +484,18 @@ body {
     grid-column: span 2;
 }
 
+/* Chart empty state */
+.chart-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 24px;
+    color: var(--text-secondary);
+    text-align: center;
+    min-height: 200px;
+}
+
 .chart-card.compact {
     grid-column: span 1;
 }

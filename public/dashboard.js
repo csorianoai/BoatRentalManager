@@ -303,27 +303,43 @@ function updateCharts(data) {
     updateBookingDistributionChart(data);
 }
 
+// ── Chart empty-state helper ──────────────────────────────────────────────────
+function showEmptyChart(canvas, message) {
+    if (!canvas) return;
+    if (canvas._emptyMsg) return; // already shown
+    const wrap = canvas.parentElement;
+    canvas.style.display = 'none';
+    const div = document.createElement('div');
+    div.className = 'chart-empty-state';
+    div.innerHTML = `
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:.3;display:block;margin:0 auto 10px"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        <p style="margin:0;font-size:13px;color:var(--text-secondary);">${message}</p>`;
+    wrap.appendChild(div);
+    canvas._emptyMsg = div;
+}
+
+function clearEmptyChart(canvas) {
+    if (!canvas) return;
+    if (canvas._emptyMsg) { canvas._emptyMsg.remove(); canvas._emptyMsg = null; }
+    canvas.style.display = '';
+}
+
 function updateRevenueByPlatformChart(data) {
-    console.log('Creating revenue by platform chart...');
     const canvas = document.getElementById('revenueByPlatform');
-    if (!canvas) {
-        console.error('Canvas element revenueByPlatform not found!');
-        return;
-    }
-    if (typeof Chart === 'undefined') {
-        console.error('Chart.js is not loaded!');
-        return;
-    }
-    
-    const ctx = canvas.getContext('2d');
+    if (!canvas || typeof Chart === 'undefined') return;
+
+    if (charts.revenueByPlatform) { charts.revenueByPlatform.destroy(); charts.revenueByPlatform = null; }
+
     const platforms = Object.keys(data.revenue_by_platform || {});
-    const revenues = Object.values(data.revenue_by_platform || {});
-    
-    if (charts.revenueByPlatform) {
-        charts.revenueByPlatform.destroy();
+    const revenues  = Object.values(data.revenue_by_platform || {});
+
+    if (platforms.length === 0) {
+        showEmptyChart(canvas, 'Sin datos de revenue para este período');
+        return;
     }
-    
-    charts.revenueByPlatform = new Chart(ctx, {
+    clearEmptyChart(canvas);
+
+    charts.revenueByPlatform = new Chart(canvas.getContext('2d'), {
         type: 'bar',
         data: {
             labels: platforms,
@@ -339,158 +355,97 @@ function updateRevenueByPlatformChart(data) {
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    display: false
-                },
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            return `${__('revenue')}: $${context.parsed.y.toLocaleString()}`;
-                        }
-                    }
-                }
+            plugins: { legend: { display: false },
+                tooltip: { callbacks: { label: ctx => `Revenue: $${ctx.parsed.y.toLocaleString()}` } }
             },
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    ticks: {
-                        callback: function(value) {
-                            return '$' + value.toLocaleString();
-                        }
-                    }
-                }
-            }
+            scales: { y: { beginAtZero: true, ticks: { callback: v => '$' + v.toLocaleString() } } }
         }
     });
 }
 
 function updateMonthlyTrendsChart(data) {
-    const ctx = document.getElementById('monthlyTrends').getContext('2d');
-    
-    // Use real monthly trend data from backend
-    const trend = data.monthly_trend || [];
-    const months      = trend.map(t => t.label);
-    const bookingsData = trend.map(t => t.bookings);
-    const revenueData  = trend.map(t => t.revenue);
-    
-    if (charts.monthlyTrends) {
-        charts.monthlyTrends.destroy();
+    const canvas = document.getElementById('monthlyTrends');
+    if (!canvas || typeof Chart === 'undefined') return;
+
+    if (charts.monthlyTrends) { charts.monthlyTrends.destroy(); charts.monthlyTrends = null; }
+
+    const trend = (data.monthly_trend || []);
+    // Only include months that have at least 1 booking OR revenue
+    const nonEmpty = trend.filter(t => t.bookings > 0 || t.revenue > 0);
+
+    if (nonEmpty.length === 0) {
+        showEmptyChart(canvas, 'Sin datos de tendencia para este período');
+        return;
     }
-    
-    charts.monthlyTrends = new Chart(ctx, {
+    clearEmptyChart(canvas);
+
+    // Use all trend months for context (zeros show as flat baseline)
+    charts.monthlyTrends = new Chart(canvas.getContext('2d'), {
         type: 'line',
         data: {
-            labels: months,
+            labels: trend.map(t => t.label),
             datasets: [
                 {
                     label: __('bookings'),
-                    data: bookingsData,
+                    data: trend.map(t => t.bookings),
                     borderColor: 'rgba(0, 119, 190, 1)',
                     backgroundColor: 'rgba(0, 119, 190, 0.1)',
-                    tension: 0.4,
-                    fill: true,
-                    yAxisID: 'y'
+                    tension: 0.4, fill: true, yAxisID: 'y'
                 },
                 {
                     label: __('revenue'),
-                    data: revenueData,
+                    data: trend.map(t => t.revenue),
                     borderColor: 'rgba(46, 196, 182, 1)',
                     backgroundColor: 'rgba(46, 196, 182, 0.1)',
-                    tension: 0.4,
-                    fill: true,
-                    yAxisID: 'y1'
+                    tension: 0.4, fill: true, yAxisID: 'y1'
                 }
             ]
         },
         options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            interaction: {
-                mode: 'index',
-                intersect: false
-            },
-            plugins: {
-                legend: {
-                    display: false
-                }
-            },
+            responsive: true, maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: { legend: { display: false } },
             scales: {
-                y: {
-                    type: 'linear',
-                    display: true,
-                    position: 'left',
-                    beginAtZero: true
-                },
-                y1: {
-                    type: 'linear',
-                    display: true,
-                    position: 'right',
-                    beginAtZero: true,
-                    grid: {
-                        drawOnChartArea: false
-                    },
-                    ticks: {
-                        callback: function(value) {
-                            return '$' + value.toLocaleString();
-                        }
-                    }
-                }
+                y:  { type: 'linear', position: 'left',  beginAtZero: true },
+                y1: { type: 'linear', position: 'right', beginAtZero: true,
+                      grid: { drawOnChartArea: false },
+                      ticks: { callback: v => '$' + v.toLocaleString() } }
             }
         }
     });
 }
 
 function updateBookingDistributionChart(data) {
-    const ctx = document.getElementById('bookingDistribution').getContext('2d');
-    
+    const canvas = document.getElementById('bookingDistribution');
+    if (!canvas || typeof Chart === 'undefined') return;
+
+    if (charts.bookingDistribution) { charts.bookingDistribution.destroy(); charts.bookingDistribution = null; }
+
     const platforms = Object.keys(data.bookings_by_platform || {});
-    const bookings = Object.values(data.bookings_by_platform || {});
-    
-    // Marine color palette
-    const colors = [
-        '#0077BE', '#56CCF2', '#2EC4B6', '#06D6A0', 
-        '#FFB800', '#FF6B6B', '#003D5C', '#F4F1DE',
-        '#4A90E2', '#7B68EE', '#20B2AA', '#FF7F50', '#9370DB'
-    ];
-    
-    if (charts.bookingDistribution) {
-        charts.bookingDistribution.destroy();
+    const bookings  = Object.values(data.bookings_by_platform || {});
+
+    if (platforms.length === 0) {
+        showEmptyChart(canvas, 'Sin reservas para mostrar distribución');
+        return;
     }
-    
-    charts.bookingDistribution = new Chart(ctx, {
+    clearEmptyChart(canvas);
+
+    const colors = ['#0077BE','#56CCF2','#2EC4B6','#06D6A0','#FFB800','#FF6B6B','#003D5C','#4A90E2','#7B68EE','#20B2AA','#FF7F50','#9370DB','#EA580C'];
+
+    charts.bookingDistribution = new Chart(canvas.getContext('2d'), {
         type: 'doughnut',
         data: {
             labels: platforms,
-            datasets: [{
-                data: bookings,
-                backgroundColor: colors.slice(0, platforms.length),
-                borderWidth: 2,
-                borderColor: '#fff'
-            }]
+            datasets: [{ data: bookings, backgroundColor: colors.slice(0, platforms.length), borderWidth: 2, borderColor: '#fff' }]
         },
         options: {
-            responsive: true,
-            maintainAspectRatio: false,
+            responsive: true, maintainAspectRatio: false,
             plugins: {
-                legend: {
-                    position: 'right',
-                    labels: {
-                        padding: 15,
-                        font: {
-                            size: 12
-                        }
-                    }
-                },
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                            const percentage = ((context.parsed / total) * 100).toFixed(1);
-                            return `${context.label}: ${context.parsed} (${percentage}%)`;
-                        }
-                    }
-                }
+                legend: { position: 'right', labels: { padding: 15, font: { size: 12 } } },
+                tooltip: { callbacks: { label: ctx => {
+                    const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+                    return `${ctx.label}: ${ctx.parsed} (${((ctx.parsed/total)*100).toFixed(1)}%)`;
+                }}}
             }
         }
     });
@@ -498,18 +453,20 @@ function updateBookingDistributionChart(data) {
 
 function updatePlatformLeaderboard(data) {
     const leaderboard = document.getElementById('platformLeaderboard');
+    if (!leaderboard) return;
     const revenue = data.revenue_by_platform || {};
-    
-    // Sort platforms by revenue
-    const sorted = Object.entries(revenue)
-        .sort(([, a], [, b]) => b - a)
-        .slice(0, 5);
-    
+    const sorted = Object.entries(revenue).sort(([, a], [, b]) => b - a).slice(0, 5);
+
+    if (sorted.length === 0) {
+        leaderboard.innerHTML = '<p style="color:#94a3b8;text-align:center;padding:24px;font-size:13px;">Sin reservas registradas</p>';
+        return;
+    }
+
     leaderboard.innerHTML = sorted.map(([platform, amount], index) => `
         <div class="leaderboard-item">
             <div class="leaderboard-rank">${index + 1}</div>
             <div class="leaderboard-info">
-                <div class="leaderboard-name">${platform}</div>
+                <div class="leaderboard-name">${esc(platform)}</div>
                 <div class="leaderboard-stats">${data.bookings_by_platform[platform] || 0} ${__('bookings')}</div>
             </div>
             <div class="leaderboard-value">$${amount.toLocaleString()}</div>
