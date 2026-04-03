@@ -2280,6 +2280,10 @@ app.get('/api/dashboard-data', isAuthenticated, async (req, res) => {
     // Get captains
     const captainsResult = await pool.query('SELECT * FROM captains');
     const captains = captainsResult.rows;
+
+    // Get stews
+    const stewsResult = await pool.query('SELECT * FROM stews');
+    const stews = stewsResult.rows;
     
     // Calculate metrics
     const todayBookings = todayResult.rows;
@@ -2298,8 +2302,10 @@ app.get('/api/dashboard-data', isAuthenticated, async (req, res) => {
       // Métricas principales
       today_bookings: todayBookings.length,
       week_bookings: weekBookings.length,
-      active_captains: captains.filter(c => c.status === 'available').length,
+      active_captains: captains.filter(c => c.status === 'active' || c.status === 'available').length,
       total_captains: captains.length,
+      active_stews: stews.filter(s => s.status === 'active' || !s.status).length,
+      total_stews: stews.length,
       
       // Revenue
       today_revenue: todayBookings.reduce((sum, b) => sum + (b.total_amount || 0), 0),
@@ -2409,6 +2415,19 @@ app.patch('/api/captains/:id', isAuthenticated, async (req, res) => {
     res.json(result.rows[0]);
   } catch (err) {
     console.error('Error updating captain:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete captain
+app.delete('/api/captains/:id', isAuthenticated, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query('DELETE FROM captains WHERE id=$1 RETURNING id', [id]);
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Capitán no encontrado' });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting captain:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -10913,7 +10932,15 @@ app.delete('/api/operations/assignees/:id', isAuthenticated, async (req, res) =>
 // ── Stews catalog ──────────────────────
 app.get('/api/stews', isAuthenticated, async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM stews WHERE status=$1 ORDER BY name ASC', ['active']);
+    const { status } = req.query;
+    let query = 'SELECT * FROM stews';
+    const params = [];
+    if (status && status !== 'all') {
+      query += ' WHERE status=$1';
+      params.push(status);
+    }
+    query += ' ORDER BY name ASC';
+    const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -10942,6 +10969,14 @@ app.patch('/api/stews/:id', isAuthenticated, async (req, res) => {
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Stew no encontrado' });
     res.json(result.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/stews/:id', isAuthenticated, async (req, res) => {
+  try {
+    const result = await pool.query('DELETE FROM stews WHERE id=$1 RETURNING id', [req.params.id]);
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Stew no encontrado' });
+    res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

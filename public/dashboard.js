@@ -140,7 +140,12 @@ function updateKPIs(data) {
     if (todayBookings) todayBookings.textContent = data.today_bookings || 0;
     if (todayRevenue) todayRevenue.textContent = `$${(data.today_revenue || 0).toLocaleString()}`;
     if (activeCaptains) activeCaptains.textContent = data.active_captains || 0;
-    if (totalCaptains) totalCaptains.textContent = __('of-total').replace('{count}', data.total_captains || 0);
+    if (totalCaptains) totalCaptains.textContent = `de ${data.total_captains || 0} total`;
+
+    const activeStews = document.getElementById('activeStews');
+    const totalStews = document.getElementById('totalStews');
+    if (activeStews) activeStews.textContent = data.active_stews || 0;
+    if (totalStews) totalStews.textContent = `de ${data.total_stews || 0} total`;
     
     // Calculate changes (simulated for now)
     const bookingChangeText = data.today_bookings > 0 ? '+15%' : '0%';
@@ -1180,3 +1185,121 @@ if (document.readyState === 'loading') {
 } else {
     initSyncPanel();
 }
+
+// ─── Global Search ──────────────────────────────────────────────
+const SEARCH_MODULES = [
+    { label: 'Calendario', url: '/schedule.html', icon: '📅', tags: ['calendario', 'agenda', 'schedule'] },
+    { label: 'Comisiones', url: '/commissions.html', icon: '💰', tags: ['comisiones', 'pagos', 'comision'] },
+    { label: 'Precios', url: '/pricing.html', icon: '💵', tags: ['precios', 'tarifas', 'pricing'] },
+    { label: 'Pricing Dinámico', url: '/dynamic-pricing.html', icon: '🧠', tags: ['pricing', 'dinamico', 'machine learning'] },
+    { label: 'Contabilidad', url: '/accounting.html', icon: '📊', tags: ['contabilidad', 'cuentas', 'transacciones', 'banco'] },
+    { label: 'Mensajes', url: '/messages.html', icon: '💬', tags: ['mensajes', 'clientes', 'chat', 'inbox'] },
+    { label: 'Mantenimiento', url: '/boat-maintenance.html', icon: '🔧', tags: ['mantenimiento', 'barcos', 'mecanicos', 'reparacion'] },
+    { label: 'Mecánicos', url: '/boat-maintenance.html#mechanics', icon: '🔧', tags: ['mecanicos', 'tecnicos'] },
+    { label: 'Condiciones Marinas', url: '/marine-conditions.html', icon: '🌊', tags: ['clima', 'mar', 'condiciones', 'noaa', 'oleaje'] },
+    { label: 'Flotilla', url: '/fleet.html', icon: '🚤', tags: ['flotilla', 'barcos', 'embarcaciones', 'fleet'] },
+    { label: 'Operaciones', url: '/operations.html', icon: '📋', tags: ['operaciones', 'reservas', 'bookings'] },
+    { label: 'Documentos', url: '/documents.html', icon: '🗂️', tags: ['documentos', 'archivos', 'facturas'] },
+    { label: 'Activos', url: '/assets.html', icon: '📦', tags: ['activos', 'inventario', 'equipo'] },
+    { label: 'Dashboard Ejecutivo', url: '/executive.html', icon: '📊', tags: ['ejecutivo', 'kpis', 'resumen'] },
+    { label: 'Capitanes', url: '/crew.html?tab=captains', icon: '👨‍✈️', tags: ['capitanes', 'capitan', 'tripulacion'] },
+    { label: 'Stew', url: '/crew.html?tab=stews', icon: '🧑‍✈️', tags: ['stew', 'azafatas', 'tripulacion'] },
+    { label: 'Tripulación / Crew', url: '/crew.html', icon: '👥', tags: ['tripulacion', 'crew', 'equipo', 'personal'] },
+];
+
+let _crewSearchCache = null;
+let _searchSelected = -1;
+
+function toggleGlobalSearch() {
+    const box = document.getElementById('globalSearchBox');
+    if (!box) return;
+    const visible = box.style.display !== 'none';
+    box.style.display = visible ? 'none' : 'block';
+    if (!visible) {
+        const inp = document.getElementById('globalSearchInput');
+        if (inp) { inp.value = ''; inp.focus(); }
+        document.getElementById('globalSearchResults').innerHTML = '';
+        _searchSelected = -1;
+        if (!_crewSearchCache) loadCrewSearchCache();
+    }
+}
+
+async function loadCrewSearchCache() {
+    try {
+        const [caps, stews] = await Promise.all([
+            fetch('/api/captains').then(r => r.json()).catch(() => []),
+            fetch('/api/stews').then(r => r.json()).catch(() => []),
+        ]);
+        _crewSearchCache = {
+            captains: Array.isArray(caps) ? caps : [],
+            stews: Array.isArray(stews) ? stews : [],
+        };
+    } catch(e) { _crewSearchCache = { captains: [], stews: [] }; }
+}
+
+function runGlobalSearch(q) {
+    _searchSelected = -1;
+    const box = document.getElementById('globalSearchResults');
+    if (!box) return;
+    q = (q || '').trim().toLowerCase();
+    if (!q) { box.innerHTML = ''; return; }
+
+    const results = [];
+
+    // Modules
+    SEARCH_MODULES.forEach(m => {
+        if (m.label.toLowerCase().includes(q) || m.tags.some(t => t.includes(q))) {
+            results.push({ icon: m.icon, label: m.label, sub: 'Módulo', url: m.url });
+        }
+    });
+
+    // Captains from cache
+    if (_crewSearchCache) {
+        _crewSearchCache.captains.forEach(c => {
+            if ((c.name||'').toLowerCase().includes(q) || (c.phone||'').includes(q) || (c.email||'').toLowerCase().includes(q)) {
+                results.push({ icon: '👨‍✈️', label: c.name, sub: `Capitán · ${c.status||'active'}`, url: `/crew.html?tab=captains&highlight=${c.id}` });
+            }
+        });
+        _crewSearchCache.stews.forEach(s => {
+            if ((s.name||'').toLowerCase().includes(q) || (s.phone||'').includes(q) || (s.email||'').toLowerCase().includes(q)) {
+                results.push({ icon: '🧑‍✈️', label: s.name, sub: `Stew · ${s.status||'active'}`, url: `/crew.html?tab=stews&highlight=${s.id}` });
+            }
+        });
+    }
+
+    if (results.length === 0) {
+        box.innerHTML = '<div class="gs-empty">Sin resultados para "' + q.replace(/</g,'&lt;') + '"</div>';
+        return;
+    }
+
+    box.innerHTML = results.slice(0, 8).map((r, i) => `
+        <a href="${r.url}" class="gs-item" data-idx="${i}" data-testid="search-result-${i}">
+            <span class="gs-icon">${r.icon}</span>
+            <span class="gs-info"><span class="gs-label">${r.label}</span><span class="gs-sub">${r.sub}</span></span>
+        </a>
+    `).join('');
+}
+
+function searchKeyNav(e) {
+    const items = document.querySelectorAll('.gs-item');
+    if (e.key === 'ArrowDown') {
+        _searchSelected = Math.min(_searchSelected + 1, items.length - 1);
+    } else if (e.key === 'ArrowUp') {
+        _searchSelected = Math.max(_searchSelected - 1, -1);
+    } else if (e.key === 'Enter' && _searchSelected >= 0 && items[_searchSelected]) {
+        items[_searchSelected].click();
+        return;
+    } else if (e.key === 'Escape') {
+        toggleGlobalSearch();
+        return;
+    }
+    items.forEach((el, i) => el.classList.toggle('gs-active', i === _searchSelected));
+}
+
+document.addEventListener('click', function(e) {
+    const wrap = document.getElementById('globalSearchWrap');
+    if (wrap && !wrap.contains(e.target)) {
+        const box = document.getElementById('globalSearchBox');
+        if (box) box.style.display = 'none';
+    }
+});

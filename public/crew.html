@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#0066cc">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Nadaki">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="apple-touch-icon" href="/icon-192.svg">
+    <title>Nadaki Excursions - Tripulación</title>
+    <link rel="stylesheet" href="commissions.css">
+    <style>
+        /* ── Layout ── */
+        .page-header {
+            background: linear-gradient(135deg, #0066cc, #0099ff);
+            color: #fff;
+            padding: 20px 28px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .page-header h1 { margin: 0; font-size: 22px; font-weight: 700; }
+        .page-header .back-link {
+            color: rgba(255,255,255,0.85);
+            text-decoration: none;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .page-header .back-link:hover { color: #fff; }
+
+        /* ── Tabs ── */
+        .tabs {
+            display: flex;
+            gap: 0;
+            background: #f0f4f8;
+            border-bottom: 2px solid #e0e8f0;
+            padding: 0 24px;
+        }
+        .tab {
+            padding: 14px 24px;
+            cursor: pointer;
+            border: none;
+            background: none;
+            font-size: 15px;
+            color: #666;
+            border-bottom: 3px solid transparent;
+            margin-bottom: -2px;
+            font-weight: 500;
+            transition: color 0.15s;
+        }
+        .tab.active { color: #0066cc; border-bottom-color: #0066cc; font-weight: 600; }
+        .tab:hover:not(.active) { color: #0066cc; }
+
+        .tab-content { display: none; padding: 24px; }
+        .tab-content.active { display: block; }
+
+        /* ── Toolbar ── */
+        .section-toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .section-toolbar h2 { margin: 0; font-size: 18px; color: #1e293b; }
+        .toolbar-right { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+        /* ── Search input ── */
+        .search-input {
+            padding: 9px 14px;
+            border: 1px solid #d1dbe8;
+            border-radius: 8px;
+            font-size: 14px;
+            width: 220px;
+            outline: none;
+            transition: border 0.15s;
+        }
+        .search-input:focus { border-color: #0066cc; }
+
+        /* ── Filter ── */
+        .filter-select {
+            padding: 9px 12px;
+            border: 1px solid #d1dbe8;
+            border-radius: 8px;
+            font-size: 14px;
+            outline: none;
+            background: #fff;
+            cursor: pointer;
+        }
+
+        /* ── Buttons ── */
+        .btn { padding: 9px 18px; border-radius: 8px; border: none; cursor: pointer; font-size: 14px; font-weight: 500; transition: opacity 0.15s, transform 0.1s; }
+        .btn:hover { opacity: 0.88; }
+        .btn-primary { background: #0066cc; color: #fff; }
+        .btn-secondary { background: #e2e8f0; color: #1e293b; }
+        .btn-danger { background: #ef4444; color: #fff; }
+        .btn-sm { padding: 6px 12px; font-size: 13px; }
+
+        /* ── Stats bar ── */
+        .stats-bar {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .stat-pill {
+            background: #fff;
+            border: 1px solid #e0e8f0;
+            border-radius: 20px;
+            padding: 6px 16px;
+            font-size: 13px;
+            color: #555;
+        }
+        .stat-pill strong { color: #0066cc; }
+
+        /* ── Data table ── */
+        .data-table { overflow-x: auto; border-radius: 10px; border: 1px solid #e0e8f0; background: #fff; }
+        .data-table table { width: 100%; border-collapse: collapse; min-width: 600px; }
+        .data-table th {
+            background: #f8fafc;
+            padding: 11px 14px;
+            text-align: left;
+            font-size: 13px;
+            font-weight: 600;
+            color: #64748b;
+            border-bottom: 1px solid #e0e8f0;
+        }
+        .data-table td {
+            padding: 12px 14px;
+            font-size: 14px;
+            color: #1e293b;
+            border-bottom: 1px solid #f0f4f8;
+            vertical-align: middle;
+        }
+        .data-table tr:last-child td { border-bottom: none; }
+        .data-table tr:hover td { background: #f8fafc; }
+
+        /* ── Status badge ── */
+        .badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .badge-active { background: #dcfce7; color: #166534; }
+        .badge-inactive { background: #fee2e2; color: #991b1b; }
+        .badge-available { background: #dbeafe; color: #1d4ed8; }
+
+        /* ── Avatar ── */
+        .crew-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #0066cc, #0099ff);
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+        .name-cell { display: flex; align-items: center; gap: 10px; }
+
+        /* ── Empty state ── */
+        .empty-state {
+            text-align: center;
+            padding: 48px 20px;
+            color: #94a3b8;
+        }
+        .empty-state .empty-icon { font-size: 48px; margin-bottom: 12px; }
+        .empty-state p { font-size: 15px; margin: 0; }
+
+        /* ── Modal ── */
+        .modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.45);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal.open { display: flex; }
+        .modal-content {
+            background: #fff;
+            border-radius: 14px;
+            width: 100%;
+            max-width: 480px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.18);
+            margin: 16px;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 24px 0;
+        }
+        .modal-header h2 { margin: 0; font-size: 18px; color: #1e293b; }
+        .modal-close { background: none; border: none; font-size: 22px; cursor: pointer; color: #94a3b8; padding: 0; line-height: 1; }
+        .modal-close:hover { color: #1e293b; }
+        .modal-body { padding: 20px 24px 24px; }
+
+        /* ── Form ── */
+        .form-group { margin-bottom: 16px; }
+        .form-group label { display: block; font-size: 13px; font-weight: 600; color: #475569; margin-bottom: 5px; }
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%;
+            padding: 9px 12px;
+            border: 1px solid #d1dbe8;
+            border-radius: 8px;
+            font-size: 14px;
+            outline: none;
+            transition: border 0.15s;
+            box-sizing: border-box;
+        }
+        .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: #0066cc; }
+        .form-group textarea { resize: vertical; min-height: 72px; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .form-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+
+        /* ── Specialties tags ── */
+        .specialties-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+        .spec-tag {
+            background: #e0f0ff;
+            color: #0066cc;
+            border-radius: 12px;
+            padding: 3px 10px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        /* ── Toast ── */
+        #crew-toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: #1e293b;
+            color: #fff;
+            padding: 11px 20px;
+            border-radius: 8px;
+            font-size: 13px;
+            z-index: 9999;
+            transform: translateY(80px);
+            opacity: 0;
+            transition: all 0.3s;
+            pointer-events: none;
+            max-width: 340px;
+        }
+        #crew-toast.show { transform: translateY(0); opacity: 1; }
+        #crew-toast.toast-error { background: #dc2626; }
+
+        /* ── Confirm dialog ── */
+        .confirm-dialog {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.45);
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+        }
+        .confirm-dialog.open { display: flex; }
+        .confirm-box {
+            background: #fff;
+            border-radius: 12px;
+            padding: 28px 28px 22px;
+            max-width: 380px;
+            width: calc(100% - 32px);
+            box-shadow: 0 12px 40px rgba(0,0,0,0.18);
+        }
+        .confirm-box h3 { margin: 0 0 10px; font-size: 17px; color: #1e293b; }
+        .confirm-box p { margin: 0 0 20px; font-size: 14px; color: #64748b; }
+        .confirm-actions { display: flex; justify-content: flex-end; gap: 10px; }
+
+        /* ── Dark mode basic ── */
+        @media (prefers-color-scheme: dark) {
+            body { background: #0f172a; color: #e2e8f0; }
+            .tabs, .tab { background: #1e293b; }
+            .tab { color: #94a3b8; }
+            .tab.active { color: #60a5fa; border-bottom-color: #60a5fa; }
+            .data-table { background: #1e293b; border-color: #334155; }
+            .data-table th { background: #0f172a; color: #94a3b8; border-color: #334155; }
+            .data-table td { color: #e2e8f0; border-color: #1e293b; }
+            .data-table tr:hover td { background: #263548; }
+            .modal-content, .confirm-box { background: #1e293b; }
+            .modal-header h2, .confirm-box h3 { color: #e2e8f0; }
+            .form-group input, .form-group select, .form-group textarea { background: #0f172a; border-color: #334155; color: #e2e8f0; }
+            .search-input, .filter-select { background: #1e293b; border-color: #334155; color: #e2e8f0; }
+            .stat-pill { background: #1e293b; border-color: #334155; color: #94a3b8; }
+            .section-toolbar h2 { color: #e2e8f0; }
+            .btn-secondary { background: #334155; color: #e2e8f0; }
+        }
+
+        @media (max-width: 600px) {
+            .tab { padding: 12px 14px; font-size: 14px; }
+            .tab-content { padding: 16px; }
+            .form-row { grid-template-columns: 1fr; }
+            .search-input { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Page Header -->
+    <div class="page-header">
+        <div>
+            <div style="margin-bottom:4px;">
+                <a href="/dashboard.html" class="back-link" data-testid="link-back-dashboard">&#8592; Dashboard</a>
+            </div>
+            <h1>&#128101; Directorio de Tripulación</h1>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+            <span id="header-captain-count" style="background:rgba(255,255,255,0.18);padding:5px 14px;border-radius:16px;font-size:13px;"></span>
+            <span id="header-stew-count" style="background:rgba(255,255,255,0.18);padding:5px 14px;border-radius:16px;font-size:13px;"></span>
+        </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs" role="tablist">
+        <button class="tab active" data-tab="captains" onclick="switchTab('captains')" data-testid="tab-captains" role="tab">
+            &#128378;&#65039; Capitanes
+        </button>
+        <button class="tab" data-tab="stews" onclick="switchTab('stews')" data-testid="tab-stews" role="tab">
+            &#129489;&#8205;&#9992;&#65039; Stew
+        </button>
+    </div>
+
+    <!-- Tab: Capitanes -->
+    <div class="tab-content active" id="tab-captains">
+        <div class="section-toolbar">
+            <h2>Capitanes</h2>
+            <div class="toolbar-right">
+                <input type="text" class="search-input" id="captain-search" placeholder="Buscar capitán..." oninput="filterCaptains()" data-testid="input-captain-search">
+                <select class="filter-select" id="captain-status-filter" onchange="filterCaptains()" data-testid="select-captain-filter">
+                    <option value="all">Todos</option>
+                    <option value="active">Activos</option>
+                    <option value="inactive">Inactivos</option>
+                </select>
+                <button class="btn btn-primary" onclick="openCaptainModal()" data-testid="button-add-captain">+ Nuevo Capitán</button>
+            </div>
+        </div>
+
+        <div class="stats-bar" id="captain-stats-bar"></div>
+
+        <div class="data-table">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Nombre</th>
+                        <th>Teléfono</th>
+                        <th>Email</th>
+                        <th>Especialidades</th>
+                        <th>Estado</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="captains-tbody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Tab: Stew -->
+    <div class="tab-content" id="tab-stews">
+        <div class="section-toolbar">
+            <h2>Stew</h2>
+            <div class="toolbar-right">
+                <input type="text" class="search-input" id="stew-search" placeholder="Buscar stew..." oninput="filterStews()" data-testid="input-stew-search">
+                <select class="filter-select" id="stew-status-filter" onchange="filterStews()" data-testid="select-stew-filter">
+                    <option value="all">Todos</option>
+                    <option value="active">Activos</option>
+                    <option value="inactive">Inactivos</option>
+                </select>
+                <button class="btn btn-primary" onclick="openStewModal()" data-testid="button-add-stew">+ Nuevo Stew</button>
+            </div>
+        </div>
+
+        <div class="stats-bar" id="stew-stats-bar"></div>
+
+        <div class="data-table">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Nombre</th>
+                        <th>Teléfono</th>
+                        <th>Email</th>
+                        <th>Estado</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="stews-tbody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Modal: Captain -->
+    <div class="modal" id="modal-captain" role="dialog" aria-modal="true" aria-labelledby="captain-modal-title">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="captain-modal-title">Nuevo Capitán</h2>
+                <button class="modal-close" onclick="closeCaptainModal()" data-testid="button-close-captain-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="form-captain" onsubmit="saveCaptain(event)">
+                    <div class="form-group">
+                        <label>Nombre completo *</label>
+                        <input type="text" id="cap-name" required placeholder="Ej. Juan Pérez" data-testid="input-captain-name">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Teléfono</label>
+                            <input type="tel" id="cap-phone" placeholder="+1 (305) 555-0100" data-testid="input-captain-phone">
+                        </div>
+                        <div class="form-group">
+                            <label>Email</label>
+                            <input type="email" id="cap-email" placeholder="capitan@mail.com" data-testid="input-captain-email">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Especialidades <span style="font-weight:400;font-size:12px;color:#94a3b8;">(separadas por coma)</span></label>
+                        <input type="text" id="cap-specialties" placeholder="Pesca, Buceo, Snorkel..." data-testid="input-captain-specialties">
+                    </div>
+                    <div class="form-group">
+                        <label>Estado</label>
+                        <select id="cap-status" data-testid="select-captain-status">
+                            <option value="active">Activo</option>
+                            <option value="inactive">Inactivo</option>
+                            <option value="available">Disponible</option>
+                        </select>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary" onclick="closeCaptainModal()" data-testid="button-cancel-captain">Cancelar</button>
+                        <button type="submit" class="btn btn-primary" id="captain-submit-btn" data-testid="button-save-captain">Guardar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Stew -->
+    <div class="modal" id="modal-stew" role="dialog" aria-modal="true" aria-labelledby="stew-modal-title">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="stew-modal-title">Nuevo Stew</h2>
+                <button class="modal-close" onclick="closeStewModal()" data-testid="button-close-stew-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="form-stew" onsubmit="saveStew(event)">
+                    <div class="form-group">
+                        <label>Nombre completo *</label>
+                        <input type="text" id="stew-name" required placeholder="Ej. María García" data-testid="input-stew-name">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Teléfono</label>
+                            <input type="tel" id="stew-phone" placeholder="+1 (305) 555-0200" data-testid="input-stew-phone">
+                        </div>
+                        <div class="form-group">
+                            <label>Email</label>
+                            <input type="email" id="stew-email" placeholder="stew@mail.com" data-testid="input-stew-email">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Estado</label>
+                        <select id="stew-status" data-testid="select-stew-status">
+                            <option value="active">Activo</option>
+                            <option value="inactive">Inactivo</option>
+                        </select>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary" onclick="closeStewModal()" data-testid="button-cancel-stew">Cancelar</button>
+                        <button type="submit" class="btn btn-primary" id="stew-submit-btn" data-testid="button-save-stew">Guardar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirm Delete Dialog -->
+    <div class="confirm-dialog" id="confirm-dialog">
+        <div class="confirm-box">
+            <h3 id="confirm-title">Confirmar eliminación</h3>
+            <p id="confirm-message">¿Estás seguro de que deseas eliminar este registro? Esta acción no se puede deshacer.</p>
+            <div class="confirm-actions">
+                <button class="btn btn-secondary" onclick="closeConfirm()" data-testid="button-confirm-cancel">Cancelar</button>
+                <button class="btn btn-danger" id="confirm-ok-btn" onclick="confirmDelete()" data-testid="button-confirm-delete">Eliminar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div id="crew-toast"></div>
+
+    <script src="/i18n.js"></script>
+    <script>
+    // ─── State ───────────────────────────────────────────────
+    let allCaptains = [];
+    let allStews = [];
+    let editingCaptainId = null;
+    let editingStewId = null;
+    let pendingDeleteType = null;
+    let pendingDeleteId = null;
+
+    // ─── Init ─────────────────────────────────────────────────
+    document.addEventListener('DOMContentLoaded', () => {
+        initTabFromURL();
+        loadCaptains();
+        loadStews();
+    });
+
+    function initTabFromURL() {
+        const params = new URLSearchParams(window.location.search);
+        const tab = params.get('tab');
+        if (tab === 'stews') switchTab('stews');
+        else switchTab('captains');
+    }
+
+    // ─── Tabs ─────────────────────────────────────────────────
+    function switchTab(tab) {
+        document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        const el = document.getElementById('tab-' + tab);
+        if (el) el.classList.add('active');
+    }
+
+    // ─── Toast ────────────────────────────────────────────────
+    function showToast(msg, isError) {
+        const t = document.getElementById('crew-toast');
+        t.textContent = msg;
+        t.className = 'show' + (isError ? ' toast-error' : '');
+        setTimeout(() => { t.className = ''; }, 3000);
+    }
+
+    // ─── Helpers ──────────────────────────────────────────────
+    function esc(s) {
+        return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+    function initials(name) {
+        return (name || '?').split(' ').slice(0,2).map(w => w[0]).join('').toUpperCase();
+    }
+    function statusBadge(status) {
+        const map = { active: ['badge-active','Activo'], inactive: ['badge-inactive','Inactivo'], available: ['badge-available','Disponible'] };
+        const [cls, label] = map[status] || ['badge-inactive', status || 'Desconocido'];
+        return `<span class="badge ${cls}">${label}</span>`;
+    }
+
+    // ─── CAPTAINS ─────────────────────────────────────────────
+    async function loadCaptains() {
+        try {
+            const res = await fetch('/api/captains');
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            allCaptains = await res.json();
+            renderCaptains(allCaptains);
+            updateHeaderCounts();
+        } catch(e) {
+            document.getElementById('captains-tbody').innerHTML =
+                '<tr><td colspan="6" style="text-align:center;color:#dc2626;padding:24px;">Error al cargar capitanes.</td></tr>';
+        }
+    }
+
+    function renderCaptains(list) {
+        const tbody = document.getElementById('captains-tbody');
+        const active = list.filter(c => c.status === 'active' || c.status === 'available' || !c.status).length;
+        const inactive = list.filter(c => c.status === 'inactive').length;
+
+        document.getElementById('captain-stats-bar').innerHTML = `
+            <div class="stat-pill">Total: <strong>${list.length}</strong></div>
+            <div class="stat-pill">Activos: <strong>${active}</strong></div>
+            <div class="stat-pill">Inactivos: <strong>${inactive}</strong></div>
+        `;
+
+        if (list.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="6">
+                <div class="empty-state">
+                    <div class="empty-icon">&#128378;&#65039;</div>
+                    <p>No hay capitanes registrados. Agrega el primero.</p>
+                </div>
+            </td></tr>`;
+            return;
+        }
+
+        const highlightId = new URLSearchParams(window.location.search).get('highlight');
+
+        tbody.innerHTML = list.map(c => {
+            const specs = Array.isArray(c.specialties) ? c.specialties : (typeof c.specialties === 'string' && c.specialties ? JSON.parse(c.specialties) : []);
+            const specHtml = specs.length ? specs.map(s => `<span class="spec-tag">${esc(s)}</span>`).join('') : '<span style="color:#94a3b8;font-size:12px;">—</span>';
+            const highlight = c.id === highlightId ? 'style="background:#fffbeb;"' : '';
+            return `<tr ${highlight} data-testid="row-captain-${esc(c.id)}">
+                <td>
+                    <div class="name-cell">
+                        <div class="crew-avatar">${esc(initials(c.name))}</div>
+                        <span style="font-weight:600;">${esc(c.name)}</span>
+                    </div>
+                </td>
+                <td>${c.phone ? `<a href="tel:${esc(c.phone)}" style="color:#0066cc;" data-testid="link-captain-phone-${esc(c.id)}">${esc(c.phone)}</a>` : '<span style="color:#94a3b8;">—</span>'}</td>
+                <td>${c.email ? `<a href="mailto:${esc(c.email)}" style="color:#0066cc;" data-testid="link-captain-email-${esc(c.id)}">${esc(c.email)}</a>` : '<span style="color:#94a3b8;">—</span>'}</td>
+                <td><div class="specialties-list">${specHtml}</div></td>
+                <td>${statusBadge(c.status || 'active')}</td>
+                <td>
+                    <div style="display:flex;gap:6px;">
+                        <button class="btn btn-secondary btn-sm" onclick="openEditCaptain('${esc(c.id)}')" data-testid="button-edit-captain-${esc(c.id)}">Editar</button>
+                        <button class="btn btn-danger btn-sm" onclick="askDeleteCaptain('${esc(c.id)}','${esc(c.name)}')" data-testid="button-delete-captain-${esc(c.id)}">Eliminar</button>
+                    </div>
+                </td>
+            </tr>`;
+        }).join('');
+    }
+
+    function filterCaptains() {
+        const q = document.getElementById('captain-search').value.toLowerCase();
+        const statusF = document.getElementById('captain-status-filter').value;
+        let filtered = allCaptains;
+        if (q) filtered = filtered.filter(c =>
+            (c.name||'').toLowerCase().includes(q) ||
+            (c.phone||'').includes(q) ||
+            (c.email||'').toLowerCase().includes(q)
+        );
+        if (statusF !== 'all') filtered = filtered.filter(c => (c.status || 'active') === statusF);
+        renderCaptains(filtered);
+    }
+
+    function openCaptainModal() {
+        editingCaptainId = null;
+        document.getElementById('captain-modal-title').textContent = 'Nuevo Capitán';
+        document.getElementById('cap-name').value = '';
+        document.getElementById('cap-phone').value = '';
+        document.getElementById('cap-email').value = '';
+        document.getElementById('cap-specialties').value = '';
+        document.getElementById('cap-status').value = 'active';
+        document.getElementById('captain-submit-btn').textContent = 'Guardar';
+        document.getElementById('modal-captain').classList.add('open');
+    }
+
+    function openEditCaptain(id) {
+        const c = allCaptains.find(x => x.id === id);
+        if (!c) return;
+        editingCaptainId = id;
+        document.getElementById('captain-modal-title').textContent = 'Editar Capitán';
+        document.getElementById('cap-name').value = c.name || '';
+        document.getElementById('cap-phone').value = c.phone || '';
+        document.getElementById('cap-email').value = c.email || '';
+        const specs = Array.isArray(c.specialties) ? c.specialties.join(', ') : (c.specialties || '');
+        document.getElementById('cap-specialties').value = specs;
+        document.getElementById('cap-status').value = c.status || 'active';
+        document.getElementById('captain-submit-btn').textContent = 'Actualizar';
+        document.getElementById('modal-captain').classList.add('open');
+    }
+
+    function closeCaptainModal() {
+        document.getElementById('modal-captain').classList.remove('open');
+    }
+
+    async function saveCaptain(e) {
+        e.preventDefault();
+        const name = document.getElementById('cap-name').value.trim();
+        const phone = document.getElementById('cap-phone').value.trim();
+        const email = document.getElementById('cap-email').value.trim();
+        const specRaw = document.getElementById('cap-specialties').value.trim();
+        const specialties = specRaw ? specRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
+        const status = document.getElementById('cap-status').value;
+
+        const btn = document.getElementById('captain-submit-btn');
+        btn.disabled = true;
+        btn.textContent = 'Guardando...';
+
+        try {
+            const method = editingCaptainId ? 'PATCH' : 'POST';
+            const url = editingCaptainId ? `/api/captains/${editingCaptainId}` : '/api/captains';
+            const res = await fetch(url, {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, phone, email, specialties, status }),
+            });
+            if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Error'); }
+            closeCaptainModal();
+            await loadCaptains();
+            showToast(editingCaptainId ? 'Capitán actualizado.' : 'Capitán agregado correctamente.');
+        } catch(err) {
+            showToast(err.message || 'Error al guardar.', true);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = editingCaptainId ? 'Actualizar' : 'Guardar';
+        }
+    }
+
+    function askDeleteCaptain(id, name) {
+        pendingDeleteType = 'captain';
+        pendingDeleteId = id;
+        document.getElementById('confirm-title').textContent = 'Eliminar Capitán';
+        document.getElementById('confirm-message').textContent = `¿Deseas eliminar a "${name}"? Esta acción no se puede deshacer.`;
+        document.getElementById('confirm-dialog').classList.add('open');
+    }
+
+    // ─── STEWS ────────────────────────────────────────────────
+    async function loadStews() {
+        try {
+            const res = await fetch('/api/stews?status=all');
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            allStews = await res.json();
+            renderStews(allStews);
+            updateHeaderCounts();
+        } catch(e) {
+            document.getElementById('stews-tbody').innerHTML =
+                '<tr><td colspan="5" style="text-align:center;color:#dc2626;padding:24px;">Error al cargar stew.</td></tr>';
+        }
+    }
+
+    function renderStews(list) {
+        const tbody = document.getElementById('stews-tbody');
+        const active = list.filter(s => s.status !== 'inactive').length;
+        const inactive = list.filter(s => s.status === 'inactive').length;
+
+        document.getElementById('stew-stats-bar').innerHTML = `
+            <div class="stat-pill">Total: <strong>${list.length}</strong></div>
+            <div class="stat-pill">Activos: <strong>${active}</strong></div>
+            <div class="stat-pill">Inactivos: <strong>${inactive}</strong></div>
+        `;
+
+        if (list.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="5">
+                <div class="empty-state">
+                    <div class="empty-icon">&#129489;&#8205;&#9992;&#65039;</div>
+                    <p>No hay stew registrados. Agrega el primero.</p>
+                </div>
+            </td></tr>`;
+            return;
+        }
+
+        const highlightId = new URLSearchParams(window.location.search).get('highlight');
+
+        tbody.innerHTML = list.map(s => {
+            const highlight = s.id === highlightId ? 'style="background:#fffbeb;"' : '';
+            return `<tr ${highlight} data-testid="row-stew-${esc(s.id)}">
+                <td>
+                    <div class="name-cell">
+                        <div class="crew-avatar" style="background:linear-gradient(135deg,#7c3aed,#a855f7);">${esc(initials(s.name))}</div>
+                        <span style="font-weight:600;">${esc(s.name)}</span>
+                    </div>
+                </td>
+                <td>${s.phone ? `<a href="tel:${esc(s.phone)}" style="color:#0066cc;" data-testid="link-stew-phone-${esc(s.id)}">${esc(s.phone)}</a>` : '<span style="color:#94a3b8;">—</span>'}</td>
+                <td>${s.email ? `<a href="mailto:${esc(s.email)}" style="color:#0066cc;" data-testid="link-stew-email-${esc(s.id)}">${esc(s.email)}</a>` : '<span style="color:#94a3b8;">—</span>'}</td>
+                <td>${statusBadge(s.status || 'active')}</td>
+                <td>
+                    <div style="display:flex;gap:6px;">
+                        <button class="btn btn-secondary btn-sm" onclick="openEditStew('${esc(s.id)}')" data-testid="button-edit-stew-${esc(s.id)}">Editar</button>
+                        <button class="btn btn-danger btn-sm" onclick="askDeleteStew('${esc(s.id)}','${esc(s.name)}')" data-testid="button-delete-stew-${esc(s.id)}">Eliminar</button>
+                    </div>
+                </td>
+            </tr>`;
+        }).join('');
+    }
+
+    function filterStews() {
+        const q = document.getElementById('stew-search').value.toLowerCase();
+        const statusF = document.getElementById('stew-status-filter').value;
+        let filtered = allStews;
+        if (q) filtered = filtered.filter(s =>
+            (s.name||'').toLowerCase().includes(q) ||
+            (s.phone||'').includes(q) ||
+            (s.email||'').toLowerCase().includes(q)
+        );
+        if (statusF !== 'all') filtered = filtered.filter(s => (s.status || 'active') === statusF);
+        renderStews(filtered);
+    }
+
+    function openStewModal() {
+        editingStewId = null;
+        document.getElementById('stew-modal-title').textContent = 'Nuevo Stew';
+        document.getElementById('stew-name').value = '';
+        document.getElementById('stew-phone').value = '';
+        document.getElementById('stew-email').value = '';
+        document.getElementById('stew-status').value = 'active';
+        document.getElementById('stew-submit-btn').textContent = 'Guardar';
+        document.getElementById('modal-stew').classList.add('open');
+    }
+
+    function openEditStew(id) {
+        const s = allStews.find(x => x.id === id);
+        if (!s) return;
+        editingStewId = id;
+        document.getElementById('stew-modal-title').textContent = 'Editar Stew';
+        document.getElementById('stew-name').value = s.name || '';
+        document.getElementById('stew-phone').value = s.phone || '';
+        document.getElementById('stew-email').value = s.email || '';
+        document.getElementById('stew-status').value = s.status || 'active';
+        document.getElementById('stew-submit-btn').textContent = 'Actualizar';
+        document.getElementById('modal-stew').classList.add('open');
+    }
+
+    function closeStewModal() {
+        document.getElementById('modal-stew').classList.remove('open');
+    }
+
+    async function saveStew(e) {
+        e.preventDefault();
+        const name = document.getElementById('stew-name').value.trim();
+        const phone = document.getElementById('stew-phone').value.trim();
+        const email = document.getElementById('stew-email').value.trim();
+        const status = document.getElementById('stew-status').value;
+
+        const btn = document.getElementById('stew-submit-btn');
+        btn.disabled = true;
+        btn.textContent = 'Guardando...';
+
+        try {
+            const method = editingStewId ? 'PATCH' : 'POST';
+            const url = editingStewId ? `/api/stews/${editingStewId}` : '/api/stews';
+            const res = await fetch(url, {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, phone, email, status }),
+            });
+            if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Error'); }
+            closeStewModal();
+            await loadStews();
+            showToast(editingStewId ? 'Stew actualizado.' : 'Stew agregado correctamente.');
+        } catch(err) {
+            showToast(err.message || 'Error al guardar.', true);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = editingStewId ? 'Actualizar' : 'Guardar';
+        }
+    }
+
+    function askDeleteStew(id, name) {
+        pendingDeleteType = 'stew';
+        pendingDeleteId = id;
+        document.getElementById('confirm-title').textContent = 'Eliminar Stew';
+        document.getElementById('confirm-message').textContent = `¿Deseas eliminar a "${name}"? Esta acción no se puede deshacer.`;
+        document.getElementById('confirm-dialog').classList.add('open');
+    }
+
+    // ─── Shared Delete ────────────────────────────────────────
+    function closeConfirm() {
+        document.getElementById('confirm-dialog').classList.remove('open');
+        pendingDeleteType = null;
+        pendingDeleteId = null;
+    }
+
+    async function confirmDelete() {
+        if (!pendingDeleteType || !pendingDeleteId) return;
+        const btn = document.getElementById('confirm-ok-btn');
+        btn.disabled = true;
+        btn.textContent = 'Eliminando...';
+        try {
+            const url = pendingDeleteType === 'captain' ? `/api/captains/${pendingDeleteId}` : `/api/stews/${pendingDeleteId}`;
+            const res = await fetch(url, { method: 'DELETE' });
+            if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Error'); }
+            closeConfirm();
+            if (pendingDeleteType === 'captain') { await loadCaptains(); }
+            else { await loadStews(); }
+            showToast('Registro eliminado.');
+        } catch(err) {
+            showToast(err.message || 'Error al eliminar.', true);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Eliminar';
+        }
+    }
+
+    // ─── Header counts ────────────────────────────────────────
+    function updateHeaderCounts() {
+        const capActive = allCaptains.filter(c => c.status !== 'inactive').length;
+        const stewActive = allStews.filter(s => s.status !== 'inactive').length;
+        document.getElementById('header-captain-count').textContent = `${capActive} Capitán${capActive !== 1 ? 'es' : ''} activo${capActive !== 1 ? 's' : ''}`;
+        document.getElementById('header-stew-count').textContent = `${stewActive} Stew activo${stewActive !== 1 ? 's' : ''}`;
+    }
+
+    // ─── Close modals on backdrop click ──────────────────────
+    document.getElementById('modal-captain').addEventListener('click', function(e) {
+        if (e.target === this) closeCaptainModal();
+    });
+    document.getElementById('modal-stew').addEventListener('click', function(e) {
+        if (e.target === this) closeStewModal();
+    });
+    document.getElementById('confirm-dialog').addEventListener('click', function(e) {
+        if (e.target === this) closeConfirm();
+    });
+
+    // ─── Keyboard shortcuts ───────────────────────────────────
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            closeCaptainModal();
+            closeStewModal();
+            closeConfirm();
+        }
+    });
+
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js').catch(() => {});
+    }
+    </script>
+</body>
+</html>

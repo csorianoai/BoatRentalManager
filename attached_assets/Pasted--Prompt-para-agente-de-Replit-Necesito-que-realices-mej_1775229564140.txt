@@ -1,0 +1,104 @@
+# Prompt para agente de Replit
+
+Necesito que realices mejoras funcionales y de navegación en la plataforma **gestion.nadakiexcursions.com**.
+
+## Objetivo general
+Actualmente existe un directorio de **mecánicos** con todos sus datos. Necesito que implementes la misma lógica y estructura para los **capitanes** y también para los **stew**, de forma ordenada, funcional y conectada con el dashboard principal.
+
+---
+
+## Cambios requeridos
+
+### 1. Crear módulo/directorio de Capitanes
+Debes agregar un módulo o sección de **Capitanes** similar al directorio actual de mecánicos.
+
+#### Requerimientos:
+- Debe existir un listado completo de capitanes.
+- Debe permitir:
+  - ver todos los capitanes,
+  - agregar nuevos capitanes,
+  - editar capitanes,
+  - eliminar capitanes si el sistema ya soporta esa lógica en otros directorios.
+- Cada capitán debe tener una ficha o registro con todos sus datos relevantes, siguiendo la misma estructura visual y funcional del directorio de mecánicos.
+- Reutiliza componentes existentes si ya hay tablas, formularios, validaciones, modales o vistas comparables en el módulo de mecánicos.
+
+---
+
+### 2. Crear módulo/directorio de Stew
+Debes agregar también un módulo o sección para **Stew**, con la misma lógica que el directorio de mecánicos y capitanes.
+
+#### Requerimientos:
+- Debe existir un listado completo de stew.
+- Debe permitir:
+  - ver todos los stew,
+  - agregar nuevos registros,
+  - editar registros,
+  - eliminar registros si aplica según la lógica actual del sistema.
+- Debe seguir la misma experiencia de usuario, estructura visual, validaciones y arquitectura que los otros directorios del sistema.
+
+---
+
+### 3. Activar tarjetas/indicadores del dashboard principal
+En el dashboard principal existen secciones o KPIs donde aparece algo como:
+- **Capitanes activos**
+- **Stew activos**
+
+Necesito que esas tarjetas sean completamente operativas.
+
+#### Requerimientos:
+- Mostrar el número real de **capitanes activos**.
+- Mostrar el número real de **stew activos**.
+- Al hacer click sobre **Capitanes activos**, debe redirigir a la vista/listado donde se encuentran todos los capitanes.
+- Al hacer click sobre **Stew activos**, debe redirigir a la vista/listado donde se encuentran todos los stew.
+- Si actualmente esos indicadores son estáticos o no tienen acción, conviértelos en elementos clicables funcionales.
+
+---
+
+### 4. Agregar buscador global o buscador visible y útil
+Necesito agregar un **buscador** para que una persona que no conozca la plataforma pueda encontrar rápidamente lo que necesita sin navegar por todos los módulos.
+
+#### Requerimientos:
+- Debe estar ubicado en un lugar visible y natural dentro de la plataforma, idealmente en el layout principal o en el dashboard.
+- Debe permitir buscar rápidamente entre módulos, vistas o registros importantes.
+- Como mínimo, debe ayudar a encontrar:
+  - mecánicos,
+  - capitanes,
+  - stew,
+  - secciones principales del sistema.
+- La experiencia debe ser intuitiva para usuarios nuevos.
+- Si técnicamente conviene, implementa una búsqueda global con sugerencias/autocomplete.
+- Si no existe infraestructura para búsqueda global, implementa una primera versión funcional que permita localizar páginas, directorios y registros relevantes sin recorrer toda la app manualmente.
+
+---
+
+## Criterios técnicos
+- Mantén la arquitectura actual del proyecto.
+- Reutiliza componentes existentes cuando sea posible.
+- Respeta estilos, diseño, rutas, naming conventions y patrones ya usados en la plataforma.
+- No rompas funcionalidades existentes.
+- Si ya existe un sistema de “activos/inactivos”, intégralo para capitanes y stew.
+- Si ya existe control de permisos/roles, asegúrate de respetarlo en los nuevos módulos.
+- Asegúrate de que las nuevas rutas estén conectadas correctamente desde navegación y dashboard.
+- Verifica que el dashboard consuma datos reales y no valores hardcodeados.
+
+---
+
+## Validaciones esperadas
+Quiero que al finalizar:
+1. Exista un directorio completo de **Capitanes**.
+2. Exista un directorio completo de **Stew**.
+3. El dashboard muestre correctamente los conteos de **Capitanes activos** y **Stew activos**.
+4. Al dar click en esas tarjetas, me lleve a sus respectivos listados.
+5. Exista un buscador útil y visible para encontrar rápido secciones o registros.
+6. Todo quede integrado visual y funcionalmente con la plataforma actual.
+
+---
+
+## Entregable esperado
+Realiza los cambios directamente en el proyecto y deja todo funcionando. Además:
+- identifica los archivos modificados,
+- resume qué se implementó,
+- explica cualquier decisión técnica importante,
+- indica si fue necesario crear nuevas rutas, componentes, modelos o endpoints.
+
+Si detectas que el módulo de mecánicos ya tiene lógica reutilizable, úsala como base para los módulos de capitanes y stew para mantener consistencia.

@@ -27,6 +27,16 @@
                 <p class="subtitle" data-i18n="dashboard-title">Business Intelligence Dashboard</p>
             </div>
             <div class="header-controls">
+                <!-- Global Search -->
+                <div class="global-search-wrap" id="globalSearchWrap">
+                    <button class="btn-icon" id="searchToggle" title="Buscar" data-testid="button-search-toggle" onclick="toggleGlobalSearch()">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    </button>
+                    <div class="global-search-box" id="globalSearchBox" style="display:none;">
+                        <input type="text" id="globalSearchInput" placeholder="Buscar módulo, capitán, stew..." autocomplete="off" data-testid="input-global-search" oninput="runGlobalSearch(this.value)" onkeydown="searchKeyNav(event)">
+                        <div class="global-search-results" id="globalSearchResults"></div>
+                    </div>
+                </div>
                 <button class="btn-icon" id="langToggle" title="Cambiar idioma">
                     <span id="currentLang">ES</span>
                 </button>
@@ -140,6 +150,10 @@
                 <div class="nav-icon">📊</div>
                 <span class="nav-label">Dashboard Ejecutivo</span>
             </a>
+            <a href="/crew.html" class="nav-card" data-testid="link-crew">
+                <div class="nav-icon">👥</div>
+                <span class="nav-label">Tripulación</span>
+            </a>
         </div>
     </section>
 
@@ -164,14 +178,25 @@
             </div>
         </div>
 
-        <div class="kpi-card wave-gradient">
+        <a href="/crew.html?tab=captains" class="kpi-card wave-gradient kpi-card-link" data-testid="link-kpi-captains" style="text-decoration:none;display:block;cursor:pointer;">
             <div class="kpi-icon">👨‍✈️</div>
             <div class="kpi-content">
                 <h3 data-i18n="active-captains">Capitanes Activos</h3>
                 <p class="kpi-value" id="activeCaptains">0</p>
                 <span class="kpi-sublabel" id="totalCaptains">de 0 total</span>
             </div>
-        </div>
+            <span class="kpi-arrow">›</span>
+        </a>
+
+        <a href="/crew.html?tab=stews" class="kpi-card wave-gradient kpi-card-link" data-testid="link-kpi-stews" style="text-decoration:none;display:block;cursor:pointer;">
+            <div class="kpi-icon">🧑‍✈️</div>
+            <div class="kpi-content">
+                <h3>Stew Activos</h3>
+                <p class="kpi-value" id="activeStews">0</p>
+                <span class="kpi-sublabel" id="totalStews">de 0 total</span>
+            </div>
+            <span class="kpi-arrow">›</span>
+        </a>
 
         <div class="kpi-card wave-gradient">
             <div class="kpi-icon">⭐</div>
