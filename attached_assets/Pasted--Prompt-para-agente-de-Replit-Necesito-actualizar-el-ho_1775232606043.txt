@@ -1,0 +1,142 @@
+# Prompt para agente de Replit
+
+Necesito actualizar el home y el flujo de reservas para que el cliente pueda elegir primero la cantidad de horas y que el sistema actualice automáticamente los precios de cada barco según el día seleccionado.
+
+## Requerimientos
+1. Agrega en el home un selector de duración con:
+   - 2h
+   - 3h
+   - 4h
+   - 5h
+   - 6h
+
+2. Cuando el usuario elija una duración, deben mostrarse los precios correctos por barco.
+
+3. Cuando el usuario seleccione una fecha, el sistema debe detectar:
+   - **Monday - Thursday & Sunday**
+   - **Friday & Saturday**
+
+4. Según eso, debe aplicar el precio correcto.
+
+5. Para la opción de **2 horas**, usar estos precios:
+   - **Sundancer 50'** → $550
+   - **Cranchi 50'** → $650
+   - **Viking 50'** → $650
+
+6. Si para 2 horas un barco no tiene tarifa definida, no inventes precio. En ese caso:
+   - no mostrar esa opción para ese barco, o
+   - mostrar claramente que no está disponible para 2 horas,
+   según la UX más consistente con la app actual.
+
+7. La actualización del precio debe ser inmediata, sin recargar la página.
+
+8. La selección de horas y fecha debe mantenerse al navegar a resultados o al detalle del barco.
+
+9. Centraliza la lógica de precios en una estructura mantenible, no hardcodeada en múltiples componentes.
+
+10. Mantén consistencia visual con el sistema actual.
+
+---
+
+## Tarifas
+
+### 50FT SEA RAY SUNDANCER
+- **2h:** $550
+- **Monday - Thursday & Sunday**
+  - 3h: $640
+  - 4h: $850
+  - 5h: $1063
+  - 6h: $1275
+- **Friday & Saturday**
+  - 3h: $680
+  - 4h: $900
+  - 5h: $1125
+  - 6h: $1350
+
+### 50FT CRANCHI
+- **2h:** $650
+- **Monday - Thursday & Sunday**
+  - 3h: $735
+  - 4h: $980
+  - 5h: $1125
+  - 6h: $1470
+- **Friday & Saturday**
+  - 3h: $770
+  - 4h: $1050
+  - 5h: $1195
+  - 6h: $1540
+
+### 50FT VIKING PRINCESS
+- **2h:** $650
+- **Monday - Thursday & Sunday**
+  - 3h: $750
+  - 4h: $1000
+  - 5h: $1250
+  - 6h: $1450
+- **Friday & Saturday**
+  - 3h: $800
+  - 4h: $1100
+  - 5h: $1350
+  - 6h: $1550
+
+### 40FT SEARAY EXPRESS
+- **No hay tarifa definida para 2h**
+- **Monday - Thursday & Sunday**
+  - 3h: $420
+  - 4h: $560
+  - 5h: $700
+  - 6h: $840
+- **Friday & Saturday**
+  - 3h: $450
+  - 4h: $600
+  - 5h: $750
+  - 6h: $890
+
+---
+
+## Lógica esperada
+- Si el cliente elige **2 horas**, el sistema debe traer de inmediato las embarcaciones que sí tienen tarifa para 2 horas y mostrar el precio correcto.
+- Si el cliente cambia a 3h, 4h, 5h o 6h, recalcular automáticamente.
+- Si el cliente selecciona viernes o sábado, usar tarifa de fin de semana.
+- Si selecciona domingo, lunes, martes, miércoles o jueves, usar tarifa weekday.
+- La lógica debe aplicarse en home, resultados y detalle del barco.
+
+---
+
+## Validaciones mínimas
+
+### Caso 1
+- Barco: 50FT VIKING PRINCESS
+- Duración: 2 horas
+- Resultado esperado: **$650**
+
+### Caso 2
+- Barco: 50FT CRANCHI
+- Duración: 2 horas
+- Resultado esperado: **$650**
+
+### Caso 3
+- Barco: 50FT SEA RAY SUNDANCER
+- Duración: 2 horas
+- Resultado esperado: **$550**
+
+### Caso 4
+- Barco: 40FT SEARAY EXPRESS
+- Duración: 2 horas
+- Resultado esperado: no disponible o no mostrar opción 2h para este barco.
+
+### Caso 5
+- Barco: 50FT VIKING PRINCESS
+- Duración: 4 horas
+- Día: sábado
+- Resultado esperado: **$1100**
+
+---
+
+## Entregable esperado
+Al final indícame:
+- archivos modificados,
+- componentes actualizados,
+- cómo quedó centralizada la lógica de precios,
+- cómo manejaste la disponibilidad de 2 horas para barcos que no tienen tarifa,
+- y qué pruebas realizaste.
