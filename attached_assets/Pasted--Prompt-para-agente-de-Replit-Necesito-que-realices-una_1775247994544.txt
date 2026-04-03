@@ -1,0 +1,174 @@
+# Prompt para agente de Replit
+
+Necesito que realices una **limpieza completa del dashboard y del sistema de reservas** para eliminar cualquier dato ficticio, mock, hardcodeado o simulado.
+
+## Objetivo
+El sistema debe mostrar **únicamente datos reales** provenientes de la base de datos.  
+NO quiero ver ningún dato inventado en:
+- dashboard
+- gráficas
+- estadísticas
+- historial de reservas
+- datos pasados
+- KPIs
+
+---
+
+# 1. Eliminar completamente datos ficticios del dashboard
+
+## Problema actual
+El dashboard está mostrando:
+- datos que no corresponden a reservas reales
+- métricas que no coinciden con la base de datos
+- valores hardcodeados o simulados
+- estadísticas que no reflejan la operación real
+
+## Requerimiento
+Debes eliminar completamente cualquier dato ficticio o de prueba.
+
+### Esto incluye:
+- valores hardcodeados en frontend
+- mocks en componentes
+- datos de ejemplo (seed data) usados para UI
+- datos temporales usados para pruebas
+- fallback data cuando no hay respuesta del backend
+- números “default” que no vienen de la base de datos
+
+---
+
+# 2. Mostrar únicamente datos reales
+
+## Reglas estrictas
+- Si no hay datos reales → mostrar vacío o estado “sin datos”
+- NO inventar números
+- NO mostrar valores estimados
+- NO rellenar con placeholders numéricos falsos
+
+## Ejemplo:
+Si no hay reservas en un periodo:
+- mostrar: “No hay reservas en este rango”
+- NO mostrar: números ficticios o gráficos falsos
+
+---
+
+# 3. Limpiar historial de reservas ficticias
+
+## Requerimiento
+Revisar toda la data de reservas y eliminar:
+
+- reservas de prueba
+- reservas fake
+- registros duplicados irreales
+- datos de demo
+- seeds que no representen operaciones reales
+
+## Importante
+- Mantener solo reservas reales operativas
+- Si hay forma de distinguir entre test y producción, usarla
+- Si no, identificar patrones de datos falsos y eliminarlos con criterio
+
+---
+
+# 4. Corregir gráficas para que usen solo data real
+
+## Requerimiento
+Todas las gráficas deben:
+- conectarse directamente a datos reales
+- reflejar exactamente lo que existe en la base de datos
+
+## Si no hay datos:
+- no mostrar gráfica falsa
+- mostrar estado vacío o mensaje claro
+
+---
+
+# 5. Revisar toda la lógica de fallback
+
+## Problema común
+Muchos dashboards usan lógica tipo:
+- “si no hay datos, mostrar valores por defecto”
+
+Esto debe eliminarse.
+
+## Requerimiento
+Eliminar cualquier lógica que:
+- inserte datos falsos cuando falla una query
+- muestre números fake mientras carga
+- mantenga datos antiguos como fallback incorrecto
+
+---
+
+# 6. Validar consistencia completa
+
+Después de la limpieza:
+
+- El total de bookings debe coincidir con la base de datos
+- El revenue debe ser real
+- Las reservas por plataforma deben ser reales
+- Las reservas pasadas, presentes y futuras deben ser reales
+- El calendario y el dashboard deben coincidir
+
+---
+
+# 7. Manejo correcto de estados vacíos
+
+Implementar estados claros cuando no haya datos:
+
+- “No hay reservas registradas”
+- “No hay datos para este rango de fechas”
+- “No hay bookings para esta plataforma”
+
+---
+
+# 8. Auditoría técnica obligatoria
+
+Debes revisar y corregir:
+
+- frontend (componentes, hooks, estado)
+- backend (queries, endpoints)
+- modelos de datos
+- integraciones con reservas
+- agregaciones del dashboard
+- filtros
+- caché si existe
+- cualquier fuente de datos ficticios
+
+---
+
+# 9. Validaciones finales
+
+## Caso 1
+Si existen 3 reservas reales:
+- el dashboard debe mostrar exactamente 3
+
+## Caso 2
+Si no hay reservas en un rango:
+- mostrar vacío
+- no mostrar números
+
+## Caso 3
+Si filtro por plataforma sin datos:
+- mostrar vacío correctamente
+
+---
+
+# 10. Entregable esperado
+
+Al finalizar indícame:
+
+1. Qué datos ficticios encontraste
+2. Dónde estaban (frontend, backend, seeds, etc.)
+3. Qué eliminaste exactamente
+4. Qué lógica de fallback corregiste
+5. Cómo aseguraste que todo ahora es 100% real
+6. Qué validaciones hiciste contra la base de datos
+7. Qué partes del sistema estaban mostrando datos incorrectos
+
+---
+
+# Resultado final esperado
+
+- El dashboard solo muestra datos reales
+- No existe ningún dato ficticio en la plataforma
+- Las gráficas reflejan información real o muestran vacío
+- El sistema es confiable para toma de decisiones
