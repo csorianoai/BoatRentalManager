@@ -223,7 +223,13 @@ function updateUpcomingBookings(data) {
             </div>
         `;
         div.style.cursor = 'pointer';
-        div.addEventListener('click', () => window.location.href = '/schedule.html');
+        div.title = 'Ver en calendario';
+        div.addEventListener('click', () => {
+            const url = b.booking_date
+                ? `/schedule.html?date=${b.booking_date}`
+                : '/schedule.html';
+            window.location.href = url;
+        });
         el.appendChild(div);
     });
 }
@@ -462,16 +468,29 @@ function updatePlatformLeaderboard(data) {
         return;
     }
 
-    leaderboard.innerHTML = sorted.map(([platform, amount], index) => `
-        <div class="leaderboard-item">
+    leaderboard.innerHTML = '';
+    sorted.forEach(([platform, amount], index) => {
+        const item = document.createElement('div');
+        item.className = 'leaderboard-item leaderboard-item-clickable';
+        item.title = `Filtrar por ${platform}`;
+        item.style.cursor = 'pointer';
+        item.innerHTML = `
             <div class="leaderboard-rank">${index + 1}</div>
             <div class="leaderboard-info">
                 <div class="leaderboard-name">${esc(platform)}</div>
                 <div class="leaderboard-stats">${data.bookings_by_platform[platform] || 0} ${__('bookings')}</div>
             </div>
             <div class="leaderboard-value">$${amount.toLocaleString()}</div>
-        </div>
-    `).join('');
+        `;
+        item.addEventListener('click', () => {
+            const sel = document.getElementById('platformFilter');
+            if (sel) {
+                sel.value = platform;
+                sel.dispatchEvent(new Event('change'));
+            }
+        });
+        leaderboard.appendChild(item);
+    });
 }
 
 function updateCaptainPerformance(data) {
@@ -518,17 +537,24 @@ function updateBookingsTable(bookings) {
     bookings.forEach(booking => {
         const tr = document.createElement('tr');
         tr.style.cursor = 'pointer';
+        tr.title = 'Ver en calendario';
         tr.addEventListener('click', () => {
-            window.location.href = '/schedule.html';
+            const url = booking.booking_date
+                ? `/schedule.html?date=${booking.booking_date}`
+                : '/schedule.html';
+            window.location.href = url;
         });
         const amount = parseFloat(booking.total_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
         const isManual = booking.is_manual ? ' <span style="background:#fef3c7;color:#92400e;border-radius:8px;padding:1px 6px;font-size:10px;font-weight:700;">Manual</span>' : '';
+        const dateFmt = booking.booking_date
+            ? new Date(booking.booking_date + 'T12:00:00').toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+            : '—';
         tr.innerHTML = `
-            <td><strong>${esc(booking.id.substring(0, 12))}…</strong>${isManual}</td>
-            <td>${esc(booking.customer_name || 'N/A')}</td>
+            <td><strong>${dateFmt}</strong></td>
+            <td>${esc(booking.customer_name || 'N/A')}${isManual}</td>
             <td>${esc(booking.platform || '—')}</td>
             <td>${esc(booking.boat_type || booking.boat_id || 'N/A')}</td>
-            <td>${esc(booking.booking_date || '—')}</td>
+            <td>${esc(booking.start_time || '—')}</td>
             <td><strong>$${amount}</strong></td>
             <td><span class="status-badge ${esc(booking.status || 'confirmed')}">${esc(booking.status || 'confirmed')}</span></td>
         `;
@@ -546,17 +572,25 @@ function updateBoatBreakdown(data) {
         el.innerHTML = '<p style="color:#94a3b8;text-align:center;padding:12px;">Sin datos</p>';
         return;
     }
-    el.innerHTML = sorted.map(([boat, revenue], i) => {
-        const cnt = boats[boat] || 0;
-        return `<div class="leaderboard-item">
+    el.innerHTML = '';
+    sorted.forEach(([boat, revenue], i) => {
+        const cnt  = boats[boat] || 0;
+        const item = document.createElement('div');
+        item.className = 'leaderboard-item leaderboard-item-clickable';
+        item.style.cursor = 'pointer';
+        item.title = `Ver ${boat} en flotilla`;
+        item.innerHTML = `
             <div class="leaderboard-rank">${i+1}</div>
             <div class="leaderboard-info">
                 <div class="leaderboard-name">${esc(boat)}</div>
                 <div class="leaderboard-stats">${cnt} reservas</div>
             </div>
-            <div class="leaderboard-value">$${revenue.toLocaleString()}</div>
-        </div>`;
-    }).join('');
+            <div class="leaderboard-value">$${revenue.toLocaleString()}</div>`;
+        item.addEventListener('click', () => {
+            window.location.href = '/fleet.html';
+        });
+        el.appendChild(item);
+    });
 }
 
 function updateBrokerBreakdown(data) {
@@ -583,7 +617,7 @@ function updateBrokerBreakdown(data) {
 }
 
 function viewBookingDetails(bookingId) {
-    alert(`Ver detalles de reserva: ${bookingId}\n(Funcionalidad de drill-down)`);
+    window.location.href = '/schedule.html';
 }
 
 // Theme Toggle

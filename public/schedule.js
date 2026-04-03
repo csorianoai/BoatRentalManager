@@ -49,7 +49,20 @@ function addHours(timeStr, hours) {
 
 // ─── Init ─────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
-  setDefaultDates();
+  // Support ?date=YYYY-MM-DD from dashboard deep links
+  const urlDate = new URLSearchParams(window.location.search).get('date');
+  if (urlDate && /^\d{4}-\d{2}-\d{2}$/.test(urlDate)) {
+    // Navigate the calendar to the week containing this date
+    const d = new Date(urlDate + 'T12:00:00');
+    const monday = new Date(d);
+    monday.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    document.getElementById('date-from').value = fmtDate(monday);
+    document.getElementById('date-to').value   = fmtDate(sunday);
+  } else {
+    setDefaultDates();
+  }
   initWeekStart();
   await loadCatalogs();
   await loadScheduleData();

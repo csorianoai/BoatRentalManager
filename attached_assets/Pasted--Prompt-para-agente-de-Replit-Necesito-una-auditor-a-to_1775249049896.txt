@@ -1,0 +1,261 @@
+# Prompt para agente de Replit
+
+Necesito una **auditoría total y corrección completa del dashboard principal** porque actualmente está lleno de datos irreales, widgets no funcionales, ventanas/cards que no abren, enlaces rotos y estadísticas que no corresponden a la operación real.
+
+## Objetivo
+Quiero que el dashboard quede:
+- 100% basado en data real
+- 100% funcional e interactivo
+- sin mocks, sin placeholders, sin datos hardcodeados
+- con navegación real en todas sus tarjetas, botones, ventanas y módulos
+- conectado correctamente con reservas reales, calendario real, barcos reales y plataformas reales
+
+---
+
+# 1. Problema actual del dashboard
+Debes revisar y corregir porque actualmente el dashboard presenta estos problemas:
+
+## Datos irreales / ficticios
+- métricas que no reflejan reservas reales
+- revenue incorrecto
+- bookings incorrectos
+- plataformas que parecen demo o seed data
+- clientes ficticios
+- embarcaciones irreales o mezcladas con data de prueba
+- histórico de reservas incorrecto
+- próximas reservas incorrectas
+- conflictos de sincronización sospechosos o inflados
+- gráficas que no representan datos reales
+
+## Interactividad rota
+- ventanas/cards/tarjetas del dashboard no abren
+- botones no llevan a ninguna página
+- módulos parecen existir visualmente pero no tienen destino real
+- elementos clicables no son realmente funcionales
+- algunos componentes muestran información pero no permiten drill-down ni navegación
+- el dashboard aparenta ser operativo, pero no lo es
+
+---
+
+# 2. Eliminar todo lo que no sea real
+Necesito que elimines del dashboard y reporting:
+
+- datos hardcodeados
+- mocks
+- seed/demo data
+- reservas de prueba
+- clientes ficticios
+- revenue inventado
+- gráficas con datos simulados
+- rankings inventados
+- plataformas fake
+- cualquier fallback visual con números falsos
+
+## Regla obligatoria
+Si no existe data real:
+- mostrar estado vacío
+- mostrar “sin datos”
+- mostrar mensaje claro
+
+## Regla prohibida
+- no inventar números
+- no llenar con placeholders numéricos
+- no mostrar estadísticas de prueba
+- no simular actividad para que el dashboard “se vea lleno”
+
+---
+
+# 3. Auditoría completa de todas las ventanas, cards y botones del dashboard
+Debes revisar **cada elemento interactivo del dashboard** y validar si realmente funciona.
+
+## Revisar uno por uno:
+- tarjetas KPI
+- botones
+- cards de resumen
+- widgets
+- gráficas
+- tablas
+- ranking de plataformas
+- resumen por embarcación
+- próximos bookings
+- resumen histórico
+- sincronización
+- conflictos
+- botones de “ver calendario”
+- botones de “abrir”
+- cualquier ícono o flecha de navegación
+- cualquier métrica clicable
+
+## Para cada elemento debes verificar:
+1. si debe ser clicable o no
+2. si actualmente tiene acción real
+3. si la ruta existe
+4. si la página destino existe
+5. si carga data real
+6. si el componente está conectado correctamente
+7. si tiene permisos/roles correctos
+8. si falla por frontend, backend o por ruta inexistente
+
+---
+
+# 4. Corregir navegación rota
+Todo elemento interactivo del dashboard debe hacer algo real.
+
+## Resultado esperado
+- si una tarjeta muestra reservas, debe abrir el listado real filtrado
+- si una tarjeta muestra revenue por plataforma, debe abrir detalle o vista filtrada
+- si una gráfica permite drill-down, debe funcionar
+- si un botón dice “ver calendario”, debe abrir el calendario real
+- si una sección muestra próximos bookings, al hacer click debe abrir el detalle real de esa reserva
+- si una plataforma aparece en el ranking, debe poder abrir su vista relacionada o filtrar correctamente
+- si un resumen por embarcación existe, debe permitir ver reservas de esa embarcación
+
+## Si una ventana o página no existe
+No quiero links falsos.
+Debes:
+- crear la vista correspondiente, o
+- quitar la interacción engañosa,
+pero no dejar elementos que aparenten funcionar y no hagan nada.
+
+---
+
+# 5. Validar toda la data del dashboard contra la base real
+Necesito que cruces toda la información del dashboard con la base de datos real y corrijas cualquier discrepancia.
+
+## Debes validar:
+- total bookings
+- revenue total
+- revenue por plataforma
+- revenue por barco
+- reservas pasadas
+- reservas futuras
+- reservas del período
+- reservas por semana
+- reservas por mes
+- próximas reservas
+- estados de reserva
+- sincronización por plataforma
+- conflictos
+- clientes mostrados
+- embarcaciones mostradas
+
+## Si algo no existe en la base real:
+- no debe mostrarse
+
+---
+
+# 6. Reparar el dashboard para que solo muestre módulos reales y funcionales
+No quiero un dashboard “bonito” pero falso.
+
+## Quiero que al final:
+- cada sección tenga sentido operativo real
+- cada dato mostrado exista realmente
+- cada botón haga algo útil
+- cada card lleve a una pantalla existente
+- cada gráfica represente data real
+- cada tabla liste información real
+- cada filtro funcione
+- cada resumen coincida con calendario y reservas reales
+
+---
+
+# 7. Auditoría técnica completa
+Debes revisar tanto frontend como backend.
+
+## Frontend
+- componentes del dashboard
+- hooks
+- stores
+- props
+- loaders
+- estados vacíos
+- render condicional
+- rutas
+- navegación
+- onClick handlers
+- cards y widgets
+- tablas y gráficas
+
+## Backend
+- endpoints del dashboard
+- queries
+- servicios de agregación
+- filtros
+- joins
+- mapeo de plataformas
+- cálculo de revenue
+- reservas pasadas/presentes/futuras
+- fuentes de sincronización
+- estados de reserva
+
+## Base de datos
+- registros test/demo
+- duplicados
+- datos huérfanos
+- reservas corruptas
+- relaciones inexistentes
+- plataformas falsas
+- barcos fake
+- clientes demo
+
+---
+
+# 8. Corregir todo lo que está incorrecto aunque no haya sido reportado
+No quiero solo un arreglo superficial.
+
+## Debes también detectar y corregir:
+- rutas inexistentes
+- páginas vacías
+- pantallas sin contenido
+- botones sin acción
+- clics rotos
+- cards engañosas
+- filtros que no filtran
+- gráficas renderizadas con basura
+- widgets conectados a mocks
+- tablas con datos demo
+- inconsistencias entre calendario y dashboard
+- incoherencias entre resumen y detalle
+- problemas de fechas / timezone
+- errores silenciosos
+- null handling deficiente
+
+---
+
+# 9. Criterios de aceptación
+Al terminar, debe cumplirse lo siguiente:
+
+1. El dashboard ya no muestra ningún dato ficticio.
+2. Solo se muestra data real proveniente de la base de datos.
+3. Si no hay data, se muestra vacío de forma clara.
+4. Todas las cards, widgets, botones y ventanas del dashboard funcionan.
+5. Toda navegación lleva a páginas reales y operativas.
+6. No quedan links muertos ni interacciones falsas.
+7. Todas las estadísticas coinciden con reservas reales.
+8. Las gráficas muestran solo datos reales.
+9. Las tablas muestran solo reservas reales.
+10. Se eliminaron o corrigieron todos los elementos engañosos del dashboard.
+
+---
+
+# 10. Entregable esperado
+Realiza los cambios directamente en el proyecto.
+
+Al finalizar indícame claramente:
+
+1. Qué datos ficticios encontraste
+2. Qué módulos del dashboard estaban usando mocks o hardcode
+3. Qué cards/botones/ventanas no funcionaban
+4. Qué rutas o páginas no existían
+5. Qué corregiste en frontend
+6. Qué corregiste en backend
+7. Qué eliminaste por ser falso o engañoso
+8. Qué creaste para que la navegación sí funcione
+9. Cómo validaste que todo ahora usa data real
+10. Qué pruebas hiciste para comprobar cada sección del dashboard
+
+---
+
+# Regla final
+No dejes nada “simulado”.
+Prefiero un dashboard con menos módulos pero reales y funcionales, que uno lleno de datos falsos y ventanas que no sirven.

@@ -1364,6 +1364,25 @@ body {
 }
 .kpi-card-link:hover .kpi-arrow { opacity: 1; }
 
+/* ─── Leaderboard clickable items ─── */
+.leaderboard-item-clickable {
+    position: relative;
+}
+.leaderboard-item-clickable::after {
+    content: '›';
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 18px;
+    opacity: 0;
+    transition: opacity 0.2s;
+    color: white;
+}
+.leaderboard-item-clickable:hover::after {
+    opacity: 0.7;
+}
+
 /* ─── Global Search ─── */
 .global-search-wrap {
     position: relative;
