@@ -60,19 +60,29 @@
         <div class="filters-header">
             <div class="filter-group">
                 <label data-i18n="date-range">Rango de Fecha:</label>
-                <select id="dateRange" class="filter-select">
-                    <option value="today" data-i18n="today">Hoy</option>
-                    <option value="week" data-i18n="this-week" selected>Esta Semana</option>
-                    <option value="month" data-i18n="this-month">Este Mes</option>
-                    <option value="quarter" data-i18n="quarter">Trimestre</option>
-                    <option value="custom" data-i18n="custom">Personalizado</option>
+                <select id="dateRange" class="filter-select" data-testid="select-date-range">
+                    <option value="today">Hoy</option>
+                    <option value="week" selected>Esta Semana</option>
+                    <option value="month">Este Mes</option>
+                    <option value="quarter">Trimestre</option>
+                    <option value="year">Este Año</option>
+                    <option value="custom">Personalizado...</option>
                 </select>
+            </div>
+            <div class="filter-group" id="customDateRow" style="display:none;">
+                <label>Desde:</label>
+                <input type="date" id="customDateFrom" class="filter-select" data-testid="input-custom-date-from" style="padding:6px 8px;">
+                <label style="margin-left:6px;">Hasta:</label>
+                <input type="date" id="customDateTo" class="filter-select" data-testid="input-custom-date-to" style="padding:6px 8px;">
             </div>
             <div class="filter-group">
                 <label data-i18n="platform">Plataforma:</label>
-                <select id="platformFilter" class="filter-select">
+                <select id="platformFilter" class="filter-select" data-testid="select-platform-filter">
                     <option value="all" data-i18n="all-platforms">Todas las Plataformas</option>
                 </select>
+            </div>
+            <div class="filter-group" style="font-size:12px;color:#64748b;align-self:center;">
+                <span id="periodLabel"></span>
             </div>
             <div class="export-actions">
                 <button class="export-btn" id="exportPDF" data-testid="button-export-pdf" data-i18n="export-pdf">
@@ -163,18 +173,46 @@
         <div class="kpi-card wave-gradient">
             <div class="kpi-icon">📅</div>
             <div class="kpi-content">
-                <h3 data-i18n="today-bookings">Reservas Hoy</h3>
+                <h3>Reservas Hoy</h3>
                 <p class="kpi-value" id="todayBookings">0</p>
-                <span class="kpi-change positive" id="bookingChange">+0%</span>
+                <span class="kpi-change" id="bookingChange">—</span>
             </div>
         </div>
 
         <div class="kpi-card wave-gradient">
             <div class="kpi-icon">💰</div>
             <div class="kpi-content">
-                <h3 data-i18n="today-revenue">Ingresos Hoy</h3>
+                <h3>Ingresos Hoy</h3>
                 <p class="kpi-value" id="todayRevenue">$0</p>
-                <span class="kpi-change positive" id="revenueChange">+0%</span>
+                <span class="kpi-change" id="revenueChange">—</span>
+            </div>
+        </div>
+
+        <a href="/schedule.html" class="kpi-card wave-gradient kpi-card-link" data-testid="link-kpi-period-bookings" style="text-decoration:none;display:block;cursor:pointer;">
+            <div class="kpi-icon">🗓️</div>
+            <div class="kpi-content">
+                <h3>Reservas del Período</h3>
+                <p class="kpi-value" id="periodBookings">0</p>
+                <span class="kpi-sublabel">según filtro activo</span>
+            </div>
+            <span class="kpi-arrow">›</span>
+        </a>
+
+        <div class="kpi-card wave-gradient">
+            <div class="kpi-icon">📈</div>
+            <div class="kpi-content">
+                <h3>Ingresos del Período</h3>
+                <p class="kpi-value" id="periodRevenue">$0</p>
+                <span class="kpi-sublabel">según filtro activo</span>
+            </div>
+        </div>
+
+        <div class="kpi-card wave-gradient">
+            <div class="kpi-icon">🔮</div>
+            <div class="kpi-content">
+                <h3>Próximas 7 días</h3>
+                <p class="kpi-value" id="upcoming7d">0</p>
+                <span class="kpi-sublabel">reservas programadas</span>
             </div>
         </div>
 
@@ -232,6 +270,22 @@
             <div class="leaderboard" id="platformLeaderboard">
                 <!-- Dynamic content -->
             </div>
+        </div>
+
+        <!-- Boat Breakdown -->
+        <div class="chart-card compact leaderboard-card">
+            <div class="card-header">
+                <h2>🚤 Por Embarcación</h2>
+            </div>
+            <div class="leaderboard" id="boatBreakdown"></div>
+        </div>
+
+        <!-- Broker Breakdown -->
+        <div class="chart-card compact leaderboard-card">
+            <div class="card-header">
+                <h2>🤝 Por Broker / Canal</h2>
+            </div>
+            <div class="leaderboard" id="brokerBreakdown"></div>
         </div>
 
         <!-- Monthly Trends Chart -->

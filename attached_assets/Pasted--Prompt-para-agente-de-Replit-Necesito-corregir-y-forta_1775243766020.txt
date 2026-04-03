@@ -1,0 +1,368 @@
+# Prompt para agente de Replit
+
+Necesito corregir y fortalecer el funcionamiento del **dashboard principal**, el **calendario de reservas** y la **sincronización de estadísticas** en la plataforma.
+
+## Objetivo general
+El dashboard principal debe reaccionar correctamente a los filtros de fecha y plataforma, mostrar estadísticas reales, y consolidar en tiempo real todas las reservas creadas en el sistema, tanto automáticas como manuales.
+
+Actualmente, cuando selecciono una **plataforma** o un **rango de fechas**, el dashboard **no actualiza nada**. Eso debe corregirse.
+
+Además, todas las reservas que voy ingresando, ya sean:
+- automáticas,
+- manuales desde el calendario,
+- o provenientes de integraciones/plataformas,
+
+deben reflejarse correctamente en el **resumen del dashboard principal**.
+
+---
+
+# 1. Corregir el dashboard principal para que responda a filtros
+
+## Problema actual
+Cuando selecciono una plataforma o un rango de fechas:
+- el dashboard no se mueve,
+- no actualiza estadísticas,
+- no cambia totales,
+- no cambia reservas,
+- no cambia métricas,
+- y no refleja los datos históricos, presentes o futuros según el filtro.
+
+## Requerimiento
+Debes hacer que el dashboard principal responda correctamente a los filtros de:
+
+### Filtros mínimos
+- **Plataforma / broker / fuente**
+- **Rango de fechas**
+- **Mes**
+- **Semana**
+- **Día**
+- **Pasado / presente / futuro** si existe esa lógica o si puede inferirse por fecha
+
+## Comportamiento esperado
+Cuando seleccione:
+- una plataforma específica,
+- una semana,
+- un mes,
+- o cualquier rango de fechas,
+
+el dashboard debe recalcular y actualizar inmediatamente:
+- cantidad de bookings,
+- ingresos,
+- reservas por plataforma,
+- reservas por periodo,
+- reservas por barco,
+- reservas por capitán si aplica,
+- y cualquier estadística principal visible en el dashboard.
+
+---
+
+# 2. Integrar todas las reservas al dashboard
+## Problema actual
+Las reservas que se crean o existen en el sistema no están impactando correctamente el resumen del dashboard.
+
+## Requerimiento
+Todas las reservas deben alimentar el dashboard principal, incluyendo:
+- reservas automáticas,
+- reservas manuales creadas desde el calendario,
+- reservas históricas,
+- reservas futuras,
+- reservas por plataforma,
+- reservas por barco,
+- reservas por broker.
+
+## El dashboard debe mostrar al menos:
+- total de bookings
+- total revenue / ingresos
+- bookings por plataforma
+- bookings por mes
+- bookings por semana
+- bookings por día
+- bookings por barco
+- bookings por broker
+- reservas activas / próximas / pasadas si aplica
+- sumatoria económica total por periodo filtrado
+
+---
+
+# 3. Sincronización entre calendario y dashboard
+## Requerimiento
+Cada vez que se cree, edite, elimine o cancele una reserva en el calendario, el dashboard debe reflejar ese cambio correctamente.
+
+### Esto aplica para:
+- reservas manuales creadas en calendario,
+- reservas automáticas,
+- reservas importadas o sincronizadas,
+- cambios de precio,
+- cambios de fecha,
+- cambios de broker/plataforma,
+- cambios de barco,
+- cambios de estado.
+
+## Comportamiento esperado
+Si agrego una reserva manual:
+- debe aparecer en el calendario,
+- y también debe impactar los KPIs y resúmenes del dashboard.
+
+Si modifico una reserva:
+- debe recalcularse el resumen.
+
+Si filtro por plataforma o por fecha:
+- debe incluir esas reservas correctamente.
+
+---
+
+# 4. Resumen en dashboard por plataforma, mes y semana
+Necesito que el dashboard tenga resúmenes útiles y confiables.
+
+## Debe existir, como mínimo:
+### Por plataforma
+Ejemplo:
+- GetMyBoat
+- Boatsetter
+- Direct
+- Others
+
+Mostrar:
+- cantidad de reservas
+- revenue total
+- ticket promedio si es posible
+- porcentaje del total si ya hay gráficos
+
+### Por mes
+Mostrar:
+- bookings del mes
+- revenue del mes
+- comparación entre meses si ya hay gráfica o KPI
+
+### Por semana
+Mostrar:
+- bookings semanales
+- revenue semanal
+- reservas próximas
+
+### Por día
+Mostrar:
+- reservas del día
+- revenue del día
+- salidas programadas
+
+---
+
+# 5. Corregir filtros de fechas: pasado, presente y futuro
+## Requerimiento
+El dashboard debe soportar correctamente la lógica temporal.
+
+### Debe poder reflejar:
+- **Pasado:** estadísticas de reservas ya ocurridas
+- **Presente:** reservas y actividad actual
+- **Futuro:** reservas ya agendadas
+
+### Si se filtra por fecha:
+Debe devolver solo los datos dentro del rango seleccionado.
+
+### Si se filtra por plataforma y fecha al mismo tiempo:
+Debe combinar ambos filtros correctamente.
+
+Ejemplo:
+- Plataforma = Boatsetter
+- Fecha = marzo 2026
+
+Resultado esperado:
+- solo bookings de Boatsetter dentro de marzo 2026
+- revenue solo de ese subconjunto
+- KPIs y gráficos actualizados con esa data
+
+---
+
+# 6. Revisar y corregir lógica de agregación de datos
+Necesito que revises toda la lógica que alimenta el dashboard, porque actualmente parece que:
+- no está consultando correctamente la base de datos,
+- o no está escuchando cambios,
+- o está usando datos hardcodeados,
+- o hay errores en filtros, joins, queries, estados o cache.
+
+## Debes revisar:
+- queries del dashboard
+- endpoints/API del dashboard
+- servicios de agregación de reservas
+- filtros por fecha
+- filtros por plataforma
+- cálculos de revenue
+- contadores de reservas
+- datos del calendario vs datos del dashboard
+- posibles problemas de timezone
+- posibles problemas con estados de reservas
+- posibles problemas con fechas nulas o mal parseadas
+- posibles problemas de frontend que no refresca estado
+- posibles problemas de backend que no devuelve datos filtrados
+- posibles problemas de cache, memoization o estado global
+
+---
+
+# 7. Auditoría funcional completa del sistema
+Además de corregir este problema puntual, necesito una revisión funcional amplia del sistema para detectar errores que quizá aún no se han reportado.
+
+## Alcance de la auditoría
+Revisa las funcionalidades principales y corrige inconsistencias o bugs relacionados con:
+
+- dashboard principal
+- calendario
+- creación manual de reservas
+- reservas automáticas
+- filtros
+- brokers/plataformas
+- barcos
+- capitanes
+- stew
+- pricing
+- navegación entre módulos
+- cards clicables del dashboard
+- sumatorias y estadísticas
+- persistencia de datos
+- formularios
+- modales
+- validaciones
+- sincronización frontend/backend
+- estados de reservas
+- consistencia entre listados, detalle, calendario y dashboard
+
+## Importante
+No quiero una revisión superficial.
+Quiero que busques errores de:
+- lógica
+- visualización
+- sincronización
+- datos
+- UX
+- rutas
+- integridad de registros
+- edge cases
+
+Y que los corrijas dentro de una auditoría técnica y funcional.
+
+---
+
+# 8. Casos que deben funcionar al final
+
+## Caso 1
+Creo una reserva manual en el calendario:
+- fecha
+- hora
+- 4 horas
+- broker = GetMyBoat
+- barco = Viking 50
+- precio = 1100
+
+### Resultado esperado:
+- aparece en el calendario
+- aparece en el dashboard
+- suma al total de bookings
+- suma a revenue
+- aparece al filtrar por GetMyBoat
+- aparece al filtrar por esa semana/mes
+
+---
+
+## Caso 2
+Filtro en dashboard:
+- plataforma = Boatsetter
+- rango de fecha = último mes
+
+### Resultado esperado:
+- todos los KPIs cambian
+- revenue cambia
+- bookings cambian
+- gráficos cambian si existen
+- tarjetas/resúmenes cambian
+
+---
+
+## Caso 3
+Filtro por fechas futuras
+
+### Resultado esperado:
+- ver solo reservas futuras
+- sumatorias correctas
+- no mezclar con reservas pasadas
+
+---
+
+## Caso 4
+Edito una reserva existente y cambio:
+- precio
+- plataforma
+- fecha
+
+### Resultado esperado:
+- calendario actualizado
+- dashboard recalculado
+- nueva plataforma impactada
+- nuevo periodo impactado
+
+---
+
+# 9. Requerimientos técnicos
+- No dejes métricas hardcodeadas.
+- Todo debe salir de datos reales.
+- Mantén la arquitectura actual del proyecto.
+- Reutiliza componentes y servicios existentes cuando sea posible.
+- Corrige tanto frontend como backend si hace falta.
+- Si el dashboard usa hooks, stores, loaders, queries o endpoints, revisa todo el flujo.
+- Si es necesario crear funciones de agregación o normalización, hazlo de manera limpia.
+- Si hace falta corregir modelos/tablas/campos para soportar reporting consistente, hazlo.
+- Respeta permisos y roles existentes.
+- Evita romper funcionalidades actuales.
+
+---
+
+# 10. Revisión de errores potenciales no detectados
+Quiero que no te limites solo a los bugs ya mencionados.
+
+## Debes revisar y corregir también:
+- filtros que visualmente cambian pero no ejecutan consulta real
+- cards del dashboard con valores estáticos
+- gráficas sin datos reales
+- reservas guardadas pero no reflejadas en estadísticas
+- problemas de reactividad del estado
+- errores por fechas locales vs UTC
+- bugs por valores nulos o relaciones faltantes
+- reservas sin broker que rompen agrupaciones
+- reservas sin stew o sin capitán que causen fallos
+- errores de rendimiento por consultas mal diseñadas
+- inconsistencias entre dashboard y calendario
+- inconsistencias entre detalle de reserva y resumen financiero
+
+---
+
+# 11. Entregable esperado
+Realiza los cambios directamente en el proyecto.
+
+Al finalizar necesito que indiques claramente:
+
+1. Qué archivos modificaste
+2. Qué componentes o páginas corregiste
+3. Qué endpoints/queries/servicios ajustaste
+4. Cómo resolviste la actualización del dashboard por filtros
+5. Cómo integraste las reservas manuales y automáticas al resumen principal
+6. Qué errores encontraste en la auditoría
+7. Qué correcciones adicionales aplicaste aunque no estuvieran reportadas
+8. Qué pruebas hiciste para validar:
+   - filtros por fecha
+   - filtros por plataforma
+   - bookings por mes
+   - bookings por semana
+   - revenue
+   - sincronización calendario-dashboard
+
+---
+
+# 12. Resultado final esperado
+Al terminar, el sistema debe cumplir esto:
+
+- el dashboard sí cambia al filtrar por plataforma
+- el dashboard sí cambia al filtrar por fecha
+- muestra estadísticas reales de pasado, presente y futuro
+- todas las reservas manuales y automáticas alimentan el dashboard
+- se ven sumatorias por plataforma, por mes y por semana
+- el calendario y el dashboard están sincronizados
+- se corrigieron bugs relacionados y errores funcionales detectados en la auditoría

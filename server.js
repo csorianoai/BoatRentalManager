@@ -2278,70 +2278,246 @@ Te enviaremos los detalles de tu capitán en breve.
 app.get('/api/dashboard-data', isAuthenticated, async (req, res) => {
   try {
     const today = moment().format('YYYY-MM-DD');
-    const weekStart = moment().startOf('week').format('YYYY-MM-DD');
-    const weekEnd = moment().endOf('week').format('YYYY-MM-DD');
-    
-    // Get today's bookings
-    const todayResult = await pool.query(
-      'SELECT * FROM bookings WHERE booking_date = $1',
-      [today]
-    );
-    
-    // Get week's bookings
-    const weekResult = await pool.query(
-      'SELECT * FROM bookings WHERE booking_date >= $1 AND booking_date <= $2',
-      [weekStart, weekEnd]
-    );
-    
-    // Get all bookings for totals
-    const allBookings = await pool.query('SELECT * FROM bookings');
-    
-    // Get captains
-    const captainsResult = await pool.query('SELECT * FROM captains');
-    const captains = captainsResult.rows;
+    const { platform, dateRange, dateFrom: rawDateFrom, dateTo: rawDateTo } = req.query;
 
-    // Get stews
-    const stewsResult = await pool.query('SELECT * FROM stews');
-    const stews = stewsResult.rows;
-    
-    // Calculate metrics
-    const todayBookings = todayResult.rows;
-    const weekBookings = weekResult.rows;
-    const totalBookings = allBookings.rows;
-    
-    // Group bookings by platform
+    // ── Compute date window from dateRange preset ──────────────────────────
+    let periodStart, periodEnd;
+    const dr = dateRange || 'week';
+
+    if (dr === 'today') {
+      periodStart = today;
+      periodEnd   = today;
+    } else if (dr === 'week') {
+      periodStart = moment().startOf('isoWeek').format('YYYY-MM-DD');
+      periodEnd   = moment().endOf('isoWeek').format('YYYY-MM-DD');
+    } else if (dr === 'month') {
+      periodStart = moment().startOf('month').format('YYYY-MM-DD');
+      periodEnd   = moment().endOf('month').format('YYYY-MM-DD');
+    } else if (dr === 'quarter') {
+      periodStart = moment().startOf('quarter').format('YYYY-MM-DD');
+      periodEnd   = moment().endOf('quarter').format('YYYY-MM-DD');
+    } else if (dr === 'year') {
+      periodStart = moment().startOf('year').format('YYYY-MM-DD');
+      periodEnd   = moment().endOf('year').format('YYYY-MM-DD');
+    } else if (dr === 'custom' && rawDateFrom && rawDateTo) {
+      periodStart = rawDateFrom;
+      periodEnd   = rawDateTo;
+    } else {
+      // fallback: all time
+      periodStart = '2020-01-01';
+      periodEnd   = '2099-12-31';
+    }
+
+    // ── Build filtered query ───────────────────────────────────────────────
+    const baseWhere = [];
+    const baseParams = [];
+    let pi = 1;
+
+    baseWhere.push(`booking_date >= $${pi++}`); baseParams.push(periodStart);
+    baseWhere.push(`booking_date <= $${pi++}`); baseParams.push(periodEnd);
+    if (platform && platform !== 'all') {
+      baseWhere.push(`platform = $${pi++}`); baseParams.push(platform);
+    }
+    // exclude hard-cancelled unless needed
+    const whereStr = baseWhere.join(' AND ');
+
+    // ── Period bookings (main filtered set) ───────────────────────────────
+    const periodRes = await pool.query(
+      `SELECT id, platform, customer_name, customer_phone, booking_date, start_time,
+              duration_hours, total_amount, status, assigned_captain_id, assigned_captain_name,
+              boat_type, boat_id, stew_id, stew_name, broker_id, broker_name, is_manual,
+              num_guests, deposit_amount, balance_pending, notes, created_at
+       FROM bookings WHERE ${whereStr} ORDER BY booking_date DESC, start_time DESC`,
+      baseParams
+    );
+    const periodBookings = periodRes.rows;
+
+    // ── Today bookings (always absolute) ──────────────────────────────────
+    const todayParams = platform && platform !== 'all'
+      ? [today, platform] : [today];
+    const todayWhere = platform && platform !== 'all'
+      ? 'booking_date = $1 AND platform = $2' : 'booking_date = $1';
+    const todayRes = await pool.query(
+      `SELECT total_amount, status FROM bookings WHERE ${todayWhere}`, todayParams
+    );
+    const todayBookings = todayRes.rows;
+
+    // ── Previous period for % comparison ──────────────────────────────────
+    const periodDays = moment(periodEnd).diff(moment(periodStart), 'days') + 1;
+    const prevEnd   = moment(periodStart).subtract(1, 'days').format('YYYY-MM-DD');
+    const prevStart = moment(prevEnd).subtract(periodDays - 1, 'days').format('YYYY-MM-DD');
+    const prevParams = [...baseParams];
+    prevParams[0] = prevStart; prevParams[1] = prevEnd;
+    const prevRes = await pool.query(
+      `SELECT total_amount FROM bookings WHERE ${whereStr}`, prevParams
+    );
+    const prevBookings = prevRes.rows;
+    const prevRevenue = prevBookings.reduce((s, b) => s + parseFloat(b.total_amount || 0), 0);
+    const prevCount   = prevBookings.length;
+
+    // ── All-time totals (unfiltered by date) ──────────────────────────────
+    const allTimeParams = platform && platform !== 'all' ? [platform] : [];
+    const allTimeWhere  = platform && platform !== 'all' ? 'WHERE platform = $1' : '';
+    const allRes = await pool.query(
+      `SELECT total_amount, platform, boat_type, broker_name, assigned_captain_name, booking_date
+       FROM bookings ${allTimeWhere}`,
+      allTimeParams
+    );
+    const allBookings = allRes.rows;
+
+    // ── Aggregate period bookings ──────────────────────────────────────────
+    const nonCancelled = periodBookings.filter(b => b.status !== 'cancelled');
+    const periodRevenue = nonCancelled.reduce((s, b) => s + parseFloat(b.total_amount || 0), 0);
+
     const bookingsByPlatform = {};
-    const revenueByPlatform = {};
-    totalBookings.forEach(booking => {
-      bookingsByPlatform[booking.platform] = (bookingsByPlatform[booking.platform] || 0) + 1;
-      revenueByPlatform[booking.platform] = (revenueByPlatform[booking.platform] || 0) + (booking.total_amount || 0);
+    const revenueByPlatform  = {};
+    const bookingsByBoat     = {};
+    const revenueByBoat      = {};
+    const bookingsByBroker   = {};
+    const revenueByBroker    = {};
+    const bookingsByCaptain  = {};
+
+    nonCancelled.forEach(b => {
+      const plat = b.platform || 'Otros';
+      bookingsByPlatform[plat] = (bookingsByPlatform[plat] || 0) + 1;
+      revenueByPlatform[plat]  = (revenueByPlatform[plat]  || 0) + parseFloat(b.total_amount || 0);
+
+      const boat = b.boat_type || b.boat_id || 'Sin asignar';
+      bookingsByBoat[boat] = (bookingsByBoat[boat] || 0) + 1;
+      revenueByBoat[boat]  = (revenueByBoat[boat]  || 0) + parseFloat(b.total_amount || 0);
+
+      const broker = b.broker_name || b.platform || 'Directo';
+      bookingsByBroker[broker] = (bookingsByBroker[broker] || 0) + 1;
+      revenueByBroker[broker]  = (revenueByBroker[broker]  || 0) + parseFloat(b.total_amount || 0);
+
+      const cap = b.assigned_captain_name || 'Sin capitán';
+      bookingsByCaptain[cap] = (bookingsByCaptain[cap] || 0) + 1;
     });
-    
+
+    // ── Monthly trend (last 6 months, real data, filtered by platform) ─────
+    const monthlyTrend = [];
+    for (let i = 5; i >= 0; i--) {
+      const mStart = moment().subtract(i, 'months').startOf('month').format('YYYY-MM-DD');
+      const mEnd   = moment().subtract(i, 'months').endOf('month').format('YYYY-MM-DD');
+      const mLabel = moment().subtract(i, 'months').format('MMM YYYY');
+      const mParams = platform && platform !== 'all'
+        ? [mStart, mEnd, platform] : [mStart, mEnd];
+      const mWhere = platform && platform !== 'all'
+        ? 'booking_date >= $1 AND booking_date <= $2 AND platform = $3'
+        : 'booking_date >= $1 AND booking_date <= $2';
+      const mRes = await pool.query(
+        `SELECT COUNT(*) as cnt, COALESCE(SUM(total_amount),0) as rev
+         FROM bookings WHERE ${mWhere} AND status != 'cancelled'`, mParams
+      );
+      monthlyTrend.push({
+        label:    mLabel,
+        bookings: parseInt(mRes.rows[0].cnt),
+        revenue:  parseFloat(mRes.rows[0].rev),
+      });
+    }
+
+    // ── Weekly trend (last 4 weeks) ────────────────────────────────────────
+    const weeklyTrend = [];
+    for (let i = 3; i >= 0; i--) {
+      const wStart = moment().subtract(i, 'weeks').startOf('isoWeek').format('YYYY-MM-DD');
+      const wEnd   = moment().subtract(i, 'weeks').endOf('isoWeek').format('YYYY-MM-DD');
+      const wLabel = `Sem ${moment(wStart).isoWeek()}`;
+      const wParams = platform && platform !== 'all'
+        ? [wStart, wEnd, platform] : [wStart, wEnd];
+      const wWhere = platform && platform !== 'all'
+        ? 'booking_date >= $1 AND booking_date <= $2 AND platform = $3'
+        : 'booking_date >= $1 AND booking_date <= $2';
+      const wRes = await pool.query(
+        `SELECT COUNT(*) as cnt, COALESCE(SUM(total_amount),0) as rev
+         FROM bookings WHERE ${wWhere} AND status != 'cancelled'`, wParams
+      );
+      weeklyTrend.push({
+        label:    wLabel,
+        bookings: parseInt(wRes.rows[0].cnt),
+        revenue:  parseFloat(wRes.rows[0].rev),
+      });
+    }
+
+    // ── Captains + stews ───────────────────────────────────────────────────
+    const captainsResult = await pool.query('SELECT * FROM captains ORDER BY name');
+    const captains = captainsResult.rows;
+    const stewsResult = await pool.query('SELECT * FROM stews ORDER BY name');
+    const stews = stewsResult.rows;
+
+    // ── % changes vs previous period ──────────────────────────────────────
+    const bookingChangePct = prevCount > 0
+      ? Math.round(((nonCancelled.length - prevCount) / prevCount) * 100) : null;
+    const revenueChangePct = prevRevenue > 0
+      ? Math.round(((periodRevenue - prevRevenue) / prevRevenue) * 100) : null;
+
+    // ── Today stats ───────────────────────────────────────────────────────
+    const todayNonCancelled = todayBookings.filter(b => b.status !== 'cancelled');
+
+    // ── Upcoming bookings (next 7 days) ───────────────────────────────────
+    const upcomingEnd = moment().add(7, 'days').format('YYYY-MM-DD');
+    const upcomingParams = platform && platform !== 'all'
+      ? [today, upcomingEnd, platform] : [today, upcomingEnd];
+    const upcomingWhere = platform && platform !== 'all'
+      ? 'booking_date >= $1 AND booking_date <= $2 AND platform = $3'
+      : 'booking_date >= $1 AND booking_date <= $2';
+    const upcomingRes = await pool.query(
+      `SELECT COUNT(*) as cnt FROM bookings WHERE ${upcomingWhere} AND status != 'cancelled'`,
+      upcomingParams
+    );
+    const upcomingCount = parseInt(upcomingRes.rows[0].cnt);
+
     const dashboardData = {
-      // Métricas principales
-      today_bookings: todayBookings.length,
-      week_bookings: weekBookings.length,
+      // ── Filter context ──────────────────────────────────────────────────
+      filter_platform: platform || 'all',
+      filter_date_range: dr,
+      period_start: periodStart,
+      period_end: periodEnd,
+
+      // ── Today ───────────────────────────────────────────────────────────
+      today_bookings: todayNonCancelled.length,
+      today_revenue:  todayNonCancelled.reduce((s, b) => s + parseFloat(b.total_amount || 0), 0),
+
+      // ── Period (filtered) ────────────────────────────────────────────────
+      period_bookings: nonCancelled.length,
+      period_revenue:  periodRevenue,
+      booking_change_pct: bookingChangePct,
+      revenue_change_pct: revenueChangePct,
+
+      // ── All-time ─────────────────────────────────────────────────────────
+      total_bookings: allBookings.length,
+      total_revenue:  allBookings.reduce((s, b) => s + parseFloat(b.total_amount || 0), 0),
+
+      // ── Captains & stews ─────────────────────────────────────────────────
       active_captains: captains.filter(c => c.status === 'active' || c.status === 'available').length,
-      total_captains: captains.length,
-      active_stews: stews.filter(s => s.status === 'active' || !s.status).length,
-      total_stews: stews.length,
-      
-      // Revenue
-      today_revenue: todayBookings.reduce((sum, b) => sum + (b.total_amount || 0), 0),
-      week_revenue: weekBookings.reduce((sum, b) => sum + (b.total_amount || 0), 0),
-      total_revenue: totalBookings.reduce((sum, b) => sum + (b.total_amount || 0), 0),
-      
-      // Datos para gráficos
+      total_captains:  captains.length,
+      active_stews:    stews.filter(s => s.status === 'active' || !s.status).length,
+      total_stews:     stews.length,
+      active_captains_list: captains.filter(c => c.status === 'active' || c.status === 'available'),
+
+      // ── Upcoming ─────────────────────────────────────────────────────────
+      upcoming_7d: upcomingCount,
+
+      // ── Breakdowns by dimension ──────────────────────────────────────────
       bookings_by_platform: bookingsByPlatform,
-      revenue_by_platform: revenueByPlatform,
-      
-      // Reservas recientes (últimas 10)
-      recent_bookings: totalBookings.slice(-10).reverse(),
-      
-      // Capitanes activos
-      active_captains_list: captains.filter(c => c.status === 'available')
+      revenue_by_platform:  revenueByPlatform,
+      bookings_by_boat:     bookingsByBoat,
+      revenue_by_boat:      revenueByBoat,
+      bookings_by_broker:   bookingsByBroker,
+      revenue_by_broker:    revenueByBroker,
+      bookings_by_captain:  bookingsByCaptain,
+
+      // ── Trends ──────────────────────────────────────────────────────────
+      monthly_trend: monthlyTrend,
+      weekly_trend:  weeklyTrend,
+
+      // ── Recent bookings (filtered, last 20) ──────────────────────────────
+      recent_bookings: periodBookings.slice(0, 20),
+
+      // ── Compatibility aliases (legacy keys) ──────────────────────────────
+      week_bookings: nonCancelled.length,
+      week_revenue:  periodRevenue,
     };
-    
+
     res.json(dashboardData);
   } catch (error) {
     console.error('Error fetching dashboard data:', error);

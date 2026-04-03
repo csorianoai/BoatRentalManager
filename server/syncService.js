@@ -14,13 +14,16 @@
 
 const { Pool, neonConfig } = require('@neondatabase/serverless');
 const ws = require('ws');
-const availabilityService = require('./availabilityService');
+const AvailabilityService = require('./availabilityService');
 const syncJobsWorker = require('./syncJobsWorker');
 
 // Configure WebSocket for Neon
 neonConfig.webSocketConstructor = ws;
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+// Instantiate with pool so instance methods are available
+const availabilityService = new AvailabilityService(pool);
 
 // Configuración de plataformas
 const PLATFORMS = [

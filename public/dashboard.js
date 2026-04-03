@@ -57,11 +57,42 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function initializeEventListeners() {
     document.getElementById('refreshBtn').addEventListener('click', loadDashboardData);
-    document.getElementById('themeToggle').addEventListener('click', toggleTheme);
-    document.getElementById('dateRange').addEventListener('change', loadDashboardData);
-    document.getElementById('platformFilter').addEventListener('change', loadDashboardData);
-    document.getElementById('exportPDF').addEventListener('click', exportToPDF);
-    document.getElementById('exportExcel').addEventListener('click', exportToExcel);
+    document.getElementById('themeToggle')?.addEventListener('click', toggleTheme);
+    document.getElementById('exportPDF')?.addEventListener('click', exportToPDF);
+    document.getElementById('exportExcel')?.addEventListener('click', exportToExcel);
+
+    const dateRange = document.getElementById('dateRange');
+    const platformFilter = document.getElementById('platformFilter');
+    const customRow = document.getElementById('customDateRow');
+
+    dateRange?.addEventListener('change', () => {
+        if (customRow) {
+            customRow.style.display = dateRange.value === 'custom' ? 'flex' : 'none';
+        }
+        if (dateRange.value !== 'custom') loadDashboardData();
+    });
+    platformFilter?.addEventListener('change', loadDashboardData);
+
+    document.getElementById('customDateFrom')?.addEventListener('change', () => {
+        if (document.getElementById('dateRange')?.value === 'custom') loadDashboardData();
+    });
+    document.getElementById('customDateTo')?.addEventListener('change', () => {
+        if (document.getElementById('dateRange')?.value === 'custom') loadDashboardData();
+    });
+}
+
+// ── Build query params from active filters ────────────────────────────────
+function getFilterParams() {
+    const dateRange   = document.getElementById('dateRange')?.value   || 'week';
+    const platform    = document.getElementById('platformFilter')?.value || 'all';
+    const customFrom  = document.getElementById('customDateFrom')?.value || '';
+    const customTo    = document.getElementById('customDateTo')?.value   || '';
+    const params      = new URLSearchParams({ dateRange, platform });
+    if (dateRange === 'custom' && customFrom && customTo) {
+        params.set('dateFrom', customFrom);
+        params.set('dateTo',   customTo);
+    }
+    return params.toString();
 }
 
 // Data Loading
@@ -69,11 +100,12 @@ async function loadDashboardData() {
     try {
         showLoadingState();
         
-        // Fetch dashboard data
-        const response = await authFetch(`${API_BASE}/api/dashboard-data`);
+        // ── Fetch dashboard data with active filters ──────────────────────
+        const qs = getFilterParams();
+        const response = await authFetch(`${API_BASE}/api/dashboard-data?${qs}`);
         dashboardData = await response.json();
         
-        // Fetch platforms
+        // ── Fetch platforms for filter dropdown ───────────────────────────
         const platformsResponse = await authFetch(`${API_BASE}/api/platforms`);
         const platforms = await platformsResponse.json();
         lastPlatformsList = platforms;
@@ -96,6 +128,13 @@ async function loadDashboardData() {
         // Update bookings table
         updateBookingsTable(dashboardData.recent_bookings);
         
+        // Update breakdown panels
+        updateBoatBreakdown(dashboardData);
+        updateBrokerBreakdown(dashboardData);
+
+        // Update period label
+        updatePeriodLabel(dashboardData);
+
         // Update timestamp
         const lastUpdate = document.getElementById('lastUpdate');
         if (lastUpdate) {
@@ -107,6 +146,22 @@ async function loadDashboardData() {
         console.error('Error loading dashboard data:', error);
         showError('Error al cargar los datos. Reintentando...');
         setTimeout(loadDashboardData, 5000);
+    }
+}
+
+function updatePeriodLabel(data) {
+    const el = document.getElementById('periodLabel');
+    if (!el) return;
+    const from = data.period_start || '';
+    const to   = data.period_end   || '';
+    if (from && to && from !== '2020-01-01') {
+        const fmt = d => new Date(d + 'T12:00:00').toLocaleDateString(
+            getCurrentLang() === 'es' ? 'es-ES' : 'en-US',
+            { day: 'numeric', month: 'short', year: 'numeric' }
+        );
+        el.textContent = `${fmt(from)} – ${fmt(to)}`;
+    } else {
+        el.textContent = '';
     }
 }
 
@@ -129,33 +184,60 @@ function updatePlatformFilter(platforms) {
 }
 
 function updateKPIs(data) {
-    const todayBookings = document.getElementById('todayBookings');
-    const todayRevenue = document.getElementById('todayRevenue');
-    const activeCaptains = document.getElementById('activeCaptains');
-    const totalCaptains = document.getElementById('totalCaptains');
+    // ── Helpers ──────────────────────────────────────────────────────────
+    const fmtPct = pct => {
+        if (pct === null || pct === undefined) return '—';
+        return (pct >= 0 ? '+' : '') + pct + '%';
+    };
+    const fmtMoney = v => '$' + (v || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+
+    // ── Today ─────────────────────────────────────────────────────────────
+    const todayBookingsEl = document.getElementById('todayBookings');
+    const todayRevenueEl  = document.getElementById('todayRevenue');
+    if (todayBookingsEl) todayBookingsEl.textContent = data.today_bookings ?? 0;
+    if (todayRevenueEl)  todayRevenueEl.textContent  = fmtMoney(data.today_revenue);
+
+    // ── Period (filtered) ─────────────────────────────────────────────────
+    const periodBookingsEl = document.getElementById('periodBookings');
+    const periodRevenueEl  = document.getElementById('periodRevenue');
+    if (periodBookingsEl) periodBookingsEl.textContent = data.period_bookings ?? data.week_bookings ?? 0;
+    if (periodRevenueEl)  periodRevenueEl.textContent  = fmtMoney(data.period_revenue ?? data.week_revenue);
+
+    // ── Change percentages (real from backend) ────────────────────────────
     const bookingChange = document.getElementById('bookingChange');
     const revenueChange = document.getElementById('revenueChange');
-    const totalRevenueBadge = document.getElementById('totalRevenueBadge');
-    
-    if (todayBookings) todayBookings.textContent = data.today_bookings || 0;
-    if (todayRevenue) todayRevenue.textContent = `$${(data.today_revenue || 0).toLocaleString()}`;
-    if (activeCaptains) activeCaptains.textContent = data.active_captains || 0;
-    if (totalCaptains) totalCaptains.textContent = `de ${data.total_captains || 0} total`;
+    if (bookingChange) {
+        const pct = data.booking_change_pct;
+        bookingChange.textContent = fmtPct(pct);
+        bookingChange.style.color = pct === null ? '' : pct >= 0 ? '#16a34a' : '#dc2626';
+    }
+    if (revenueChange) {
+        const pct = data.revenue_change_pct;
+        revenueChange.textContent = fmtPct(pct);
+        revenueChange.style.color = pct === null ? '' : pct >= 0 ? '#16a34a' : '#dc2626';
+    }
 
-    const activeStews = document.getElementById('activeStews');
-    const totalStews = document.getElementById('totalStews');
-    if (activeStews) activeStews.textContent = data.active_stews || 0;
-    if (totalStews) totalStews.textContent = `de ${data.total_stews || 0} total`;
-    
-    // Calculate changes (simulated for now)
-    const bookingChangeText = data.today_bookings > 0 ? '+15%' : '0%';
-    const revenueChangeText = data.today_revenue > 0 ? '+23%' : '0%';
-    
-    if (bookingChange) bookingChange.textContent = bookingChangeText;
-    if (revenueChange) revenueChange.textContent = revenueChangeText;
-    
-    // Total revenue badge
-    if (totalRevenueBadge) totalRevenueBadge.textContent = `$${(data.total_revenue || 0).toLocaleString()}`;
+    // ── Total (all-time) revenue badge ────────────────────────────────────
+    const totalRevenueBadge = document.getElementById('totalRevenueBadge');
+    if (totalRevenueBadge) totalRevenueBadge.textContent = fmtMoney(data.total_revenue);
+
+    // ── Captains & stews ──────────────────────────────────────────────────
+    const activeCaptains = document.getElementById('activeCaptains');
+    const totalCaptains  = document.getElementById('totalCaptains');
+    const activeStews    = document.getElementById('activeStews');
+    const totalStews     = document.getElementById('totalStews');
+    if (activeCaptains) activeCaptains.textContent = data.active_captains ?? 0;
+    if (totalCaptains)  totalCaptains.textContent  = `de ${data.total_captains ?? 0} total`;
+    if (activeStews)    activeStews.textContent     = data.active_stews ?? 0;
+    if (totalStews)     totalStews.textContent      = `de ${data.total_stews ?? 0} total`;
+
+    // ── Upcoming 7 days ───────────────────────────────────────────────────
+    const upcomingEl = document.getElementById('upcoming7d');
+    if (upcomingEl) upcomingEl.textContent = data.upcoming_7d ?? 0;
+
+    // ── Total bookings count ──────────────────────────────────────────────
+    const totalBookingsEl = document.getElementById('totalBookingsCount');
+    if (totalBookingsEl) totalBookingsEl.textContent = data.total_bookings ?? 0;
 }
 
 function updateCharts(data) {
@@ -231,20 +313,11 @@ function updateRevenueByPlatformChart(data) {
 function updateMonthlyTrendsChart(data) {
     const ctx = document.getElementById('monthlyTrends').getContext('2d');
     
-    // Generate last 6 months
-    const months = [];
-    const bookingsData = [];
-    const revenueData = [];
-    
-    for (let i = 5; i >= 0; i--) {
-        const date = new Date();
-        date.setMonth(date.getMonth() - i);
-        months.push(date.toLocaleDateString(getCurrentLang() === 'es' ? 'es-ES' : 'en-US', { month: 'short', year: 'numeric' }));
-        
-        // Simulated data - in real app, fetch from API
-        bookingsData.push(Math.floor(Math.random() * 50) + 20);
-        revenueData.push(Math.floor(Math.random() * 5000) + 2000);
-    }
+    // Use real monthly trend data from backend
+    const trend = data.monthly_trend || [];
+    const months      = trend.map(t => t.label);
+    const bookingsData = trend.map(t => t.bookings);
+    const revenueData  = trend.map(t => t.revenue);
     
     if (charts.monthlyTrends) {
         charts.monthlyTrends.destroy();
@@ -391,45 +464,110 @@ function updatePlatformLeaderboard(data) {
 
 function updateCaptainPerformance(data) {
     const container = document.getElementById('captainPerformance');
+    if (!container) return;
     const captains = data.active_captains_list || [];
-    
-    container.innerHTML = captains.map(captain => `
-        <div class="captain-card">
-            <div class="captain-avatar">👨‍✈️</div>
-            <div class="captain-name">${captain.name}</div>
+    if (captains.length === 0) {
+        container.innerHTML = '<p style="color:#94a3b8;text-align:center;padding:12px;">Sin capitanes activos</p>';
+        return;
+    }
+    container.innerHTML = '';
+    captains.slice(0, 6).forEach(captain => {
+        const div = document.createElement('div');
+        div.className = 'captain-card';
+        const initials = (captain.name || '?').split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
+        const bookingCount = (data.bookings_by_captain || {})[captain.name] || 0;
+        const specialties = Array.isArray(captain.specialties) ? captain.specialties.join(', ') : (captain.specialties || '');
+        div.innerHTML = `
+            <div class="captain-avatar" style="background:#0066cc;color:#fff;border-radius:50%;width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-weight:700;">${esc(initials)}</div>
+            <div class="captain-name">${esc(captain.name)}</div>
             <div class="captain-stats">
-                ${captain.specialties.join(', ')}<br>
-                <strong>📞 ${captain.phone}</strong>
+                ${bookingCount > 0 ? `<strong>${bookingCount} reservas</strong><br>` : ''}
+                ${esc(specialties)}
             </div>
-        </div>
-    `).join('');
+        `;
+        container.appendChild(div);
+    });
+}
+
+function esc(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 function updateBookingsTable(bookings) {
     const tbody = document.getElementById('bookingsTableBody');
-    
+    if (!tbody) return;
+
     if (!bookings || bookings.length === 0) {
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="7" style="text-align: center; padding: 2rem; color: var(--text-secondary);">
-                    No hay reservas recientes
-                </td>
-            </tr>
-        `;
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--text-secondary);">No hay reservas en este período</td></tr>`;
         return;
     }
-    
-    tbody.innerHTML = bookings.map(booking => `
-        <tr onclick="viewBookingDetails('${booking.id}')">
-            <td><strong>${booking.id.substring(0, 12)}...</strong></td>
-            <td>${booking.customer_name || 'N/A'}</td>
-            <td>${booking.platform}</td>
-            <td>${booking.boat_type || 'N/A'}</td>
-            <td>${booking.booking_date}</td>
-            <td><strong>$${booking.total_amount}</strong></td>
-            <td><span class="status-badge ${booking.status}">${booking.status}</span></td>
-        </tr>
-    `).join('');
+
+    tbody.innerHTML = '';
+    bookings.forEach(booking => {
+        const tr = document.createElement('tr');
+        tr.style.cursor = 'pointer';
+        tr.addEventListener('click', () => {
+            window.location.href = '/schedule.html';
+        });
+        const amount = parseFloat(booking.total_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+        const isManual = booking.is_manual ? ' <span style="background:#fef3c7;color:#92400e;border-radius:8px;padding:1px 6px;font-size:10px;font-weight:700;">Manual</span>' : '';
+        tr.innerHTML = `
+            <td><strong>${esc(booking.id.substring(0, 12))}…</strong>${isManual}</td>
+            <td>${esc(booking.customer_name || 'N/A')}</td>
+            <td>${esc(booking.platform || '—')}</td>
+            <td>${esc(booking.boat_type || booking.boat_id || 'N/A')}</td>
+            <td>${esc(booking.booking_date || '—')}</td>
+            <td><strong>$${amount}</strong></td>
+            <td><span class="status-badge ${esc(booking.status || 'confirmed')}">${esc(booking.status || 'confirmed')}</span></td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+function updateBoatBreakdown(data) {
+    const el = document.getElementById('boatBreakdown');
+    if (!el) return;
+    const boats = data.bookings_by_boat || {};
+    const rev   = data.revenue_by_boat  || {};
+    const sorted = Object.entries(rev).sort(([,a],[,b]) => b-a).slice(0,5);
+    if (sorted.length === 0) {
+        el.innerHTML = '<p style="color:#94a3b8;text-align:center;padding:12px;">Sin datos</p>';
+        return;
+    }
+    el.innerHTML = sorted.map(([boat, revenue], i) => {
+        const cnt = boats[boat] || 0;
+        return `<div class="leaderboard-item">
+            <div class="leaderboard-rank">${i+1}</div>
+            <div class="leaderboard-info">
+                <div class="leaderboard-name">${esc(boat)}</div>
+                <div class="leaderboard-stats">${cnt} reservas</div>
+            </div>
+            <div class="leaderboard-value">$${revenue.toLocaleString()}</div>
+        </div>`;
+    }).join('');
+}
+
+function updateBrokerBreakdown(data) {
+    const el = document.getElementById('brokerBreakdown');
+    if (!el) return;
+    const brokers = data.bookings_by_broker || {};
+    const rev     = data.revenue_by_broker  || {};
+    const sorted  = Object.entries(rev).sort(([,a],[,b]) => b-a).slice(0,5);
+    if (sorted.length === 0) {
+        el.innerHTML = '<p style="color:#94a3b8;text-align:center;padding:12px;">Sin datos</p>';
+        return;
+    }
+    el.innerHTML = sorted.map(([broker, revenue], i) => {
+        const cnt = brokers[broker] || 0;
+        return `<div class="leaderboard-item">
+            <div class="leaderboard-rank">${i+1}</div>
+            <div class="leaderboard-info">
+                <div class="leaderboard-name">${esc(broker)}</div>
+                <div class="leaderboard-stats">${cnt} reservas</div>
+            </div>
+            <div class="leaderboard-value">$${revenue.toLocaleString()}</div>
+        </div>`;
+    }).join('');
 }
 
 function viewBookingDetails(bookingId) {
