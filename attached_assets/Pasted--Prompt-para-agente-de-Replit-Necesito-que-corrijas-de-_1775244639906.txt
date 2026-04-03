@@ -1,0 +1,365 @@
+# Prompt para agente de Replit
+
+Necesito que corrijas de forma prioritaria el **dashboard principal** de la plataforma porque **sigue sin traer datos, gráficas ni estadísticas reales**.
+
+## Problema actual
+En este momento el dashboard no está funcionando correctamente:
+
+- No muestra reservas reales.
+- No muestra estadísticas reales.
+- No muestra gráficas reales.
+- No responde correctamente a reservas pasadas, presentes o futuras.
+- Tengo **2 reservas futuras de GetMyBoat** y **no aparecen**.
+- Tengo **1 reserva pasada de GetMyBoat** y **tampoco aparece**.
+- No está trayendo información útil ni operativa.
+- Además, visualmente el dashboard se ve **poco profesional**.
+
+Esto debe corregirse completamente.
+
+---
+
+# Objetivo principal
+Quiero que el dashboard:
+
+1. **traiga datos reales** desde las reservas existentes,
+2. **muestre correctamente reservas pasadas, presentes y futuras**,
+3. **permita filtrar por plataforma, fechas, barco y otros criterios relevantes**,
+4. **muestre gráficas y KPIs reales**,
+5. y además tenga un diseño **más espectacular, impactante, moderno y futurista**, con enfoque operativo y comercial.
+
+---
+
+# 1. Corregir extracción real de datos del dashboard
+
+## Debes diagnosticar por qué no aparecen reservas
+Necesito que revises toda la lógica que alimenta el dashboard para descubrir por qué no está mostrando información, aunque sí existen reservas en el sistema.
+
+### Casos reales que deben aparecer
+- **2 reservas futuras de GetMyBoat**
+- **1 reserva pasada de GetMyBoat**
+
+Estas reservas deben reflejarse correctamente en el dashboard.
+
+## Revisar posibles causas
+Debes auditar y corregir cualquiera de estos problemas:
+
+- queries incorrectas
+- filtros de fecha mal aplicados
+- filtros de plataforma mal aplicados
+- joins rotos
+- reservas guardadas en una tabla pero no consultadas por el dashboard
+- reservas manuales vs automáticas tratadas por separado
+- problemas con estados de reserva
+- problemas con fechas UTC/local
+- problemas con parseo de fechas
+- reservas futuras excluidas por error
+- reservas pasadas excluidas por error
+- datos hardcodeados
+- frontend que no refresca
+- backend que no devuelve datos
+- hooks o stores mal conectados
+- cache o memoization impidiendo actualización
+- errores silenciosos en consola o API
+- agrupaciones por plataforma que fallan si falta algún campo
+- reservas sin campos opcionales que rompen el resumen
+
+---
+
+# 2. El dashboard debe mostrar reservas reales por periodo de tiempo
+
+## Debe soportar como mínimo:
+- reservas pasadas
+- reservas del presente
+- reservas futuras
+
+## Debe responder correctamente cuando filtre por:
+- día
+- semana
+- mes
+- rango personalizado de fechas
+- plataforma
+- barco
+- estado si aplica
+
+## Ejemplo esperado
+Si filtro:
+- plataforma = GetMyBoat
+- periodo = futuro
+
+entonces deben salir las **2 reservas futuras de GetMyBoat**.
+
+Si filtro:
+- plataforma = GetMyBoat
+- periodo = pasado
+
+entonces debe salir la **reserva pasada de GetMyBoat**.
+
+---
+
+# 3. El dashboard debe dejar de enfocarse en “capitanes” y enfocarse en KPIs de negocio
+No quiero que el dashboard principal priorice métricas como “capitanes” si eso no aporta valor principal al negocio.
+
+## En lugar de eso, quiero métricas más útiles y ejecutivas, por ejemplo:
+
+### KPIs principales
+- Total de bookings
+- Revenue total
+- Bookings del día
+- Bookings de la semana
+- Bookings del mes
+- Bookings futuros
+- Bookings completados
+- Ticket promedio
+- Revenue proyectado
+
+### Resumen por plataforma
+- GetMyBoat
+- Boatsetter
+- Direct
+- Otros
+
+Mostrar por plataforma:
+- cantidad de bookings
+- revenue
+- porcentaje del total
+- evolución en el tiempo si aplica
+
+### Resumen por barco
+Mostrar:
+- cantidad de reservas por barco
+- revenue por barco
+- barcos más reservados
+- próximos charters por barco
+
+### Resumen temporal
+- bookings por día
+- bookings por semana
+- bookings por mes
+- revenue por mes
+- revenue futuro proyectado
+
+### Próximas reservas
+Una sección visible con:
+- fecha
+- hora
+- barco
+- cliente
+- plataforma
+- precio
+- capitán si aplica
+
+---
+
+# 4. Rediseñar el dashboard para que se vea más profesional, impactante y futurista
+El dashboard actual se ve poco profesional. Necesito una mejora fuerte de UI/UX.
+
+## Quiero un dashboard:
+- moderno
+- limpio
+- premium
+- visualmente impactante
+- futurista
+- con mejor jerarquía visual
+- con tarjetas/KPIs elegantes
+- con gráficas reales y bien presentadas
+- orientado a operación y negocio
+
+## Mejoras visuales esperadas
+- cards KPI más modernas
+- mejor uso de colores, espacios y tipografía
+- mejor layout
+- secciones bien organizadas
+- gráficas atractivas y legibles
+- tablas o listas de próximas reservas bien diseñadas
+- filtros más claros y visibles
+- sensación de producto premium y confiable
+
+## Importante
+No quiero solo “maquillaje”.
+La mejora visual debe venir junto con datos reales y funcionalidad real.
+
+---
+
+# 5. Gráficas y estadísticas reales
+Necesito que agregues o mejores las gráficas del dashboard para que estén conectadas a datos reales.
+
+## Gráficas sugeridas
+### 1. Revenue por mes
+- gráfica de barras o línea
+
+### 2. Bookings por plataforma
+- gráfica de barras o donut
+
+### 3. Bookings por barco
+- gráfica de barras horizontal o tabla visual
+
+### 4. Reservas por semana
+- tendencia semanal
+
+### 5. Distribución pasado / presente / futuro
+- conteo de reservas según periodo
+
+## Requisito clave
+Todas las gráficas deben usar **datos reales** de la base de datos, no mocks ni valores hardcodeados.
+
+---
+
+# 6. Integración total con reservas manuales y automáticas
+El dashboard debe reflejar todas las reservas del sistema:
+
+- reservas manuales creadas desde calendario
+- reservas automáticas
+- reservas importadas
+- reservas históricas
+- reservas futuras
+
+## Cada vez que se cree o edite una reserva:
+- el dashboard debe actualizar sus métricas
+- deben actualizarse las gráficas
+- deben actualizarse los totales
+- deben actualizarse los resúmenes por plataforma y barco
+
+---
+
+# 7. Mejorar filtros del dashboard
+Quiero filtros útiles, visibles y funcionales.
+
+## Filtros mínimos:
+- Plataforma
+- Barco
+- Fecha desde / hasta
+- Mes
+- Semana
+- Estado de reserva si aplica
+
+## Comportamiento esperado
+Cuando cambie un filtro:
+- las tarjetas KPI cambian
+- las gráficas cambian
+- las listas cambian
+- los totales cambian
+- todo debe recalcularse correctamente
+
+---
+
+# 8. Auditoría técnica completa del dashboard y reporting
+No quiero un arreglo superficial.
+
+## Necesito una auditoría real de:
+- consultas del dashboard
+- endpoints del dashboard
+- lógica de agregación
+- relaciones entre reservas y plataformas
+- relaciones entre reservas y barcos
+- consistencia de fechas
+- timezone
+- frontend state management
+- hooks/query fetching
+- renderización de gráficas
+- reactividad de filtros
+- rendimiento
+- errores silenciosos
+- null handling
+- edge cases
+
+## Debes corregir también errores no reportados
+Si encuentras otros problemas relacionados, arréglalos aunque no estén descritos explícitamente.
+
+---
+
+# 9. Casos de prueba que deben funcionar
+## Caso 1
+Existen:
+- 2 reservas futuras de GetMyBoat
+- 1 reserva pasada de GetMyBoat
+
+### Resultado esperado:
+Al filtrar por GetMyBoat:
+- deben verse esas 3 reservas dentro de sus periodos correctos
+- deben impactar KPIs
+- deben impactar revenue
+- deben impactar gráficas
+
+## Caso 2
+Filtro:
+- plataforma = GetMyBoat
+- periodo = futuro
+
+### Resultado esperado:
+- aparecen solo las 2 futuras
+- se actualizan estadísticas y gráficas
+
+## Caso 3
+Filtro:
+- plataforma = GetMyBoat
+- periodo = pasado
+
+### Resultado esperado:
+- aparece la pasada
+- se actualizan estadísticas y gráficas
+
+## Caso 4
+Filtro por barco específico
+
+### Resultado esperado:
+- ver reservas de ese barco
+- ver revenue de ese barco
+- ver KPIs correctos
+
+---
+
+# 10. Prioridades del nuevo dashboard
+## Prioridad alta
+- bookings
+- revenue
+- plataformas
+- barcos
+- próximas reservas
+- reservas futuras
+- gráficas
+- tendencias
+
+## Prioridad baja o secundaria
+- métricas de capitanes en la portada principal
+
+Si las métricas de capitanes existen, pueden ir en una sección secundaria, pero no deben dominar el dashboard principal.
+
+---
+
+# 11. Requerimientos técnicos
+- No usar datos hardcodeados.
+- Todo debe salir de la data real del sistema.
+- Mantén consistencia con la arquitectura actual.
+- Corrige frontend y backend si es necesario.
+- Si faltan agregaciones o endpoints, créalos correctamente.
+- Si faltan índices, relaciones o normalización para reporting, ajústalo.
+- Mantén compatibilidad con reservas manuales y automáticas.
+- No rompas funcionalidades existentes.
+
+---
+
+# 12. Entregable esperado
+Realiza los cambios directamente en el proyecto y al finalizar indícame claramente:
+
+1. Qué archivos modificaste
+2. Qué endpoints/queries/servicios corregiste
+3. Qué errores encontraste que impedían mostrar las reservas reales
+4. Cómo resolviste el problema de las reservas de GetMyBoat que no aparecen
+5. Cómo quedó la lógica de filtros por fecha/plataforma/barco
+6. Qué KPIs y gráficas nuevas o mejoradas implementaste
+7. Qué cambios visuales hiciste para que el dashboard se vea más moderno y futurista
+8. Qué otros bugs detectaste en la auditoría y cómo los corregiste
+9. Qué pruebas realizaste para validar que el dashboard ya sí trae datos reales
+
+---
+
+# Resultado final esperado
+Al finalizar:
+
+- el dashboard debe mostrar datos reales
+- las reservas futuras y pasadas de GetMyBoat deben aparecer
+- las gráficas deben funcionar
+- las estadísticas deben funcionar
+- los filtros deben funcionar
+- el dashboard debe verse mucho más profesional, premium, impactante y futurista
+- el foco principal debe estar en bookings, revenue, plataformas y barcos, no en capitanes

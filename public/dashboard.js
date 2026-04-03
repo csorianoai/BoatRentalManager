@@ -83,7 +83,7 @@ function initializeEventListeners() {
 
 // ── Build query params from active filters ────────────────────────────────
 function getFilterParams() {
-    const dateRange   = document.getElementById('dateRange')?.value   || 'week';
+    const dateRange   = document.getElementById('dateRange')?.value   || 'all';
     const platform    = document.getElementById('platformFilter')?.value || 'all';
     const customFrom  = document.getElementById('customDateFrom')?.value || '';
     const customTo    = document.getElementById('customDateTo')?.value   || '';
@@ -132,6 +132,9 @@ async function loadDashboardData() {
         updateBoatBreakdown(dashboardData);
         updateBrokerBreakdown(dashboardData);
 
+        // Update upcoming bookings panel
+        updateUpcomingBookings(dashboardData);
+
         // Update period label
         updatePeriodLabel(dashboardData);
 
@@ -152,17 +155,77 @@ async function loadDashboardData() {
 function updatePeriodLabel(data) {
     const el = document.getElementById('periodLabel');
     if (!el) return;
+    const dr   = data.filter_date_range || 'all';
     const from = data.period_start || '';
     const to   = data.period_end   || '';
-    if (from && to && from !== '2020-01-01') {
-        const fmt = d => new Date(d + 'T12:00:00').toLocaleDateString(
-            getCurrentLang() === 'es' ? 'es-ES' : 'en-US',
-            { day: 'numeric', month: 'short', year: 'numeric' }
-        );
+    if (dr === 'all') {
+        el.textContent = from && to ? `Todo el historial: ${from} – ${to}` : 'Todo el historial';
+        return;
+    }
+    if (from && to) {
+        const fmt = d => new Date(d + 'T12:00:00').toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
         el.textContent = `${fmt(from)} – ${fmt(to)}`;
     } else {
         el.textContent = '';
     }
+}
+
+// ── Upcoming Bookings List ────────────────────────────────────────────────────
+function updateUpcomingBookings(data) {
+    const el = document.getElementById('upcomingBookingsList');
+    if (!el) return;
+    const bookings = data.upcoming_bookings || [];
+    const section  = document.getElementById('upcomingSection');
+
+    if (bookings.length === 0) {
+        el.innerHTML = `
+            <div style="text-align:center;padding:32px;color:var(--text-secondary);">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:.3;margin-bottom:12px;display:block;margin-left:auto;margin-right:auto"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                <p style="font-weight:600;margin:0 0 4px;">Sin reservas próximas</p>
+                <p style="font-size:13px;margin:0;">No hay reservas programadas para los próximos 30 días</p>
+            </div>`;
+        return;
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    el.innerHTML = '';
+    bookings.forEach(b => {
+        const div = document.createElement('div');
+        div.className = 'upcoming-item';
+        const amount = parseFloat(b.total_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+        const boat   = esc(b.boat_type || b.boat_id || 'Sin asignar');
+        const plat   = esc(b.platform  || '—');
+        const cap    = esc(b.assigned_captain_name || '—');
+        const guests = b.num_guests ? `${b.num_guests} pax` : '';
+        const isToday  = b.booking_date === today;
+        const isManual = b.is_manual;
+        const dateFmt  = new Date(b.booking_date + 'T12:00:00').toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' });
+
+        div.innerHTML = `
+            <div class="upcoming-date ${isToday ? 'upcoming-today' : ''}">
+                <span class="upcoming-date-text">${dateFmt}</span>
+                ${isToday ? '<span class="upcoming-today-badge">HOY</span>' : ''}
+            </div>
+            <div class="upcoming-info">
+                <div class="upcoming-customer">${esc(b.customer_name || 'Sin nombre')}</div>
+                <div class="upcoming-meta">
+                    <span class="upcoming-platform-badge">${plat}</span>
+                    <span>${boat}</span>
+                    ${b.start_time ? `<span>${esc(b.start_time)}</span>` : ''}
+                    ${guests ? `<span>${guests}</span>` : ''}
+                    ${cap !== '—' ? `<span>Cap: ${cap}</span>` : ''}
+                    ${isManual ? '<span class="badge-manual">Manual</span>' : ''}
+                </div>
+            </div>
+            <div class="upcoming-amount">$${amount}</div>
+            <div class="upcoming-status">
+                <span class="status-badge ${esc(b.status || 'confirmed')}">${esc(b.status || 'confirmed')}</span>
+            </div>
+        `;
+        div.style.cursor = 'pointer';
+        div.addEventListener('click', () => window.location.href = '/schedule.html');
+        el.appendChild(div);
+    });
 }
 
 function updatePlatformFilter(platforms) {
@@ -184,60 +247,52 @@ function updatePlatformFilter(platforms) {
 }
 
 function updateKPIs(data) {
-    // ── Helpers ──────────────────────────────────────────────────────────
-    const fmtPct = pct => {
+    const fmtMoney = v => '$' + Math.round(v || 0).toLocaleString('en-US');
+    const fmtPct   = pct => {
         if (pct === null || pct === undefined) return '—';
-        return (pct >= 0 ? '+' : '') + pct + '%';
+        const sign = pct >= 0 ? '+' : '';
+        return `${sign}${pct}%`;
     };
-    const fmtMoney = v => '$' + (v || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    const setPct = (id, pct) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.textContent = fmtPct(pct);
+        el.className = 'kpi-change-badge ' + (pct === null ? 'neutral' : pct >= 0 ? 'positive' : 'negative');
+    };
+    const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
 
-    // ── Today ─────────────────────────────────────────────────────────────
-    const todayBookingsEl = document.getElementById('todayBookings');
-    const todayRevenueEl  = document.getElementById('todayRevenue');
-    if (todayBookingsEl) todayBookingsEl.textContent = data.today_bookings ?? 0;
-    if (todayRevenueEl)  todayRevenueEl.textContent  = fmtMoney(data.today_revenue);
+    // Period KPIs
+    set('periodBookings', data.period_bookings ?? 0);
+    set('periodRevenue',  fmtMoney(data.period_revenue));
+    set('avgTicket',      fmtMoney(data.avg_ticket));
+    setPct('bookingChange', data.booking_change_pct);
+    setPct('revenueChange', data.revenue_change_pct);
 
-    // ── Period (filtered) ─────────────────────────────────────────────────
-    const periodBookingsEl = document.getElementById('periodBookings');
-    const periodRevenueEl  = document.getElementById('periodRevenue');
-    if (periodBookingsEl) periodBookingsEl.textContent = data.period_bookings ?? data.week_bookings ?? 0;
-    if (periodRevenueEl)  periodRevenueEl.textContent  = fmtMoney(data.period_revenue ?? data.week_revenue);
+    // All-time
+    set('totalBookingsCount', data.total_bookings ?? 0);
+    set('totalRevenueBadge',  fmtMoney(data.total_revenue) + ' revenue total');
+    if (document.getElementById('totalRevenueBadge2'))
+        document.getElementById('totalRevenueBadge2').textContent = fmtMoney(data.total_revenue);
 
-    // ── Change percentages (real from backend) ────────────────────────────
-    const bookingChange = document.getElementById('bookingChange');
-    const revenueChange = document.getElementById('revenueChange');
-    if (bookingChange) {
-        const pct = data.booking_change_pct;
-        bookingChange.textContent = fmtPct(pct);
-        bookingChange.style.color = pct === null ? '' : pct >= 0 ? '#16a34a' : '#dc2626';
-    }
-    if (revenueChange) {
-        const pct = data.revenue_change_pct;
-        revenueChange.textContent = fmtPct(pct);
-        revenueChange.style.color = pct === null ? '' : pct >= 0 ? '#16a34a' : '#dc2626';
-    }
+    // Today
+    set('todayBookings', data.today_bookings ?? 0);
+    set('todayRevenue',  fmtMoney(data.today_revenue) + ' hoy');
 
-    // ── Total (all-time) revenue badge ────────────────────────────────────
-    const totalRevenueBadge = document.getElementById('totalRevenueBadge');
-    if (totalRevenueBadge) totalRevenueBadge.textContent = fmtMoney(data.total_revenue);
+    // Past/historical
+    set('pastBookings', data.past_bookings ?? 0);
+    set('pastRevenue',  fmtMoney(data.past_revenue) + ' en revenue pasado');
 
-    // ── Captains & stews ──────────────────────────────────────────────────
-    const activeCaptains = document.getElementById('activeCaptains');
-    const totalCaptains  = document.getElementById('totalCaptains');
-    const activeStews    = document.getElementById('activeStews');
-    const totalStews     = document.getElementById('totalStews');
-    if (activeCaptains) activeCaptains.textContent = data.active_captains ?? 0;
-    if (totalCaptains)  totalCaptains.textContent  = `de ${data.total_captains ?? 0} total`;
-    if (activeStews)    activeStews.textContent     = data.active_stews ?? 0;
-    if (totalStews)     totalStews.textContent      = `de ${data.total_stews ?? 0} total`;
+    // Upcoming
+    set('upcoming7d', data.upcoming_7d ?? 0);
 
-    // ── Upcoming 7 days ───────────────────────────────────────────────────
-    const upcomingEl = document.getElementById('upcoming7d');
-    if (upcomingEl) upcomingEl.textContent = data.upcoming_7d ?? 0;
+    // Crew
+    set('activeCaptains', data.active_captains ?? 0);
+    set('totalCaptains',  data.total_captains ?? 0);
+    set('activeStews',    data.active_stews ?? 0);
+    set('totalStews',     data.total_stews ?? 0);
 
-    // ── Total bookings count ──────────────────────────────────────────────
-    const totalBookingsEl = document.getElementById('totalBookingsCount');
-    if (totalBookingsEl) totalBookingsEl.textContent = data.total_bookings ?? 0;
+    // Booking count in table header
+    set('bookingsTableCount', `${data.period_bookings ?? 0} reservas encontradas`);
 }
 
 function updateCharts(data) {

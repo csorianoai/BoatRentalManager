@@ -2280,9 +2280,14 @@ app.get('/api/dashboard-data', isAuthenticated, async (req, res) => {
     const today = moment().format('YYYY-MM-DD');
     const { platform, dateRange, dateFrom: rawDateFrom, dateTo: rawDateTo } = req.query;
 
+    // ── Detect actual data range from DB (so "last 12 months" is meaningful) ──
+    const dataRangeRes = await pool.query(`SELECT MIN(booking_date) as oldest, MAX(booking_date) as newest FROM bookings`);
+    const dbOldest = dataRangeRes.rows[0]?.oldest || '2020-01-01';
+    const dbNewest = dataRangeRes.rows[0]?.newest || today;
+
     // ── Compute date window from dateRange preset ──────────────────────────
     let periodStart, periodEnd;
-    const dr = dateRange || 'week';
+    const dr = dateRange || 'all';
 
     if (dr === 'today') {
       periodStart = today;
@@ -2299,16 +2304,31 @@ app.get('/api/dashboard-data', isAuthenticated, async (req, res) => {
     } else if (dr === 'year') {
       periodStart = moment().startOf('year').format('YYYY-MM-DD');
       periodEnd   = moment().endOf('year').format('YYYY-MM-DD');
+    } else if (dr === 'last7days') {
+      periodStart = moment().subtract(6, 'days').format('YYYY-MM-DD');
+      periodEnd   = today;
+    } else if (dr === 'last30days') {
+      periodStart = moment().subtract(29, 'days').format('YYYY-MM-DD');
+      periodEnd   = today;
+    } else if (dr === 'last3months') {
+      periodStart = moment().subtract(3, 'months').startOf('month').format('YYYY-MM-DD');
+      periodEnd   = today;
+    } else if (dr === 'last6months') {
+      periodStart = moment().subtract(6, 'months').startOf('month').format('YYYY-MM-DD');
+      periodEnd   = today;
+    } else if (dr === 'last12months') {
+      periodStart = moment().subtract(12, 'months').startOf('month').format('YYYY-MM-DD');
+      periodEnd   = today;
     } else if (dr === 'custom' && rawDateFrom && rawDateTo) {
       periodStart = rawDateFrom;
       periodEnd   = rawDateTo;
     } else {
-      // fallback: all time
-      periodStart = '2020-01-01';
-      periodEnd   = '2099-12-31';
+      // 'all' — use full data range
+      periodStart = dbOldest;
+      periodEnd   = dbNewest > today ? dbNewest : today;
     }
 
-    // ── Build filtered query ───────────────────────────────────────────────
+    // ── Build filtered query (case-insensitive platform) ───────────────────
     const baseWhere = [];
     const baseParams = [];
     let pi = 1;
@@ -2316,9 +2336,9 @@ app.get('/api/dashboard-data', isAuthenticated, async (req, res) => {
     baseWhere.push(`booking_date >= $${pi++}`); baseParams.push(periodStart);
     baseWhere.push(`booking_date <= $${pi++}`); baseParams.push(periodEnd);
     if (platform && platform !== 'all') {
-      baseWhere.push(`platform = $${pi++}`); baseParams.push(platform);
+      // Case-insensitive platform match — handles GetMyBoat vs getmyboat
+      baseWhere.push(`LOWER(platform) = LOWER($${pi++})`); baseParams.push(platform);
     }
-    // exclude hard-cancelled unless needed
     const whereStr = baseWhere.join(' AND ');
 
     // ── Period bookings (main filtered set) ───────────────────────────────
@@ -2332,42 +2352,52 @@ app.get('/api/dashboard-data', isAuthenticated, async (req, res) => {
     );
     const periodBookings = periodRes.rows;
 
-    // ── Today bookings (always absolute) ──────────────────────────────────
-    const todayParams = platform && platform !== 'all'
-      ? [today, platform] : [today];
-    const todayWhere = platform && platform !== 'all'
-      ? 'booking_date = $1 AND platform = $2' : 'booking_date = $1';
+    // ── Today bookings (always absolute, case-insensitive platform) ────────
+    const todayParams = [today];
+    let todayWhere = 'booking_date = $1';
+    if (platform && platform !== 'all') {
+      todayParams.push(platform);
+      todayWhere += ` AND LOWER(platform) = LOWER($${todayParams.length})`;
+    }
     const todayRes = await pool.query(
       `SELECT total_amount, status FROM bookings WHERE ${todayWhere}`, todayParams
     );
     const todayBookings = todayRes.rows;
 
     // ── Previous period for % comparison ──────────────────────────────────
-    const periodDays = moment(periodEnd).diff(moment(periodStart), 'days') + 1;
-    const prevEnd   = moment(periodStart).subtract(1, 'days').format('YYYY-MM-DD');
-    const prevStart = moment(prevEnd).subtract(periodDays - 1, 'days').format('YYYY-MM-DD');
-    const prevParams = [...baseParams];
-    prevParams[0] = prevStart; prevParams[1] = prevEnd;
-    const prevRes = await pool.query(
-      `SELECT total_amount FROM bookings WHERE ${whereStr}`, prevParams
-    );
-    const prevBookings = prevRes.rows;
-    const prevRevenue = prevBookings.reduce((s, b) => s + parseFloat(b.total_amount || 0), 0);
-    const prevCount   = prevBookings.length;
+    let prevRevenue = 0, prevCount = 0;
+    if (dr !== 'all') {
+      const periodDays = moment(periodEnd).diff(moment(periodStart), 'days') + 1;
+      const prevEnd   = moment(periodStart).subtract(1, 'days').format('YYYY-MM-DD');
+      const prevStart = moment(prevEnd).subtract(periodDays - 1, 'days').format('YYYY-MM-DD');
+      const prevParams = [...baseParams];
+      prevParams[0] = prevStart; prevParams[1] = prevEnd;
+      const prevRes = await pool.query(
+        `SELECT total_amount FROM bookings WHERE ${whereStr} AND status != 'cancelled'`, prevParams
+      );
+      prevRevenue = prevRes.rows.reduce((s, b) => s + parseFloat(b.total_amount || 0), 0);
+      prevCount   = prevRes.rows.length;
+    }
 
-    // ── All-time totals (unfiltered by date) ──────────────────────────────
-    const allTimeParams = platform && platform !== 'all' ? [platform] : [];
-    const allTimeWhere  = platform && platform !== 'all' ? 'WHERE platform = $1' : '';
+    // ── All-time totals (unfiltered by date, case-insensitive platform) ────
+    const allTimeParams = [];
+    let allTimeWhere = 'WHERE 1=1';
+    if (platform && platform !== 'all') {
+      allTimeParams.push(platform);
+      allTimeWhere = `WHERE LOWER(platform) = LOWER($1)`;
+    }
     const allRes = await pool.query(
-      `SELECT total_amount, platform, boat_type, broker_name, assigned_captain_name, booking_date
+      `SELECT total_amount, platform, boat_type, broker_name, assigned_captain_name, booking_date, status
        FROM bookings ${allTimeWhere}`,
       allTimeParams
     );
     const allBookings = allRes.rows;
+    const allNonCancelled = allBookings.filter(b => b.status !== 'cancelled');
 
     // ── Aggregate period bookings ──────────────────────────────────────────
     const nonCancelled = periodBookings.filter(b => b.status !== 'cancelled');
     const periodRevenue = nonCancelled.reduce((s, b) => s + parseFloat(b.total_amount || 0), 0);
+    const avgTicket     = nonCancelled.length > 0 ? Math.round(periodRevenue / nonCancelled.length) : 0;
 
     const bookingsByPlatform = {};
     const revenueByPlatform  = {};
@@ -2378,9 +2408,19 @@ app.get('/api/dashboard-data', isAuthenticated, async (req, res) => {
     const bookingsByCaptain  = {};
 
     nonCancelled.forEach(b => {
-      const plat = b.platform || 'Otros';
-      bookingsByPlatform[plat] = (bookingsByPlatform[plat] || 0) + 1;
-      revenueByPlatform[plat]  = (revenueByPlatform[plat]  || 0) + parseFloat(b.total_amount || 0);
+      // Normalize platform name for grouping (title-case)
+      const platRaw = b.platform || 'Otros';
+      const plat = platRaw.charAt(0).toUpperCase() + platRaw.slice(1).toLowerCase()
+                    .replace(/^getmyboat$/i,'GetMyBoat')
+                    .replace(/^boatsetter$/i,'BoatSetter')
+                    .replace(/^fareharbor$/i,'FareHarbor')
+                    .replace(/^tripadvisor$/i,'TripAdvisor');
+      const platNorm = platRaw.toLowerCase() === 'getmyboat' ? 'GetMyBoat' :
+                       platRaw.toLowerCase() === 'boatsetter' ? 'BoatSetter' :
+                       platRaw.toLowerCase() === 'fareharbor' ? 'FareHarbor' :
+                       platRaw.toLowerCase() === 'tripadvisor' ? 'TripAdvisor' : platRaw;
+      bookingsByPlatform[platNorm] = (bookingsByPlatform[platNorm] || 0) + 1;
+      revenueByPlatform[platNorm]  = (revenueByPlatform[platNorm]  || 0) + parseFloat(b.total_amount || 0);
 
       const boat = b.boat_type || b.boat_id || 'Sin asignar';
       bookingsByBoat[boat] = (bookingsByBoat[boat] || 0) + 1;
@@ -2394,19 +2434,27 @@ app.get('/api/dashboard-data', isAuthenticated, async (req, res) => {
       bookingsByCaptain[cap] = (bookingsByCaptain[cap] || 0) + 1;
     });
 
-    // ── Monthly trend (last 6 months, real data, filtered by platform) ─────
+    // ── Monthly trend: anchor to actual data, not just "last 6 months" ─────
+    // Find the anchor: if 'all' or range covers historical data, show 8 months from data range
+    const trendEnd   = moment(periodEnd > today ? today : periodEnd);
+    const trendStart = moment(periodStart);
+    const trendMonths = Math.min(12, trendEnd.diff(trendStart, 'months') + 1);
+    const trendAnchor = trendMonths <= 1 ? 5 : Math.min(trendMonths - 1, 11); // how many months back from trendEnd
+
     const monthlyTrend = [];
-    for (let i = 5; i >= 0; i--) {
-      const mStart = moment().subtract(i, 'months').startOf('month').format('YYYY-MM-DD');
-      const mEnd   = moment().subtract(i, 'months').endOf('month').format('YYYY-MM-DD');
-      const mLabel = moment().subtract(i, 'months').format('MMM YYYY');
-      const mParams = platform && platform !== 'all'
-        ? [mStart, mEnd, platform] : [mStart, mEnd];
-      const mWhere = platform && platform !== 'all'
-        ? 'booking_date >= $1 AND booking_date <= $2 AND platform = $3'
-        : 'booking_date >= $1 AND booking_date <= $2';
+    for (let i = trendAnchor; i >= 0; i--) {
+      const mRef   = trendEnd.clone().subtract(i, 'months');
+      const mStart = mRef.clone().startOf('month').format('YYYY-MM-DD');
+      const mEnd   = mRef.clone().endOf('month').format('YYYY-MM-DD');
+      const mLabel = mRef.format('MMM YYYY');
+      const mParams = [mStart, mEnd];
+      let mWhere = 'booking_date >= $1 AND booking_date <= $2';
+      if (platform && platform !== 'all') {
+        mParams.push(platform);
+        mWhere += ` AND LOWER(platform) = LOWER($3)`;
+      }
       const mRes = await pool.query(
-        `SELECT COUNT(*) as cnt, COALESCE(SUM(total_amount),0) as rev
+        `SELECT COUNT(*) as cnt, COALESCE(SUM(total_amount::numeric),0) as rev
          FROM bookings WHERE ${mWhere} AND status != 'cancelled'`, mParams
       );
       monthlyTrend.push({
@@ -2416,19 +2464,21 @@ app.get('/api/dashboard-data', isAuthenticated, async (req, res) => {
       });
     }
 
-    // ── Weekly trend (last 4 weeks) ────────────────────────────────────────
+    // ── Weekly trend (last 8 weeks anchored to data range) ─────────────────
     const weeklyTrend = [];
-    for (let i = 3; i >= 0; i--) {
-      const wStart = moment().subtract(i, 'weeks').startOf('isoWeek').format('YYYY-MM-DD');
-      const wEnd   = moment().subtract(i, 'weeks').endOf('isoWeek').format('YYYY-MM-DD');
-      const wLabel = `Sem ${moment(wStart).isoWeek()}`;
-      const wParams = platform && platform !== 'all'
-        ? [wStart, wEnd, platform] : [wStart, wEnd];
-      const wWhere = platform && platform !== 'all'
-        ? 'booking_date >= $1 AND booking_date <= $2 AND platform = $3'
-        : 'booking_date >= $1 AND booking_date <= $2';
+    for (let i = 7; i >= 0; i--) {
+      const wRef   = trendEnd.clone().subtract(i, 'weeks');
+      const wStart = wRef.clone().startOf('isoWeek').format('YYYY-MM-DD');
+      const wEnd   = wRef.clone().endOf('isoWeek').format('YYYY-MM-DD');
+      const wLabel = `Sem ${wRef.isoWeek()} ${wRef.year()}`;
+      const wParams = [wStart, wEnd];
+      let wWhere = 'booking_date >= $1 AND booking_date <= $2';
+      if (platform && platform !== 'all') {
+        wParams.push(platform);
+        wWhere += ` AND LOWER(platform) = LOWER($3)`;
+      }
       const wRes = await pool.query(
-        `SELECT COUNT(*) as cnt, COALESCE(SUM(total_amount),0) as rev
+        `SELECT COUNT(*) as cnt, COALESCE(SUM(total_amount::numeric),0) as rev
          FROM bookings WHERE ${wWhere} AND status != 'cancelled'`, wParams
       );
       weeklyTrend.push({
@@ -2453,18 +2503,36 @@ app.get('/api/dashboard-data', isAuthenticated, async (req, res) => {
     // ── Today stats ───────────────────────────────────────────────────────
     const todayNonCancelled = todayBookings.filter(b => b.status !== 'cancelled');
 
-    // ── Upcoming bookings (next 7 days) ───────────────────────────────────
-    const upcomingEnd = moment().add(7, 'days').format('YYYY-MM-DD');
-    const upcomingParams = platform && platform !== 'all'
-      ? [today, upcomingEnd, platform] : [today, upcomingEnd];
-    const upcomingWhere = platform && platform !== 'all'
-      ? 'booking_date >= $1 AND booking_date <= $2 AND platform = $3'
-      : 'booking_date >= $1 AND booking_date <= $2';
+    // ── Upcoming bookings (next 30 days from today, full list) ─────────────
+    const upcomingEnd30 = moment().add(30, 'days').format('YYYY-MM-DD');
+    const upcomingParams = [today, upcomingEnd30];
+    let upcomingWhere = 'booking_date >= $1 AND booking_date <= $2';
+    if (platform && platform !== 'all') {
+      upcomingParams.push(platform);
+      upcomingWhere += ` AND LOWER(platform) = LOWER($3)`;
+    }
     const upcomingRes = await pool.query(
-      `SELECT COUNT(*) as cnt FROM bookings WHERE ${upcomingWhere} AND status != 'cancelled'`,
+      `SELECT id, platform, customer_name, booking_date, start_time, total_amount, status,
+              boat_type, boat_id, assigned_captain_name, num_guests, is_manual
+       FROM bookings WHERE ${upcomingWhere} AND status != 'cancelled'
+       ORDER BY booking_date ASC, start_time ASC LIMIT 20`,
       upcomingParams
     );
-    const upcomingCount = parseInt(upcomingRes.rows[0].cnt);
+    const upcomingBookings = upcomingRes.rows;
+
+    // ── Past bookings count ────────────────────────────────────────────────
+    const pastParams = [today];
+    let pastWhere = 'booking_date < $1 AND status != \'cancelled\'';
+    if (platform && platform !== 'all') {
+      pastParams.push(platform);
+      pastWhere += ` AND LOWER(platform) = LOWER($${pastParams.length})`;
+    }
+    const pastRes = await pool.query(
+      `SELECT COUNT(*) as cnt, COALESCE(SUM(total_amount::numeric),0) as rev
+       FROM bookings WHERE ${pastWhere}`, pastParams
+    );
+    const pastCount   = parseInt(pastRes.rows[0].cnt);
+    const pastRevenue = parseFloat(pastRes.rows[0].rev);
 
     const dashboardData = {
       // ── Filter context ──────────────────────────────────────────────────
@@ -2480,12 +2548,17 @@ app.get('/api/dashboard-data', isAuthenticated, async (req, res) => {
       // ── Period (filtered) ────────────────────────────────────────────────
       period_bookings: nonCancelled.length,
       period_revenue:  periodRevenue,
+      avg_ticket:      avgTicket,
       booking_change_pct: bookingChangePct,
       revenue_change_pct: revenueChangePct,
 
       // ── All-time ─────────────────────────────────────────────────────────
-      total_bookings: allBookings.length,
-      total_revenue:  allBookings.reduce((s, b) => s + parseFloat(b.total_amount || 0), 0),
+      total_bookings: allNonCancelled.length,
+      total_revenue:  allNonCancelled.reduce((s, b) => s + parseFloat(b.total_amount || 0), 0),
+
+      // ── Past (before today) ───────────────────────────────────────────────
+      past_bookings: pastCount,
+      past_revenue:  pastRevenue,
 
       // ── Captains & stews ─────────────────────────────────────────────────
       active_captains: captains.filter(c => c.status === 'active' || c.status === 'available').length,
@@ -2494,8 +2567,9 @@ app.get('/api/dashboard-data', isAuthenticated, async (req, res) => {
       total_stews:     stews.length,
       active_captains_list: captains.filter(c => c.status === 'active' || c.status === 'available'),
 
-      // ── Upcoming ─────────────────────────────────────────────────────────
-      upcoming_7d: upcomingCount,
+      // ── Upcoming (next 30 days, full list) ────────────────────────────────
+      upcoming_7d:       upcomingBookings.length,
+      upcoming_bookings: upcomingBookings,
 
       // ── Breakdowns by dimension ──────────────────────────────────────────
       bookings_by_platform: bookingsByPlatform,
@@ -2510,10 +2584,10 @@ app.get('/api/dashboard-data', isAuthenticated, async (req, res) => {
       monthly_trend: monthlyTrend,
       weekly_trend:  weeklyTrend,
 
-      // ── Recent bookings (filtered, last 20) ──────────────────────────────
-      recent_bookings: periodBookings.slice(0, 20),
+      // ── Recent bookings (filtered, last 50 sorted desc) ──────────────────
+      recent_bookings: periodBookings.slice(0, 50),
 
-      // ── Compatibility aliases (legacy keys) ──────────────────────────────
+      // ── Compatibility aliases ─────────────────────────────────────────────
       week_bookings: nonCancelled.length,
       week_revenue:  periodRevenue,
     };
@@ -2669,8 +2743,31 @@ app.delete('/api/bookings/:id', isAuthenticated, async (req, res) => {
   }
 });
 
-app.get('/api/platforms', isAuthenticated, (req, res) => {
-  res.json(PLATFORMS);
+app.get('/api/platforms', isAuthenticated, async (req, res) => {
+  try {
+    // Merge hardcoded platform list with actual platforms in DB (normalized)
+    const dbRes = await pool.query(
+      `SELECT DISTINCT platform FROM bookings WHERE platform IS NOT NULL AND platform != '' ORDER BY platform`
+    );
+    const knownMap = {
+      'getmyboat': 'GetMyBoat', 'boatsetter': 'BoatSetter',
+      'fareharbor': 'FareHarbor', 'tripadvisor': 'TripAdvisor',
+      'booking.com': 'Booking.com', 'airbnb': 'Airbnb',
+      'viator': 'Viator', 'expedia': 'Expedia', 'groupon': 'Groupon',
+      'bokun': 'Bokun', 'rezdy': 'Rezdy', 'peek': 'Peek', 'xola': 'Xola',
+    };
+    const normalized = new Set();
+    PLATFORMS.forEach(p => normalized.add(p));
+    dbRes.rows.forEach(r => {
+      const p = r.platform;
+      const norm = knownMap[p.toLowerCase()] || p;
+      normalized.add(norm);
+    });
+    res.json([...normalized].sort());
+  } catch (error) {
+    console.error('Error fetching platforms:', error);
+    res.json(PLATFORMS);
+  }
 });
 
 app.get('/api/captains', async (req, res) => {

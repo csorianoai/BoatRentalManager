@@ -61,8 +61,14 @@
             <div class="filter-group">
                 <label data-i18n="date-range">Rango de Fecha:</label>
                 <select id="dateRange" class="filter-select" data-testid="select-date-range">
+                    <option value="all" selected>Todo el historial</option>
+                    <option value="last7days">Últimos 7 días</option>
+                    <option value="last30days">Últimos 30 días</option>
+                    <option value="last3months">Últimos 3 meses</option>
+                    <option value="last6months">Últimos 6 meses</option>
+                    <option value="last12months">Últimos 12 meses</option>
                     <option value="today">Hoy</option>
-                    <option value="week" selected>Esta Semana</option>
+                    <option value="week">Esta Semana</option>
                     <option value="month">Este Mes</option>
                     <option value="quarter">Trimestre</option>
                     <option value="year">Este Año</option>
@@ -169,113 +175,177 @@
 
     <!-- Main Dashboard Grid -->
     <main class="dashboard-grid">
-        <!-- KPI Cards -->
-        <div class="kpi-card wave-gradient">
-            <div class="kpi-icon">📅</div>
-            <div class="kpi-content">
-                <h3>Reservas Hoy</h3>
-                <p class="kpi-value" id="todayBookings">0</p>
-                <span class="kpi-change" id="bookingChange">—</span>
+
+        <!-- ── ROW 1: Primary KPIs ── -->
+        <div class="kpi-card kpi-blue">
+            <div class="kpi-accent-bar"></div>
+            <div class="kpi-inner">
+                <div class="kpi-label">Reservas del Período</div>
+                <div class="kpi-value" id="periodBookings">—</div>
+                <div class="kpi-meta">
+                    <span class="kpi-change-badge" id="bookingChange">—</span>
+                    <span class="kpi-sublabel">vs período anterior</span>
+                </div>
+            </div>
+            <div class="kpi-icon-bg">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
             </div>
         </div>
 
-        <div class="kpi-card wave-gradient">
-            <div class="kpi-icon">💰</div>
-            <div class="kpi-content">
-                <h3>Ingresos Hoy</h3>
-                <p class="kpi-value" id="todayRevenue">$0</p>
-                <span class="kpi-change" id="revenueChange">—</span>
+        <div class="kpi-card kpi-green">
+            <div class="kpi-accent-bar"></div>
+            <div class="kpi-inner">
+                <div class="kpi-label">Revenue del Período</div>
+                <div class="kpi-value" id="periodRevenue">—</div>
+                <div class="kpi-meta">
+                    <span class="kpi-change-badge" id="revenueChange">—</span>
+                    <span class="kpi-sublabel">vs período anterior</span>
+                </div>
+            </div>
+            <div class="kpi-icon-bg">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
             </div>
         </div>
 
-        <a href="/schedule.html" class="kpi-card wave-gradient kpi-card-link" data-testid="link-kpi-period-bookings" style="text-decoration:none;display:block;cursor:pointer;">
-            <div class="kpi-icon">🗓️</div>
-            <div class="kpi-content">
-                <h3>Reservas del Período</h3>
-                <p class="kpi-value" id="periodBookings">0</p>
-                <span class="kpi-sublabel">según filtro activo</span>
+        <div class="kpi-card kpi-teal">
+            <div class="kpi-accent-bar"></div>
+            <div class="kpi-inner">
+                <div class="kpi-label">Ticket Promedio</div>
+                <div class="kpi-value" id="avgTicket">—</div>
+                <div class="kpi-meta">
+                    <span class="kpi-sublabel">por reserva en el período</span>
+                </div>
             </div>
-            <span class="kpi-arrow">›</span>
+            <div class="kpi-icon-bg">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+            </div>
+        </div>
+
+        <div class="kpi-card kpi-purple">
+            <div class="kpi-accent-bar"></div>
+            <div class="kpi-inner">
+                <div class="kpi-label">Total Histórico</div>
+                <div class="kpi-value" id="totalBookingsCount">—</div>
+                <div class="kpi-meta">
+                    <span class="kpi-sublabel" id="totalRevenueBadge">$0 total revenue</span>
+                </div>
+            </div>
+            <div class="kpi-icon-bg">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3h18v18H3z"/><path d="M3 9h18M9 21V9"/></svg>
+            </div>
+        </div>
+
+        <div class="kpi-card kpi-orange">
+            <div class="kpi-accent-bar"></div>
+            <div class="kpi-inner">
+                <div class="kpi-label">Próximos 30 días</div>
+                <div class="kpi-value" id="upcoming7d">—</div>
+                <div class="kpi-meta">
+                    <span class="kpi-sublabel">reservas programadas</span>
+                </div>
+            </div>
+            <div class="kpi-icon-bg">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            </div>
+        </div>
+
+        <div class="kpi-card kpi-gray">
+            <div class="kpi-accent-bar"></div>
+            <div class="kpi-inner">
+                <div class="kpi-label">Completadas (pasado)</div>
+                <div class="kpi-value" id="pastBookings">—</div>
+                <div class="kpi-meta">
+                    <span class="kpi-sublabel" id="pastRevenue">$0 en revenue pasado</span>
+                </div>
+            </div>
+            <div class="kpi-icon-bg">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+        </div>
+
+        <div class="kpi-card kpi-navy">
+            <div class="kpi-accent-bar"></div>
+            <div class="kpi-inner">
+                <div class="kpi-label">Reservas Hoy</div>
+                <div class="kpi-value" id="todayBookings">—</div>
+                <div class="kpi-meta">
+                    <span class="kpi-sublabel" id="todayRevenue">$0 hoy</span>
+                </div>
+            </div>
+            <div class="kpi-icon-bg">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            </div>
+        </div>
+
+        <a href="/crew.html?tab=captains" class="kpi-card kpi-slate kpi-card-link" data-testid="link-kpi-captains">
+            <div class="kpi-accent-bar"></div>
+            <div class="kpi-inner">
+                <div class="kpi-label">Tripulación Activa</div>
+                <div class="kpi-value" id="activeCaptains">—</div>
+                <div class="kpi-meta">
+                    <span class="kpi-sublabel"><span id="totalCaptains">0</span> cap · <span id="activeStews">0</span> stew</span>
+                </div>
+            </div>
+            <div class="kpi-icon-bg">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </div>
+            <div style="position:absolute;right:16px;top:50%;transform:translateY(-50%);font-size:20px;opacity:.4">›</div>
         </a>
 
-        <div class="kpi-card wave-gradient">
-            <div class="kpi-icon">📈</div>
-            <div class="kpi-content">
-                <h3>Ingresos del Período</h3>
-                <p class="kpi-value" id="periodRevenue">$0</p>
-                <span class="kpi-sublabel">según filtro activo</span>
+        <!-- ── Upcoming Bookings (prominent) ── -->
+        <div class="chart-card full-width upcoming-section" id="upcomingSection">
+            <div class="card-header">
+                <div>
+                    <h2>Próximas Reservas</h2>
+                    <p style="font-size:12px;color:var(--text-secondary);margin:0;">Charters programados — próximos 30 días</p>
+                </div>
+                <a href="/schedule.html" class="btn-primary" style="text-decoration:none;font-size:13px;">Ver Calendario</a>
+            </div>
+            <div id="upcomingBookingsList" class="upcoming-list">
+                <p style="color:var(--text-secondary);text-align:center;padding:24px;">Cargando...</p>
             </div>
         </div>
 
-        <div class="kpi-card wave-gradient">
-            <div class="kpi-icon">🔮</div>
-            <div class="kpi-content">
-                <h3>Próximas 7 días</h3>
-                <p class="kpi-value" id="upcoming7d">0</p>
-                <span class="kpi-sublabel">reservas programadas</span>
-            </div>
-        </div>
-
-        <a href="/crew.html?tab=captains" class="kpi-card wave-gradient kpi-card-link" data-testid="link-kpi-captains" style="text-decoration:none;display:block;cursor:pointer;">
-            <div class="kpi-icon">👨‍✈️</div>
-            <div class="kpi-content">
-                <h3 data-i18n="active-captains">Capitanes Activos</h3>
-                <p class="kpi-value" id="activeCaptains">0</p>
-                <span class="kpi-sublabel" id="totalCaptains">de 0 total</span>
-            </div>
-            <span class="kpi-arrow">›</span>
-        </a>
-
-        <a href="/crew.html?tab=stews" class="kpi-card wave-gradient kpi-card-link" data-testid="link-kpi-stews" style="text-decoration:none;display:block;cursor:pointer;">
-            <div class="kpi-icon">🧑‍✈️</div>
-            <div class="kpi-content">
-                <h3>Stew Activos</h3>
-                <p class="kpi-value" id="activeStews">0</p>
-                <span class="kpi-sublabel" id="totalStews">de 0 total</span>
-            </div>
-            <span class="kpi-arrow">›</span>
-        </a>
-
-        <div class="kpi-card wave-gradient">
-            <div class="kpi-icon">⭐</div>
-            <div class="kpi-content">
-                <h3 data-i18n="satisfaction">Satisfacción</h3>
-                <p class="kpi-value" id="satisfaction">4.8/5</p>
-                <span class="kpi-sublabel" data-i18n="avg-rating">Promedio</span>
-            </div>
-        </div>
-
-        <!-- Revenue by Platform Chart -->
+        <!-- ── Charts Row ── -->
         <div class="chart-card medium">
             <div class="card-header">
-                <h2 data-i18n="revenue-by-platform">Ingresos por Plataforma</h2>
-                <span class="card-badge" id="totalRevenueBadge">$0</span>
+                <h2>Revenue por Plataforma</h2>
+                <span class="card-badge" id="totalRevenueBadge2">$0</span>
             </div>
-            <canvas id="revenueByPlatform"></canvas>
+            <canvas id="revenueByPlatform" style="height:260px;"></canvas>
         </div>
 
-        <!-- Booking Distribution Pie Chart -->
         <div class="chart-card compact">
             <div class="card-header">
-                <h2 data-i18n="booking-distribution">Distribución de Reservas</h2>
+                <h2>Distribución de Reservas</h2>
             </div>
-            <canvas id="bookingDistribution"></canvas>
+            <canvas id="bookingDistribution" style="height:260px;"></canvas>
         </div>
 
         <!-- Platform Leaderboard -->
         <div class="chart-card compact leaderboard-card">
             <div class="card-header">
-                <h2 data-i18n="platform-leaderboard">🏆 Ranking</h2>
+                <h2>Ranking Plataformas</h2>
             </div>
-            <div class="leaderboard" id="platformLeaderboard">
-                <!-- Dynamic content -->
+            <div class="leaderboard" id="platformLeaderboard"></div>
+        </div>
+
+        <!-- Monthly Trends Chart -->
+        <div class="chart-card medium">
+            <div class="card-header">
+                <h2>Tendencia Mensual</h2>
+                <div class="trend-legend">
+                    <span class="legend-item"><span class="legend-dot blue"></span>Reservas</span>
+                    <span class="legend-item"><span class="legend-dot green"></span>Revenue</span>
+                </div>
             </div>
+            <canvas id="monthlyTrends" style="height:260px;"></canvas>
         </div>
 
         <!-- Boat Breakdown -->
         <div class="chart-card compact leaderboard-card">
             <div class="card-header">
-                <h2>🚤 Por Embarcación</h2>
+                <h2>Por Embarcación</h2>
             </div>
             <div class="leaderboard" id="boatBreakdown"></div>
         </div>
@@ -283,88 +353,57 @@
         <!-- Broker Breakdown -->
         <div class="chart-card compact leaderboard-card">
             <div class="card-header">
-                <h2>🤝 Por Broker / Canal</h2>
+                <h2>Por Broker / Canal</h2>
             </div>
             <div class="leaderboard" id="brokerBreakdown"></div>
         </div>
 
-        <!-- Monthly Trends Chart -->
-        <div class="chart-card medium">
+        <!-- ── All Bookings Table ── -->
+        <div class="chart-card full-width">
             <div class="card-header">
-                <h2 data-i18n="monthly-trends">Tendencias Mensuales</h2>
-                <div class="trend-legend">
-                    <span class="legend-item">
-                        <span class="legend-dot blue"></span>
-                        <span data-i18n="bookings">Reservas</span>
-                    </span>
-                    <span class="legend-item">
-                        <span class="legend-dot green"></span>
-                        <span data-i18n="revenue">Ingresos</span>
-                    </span>
+                <div>
+                    <h2>Todas las Reservas del Período</h2>
+                    <p style="font-size:12px;color:var(--text-secondary);margin:0;" id="bookingsTableCount"></p>
                 </div>
-            </div>
-            <canvas id="monthlyTrends"></canvas>
-        </div>
-
-        <!-- Captain Performance -->
-        <div class="chart-card medium">
-            <div class="card-header">
-                <h2 data-i18n="captain-performance">Rendimiento de Capitanes</h2>
-            </div>
-            <div class="captain-grid" id="captainPerformance">
-                <!-- Dynamic content -->
-            </div>
-        </div>
-
-        <!-- FASE 2: Platform Synchronization Status -->
-        <div class="chart-card full-width">
-            <div class="card-header">
-                <h2>⚡ Estado de Sincronización</h2>
-                <button class="btn-primary" id="syncAllPlatforms" data-testid="button-sync-all">
-                    🔄 Sincronizar Todas
-                </button>
-            </div>
-            <div class="sync-status-grid" id="syncStatusGrid">
-                <!-- Dynamic sync status cards will be inserted here -->
-            </div>
-        </div>
-
-        <!-- FASE 2: Conflicts Alert -->
-        <div class="chart-card full-width" id="conflictsSection" style="display: none;">
-            <div class="card-header">
-                <h2>⚠️ Conflictos Detectados</h2>
-                <span class="badge badge-danger" id="conflictCount">0</span>
-            </div>
-            <div class="conflicts-list" id="conflictsList">
-                <!-- Dynamic conflicts will be inserted here -->
-            </div>
-        </div>
-
-        <!-- Recent Bookings Table -->
-        <div class="chart-card full-width">
-            <div class="card-header">
-                <h2 data-i18n="recent-bookings">Reservas Recientes</h2>
-                <button class="btn-link" id="viewAllBookings" data-i18n="view-all">Ver Todas</button>
+                <a href="/schedule.html" class="btn-link">Abrir Calendario</a>
             </div>
             <div class="table-container">
                 <table class="bookings-table" id="recentBookingsTable">
                     <thead>
                         <tr>
-                            <th data-i18n="booking-id">ID</th>
-                            <th data-i18n="customer">Cliente</th>
-                            <th data-i18n="platform">Plataforma</th>
-                            <th data-i18n="boat">Barco</th>
-                            <th data-i18n="date">Fecha</th>
-                            <th data-i18n="amount">Monto</th>
-                            <th data-i18n="status">Estado</th>
+                            <th>Fecha</th>
+                            <th>Cliente</th>
+                            <th>Plataforma</th>
+                            <th>Embarcación</th>
+                            <th>Hora</th>
+                            <th>Monto</th>
+                            <th>Estado</th>
                         </tr>
                     </thead>
                     <tbody id="bookingsTableBody">
-                        <!-- Dynamic content -->
+                        <tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--text-secondary);">Cargando...</td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
+
+        <!-- ── Sync Status (colapsado al fondo) ── -->
+        <div class="chart-card full-width">
+            <div class="card-header">
+                <h2>Estado de Sincronización</h2>
+                <button class="btn-primary" id="syncAllPlatforms" data-testid="button-sync-all" style="font-size:13px;">Sincronizar Todas</button>
+            </div>
+            <div class="sync-status-grid" id="syncStatusGrid"></div>
+        </div>
+
+        <div class="chart-card full-width" id="conflictsSection" style="display:none;">
+            <div class="card-header">
+                <h2>Conflictos Detectados</h2>
+                <span class="badge badge-danger" id="conflictCount">0</span>
+            </div>
+            <div class="conflicts-list" id="conflictsList"></div>
+        </div>
+
     </main>
 
     <!-- Footer -->
