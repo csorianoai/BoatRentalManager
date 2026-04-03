@@ -1,0 +1,231 @@
+# Prompt para agente de Replit
+
+Necesito realizar cambios importantes en el módulo de **calendario / reservas** de la plataforma.
+
+## Objetivo general
+Quiero que el calendario deje de depender únicamente de reservas existentes o asignadas automáticamente y que permita una gestión manual completa de reservas, con todos los datos necesarios para operar el negocio correctamente.
+
+---
+
+## Cambios requeridos
+
+### 1. Limpiar todo lo que dice “reservas asignadas” en el calendario
+Necesito que elimines o reemplaces la lógica, textos o secciones que actualmente aparecen como **“reservas asignadas”** dentro del calendario, si eso está generando confusión o limitando la operación.
+
+#### Requerimientos:
+- Revisar el calendario actual.
+- Identificar todo lo que esté etiquetado o tratado como **reservas asignadas**.
+- Limpiar esa parte de la interfaz y la lógica relacionada si ya no aplica.
+- Si ese concepto sigue existiendo internamente, no debe dominar la UX del calendario.
+- El calendario debe sentirse como una herramienta operativa para crear, visualizar y administrar reservas de forma clara.
+
+---
+
+### 2. Permitir crear reservas manuales directamente desde el calendario
+Necesito que desde el calendario se puedan crear **nuevas reservas manualmente**, sin depender de otro flujo externo.
+
+#### Requerimientos:
+- Al hacer click en una fecha/hora del calendario, o desde un botón visible como **“Nueva reserva”**, se debe abrir un formulario/modal para crear una reserva manual.
+- La reserva debe guardarse y reflejarse inmediatamente en el calendario.
+- Debe ser posible editar esa reserva después de creada.
+- Debe ser posible eliminar o cancelar la reserva si la lógica actual del sistema lo soporta.
+
+---
+
+## 3. Campos requeridos en la reserva manual
+La creación manual de reservas debe incluir al menos estos campos:
+
+### Información principal
+- **Fecha**
+- **Hora de inicio**
+- **Cantidad de horas**
+- **Hora de finalización** (puede calcularse automáticamente a partir de hora inicio + duración)
+- **Precio**
+- **Estado de la reserva** si ya existe esa lógica (ej. pendiente, confirmada, completada, cancelada)
+
+### Personal asignado
+- **Capitán**
+- **Stew**
+
+> Si no existe stew para esa reserva, debe poder dejarse vacío si el negocio lo permite.
+
+### Embarcación
+- **Bote / Barco / Yacht**
+
+### Canal o fuente de la reserva
+- **Broker / Fuente / Plataforma**
+Ejemplos:
+- GetMyBoat
+- Boatsetter
+- Otros
+
+#### Importante:
+No quiero que estos brokers estén fijos solamente.
+Debe existir la capacidad de:
+- seleccionar brokers existentes,
+- crear nuevos brokers manualmente,
+- y reutilizarlos luego en futuras reservas.
+
+### Información adicional importante
+Agregar campos útiles para operación, como:
+- nombre del cliente
+- teléfono del cliente
+- email del cliente
+- cantidad de pasajeros / guests
+- pick-up location / marina / salida
+- observaciones o notas internas
+- número de reserva o identificador si existe
+- total pagado o depósito si el sistema ya maneja pagos
+- balance pendiente si aplica
+
+---
+
+## 4. Gestión de brokers / fuentes de reserva
+Necesito que el sistema permita administrar las fuentes de reservas.
+
+### Requerimientos:
+- Debe existir una lista de brokers/fuentes como:
+  - GetMyBoat
+  - Boatsetter
+  - Otros
+- Debe ser posible crear nuevos brokers/fuentes sin tocar código.
+- Idealmente desde el mismo formulario de reserva o desde un pequeño catálogo administrable.
+- Los brokers creados deben quedar disponibles para futuras reservas.
+
+---
+
+## 5. Integración con entidades existentes
+Si el sistema ya tiene directorios o catálogos de:
+- capitanes,
+- stew,
+- barcos,
+- clientes,
+- brokers o partners,
+
+entonces reutiliza esas entidades en lugar de duplicarlas.
+
+#### Requerimientos:
+- Los campos de capitán, stew y bote deben jalar de sus catálogos existentes.
+- Si alguna entidad no existe aún como catálogo, crea la estructura mínima necesaria para soportarla correctamente.
+- Mantén consistencia con la arquitectura actual del sistema.
+
+---
+
+## 6. Visualización en el calendario
+Las reservas creadas manualmente deben mostrarse correctamente en el calendario.
+
+#### Requerimientos:
+- Deben aparecer en la fecha y hora correspondiente.
+- Deben mostrar información útil en el evento del calendario, por ejemplo:
+  - nombre del barco,
+  - cliente,
+  - hora,
+  - capitán,
+  - estado,
+  - broker/fuente.
+- Al hacer click sobre una reserva, debe abrirse el detalle o modal de edición.
+- La vista debe seguir siendo clara y no saturada.
+
+---
+
+## 7. Validaciones mínimas
+El formulario de reserva manual debe validar como mínimo:
+- fecha obligatoria
+- hora obligatoria
+- cantidad de horas obligatoria
+- bote/barco obligatorio
+- precio obligatorio
+- evitar guardar datos incompletos críticos
+- si existe conflicto de horario con el mismo barco, mostrar advertencia o manejarlo según la lógica actual del negocio
+
+---
+
+## 8. UX esperada
+Quiero que el flujo sea simple para operación diaria.
+
+### Escenario ideal:
+1. El usuario entra al calendario.
+2. Hace click en una fecha/hora o en “Nueva reserva”.
+3. Se abre el formulario.
+4. Completa:
+   - fecha
+   - hora
+   - horas
+   - capitán
+   - stew
+   - barco
+   - broker/fuente
+   - precio
+   - cliente
+   - notas
+5. Guarda.
+6. La reserva aparece inmediatamente en el calendario.
+7. Luego puede editarla o eliminarla.
+
+---
+
+## 9. Requerimientos técnicos
+- Mantén la arquitectura actual del proyecto.
+- Reutiliza componentes y patrones existentes si ya hay formularios, modales, tablas o catálogos similares.
+- No rompas funcionalidades existentes.
+- Si hay backend/API/modelos, integra correctamente persistencia de datos.
+- Si hace falta crear nuevas tablas, modelos, endpoints o relaciones, hazlo de forma limpia.
+- Si ya existe control de permisos, respétalo.
+- Si existe sistema de estados de reserva, intégralo en el flujo manual.
+- Si el calendario usa librería externa, adapta la lógica sin romper navegación o vistas actuales.
+
+---
+
+## 10. Estructura de datos esperada para una reserva manual
+Asegúrate de que una reserva manual pueda almacenar al menos:
+
+- id
+- fecha
+- hora_inicio
+- duracion_horas
+- hora_fin
+- barco_id
+- capitan_id
+- stew_id
+- broker_id o broker_nombre
+- cliente_nombre
+- cliente_telefono
+- cliente_email
+- cantidad_invitados
+- pickup_location
+- precio
+- deposito
+- balance_pendiente
+- estado
+- notas_internas
+- created_by
+- created_at
+- updated_at
+
+> Ajusta nombres de campos a la convención real del proyecto, pero conserva toda esta capacidad funcional.
+
+---
+
+## 11. Criterios de aceptación
+Al terminar, debe cumplirse lo siguiente:
+
+1. El calendario ya no muestra o depende de la lógica confusa de “reservas asignadas”.
+2. Se pueden crear reservas manuales directamente desde el calendario.
+3. Las reservas manuales guardan todos los datos operativos importantes.
+4. Se puede seleccionar capitán, stew, bote y broker.
+5. Se pueden crear nuevos brokers/fuentes como GetMyBoat, Boatsetter y otros.
+6. Las reservas guardadas aparecen inmediatamente en el calendario.
+7. Se pueden editar luego desde el calendario.
+8. La solución queda integrada visual y funcionalmente con el sistema actual.
+
+---
+
+## 12. Entregable esperado
+Realiza los cambios directamente en el proyecto y al finalizar indícame:
+
+- qué archivos modificaste,
+- qué componentes actualizaste,
+- qué modelos/tablas/endpoints agregaste o cambiaste,
+- cómo quedó la lógica para crear reservas manuales,
+- cómo manejaste brokers/fuentes nuevas,
+- y qué pruebas hiciste para validar el flujo completo.

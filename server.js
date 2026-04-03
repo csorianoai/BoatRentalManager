@@ -1532,6 +1532,25 @@ async function initializeDatabase() {
     `);
     console.log('✅ company_assets and asset_movements tables ready');
 
+    // Extend bookings table with manual booking fields
+    const bookingCols = [
+      `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS stew_id TEXT`,
+      `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS stew_name TEXT`,
+      `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS boat_id TEXT`,
+      `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS broker_id TEXT`,
+      `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS broker_name TEXT`,
+      `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS pickup_location TEXT`,
+      `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS num_guests INTEGER DEFAULT 0`,
+      `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS deposit_amount NUMERIC(10,2) DEFAULT 0`,
+      `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS balance_pending NUMERIC(10,2) DEFAULT 0`,
+      `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS is_manual BOOLEAN DEFAULT FALSE`,
+      `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`,
+    ];
+    for (const sql of bookingCols) {
+      await pool.query(sql).catch(() => {});
+    }
+    console.log('✅ bookings table extended with manual booking fields');
+
     // Idempotent asset chart-of-accounts
     await pool.query(`
       INSERT INTO chart_of_accounts (id, account_code, account_name, account_type, description)
@@ -2333,35 +2352,144 @@ app.get('/api/dashboard-data', isAuthenticated, async (req, res) => {
 // 🎯 ENDPOINTS ESPECÍFICOS
 app.get('/api/bookings', isAuthenticated, async (req, res) => {
   try {
-    const { platform, status, date } = req.query;
+    const { platform, status, date, dateFrom, dateTo, captain } = req.query;
     
     let query = 'SELECT * FROM bookings WHERE 1=1';
     const params = [];
     let paramIndex = 1;
     
     if (platform) {
-      query += ` AND platform = $${paramIndex}`;
+      query += ` AND platform = $${paramIndex++}`;
       params.push(platform);
-      paramIndex++;
     }
     if (status) {
-      query += ` AND status = $${paramIndex}`;
+      query += ` AND status = $${paramIndex++}`;
       params.push(status);
-      paramIndex++;
     }
     if (date) {
-      query += ` AND booking_date = $${paramIndex}`;
+      query += ` AND booking_date = $${paramIndex++}`;
       params.push(date);
-      paramIndex++;
+    }
+    if (dateFrom) {
+      query += ` AND booking_date >= $${paramIndex++}`;
+      params.push(dateFrom);
+    }
+    if (dateTo) {
+      query += ` AND booking_date <= $${paramIndex++}`;
+      params.push(dateTo);
+    }
+    if (captain) {
+      query += ` AND assigned_captain_id = $${paramIndex++}`;
+      params.push(captain);
     }
     
-    query += ' ORDER BY created_at DESC';
+    query += ' ORDER BY booking_date ASC, start_time ASC';
     
     const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (error) {
     console.error('Error fetching bookings:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Create manual booking
+app.post('/api/bookings', isAuthenticated, async (req, res) => {
+  try {
+    const { nanoid } = await import('nanoid');
+    const {
+      booking_date, start_time, duration_hours,
+      customer_name, customer_phone, customer_email,
+      boat_type, boat_id, assigned_captain_id, assigned_captain_name,
+      stew_id, stew_name, broker_id, broker_name,
+      platform, total_amount, deposit_amount, balance_pending,
+      status, pickup_location, num_guests, notes, internal_notes,
+    } = req.body;
+
+    if (!booking_date || !start_time || !duration_hours || !total_amount) {
+      return res.status(400).json({ error: 'Campos obligatorios: fecha, hora, horas, precio' });
+    }
+    if (!customer_name) return res.status(400).json({ error: 'El nombre del cliente es obligatorio' });
+    if (!boat_type && !boat_id) return res.status(400).json({ error: 'El barco es obligatorio' });
+
+    const id = 'book_' + nanoid(10);
+    const result = await pool.query(`
+      INSERT INTO bookings (
+        id, platform, customer_name, customer_phone, customer_email,
+        boat_type, boat_id, booking_date, start_time, duration_hours,
+        total_amount, status, assigned_captain_id, assigned_captain_name,
+        stew_id, stew_name, broker_id, broker_name,
+        pickup_location, num_guests, deposit_amount, balance_pending,
+        notes, internal_notes, is_manual
+      ) VALUES (
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25
+      ) RETURNING *`,
+      [
+        id, platform || 'Manual', customer_name, customer_phone || '', customer_email || '',
+        boat_type || '', boat_id || null, booking_date, start_time, parseInt(duration_hours),
+        parseFloat(total_amount), status || 'confirmed', assigned_captain_id || null, assigned_captain_name || null,
+        stew_id || null, stew_name || null, broker_id || null, broker_name || null,
+        pickup_location || null, num_guests ? parseInt(num_guests) : 0,
+        parseFloat(deposit_amount || 0), parseFloat(balance_pending || 0),
+        notes || null, internal_notes || null, true,
+      ]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error('Error creating booking:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update booking
+app.patch('/api/bookings/:id', isAuthenticated, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const allowed = [
+      'booking_date','start_time','duration_hours','customer_name','customer_phone','customer_email',
+      'boat_type','boat_id','assigned_captain_id','assigned_captain_name','stew_id','stew_name',
+      'broker_id','broker_name','platform','total_amount','deposit_amount','balance_pending',
+      'status','pickup_location','num_guests','notes','internal_notes',
+    ];
+    const sets = [];
+    const vals = [];
+    let idx = 1;
+    for (const key of allowed) {
+      if (req.body[key] !== undefined) {
+        sets.push(`${key} = $${idx++}`);
+        vals.push(req.body[key] === '' ? null : req.body[key]);
+      }
+    }
+    if (sets.length === 0) return res.status(400).json({ error: 'No hay campos para actualizar' });
+    sets.push(`updated_at = NOW()`);
+    vals.push(id);
+    const result = await pool.query(
+      `UPDATE bookings SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`,
+      vals
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Reserva no encontrada' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating booking:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete booking (manual only — soft delete by setting status=cancelled for platform bookings)
+app.delete('/api/bookings/:id', isAuthenticated, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const check = await pool.query('SELECT is_manual FROM bookings WHERE id=$1', [id]);
+    if (check.rows.length === 0) return res.status(404).json({ error: 'Reserva no encontrada' });
+    if (check.rows[0].is_manual) {
+      await pool.query('DELETE FROM bookings WHERE id=$1', [id]);
+    } else {
+      await pool.query(`UPDATE bookings SET status='cancelled', updated_at=NOW() WHERE id=$1`, [id]);
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting booking:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 
