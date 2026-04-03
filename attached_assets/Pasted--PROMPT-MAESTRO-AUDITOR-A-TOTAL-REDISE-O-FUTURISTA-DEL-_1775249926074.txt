@@ -1,0 +1,508 @@
+# PROMPT MAESTRO — AUDITORÍA TOTAL + REDISEÑO FUTURISTA DEL DASHBOARD SIN ROMPER LO QUE FUNCIONA
+
+Detén cualquier cambio cosmético, parcial o decorativo.
+
+No quiero otro parche.
+No quiero otra capa visual encima de un sistema roto.
+No quiero un dashboard “bonito” con datos falsos o interacciones vacías.
+
+Quiero una **auditoría funcional completa**, seguida de una **reconstrucción estratégica** y un **rediseño de nivel elite**, con estética futurista, altísima usabilidad, cero ficción operativa y preservación absoluta de todo lo que hoy sí funciona.
+
+---
+
+# OBJETIVO CENTRAL
+
+Necesito que conviertas el dashboard actual en una plataforma:
+
+- **100% conectada a datos reales**
+- **100% operativa**
+- **visualmente espectacular**
+- **futurista pero usable**
+- **inteligente en jerarquía visual**
+- **rigurosa en métricas**
+- **sin romper ninguna funcionalidad válida existente**
+- **sin eliminar nada útil antes de auditarlo**
+- **sin inventar ningún dato para llenar espacios**
+
+Este trabajo debe ejecutarse en este orden de prioridad:
+
+## Orden obligatorio
+1. **Auditar antes de tocar**
+2. **Identificar qué sí funciona y protegerlo**
+3. **Detectar qué está roto, falso, desconectado o incompleto**
+4. **Corregir lógica, datos, rutas, estados e interacciones**
+5. **Recién después rediseñar UI**
+6. **Validar que el resultado final sea superior en operación y diseño**
+
+---
+
+# PRINCIPIO RECTOR
+
+**No eliminar por intuición. No rediseñar por impulso. No reemplazar por estética.**
+Primero debes entender completamente el sistema actual.
+
+Antes de borrar, rehacer, ocultar o simplificar cualquier módulo, debes hacer una auditoría para responder:
+
+- qué funciona realmente,
+- qué no funciona,
+- qué funciona parcialmente,
+- qué está simulado,
+- qué está conectado a fuentes incorrectas,
+- qué sí debe conservarse,
+- qué debe corregirse,
+- y qué debe rediseñarse por completo.
+
+---
+
+# REGLA CRÍTICA: NO ROMPER NADA QUE SÍ FUNCIONA
+
+Cualquier componente, flujo, consulta, ruta, widget, tabla, acción o vista que hoy funcione correctamente debe:
+
+- preservarse,
+- documentarse,
+- protegerse durante la refactorización,
+- y mantenerse operativo después del rediseño.
+
+## Prohibición absoluta
+No puedes sacrificar funcionalidad real por estética.
+No puedes eliminar módulos útiles solo porque se ven antiguos.
+No puedes reemplazar comportamiento operativo real por una UI visualmente atractiva pero vacía.
+
+---
+
+# FASE 1 — AUDITORÍA TOTAL OBLIGATORIA ANTES DE REDISEÑAR
+
+Debes hacer una auditoría completa del sistema actual antes de modificar la UI.
+
+## Auditar en frontend
+- estructura real del dashboard
+- componentes
+- layout
+- hooks
+- stores
+- loaders
+- queries
+- tablas
+- gráficas
+- modales
+- cards KPI
+- botones
+- filtros
+- navegación
+- render condicional
+- estados vacíos
+- estados de error
+- eventos onClick
+- permisos y visibilidad por rol si existen
+
+## Auditar en backend
+- endpoints
+- queries SQL / ORM
+- servicios
+- agregaciones
+- joins
+- filtros por fecha
+- filtros por plataforma
+- filtros por barco
+- lógica de estados
+- revenue
+- timezone
+- cache si existe
+- normalización de entidades
+- consistencia entre dashboard y vistas de detalle
+
+## Auditar en base de datos
+- tablas reales que alimentan el dashboard
+- reservas
+- barcos
+- clientes
+- brokers
+- plataformas
+- calendarios
+- pagos / revenue si aplica
+- estados
+- timestamps
+- duplicados
+- registros de prueba
+- seed/demo data
+- datos corruptos
+- relaciones rotas
+- huérfanos
+- inconsistencias entre tablas
+
+---
+
+# FASE 2 — MAPA DE VERDAD DEL SISTEMA
+
+Antes de corregir, debes clasificar cada elemento del dashboard en una de estas categorías:
+
+## Estado A — Real y funcional
+Está conectado a datos reales, responde bien y sí sirve operacionalmente.
+
+## Estado B — Real pero defectuoso
+Tiene base real pero falla en cálculo, navegación, visualización, filtros o interacción.
+
+## Estado C — Visualmente presente pero no funcional
+Existe en pantalla, pero no abre nada, no filtra, no navega o no tiene utilidad real.
+
+## Estado D — Ficticio o engañoso
+Usa mocks, hardcodes, demo data, agregaciones inventadas o simulaciones visuales.
+
+## Estado E — Prescindible o mal planteado
+No aporta valor operativo, confunde, duplica funciones o da una falsa sensación de capacidad.
+
+Cada componente debe clasificarse antes de decidir si se:
+- conserva,
+- corrige,
+- reconstruye,
+- reemplaza,
+- o elimina.
+
+---
+
+# FASE 3 — PROHIBICIONES ABSOLUTAS
+
+No puedes dejar en el resultado final nada de esto:
+
+- mocks en producción
+- demo data visible
+- seed data usada como si fuera real
+- números hardcodeados
+- revenue inventado
+- bookings inventados
+- rankings falsos
+- gráficas sintéticas
+- tendencias simuladas
+- clientes fake
+- plataformas fake
+- barcos ficticios
+- botones sin acción
+- cards que aparentan drill-down sin destino real
+- ventanas que no cargan nada
+- módulos “coming soon” disfrazados de funcionalidad
+- placeholders numéricos que parezcan métricas reales
+- datos de fallback falsos para “llenar” el dashboard
+
+## Regla de oro
+Si no hay datos reales:
+- mostrar vacío,
+- mostrar “sin datos”,
+- mostrar “sin reservas registradas”,
+- mostrar “no hay información disponible para este filtro”.
+
+**Nunca inventar para completar la interfaz.**
+
+---
+
+# FASE 4 — LIMPIEZA DE TODO LO FICTICIO
+
+Debes eliminar completamente del dashboard y del reporting cualquier cosa que no provenga de fuentes reales verificables.
+
+## Eliminar
+- reservas demo
+- revenue demo
+- históricos inventados
+- rankings inventados
+- plataformas simuladas
+- clientes de ejemplo
+- embarcaciones demo
+- cards con cifras falsas
+- widgets conectados a arrays mock
+- gráficas con data placeholder
+- accesos a páginas inexistentes
+- fallback data artificial
+
+## Resultado esperado
+Solo pueden existir dos estados válidos:
+1. **hay data real y se muestra**
+2. **no hay data real y se informa con honestidad**
+
+---
+
+# FASE 5 — RECONSTRUCCIÓN FUNCIONAL DEL DASHBOARD
+
+Reconstruye el dashboard solo con lógica real y evidencia trazable desde la base de datos.
+
+## KPIs permitidos solo si salen de data real verificable
+- total bookings
+- revenue total
+- bookings de hoy
+- bookings de la semana
+- bookings del mes
+- bookings pasados
+- bookings futuros
+- reservas por estado
+- revenue por plataforma
+- revenue por barco
+- próximas reservas reales
+- actividad reciente real
+
+## Si no se pueden calcular con verdad
+- quitar temporalmente el KPI
+- o marcarlo como no disponible
+
+No quiero KPIs “para que se vea completo”.
+Quiero un dashboard más pequeño pero absolutamente confiable.
+
+---
+
+# FASE 6 — REPARACIÓN TOTAL DE INTERACTIVIDAD
+
+Debes revisar uno por uno todos los elementos interactivos.
+
+## Auditar y corregir
+- cards KPI
+- botones
+- tabs
+- filtros
+- enlaces
+- iconos clicables
+- widgets
+- tablas
+- gráficas
+- rankings
+- modales
+- drill-downs
+- accesos a calendario
+- accesos a detalle de reserva
+- accesos por plataforma
+- accesos por barco
+- accesos por cliente si aplica
+
+## Toda interacción debe cumplir una de estas dos condiciones
+
+### Opción A — Funciona de verdad
+- abre una página real
+- abre un modal real
+- navega a una ruta real
+- aplica un filtro real
+- modifica el estado real
+- consulta data real
+
+### Opción B — Deja de aparentar
+- si no existe destino real, no debe parecer clicable
+- si no tiene acción legítima, se elimina la affordance visual de interacción
+
+No quiero decoración funcional falsa.
+
+---
+
+# FASE 7 — REDISEÑO UI/UX DE NIVEL ELITE
+
+Una vez que la verdad operativa esté corregida, rediseña el dashboard para que sea extraordinario.
+
+## Meta de diseño
+Quiero una experiencia:
+- futurista
+- premium
+- elegante
+- limpia
+- estratégica
+- altamente legible
+- rápida de escanear
+- útil para operar
+- digna del mejor diseño asistido por inteligencia artificial
+
+## El nuevo diseño debe lograr
+- jerarquía visual impecable
+- excelente uso de espaciado
+- KPIs prioritarios arriba
+- navegación clara
+- estados vacíos bien diseñados
+- densidad informativa equilibrada
+- excelente contraste
+- tablas legibles
+- gráficas sobrias y confiables
+- sensación premium sin caer en ruido visual
+- consistencia visual entre cards, widgets, modales y vistas de detalle
+
+## Debe evitar
+- saturación de efectos
+- futurismo superficial
+- glassmorphism innecesario si afecta legibilidad
+- exceso de animaciones
+- ruido visual
+- dashboards tipo demo
+- elementos puramente ornamentales
+- complejidad sin valor operativo
+
+## Principio de diseño
+La interfaz debe verse como un producto de clase mundial,
+pero debe comportarse como una herramienta seria de operación real.
+
+---
+
+# FASE 8 — REDISEÑO SIN PÉRDIDA DE CAPACIDADES
+
+Antes de sustituir cualquier componente actual, debes verificar si ya cumple una función útil.
+
+## Reglas
+- si algo funciona, protégelo
+- si algo sirve pero se ve mal, rediséñalo sin romperlo
+- si algo está mal conectado pero tiene valor, corrígelo
+- si algo sobra y no aporta, elimínalo
+- si algo aparenta funcionalidad pero no existe, o lo construyes bien o lo quitas
+
+El rediseño debe ser una **evolución superior**, no una demolición irresponsable.
+
+---
+
+# FASE 9 — COHERENCIA OPERATIVA TOTAL
+
+El dashboard final debe coincidir con la realidad del sistema.
+
+## Debe coincidir con
+- calendario real
+- listados reales
+- detalle de reservas
+- estados reales
+- revenue real
+- filtros reales
+- fechas reales
+- timezone real
+- fuentes reales
+
+## Debe responder bien a
+- filtros por rango
+- filtros por plataforma
+- filtros por embarcación
+- filtros por estado
+- navegación a detalles
+- navegación a calendario
+- escenarios sin datos
+- cambios de data reales
+
+---
+
+# FASE 10 — ENTREGABLE OBLIGATORIO CON EVIDENCIA TÉCNICA
+
+No me entregues una respuesta tipo:
+“ya quedó”
+“se mejoró”
+“se rediseñó”
+“se limpió”
+
+Debes entregar evidencia técnica precisa.
+
+## Debes reportar al final
+1. qué fuente o fuentes estaban alimentando mal el dashboard
+2. qué queries, endpoints o tablas estaban mal
+3. qué datos ficticios encontraste
+4. qué eliminaste exactamente
+5. qué preservaste porque sí funcionaba
+6. qué widgets, cards, botones o vistas no funcionaban
+7. qué rutas no existían o estaban rotas
+8. qué conectaste correctamente
+9. qué pantallas creaste
+10. qué pantallas eliminaste
+11. qué KPIs quedaron reales
+12. qué KPIs se quitaron por falta de data confiable
+13. cómo validaste los números contra la base
+14. cómo garantizaste no romper lo que ya sí funcionaba
+15. qué principios de UX/UI aplicaste en el rediseño final
+
+---
+
+# CRITERIOS DE ACEPTACIÓN
+
+No se considera terminado hasta que se cumpla todo esto:
+
+- el dashboard no muestra ningún dato ficticio
+- toda cifra proviene de fuente real
+- si no hay data, se muestra vacío con honestidad
+- no queda ningún mock visible
+- no queda ningún hardcode que simule operación
+- todas las cards funcionales abren algo real
+- ningún botón queda muerto
+- ningún modal queda roto
+- ninguna gráfica usa datos inventados
+- ninguna tabla usa demo data
+- dashboard y calendario coinciden
+- revenue y bookings coinciden con reservas reales
+- la navegación tiene sentido operativo
+- el diseño final es premium, futurista y útil
+- no se rompió ninguna funcionalidad válida previa
+- el sistema dejó de aparentar y pasó a operar de verdad
+
+---
+
+# AUTOEVALUACIÓN OBLIGATORIA — 50 PUNTOS DE CONTROL ANTES DE DARLO POR TERMINADO
+
+Debes autoevaluarte punto por punto.  
+No cierres el trabajo hasta poder responder honestamente cada ítem.
+
+## Auditoría y preservación
+1. ¿Audité el sistema completo antes de rediseñar cualquier pantalla?
+2. ¿Identifiqué explícitamente qué partes sí funcionaban antes de tocar nada?
+3. ¿Protegí las funciones reales para no romperlas durante el rediseño?
+4. ¿Evité eliminar módulos útiles sin evidencia?
+5. ¿Mapeé qué era real, qué era defectuoso y qué era ficticio?
+
+## Verdad de datos
+6. ¿Confirmé cuáles tablas o fuentes son realmente confiables?
+7. ¿Eliminé toda demo data visible en frontend?
+8. ¿Eliminé todo mock que contaminaba KPIs o gráficas?
+9. ¿Quité cualquier hardcode numérico presentado como dato real?
+10. ¿Verifiqué que no queden bookings ficticios?
+11. ¿Verifiqué que no queden revenues inventados?
+12. ¿Verifiqué que no queden rankings artificiales?
+13. ¿Verifiqué que no queden plataformas fake?
+14. ¿Verifiqué que no queden clientes demo visibles?
+15. ¿Verifiqué que no queden fallback states que inventen actividad?
+
+## Consultas y backend
+16. ¿Revisé todas las queries que alimentan el dashboard?
+17. ¿Corregí agregaciones defectuosas?
+18. ¿Corregí joins incorrectos?
+19. ¿Validé filtros por fecha, estado, plataforma y barco?
+20. ¿Validé timezone y corte temporal de pasado/presente/futuro?
+21. ¿Verifiqué que dashboard y detalle usan la misma verdad de datos?
+22. ¿Verifiqué que el revenue se calcula con lógica real y consistente?
+23. ¿Eliminé registros test/demo de la lógica visible?
+24. ¿Detecté y traté duplicados o registros corruptos?
+25. ¿Confirmé que no quedan datos huérfanos afectando resultados?
+
+## KPIs y reporting
+26. ¿Cada KPI visible puede trazarse hasta la fuente real?
+27. ¿Eliminé KPIs imposibles de sostener con datos reales?
+28. ¿Reemplacé datos inciertos por estados honestos de “sin datos”?
+29. ¿Las cifras del dashboard coinciden con la base de datos?
+30. ¿Las cifras del dashboard coinciden con el calendario y listados?
+31. ¿Las gráficas representan hechos reales y no aproximaciones ficticias?
+32. ¿Las tablas muestran registros reales y navegables?
+33. ¿Las próximas reservas mostradas existen realmente?
+34. ¿Las reservas por estado reflejan estados válidos del sistema?
+35. ¿Revenue por plataforma y por barco coincide con registros reales?
+
+## Interacción y navegación
+36. ¿Revisé uno por uno todos los elementos clicables?
+37. ¿Cada card interactiva abre una vista, filtro o detalle real?
+38. ¿Cada botón ejecuta una acción real?
+39. ¿Cada modal muestra contenido real y útil?
+40. ¿Cada ruta existe y carga correctamente?
+41. ¿Eliminé affordances falsas de elementos que no hacen nada?
+42. ¿La navegación general del dashboard ya sirve para operar?
+
+## Diseño y experiencia
+43. ¿El rediseño mejoró claridad sin sacrificar verdad?
+44. ¿La jerarquía visual ahora prioriza lo realmente importante?
+45. ¿El dashboard se ve futurista sin perder legibilidad?
+46. ¿La interfaz se siente premium sin exceso de ruido visual?
+47. ¿Los estados vacíos están bien diseñados y son honestos?
+48. ¿La experiencia final ayuda a tomar decisiones reales?
+49. ¿El resultado final es objetivamente mejor en funcionalidad y en UI?
+50. ¿Puedo defender este dashboard ante una revisión del top 0.1% en producto, data, UX y operación?
+
+---
+
+# ORDEN FINAL
+
+Prefiero un dashboard más pequeño, sobrio y real,
+que uno grande, brillante y falso.
+
+Primero corrige la verdad.
+Luego corrige la lógica.
+Luego corrige navegación.
+Luego eleva la UI al máximo nivel.
+
+No al revés.
