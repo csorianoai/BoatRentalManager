@@ -6904,6 +6904,12 @@ function smartClassify(description, amount, transactionType, patterns = [], boat
   if (/insurance|insur\b|poliz|premium\b|seguro/.test(desc))
     return out('expense','insurance','high','Seguro detectado','Gastos de Seguro','Cuenta Bancaria', vendor,'expenses',null);
 
+  if (/bank\s*fee|bank\s*charge|service\s*charge|wire\s*fee|wire\s*transfer\s*fee|ach\s*fee|monthly\s*fee|account\s*fee|nsf\s*fee|overdraft|comision\s*bancaria|comisiones?\s*banco|cargo\s*bancario|cargos?\s*servicio|cuota\s*mantenimiento/.test(desc))
+    return out('expense','bank_commissions','high','Comisión bancaria detectada','Comisiones Bancarias','Cuenta Bancaria', vendor,'expenses',null);
+
+  if (/interest\s*expense|interest\s*charge|interes\s*bancario|intereses?\s*prestamo|loan\s*interest|finance\s*charge/.test(desc))
+    return out('expense','interest_expense','high','Interés financiero detectado','Intereses Financieros','Cuenta Bancaria', vendor,'expenses',null);
+
   if (/crew|captain|staff|salary|payroll|nomina|sueldo/.test(desc))
     return out('expense','crew_payroll','high','Nómina/crew detectada','Gastos de Nómina','Cuenta Bancaria', vendor,'expenses',detectedBoatId);
 
@@ -7565,6 +7571,9 @@ const CATEGORY_ACCOUNT_CODE = {
   boat_purchase:     '1500',
   // Transfers
   bank_transfer:     '1010',
+  // Bancario / Financiero
+  bank_commissions:  '5920',
+  interest_expense:  '5910',
   // Income → revenue accounts found dynamically
 };
 
