@@ -1,0 +1,165 @@
+# PROMPT — CORRECCIÓN DE FLUJO Y UX:
+# CLASIFICACIÓN INTELIGENTE → ENVÍO A CONTABILIDAD
+
+Hay un problema crítico de UX y lógica en el flujo de clasificación inteligente.
+
+Actualmente, cuando los movimientos (gastos o ingresos) se envían a contabilidad:
+
+- se elimina o pierde la clasificación visual,
+- pero los registros se quedan en la misma pantalla,
+- generando la impresión de que nunca fueron clasificados,
+- lo que causa confusión y desconfianza en el sistema.
+
+---
+
+# OBJETIVO
+
+Corregir el comportamiento funcional y visual del flujo para que:
+
+- los movimientos enviados a contabilidad no se confundan con pendientes,
+- el usuario entienda claramente qué pasó,
+- los estados sean consistentes,
+- y la interfaz refleje la realidad operativa.
+
+---
+
+# PROBLEMA ACTUAL
+
+Después de enviar a contabilidad:
+
+- los registros permanecen en la vista de clasificación inteligente,
+- no cambian correctamente de estado visual,
+- o pierden la clasificación visible,
+- y parecen “no procesados”.
+
+Esto rompe completamente la comprensión del flujo.
+
+---
+
+# PRINCIPIO CLAVE
+
+Un movimiento **no puede estar al mismo tiempo en**:
+
+- “clasificación inteligente activa”
+- y “enviado a contabilidad”
+
+---
+
+# DECISIÓN FUNCIONAL OBLIGATORIA
+
+Debes implementar una de estas dos soluciones (preferiblemente la A):
+
+## OPCIÓN A (RECOMENDADA) — SEPARACIÓN DE BANDEJAS
+
+Cuando un movimiento se envía a contabilidad:
+
+- debe **desaparecer inmediatamente de la vista de clasificación inteligente**
+- debe moverse a una nueva categoría o vista:
+  - “Enviados a contabilidad”
+  - “Procesados”
+  - o equivalente
+
+## OPCIÓN B — MISMA VISTA CON ESTADOS CLAROS
+
+Si se mantienen en la misma pantalla:
+
+- deben cambiar VISUALMENTE de forma inequívoca:
+  - badge: “Enviado a contabilidad”
+  - desactivación de acciones
+  - estilo visual distinto (grisado, bloqueado, etc.)
+- no deben parecer editables ni pendientes
+- deben excluirse por defecto de filtros de “pendientes”
+
+---
+
+# COMPORTAMIENTO ESPERADO DESPUÉS DEL ENVÍO
+
+Al ejecutar “Enviar a contabilidad”:
+
+1. Mostrar feedback inmediato:
+   - “X movimientos enviados correctamente”
+
+2. Actualizar estado en frontend y backend:
+   - status = ENVIADO_CONTABILIDAD (o equivalente)
+
+3. Refrescar la UI:
+   - eliminar de lista actual (opción A)
+   - o cambiar visualmente (opción B)
+
+4. Persistir estado correctamente en base de datos
+
+5. Evitar duplicación:
+   - no permitir reenvío accidental
+
+---
+
+# CAMBIOS TÉCNICOS REQUERIDOS
+
+## Frontend
+- actualizar estado local tras envío exitoso
+- refrescar lista o aplicar filtro automático
+- diferenciar claramente estados visuales
+- desactivar acciones en items enviados
+- evitar que sigan apareciendo como “clasificados editables”
+
+## Backend
+- asegurar actualización de estado:
+  - clasificado → enviado_contabilidad
+- evitar inconsistencias entre estados
+- garantizar idempotencia (no duplicar envíos)
+- validar que solo items elegibles se envían
+
+## Base de datos
+- agregar o validar campo de estado:
+  - pendiente
+  - clasificado
+  - enviado_contabilidad
+  - error_envio
+- asegurar consistencia de estados
+
+---
+
+# PROHIBICIONES
+
+- no dejar items enviados visibles como si fueran pendientes
+- no perder la clasificación al enviarlos
+- no mantenerlos en la misma vista sin diferenciación clara
+- no permitir acciones sobre items ya enviados
+- no generar estados ambiguos
+
+---
+
+# VALIDACIÓN OBLIGATORIA
+
+Debes probar:
+
+1. clasificar múltiples movimientos
+2. enviarlos a contabilidad
+3. verificar que desaparecen o cambian correctamente
+4. verificar que no pueden reenviarse
+5. verificar que aparecen en vista de “enviados”
+6. verificar que el usuario entiende claramente el resultado
+
+---
+
+# ENTREGABLE
+
+Debes indicar:
+
+1. cómo se comportaba antes
+2. qué estaba generando la confusión
+3. qué cambio implementaste (A o B)
+4. cómo se actualiza ahora el estado
+5. cómo se refleja en UI
+6. cómo se evita duplicación
+7. evidencia de que el flujo ahora es claro
+
+---
+
+# CRITERIO DE ÉXITO
+
+El usuario nunca debe preguntarse:
+
+“¿esto se envió o no?”
+
+El sistema debe hacerlo evidente sin ambigüedad.

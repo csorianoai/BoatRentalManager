@@ -633,12 +633,18 @@
               📂 Gestionar Lotes
             </button>
             <div style="flex:1"></div>
-            <div style="display:flex;gap:3px;background:#f1f5f9;padding:3px;border-radius:8px">
-              <button class="csf-filter active" onclick="setClassifFilter('all')" data-testid="filter-all">Todos</button>
-              <button class="csf-filter" onclick="setClassifFilter('unclassified')" data-testid="filter-unclassified">Sin clasificar</button>
-              <button class="csf-filter" onclick="setClassifFilter('suggested')" data-testid="filter-suggested">Sugeridos</button>
-              <button class="csf-filter" onclick="setClassifFilter('confirmed')" data-testid="filter-confirmed">Confirmados</button>
-              <button class="csf-filter" onclick="setClassifFilter('posted')" data-testid="filter-posted">Registrados</button>
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+              <div style="display:flex;gap:3px;background:#f1f5f9;padding:3px;border-radius:8px">
+                <button class="csf-filter active" onclick="setClassifFilter('active')" data-testid="filter-active">Pendientes</button>
+                <button class="csf-filter" onclick="setClassifFilter('unclassified')" data-testid="filter-unclassified">Sin clasificar</button>
+                <button class="csf-filter" onclick="setClassifFilter('suggested')" data-testid="filter-suggested">Sugeridos</button>
+                <button class="csf-filter" onclick="setClassifFilter('confirmed')" data-testid="filter-confirmed">Confirmados</button>
+                <button class="csf-filter" onclick="setClassifFilter('all')" data-testid="filter-all" style="color:#94a3b8">Ver todo</button>
+              </div>
+              <button id="filter-posted-btn" class="csf-filter" onclick="setClassifFilter('posted')" data-testid="filter-posted"
+                style="background:#dcfce7;color:#166534;border:1px solid #86efac;border-radius:8px;padding:5px 12px;font-weight:700;font-size:12px;cursor:pointer;white-space:nowrap">
+                ✅ En Contabilidad <span id="posted-count-badge" style="margin-left:4px;background:#16a34a;color:#fff;border-radius:10px;padding:1px 7px;font-size:11px">0</span>
+              </button>
             </div>
           </div>
 
@@ -1910,7 +1916,7 @@
         // SMART CLASSIFICATION ENGINE — UI LOGIC
         // ═══════════════════════════════════════════════════════════════
         let classifData = [];
-        let classifFilter = 'all';
+        let classifFilter = 'active';
         let classifConfFilter = 'all';
         let classifSearch = '';
         let classifEditId = null;
@@ -1947,6 +1953,9 @@
             document.getElementById('cs-score-fill').style.background = pct>80?'#10b981':pct>40?'#f59e0b':'#ef4444';
             const lbl = pct>80?'Excelente':pct>60?'Bueno':pct>30?'En progreso':'Requiere atención';
             document.getElementById('cs-score-lbl').textContent = lbl;
+            // Update the posted count badge in the filter button
+            const badge = document.getElementById('posted-count-badge');
+            if (badge) badge.textContent = d.posted || 0;
           } catch(e) { console.error('stats error', e); }
         }
 
@@ -1973,10 +1982,12 @@
           let rows = classifData;
 
           // Status filter
-          if (classifFilter === 'unclassified') rows = rows.filter(s=>!s.classification_status||s.classification_status==='unclassified');
+          if (classifFilter === 'active') rows = rows.filter(s=>!s.classification_status||['unclassified','suggested','confirmed'].includes(s.classification_status));
+          else if (classifFilter === 'unclassified') rows = rows.filter(s=>!s.classification_status||s.classification_status==='unclassified');
           else if (classifFilter === 'suggested') rows = rows.filter(s=>s.classification_status==='suggested');
           else if (classifFilter === 'confirmed') rows = rows.filter(s=>s.classification_status==='confirmed');
           else if (classifFilter === 'posted') rows = rows.filter(s=>s.classification_status==='posted');
+          // 'all' shows everything
 
           // Confidence filter
           if (classifConfFilter !== 'all') rows = rows.filter(s=>s.confidence_level===classifConfFilter);
@@ -1992,7 +2003,23 @@
           }
 
           if (!rows.length) {
-            tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No hay movimientos para este filtro.</td></tr>';
+            const postedCount = classifData.filter(s=>s.classification_status==='posted').length;
+            if (classifFilter === 'active' && postedCount > 0) {
+              tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:32px 20px">
+                <div style="font-size:32px;margin-bottom:10px">🎉</div>
+                <div style="font-size:15px;font-weight:700;color:#166534;margin-bottom:6px">¡Todo al día en contabilidad!</div>
+                <div style="font-size:13px;color:#64748b;margin-bottom:14px">No hay movimientos pendientes de clasificar o registrar.</div>
+                <button onclick="setClassifFilter('posted')" style="background:#16a34a;color:#fff;border:none;border-radius:8px;padding:8px 20px;font-size:13px;font-weight:600;cursor:pointer">
+                  Ver ${postedCount} movimiento(s) registrados en contabilidad →
+                </button>
+              </td></tr>`;
+            } else if (classifFilter === 'confirmed') {
+              tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:24px;color:#64748b;font-size:13px">
+                No hay movimientos confirmados. Acepta sugerencias o clasifica manualmente para confirmarlos.
+              </td></tr>`;
+            } else {
+              tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No hay movimientos para este filtro.</td></tr>';
+            }
             return;
           }
 
@@ -2055,15 +2082,42 @@
 
             const canPost    = status==='confirmed';
             const canAccept  = status==='suggested';
+            const isPosted   = status==='posted';
             const isSelected = classifSelected.has(s.id);
 
+            // ── POSTED ROW: locked, visually distinct ────────────────────
+            if (isPosted) {
+              const txLink = s.matched_transaction_id
+                ? `<span style="font-size:10px;color:#166534;font-family:monospace;background:#dcfce7;padding:1px 5px;border-radius:3px" title="ID de transacción contable">${s.matched_transaction_id.slice(-8)}</span>`
+                : '';
+              return `<tr data-id="${s.id}" style="background:#f0fdf4;opacity:.85">
+                <td style="text-align:center"><input type="checkbox" disabled style="opacity:.4"></td>
+                <td style="font-size:12px;color:#166534;white-space:nowrap;font-weight:500">${(s.statement_date||'').slice(0,10)}</td>
+                <td>
+                  <div style="font-weight:500;font-size:12px;color:#166534;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(s.description||'').replace(/"/g,'&quot;')}">${s.description||'—'}</div>
+                  <div style="margin-top:2px;display:flex;gap:4px;align-items:center">
+                    <span style="background:#16a34a;color:#fff;border-radius:4px;font-size:10px;padding:1px 7px;font-weight:700">✅ En Contabilidad</span>
+                    ${txLink}
+                  </div>
+                </td>
+                <td style="text-align:right;font-weight:700;font-size:13px;color:${amtColor};white-space:nowrap;opacity:.7">${amtFmt}</td>
+                <td><span style="font-size:11px;color:#166534">${(s.accounting_type||'').replace('expense','Gasto').replace('income','Ingreso').replace('asset','Activo').replace('transfer','Transferencia')} · ${(s.category||'').replace(/_/g,' ')}</span></td>
+                <td><span style="font-size:11px;color:#64748b">${s.vendor_suggestion||'—'}</span></td>
+                <td><span style="font-size:10px;color:#94a3b8">${s.suggested_account_debit||'—'}</span></td>
+                <td style="text-align:center">
+                  <span style="font-size:11px;color:#166534;font-weight:600">Registrado</span>
+                </td>
+              </tr>`;
+            }
+
+            // ── ACTIVE ROW: normal classification actions ────────────────
             const actions = `
               <div style="display:flex;gap:3px;flex-wrap:wrap;justify-content:center">
                 ${canAccept?`<button class="classif-action-btn btn-accept" onclick="quickAccept('${s.id}')" data-testid="accept-${s.id}" title="Aceptar sugerencia">✓</button>`:''}
                 <button class="classif-action-btn btn-edit" onclick="openClassifModal('${s.id}')" data-testid="edit-${s.id}" title="Editar">✏</button>
                 ${canPost?`<button class="classif-action-btn btn-post" onclick="postStatement('${s.id}')" data-testid="post-${s.id}" title="Registrar en contabilidad">📒</button>`:''}
-                ${status!=='posted'&&status!=='ignored'?`<button class="classif-action-btn btn-ignore" onclick="ignoreClassif('${s.id}')" data-testid="ignore-${s.id}" title="Ignorar">✕</button>`:''}
-                <button class="classif-action-btn btn-delete" onclick="deleteSingleStatement('${s.id}')" data-testid="delete-stmt-${s.id}" title="Eliminar esta transacción" style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5">🗑</button>
+                ${status!=='ignored'?`<button class="classif-action-btn btn-ignore" onclick="ignoreClassif('${s.id}')" data-testid="ignore-${s.id}" title="Ignorar">✕</button>`:''}
+                <button class="classif-action-btn btn-delete" onclick="deleteSingleStatement('${s.id}')" data-testid="delete-stmt-${s.id}" title="Eliminar" style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5">🗑</button>
               </div>`;
 
             const rowBg = s.is_duplicate ? 'background:#fef2f2;'
@@ -2091,10 +2145,28 @@
         // ── Filters ────────────────────────────────────────────────────────
         function setClassifFilter(f) {
           classifFilter = f;
+          classifSelected.clear();
+          updateBulkUI();
+          // Toggle active class on pills (main group only, not the special posted btn)
           document.querySelectorAll('.csf-filter').forEach(b => {
-            if (b.getAttribute('onclick') && b.getAttribute('onclick').startsWith('setClassifFilter'))
-              b.classList.toggle('active', b.getAttribute('onclick').includes(`'${f}'`));
+            const oc = b.getAttribute('onclick') || '';
+            if (!oc.startsWith('setClassifFilter')) return;
+            if (b.id === 'filter-posted-btn') return; // handled separately below
+            b.classList.toggle('active', oc.includes(`'${f}'`));
           });
+          // Style the special "En Contabilidad" button based on active state
+          const postedBtn = document.getElementById('filter-posted-btn');
+          if (postedBtn) {
+            if (f === 'posted') {
+              postedBtn.style.background = '#16a34a';
+              postedBtn.style.color = '#fff';
+              postedBtn.style.borderColor = '#15803d';
+            } else {
+              postedBtn.style.background = '#dcfce7';
+              postedBtn.style.color = '#166534';
+              postedBtn.style.borderColor = '#86efac';
+            }
+          }
           renderClassifTable();
         }
 
@@ -2625,25 +2697,58 @@
             const d = await r.json();
             if (!r.ok) throw new Error(d.error || 'Error en bulk-post');
 
-            let msg = `${d.posted} movimiento(s) registrado(s) en contabilidad.`;
-            let color = 'green';
-            if (d.already_posted > 0) msg += ` (${d.already_posted} ya registrados antes)`;
-            if (d.failed > 0) {
-              msg += ` ⚠️ ${d.failed} fallaron.`;
-              color = d.posted > 0 ? 'orange' : 'red';
-              if (d.details && d.details.failed) {
-                console.warn('Fallos en bulk-post:', d.details.failed);
-              }
+            await loadClassifStats();
+            await loadClassifStatements();
+
+            // Switch to 'active' view so registered items disappear automatically
+            if (classifFilter !== 'active') setClassifFilter('active');
+
+            if (d.posted > 0) {
+              // Show contextual banner with CTA to view posted items
+              showPostBanner(d.posted, d.failed || 0);
+            } else if (d.failed > 0) {
+              showNotice(`⚠️ No se pudieron registrar ${d.failed} movimiento(s). Verifica la clasificación.`, 'red');
             }
-            showNotice(msg, color);
           } catch(e) {
             showNotice('Error al registrar: ' + e.message, 'red');
           } finally {
             btn.textContent = orig;
             btn.disabled = false;
-            await loadClassifStats();
-            await loadClassifStatements();
           }
+        }
+
+        function showPostBanner(postedCount, failedCount) {
+          // Remove any previous banner
+          const prev = document.getElementById('post-success-banner');
+          if (prev) prev.remove();
+
+          const banner = document.createElement('div');
+          banner.id = 'post-success-banner';
+          banner.style.cssText = 'background:#dcfce7;border:1px solid #86efac;border-radius:8px;padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;gap:12px;animation:slideIn .3s ease';
+          banner.innerHTML = `
+            <span style="font-size:20px">✅</span>
+            <div style="flex:1">
+              <strong style="color:#166534;font-size:13px">${postedCount} movimiento(s) registrados en contabilidad correctamente.</strong>
+              ${failedCount > 0 ? `<span style="color:#c2410c;font-size:12px;margin-left:8px">⚠️ ${failedCount} fallaron.</span>` : ''}
+              <div style="font-size:12px;color:#166534;margin-top:2px">Han desaparecido de la lista de pendientes.</div>
+            </div>
+            <button onclick="setClassifFilter('posted')" style="background:#16a34a;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">
+              Ver registrados →
+            </button>
+            <button onclick="document.getElementById('post-success-banner').remove()" style="background:none;border:none;cursor:pointer;color:#6b7280;font-size:16px;padding:0 4px" title="Cerrar">✕</button>
+          `;
+          // Insert before the table-container div (parent of the scrollable table wrapper)
+          const tableContainer = document.getElementById('classif-table')?.parentElement;
+          const insertTarget = tableContainer?.parentElement || tableContainer;
+          if (insertTarget && tableContainer) {
+            insertTarget.insertBefore(banner, tableContainer);
+          } else {
+            // Fallback: prepend to clasificacion tab
+            const tab = document.getElementById('clasificacion');
+            if (tab) tab.appendChild(banner);
+          }
+          // Auto-dismiss after 8 seconds
+          setTimeout(() => { if (banner.parentElement) banner.remove(); }, 8000);
         }
 
         // ── Conciliación Final ──────────────────────────────────────────────
