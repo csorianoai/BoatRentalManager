@@ -1,0 +1,425 @@
+# REPLIT TASK — FIX EXPENSE ANALYSIS, REORGANIZE DASHBOARD, AND CREATE INCOME ANALYSIS
+
+Stop cosmetic work.
+Stop partial fixes.
+The new expense analysis feature is not working correctly, it shows no useful data, and the dashboard now looks disorganized.
+Also, if expense analysis was created, then income analysis must also be created with the same level of quality, structure, and traceability.
+
+I need a full audit, repair, and restructuring of the analytics layer and dashboard.
+
+---
+
+## CORE PROBLEMS
+
+### Problem 1 — Expense analysis is not working
+The new expense analysis feature has no usable data or is not showing the expected records, totals, categories, breakdowns, or visuals.
+
+### Problem 2 — The dashboard is now disorganized
+The dashboard layout, hierarchy, or widget structure became messy after the changes.
+It no longer feels operational, clean, or logically organized.
+
+### Problem 3 — Income analysis is missing
+If expense analysis exists, income analysis must also exist.
+The system cannot analyze only one side of the financial operation.
+
+---
+
+## PRIMARY OBJECTIVE
+
+Deliver a reliable, structured, and professional financial dashboard where:
+
+- expense analysis works with real data,
+- income analysis also exists and works with real data,
+- both support date filters, totals, category/grouping analysis, and drill-down,
+- the dashboard layout is reorganized and visually coherent,
+- the hierarchy is clean and executive,
+- and nothing fake, duplicated, broken, or misleading remains.
+
+---
+
+## EXECUTION ORDER
+
+Work in this order only:
+
+1. Audit the current expense analysis
+2. Find why it shows no data or wrong data
+3. Repair the data pipeline and visuals
+4. Build matching income analysis
+5. Reorganize the full dashboard layout
+6. Validate summary vs detail vs database truth
+7. Remove any broken, empty, fake, or confusing elements
+
+---
+
+## PHASE 1 — AUDIT EXPENSE ANALYSIS END-TO-END
+
+Review the full expense analysis feature from backend to UI.
+
+Check:
+
+- where the expense data comes from
+- whether the query returns records
+- whether filters are excluding everything
+- whether date logic is wrong
+- whether categories are missing or broken
+- whether the frontend is rendering empty due to state issues
+- whether the summary and the table use different sources
+- whether amounts are wrongly signed or normalized
+- whether records are duplicated or omitted
+- whether the charts are connected to real data
+- whether empty states are appearing when data actually exists
+
+Determine exactly why the expense analysis has no usable data.
+
+Possible causes include:
+
+- broken endpoint
+- wrong query
+- wrong filters
+- wrong state transitions
+- category mismatch
+- frontend mapping bug
+- backend aggregation bug
+- records not marked as eligible
+- stale cache
+- empty UI due to bad conditional render
+- no drill-down source
+- disconnected chart component
+
+Do not assume the issue is only visual.
+Audit the data truth first.
+
+---
+
+## PHASE 2 — REPAIR EXPENSE ANALYSIS
+
+Fix expense analysis so it becomes a real working module.
+
+It must support:
+
+### Expense summary
+- total expenses for selected date range
+- count of expense movements
+- optional comparison vs previous period only if reliable
+
+### Expense by category
+- real totals by category
+- ordered highest to lowest
+- percentage of total if accurate
+
+### Expense drill-down
+When clicking a category such as `Fuel`, the system must show:
+- category total
+- number of movements
+- detailed records
+- date
+- description
+- amount
+- source/account if applicable
+- reference if applicable
+
+### Expense table
+Must support:
+- date filter
+- category filter
+- amount filter
+- text search
+- state/status if relevant
+
+### Empty states
+If there are truly no records, show:
+- `No expense data available for this period`
+Never fabricate data.
+
+---
+
+## PHASE 3 — CREATE INCOME ANALYSIS
+
+If expense analysis exists, create income analysis with equivalent structure and usefulness.
+
+Income analysis must not be a simplified copy or empty shell.
+It must be fully operational and based on real data.
+
+It must support:
+
+### Income summary
+- total income for selected date range
+- count of income movements
+- optional comparison vs previous period only if reliable
+
+### Income by category / source
+Depending on available data model, show income grouped by:
+- category
+- source
+- client
+- platform
+- vessel
+- payment type
+- or other valid business dimension
+
+### Income drill-down
+Clicking an income group must show:
+- total amount
+- movement count
+- detailed records
+- date
+- description
+- amount
+- source/entity
+- reference if applicable
+
+### Income table
+Must support:
+- date filter
+- category/source filter
+- amount filter
+- text search
+- state/status if relevant
+
+### Empty states
+If there are no records, show honest empty states only.
+
+---
+
+## PHASE 4 — STRICT EXPENSE VS INCOME SEPARATION
+
+Audit and guarantee that expenses and income are not mixed.
+
+Rules:
+
+- expense totals must include only expense movements
+- income totals must include only income movements
+- no duplicated records may inflate either side
+- reversed, invalid, or cancelled records must not appear as normal values
+- both modules must reconcile to real underlying records
+
+If a record classification is wrong, fix the root cause.
+
+---
+
+## PHASE 5 — REORGANIZE THE DASHBOARD
+
+The dashboard currently looks disorganized.
+Rebuild the information architecture so it feels clear, premium, and operational again.
+
+### Required dashboard principles
+- clean hierarchy
+- strong visual organization
+- no clutter
+- no random widget placement
+- clear grouping of financial information
+- clean separation between summary and detail
+- fast readability
+- executive usability
+- operational logic
+
+### Organize the dashboard into logical sections
+
+#### Section 1 — Executive summary
+Top-level KPIs only:
+- total income
+- total expenses
+- net result / balance if reliable
+- movement count
+- period selector
+
+#### Section 2 — Financial analysis
+- income analysis widget
+- expense analysis widget
+- comparison or distribution views if reliable
+
+#### Section 3 — Breakdown views
+- income by category/source
+- expenses by category
+- trends over time
+
+#### Section 4 — Detailed tables / drill-down
+- expense detail
+- income detail
+- filters
+- search
+- export if already supported
+
+### Remove or fix:
+- broken widgets
+- empty decorative charts
+- duplicated cards
+- visual noise
+- misleading KPIs
+- disconnected modules
+- sections with no operational value
+
+---
+
+## PHASE 6 — DESIGN REQUIREMENTS
+
+The dashboard must look organized and serious.
+
+Do not overdesign.
+Do not add effects that reduce clarity.
+Do not use futuristic visuals that damage usability.
+
+The result should feel:
+- premium
+- structured
+- modern
+- professional
+- readable
+- financially credible
+
+Prioritize:
+- alignment
+- spacing
+- grouping
+- card consistency
+- chart clarity
+- filter coherence
+- consistent headings
+- intuitive navigation
+
+---
+
+## PHASE 7 — BACKEND AND QUERY AUDIT
+
+Review all related backend logic.
+
+Audit:
+
+- expense endpoints
+- income endpoints
+- aggregation queries
+- category groupings
+- source groupings
+- date filters
+- joins
+- state filters
+- exclusion of invalid records
+- detail queries vs summary queries
+- chart data queries
+- drill-down queries
+
+Determine:
+
+- why expense analysis is empty or wrong
+- what is missing for income analysis
+- whether dashboard widgets use inconsistent sources
+- whether summary and detail mismatch
+- whether frontend uses wrong payload shapes
+
+Fix all root causes, not just the first visual symptom.
+
+---
+
+## PHASE 8 — DATABASE AUDIT
+
+Check actual DB state for both expenses and income.
+
+Review:
+
+- transaction tables
+- income tables if separate
+- expense tables if separate
+- category tables
+- classification tables
+- accounting/export states if relevant
+- duplicate records
+- null categories
+- null amounts
+- wrong signs
+- wrong dates
+- orphan rows
+- test/demo rows polluting analytics
+
+Make sure both expense and income analysis are backed by real records.
+
+---
+
+## PHASE 9 — REQUIRED VALIDATION TESTS
+
+At minimum validate:
+
+1. expense analysis shows real data when records exist
+2. expense summary matches detailed rows
+3. expense category totals match detail
+4. Fuel category works with total + breakdown
+5. date filter updates expense visuals correctly
+6. income analysis shows real data when records exist
+7. income summary matches detailed rows
+8. income grouping works correctly
+9. date filter updates income visuals correctly
+10. income and expense are not mixed
+11. dashboard layout is coherent after changes
+12. no empty widget remains unless truly no data exists
+13. empty state is honest and well designed
+14. summary widgets reconcile with detailed tables
+15. dashboard feels organized and operational again
+
+---
+
+## ABSOLUTE PROHIBITIONS
+
+Do not leave:
+
+- fake data
+- mock charts
+- empty charts pretending to be functional
+- duplicated totals
+- income inside expense analysis
+- expense inside income analysis
+- broken drill-down
+- widgets with no value
+- random dashboard layout
+- misleading financial summary
+- cards that do not reconcile to real records
+
+---
+
+## REQUIRED DELIVERABLE
+
+Do not answer with “done”.
+
+Provide a structured report with:
+
+1. why expense analysis was not showing data
+2. what was broken in backend, frontend, or queries
+3. what was fixed in expense analysis
+4. what was created for income analysis
+5. how expenses are grouped and drilled down now
+6. how income is grouped and drilled down now
+7. how date filtering works now
+8. what dashboard structure was reorganized
+9. what widgets were removed, repaired, or relocated
+10. how totals were validated against DB
+11. what residual risks remain if any
+
+---
+
+## ACCEPTANCE CRITERIA
+
+This task is not complete until all of the following are true:
+
+- expense analysis shows real data
+- expense totals are correct
+- expense categories and drill-down work
+- income analysis also exists and works
+- income totals are correct
+- income grouping and drill-down work
+- date filters work consistently
+- dashboard is visually organized again
+- widgets are coherent and useful
+- no fake or broken analytics remain
+- summary matches detail
+- detail matches database
+- the financial dashboard is trustworthy and usable
+
+---
+
+## FINAL INSTRUCTION
+
+I do not want a prettier broken dashboard.
+I want a real financial analysis dashboard.
+
+Fix expense analysis.
+Create income analysis.
+Reorganize the dashboard.
+Validate everything against real data.

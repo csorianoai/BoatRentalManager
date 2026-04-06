@@ -339,6 +339,9 @@
             <button class="tab active" data-tab="transactions" data-testid="tab-transactions">
                 💸 Transacciones
             </button>
+            <button class="tab" data-tab="ingresos-analisis" data-testid="tab-ingresos-analisis">
+                📈 Análisis de Ingresos
+            </button>
             <button class="tab" data-tab="gastos-analisis" data-testid="tab-gastos-analisis">
                 📉 Análisis de Gastos
             </button>
@@ -571,8 +574,121 @@
             </div>
         </div>
 
+        <!-- Análisis de Ingresos Tab -->
+        <div class="tab-content" id="ingresos-analisis" data-testid="tab-content-ingresos-analisis">
+
+          <!-- Date range controls -->
+          <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:18px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:12px 16px">
+            <span style="font-size:12px;font-weight:700;color:#374151">Período:</span>
+            <button id="ipreset-month"  onclick="setIngresosPreset('month')"   style="padding:4px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:11px;cursor:pointer;background:#fff;color:#374151">Este mes</button>
+            <button id="ipreset-prev"   onclick="setIngresosPreset('prev')"    style="padding:4px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:11px;cursor:pointer;background:#fff;color:#374151">Mes anterior</button>
+            <button id="ipreset-quarter" onclick="setIngresosPreset('quarter')" style="padding:4px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:11px;cursor:pointer;background:#fff;color:#374151">Trimestre</button>
+            <button id="ipreset-year"   onclick="setIngresosPreset('year')"    style="padding:4px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:11px;cursor:pointer;background:#fff;color:#374151">Este año</button>
+            <button id="ipreset-all"    onclick="setIngresosPreset('all')"     style="padding:4px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:11px;cursor:pointer;background:#059669;color:#fff">Todo</button>
+            <input type="date" id="ing-from" data-testid="input-ing-from" style="padding:5px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:12px">
+            <span style="font-size:12px;color:#64748b">→</span>
+            <input type="date" id="ing-to"   data-testid="input-ing-to"   style="padding:5px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:12px">
+            <button onclick="loadIngresosAnalysis()" style="padding:5px 12px;background:#059669;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600">Aplicar</button>
+          </div>
+
+          <!-- KPI Cards -->
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:20px">
+            <div style="background:#fff;border:1px solid #bbf7d0;border-radius:10px;padding:14px 16px">
+              <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Ingresos Totales</div>
+              <div id="ing-total" style="color:#059669;font-size:22px;font-weight:800;margin-top:6px">—</div>
+              <div id="ing-count" style="font-size:11px;color:#94a3b8;margin-top:2px"></div>
+            </div>
+            <div style="background:#fff;border:1px solid #bbf7d0;border-radius:10px;padding:14px 16px">
+              <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Gastos (mismo período)</div>
+              <div id="ing-expenses" style="color:#dc2626;font-size:22px;font-weight:800;margin-top:6px">—</div>
+              <div id="ing-expenses-count" style="font-size:11px;color:#94a3b8;margin-top:2px"></div>
+            </div>
+            <div style="background:#fff;border:1px solid #bbf7d0;border-radius:10px;padding:14px 16px">
+              <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Resultado Neto</div>
+              <div id="ing-net" style="font-size:22px;font-weight:800;margin-top:6px">—</div>
+            </div>
+            <div style="background:#fff;border:1px solid #bbf7d0;border-radius:10px;padding:14px 16px">
+              <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Mayor Fuente</div>
+              <div id="ing-top-cat" style="font-size:14px;font-weight:700;color:#1a1a2e;margin-top:6px">—</div>
+            </div>
+          </div>
+
+          <!-- By account / trend -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+            <!-- By account -->
+            <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:14px 16px">
+              <div style="font-size:13px;font-weight:700;color:#1a1a2e;margin-bottom:12px">Ingresos por Cuenta / Fuente</div>
+              <div id="ing-by-category" style="display:flex;flex-direction:column;gap:8px">
+                <div style="color:#94a3b8;font-size:13px;text-align:center;padding:20px">Selecciona un período</div>
+              </div>
+            </div>
+            <!-- Trend bars -->
+            <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:14px 16px">
+              <div style="font-size:13px;font-weight:700;color:#1a1a2e;margin-bottom:12px">Tendencia Mensual (6 meses)</div>
+              <div style="height:140px;display:flex;flex-direction:column;justify-content:flex-end">
+                <div id="ing-trend-bars" style="display:flex;align-items:flex-end;gap:8px;height:120px;padding-bottom:4px"></div>
+                <div id="ing-trend-labels" style="display:flex;gap:8px;margin-top:4px"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Drilldown panel -->
+          <div id="ing-drilldown-panel" style="display:none;background:#fff;border:2px solid #059669;border-radius:10px;padding:16px;margin-bottom:20px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
+              <div>
+                <div id="ing-drill-title" style="font-size:16px;font-weight:800;color:#1a1a2e"></div>
+                <div id="ing-drill-summary" style="font-size:12px;color:#64748b;margin-top:2px"></div>
+              </div>
+              <button onclick="closeIngresosDrilldown()" style="padding:5px 10px;background:#f1f5f9;border:none;border-radius:6px;cursor:pointer;font-size:12px">Cerrar ✕</button>
+            </div>
+            <table style="width:100%;border-collapse:collapse;font-size:13px">
+              <thead>
+                <tr style="border-bottom:2px solid #e5e7eb">
+                  <th style="padding:8px 12px;text-align:left;color:#64748b;font-weight:600">Fecha</th>
+                  <th style="padding:8px 12px;text-align:left;color:#64748b;font-weight:600">Descripción</th>
+                  <th style="padding:8px 12px;text-align:right;color:#64748b;font-weight:600">Monto</th>
+                  <th style="padding:8px 12px;text-align:left;color:#64748b;font-weight:600">Fuente</th>
+                </tr>
+              </thead>
+              <tbody id="ing-drill-tbody"></tbody>
+              <tfoot>
+                <tr style="border-top:2px solid #e5e7eb">
+                  <td colspan="2" style="padding:10px 12px;font-weight:700;color:#1a1a2e">Total</td>
+                  <td style="padding:10px 12px;text-align:right;font-weight:800;color:#059669;font-size:14px" id="ing-drill-total"></td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          <!-- Full detail table -->
+          <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:14px 16px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+              <div style="font-size:13px;font-weight:700;color:#1a1a2e">Detalle de Ingresos</div>
+              <input type="text" id="ing-search" data-testid="input-ing-search"
+                     placeholder="Buscar por descripción, cuenta..." oninput="filterIngresosTable()"
+                     style="padding:6px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;width:260px">
+            </div>
+            <table style="width:100%;border-collapse:collapse;font-size:13px" id="ing-detail-table">
+              <thead>
+                <tr style="border-bottom:2px solid #e5e7eb;background:#f8fafc">
+                  <th style="padding:10px 12px;text-align:left;color:#64748b;font-weight:600">Fecha</th>
+                  <th style="padding:10px 12px;text-align:left;color:#64748b;font-weight:600">Descripción</th>
+                  <th style="padding:10px 12px;text-align:left;color:#64748b;font-weight:600">Cuenta</th>
+                  <th style="padding:10px 12px;text-align:right;color:#64748b;font-weight:600">Monto</th>
+                  <th style="padding:10px 12px;text-align:left;color:#64748b;font-weight:600">Fuente</th>
+                </tr>
+              </thead>
+              <tbody id="ing-detail-tbody" data-testid="table-ing-detail">
+                <tr><td colspan="5" style="padding:30px;text-align:center;color:#94a3b8">Selecciona un período</td></tr>
+              </tbody>
+            </table>
+            <div id="ing-detail-footer" style="margin-top:8px;font-size:12px;color:#64748b;text-align:right"></div>
+          </div>
+        </div>
+
         <!-- Análisis de Gastos Tab -->
-        <div class="tab-content" id="gastos-analisis" data-testid="tab-content-gastos-analisis" style="display:none">
+        <div class="tab-content" id="gastos-analisis" data-testid="tab-content-gastos-analisis">
 
           <!-- Date range controls -->
           <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:18px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:12px 16px">
@@ -1144,7 +1260,7 @@
         </div>
 
         <!-- Conciliación Final Tab -->
-        <div class="tab-content" id="conciliacion-final" data-testid="tab-content-conciliacion-final" style="display:none">
+        <div class="tab-content" id="conciliacion-final" data-testid="tab-content-conciliacion-final">
 
           <!-- Bank-statements import notice (shown when none imported) -->
           <div id="conc-no-bank-notice" style="display:none;background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;padding:14px 18px;margin-bottom:18px;font-size:13px;color:#92400e">
@@ -3184,16 +3300,236 @@
           }).join('');
         }
 
-        // Tab listener for gastos-analisis
+        // Tab listener for gastos-analisis — default to ALL TIME so real data always visible
         document.querySelectorAll('.tab[data-tab="gastos-analisis"]').forEach(btn => {
           btn.addEventListener('click', () => {
             if (!document.getElementById('gastos-from').value) {
-              setGastosPreset('month'); // auto-set to current month on first open
+              setGastosPreset('all');
             } else {
               loadGastosAnalysis();
             }
           });
         });
+
+        // Tab listener for ingresos-analisis — default to ALL TIME
+        document.querySelectorAll('.tab[data-tab="ingresos-analisis"]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            if (!document.getElementById('ing-from').value) {
+              setIngresosPreset('all');
+            } else {
+              loadIngresosAnalysis();
+            }
+          });
+        });
+
+        // ══════════════════════════════════════════════════════════════════
+        // ANÁLISIS DE INGRESOS
+        // ══════════════════════════════════════════════════════════════════
+        let _ingData = null;
+        let _ingAllRows = [];
+
+        function setIngresosPreset(preset) {
+          const now = new Date();
+          let from, to;
+          if (preset === 'month') {
+            from = new Date(now.getFullYear(), now.getMonth(), 1);
+            to   = now;
+          } else if (preset === 'prev') {
+            from = new Date(now.getFullYear(), now.getMonth()-1, 1);
+            to   = new Date(now.getFullYear(), now.getMonth(), 0);
+          } else if (preset === 'quarter') {
+            const q = Math.floor(now.getMonth()/3);
+            from = new Date(now.getFullYear(), q*3, 1);
+            to   = now;
+          } else if (preset === 'year') {
+            from = new Date(now.getFullYear(), 0, 1);
+            to   = now;
+          } else {
+            from = new Date('2020-01-01');
+            to   = now;
+          }
+          document.getElementById('ing-from').value = from.toISOString().slice(0,10);
+          document.getElementById('ing-to').value   = to.toISOString().slice(0,10);
+          ['month','prev','quarter','year','all'].forEach(p => {
+            const btn = document.getElementById('ipreset-'+p);
+            if (btn) { btn.style.background = p===preset ? '#059669' : '#fff'; btn.style.color = p===preset ? '#fff' : '#374151'; }
+          });
+          loadIngresosAnalysis();
+        }
+
+        async function loadIngresosAnalysis() {
+          const from = document.getElementById('ing-from').value;
+          const to   = document.getElementById('ing-to').value;
+          if (!from || !to) return;
+
+          document.getElementById('ing-total').textContent    = '…';
+          document.getElementById('ing-expenses').textContent = '…';
+          document.getElementById('ing-net').textContent      = '…';
+          document.getElementById('ing-by-category').innerHTML =
+            '<div style="color:#94a3b8;font-size:13px;text-align:center;padding:20px">Cargando…</div>';
+          document.getElementById('ing-detail-tbody').innerHTML =
+            '<tr><td colspan="5" style="padding:30px;text-align:center;color:#94a3b8">Cargando…</td></tr>';
+          closeIngresosDrilldown();
+
+          try {
+            const r = await fetch(`/api/accounting/income/analysis?from=${from}&to=${to}`);
+            if (!r.ok) throw new Error(await r.text());
+            const d = await r.json();
+            _ingData = d;
+
+            document.getElementById('ing-total').textContent    = fmtUSD(d.total_income);
+            document.getElementById('ing-count').textContent    = `${d.income_count} movimiento${d.income_count!==1?'s':''}`;
+            document.getElementById('ing-expenses').textContent = fmtUSD(d.total_expenses);
+            document.getElementById('ing-expenses-count').textContent = `${d.expense_count} movimiento${d.expense_count!==1?'s':''}`;
+            const net = d.net_balance;
+            const netEl = document.getElementById('ing-net');
+            netEl.textContent = fmtUSD(Math.abs(net));
+            netEl.style.color = net >= 0 ? '#059669' : '#dc2626';
+            document.getElementById('ing-top-cat').textContent =
+              d.by_category.length ? d.by_category[0].name + ' (' + fmtUSD(d.by_category[0].total) + ')' : '—';
+
+            // Category bars
+            const catEl = document.getElementById('ing-by-category');
+            if (!d.by_category.length) {
+              catEl.innerHTML = '<div style="color:#94a3b8;font-size:13px;text-align:center;padding:20px">Sin ingresos en el período seleccionado</div>';
+            } else {
+              catEl.innerHTML = d.by_category.map(cat => `
+                <div onclick="drilldownIngresos('${cat.account_id}','${cat.name.replace(/'/g,"\\'")}',${cat.total})"
+                     data-testid="ing-cat-row-${cat.code}"
+                     style="cursor:pointer;padding:8px 10px;border-radius:8px;border:1px solid #e5e7eb;background:#fff;transition:background .15s"
+                     onmouseover="this.style.background='#f0fdf4'" onmouseout="this.style.background='#fff'">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+                    <div style="font-size:13px;font-weight:700;color:#1a1a2e">${cat.name}</div>
+                    <div style="display:flex;gap:8px;align-items:center">
+                      <span style="font-size:11px;color:#64748b">${cat.pct}%</span>
+                      <span style="font-weight:800;color:#059669;font-size:14px">${fmtUSD(cat.total)}</span>
+                    </div>
+                  </div>
+                  <div style="background:#f1f5f9;border-radius:4px;height:5px;overflow:hidden">
+                    <div style="background:#059669;height:100%;width:${cat.pct}%;border-radius:4px"></div>
+                  </div>
+                  <div style="font-size:11px;color:#94a3b8;margin-top:3px">${cat.count} movimiento${cat.count!==1?'s':''} · Código ${cat.code}</div>
+                </div>
+              `).join('');
+            }
+
+            renderIngresosTrend(d.trend);
+            await loadIngresosDetailAll(from, to, d.by_category);
+
+          } catch(e) {
+            console.error('loadIngresosAnalysis error', e);
+            document.getElementById('ing-detail-tbody').innerHTML =
+              `<tr><td colspan="5" style="padding:30px;text-align:center;color:#dc2626">Error: ${e.message}</td></tr>`;
+          }
+        }
+
+        async function loadIngresosDetailAll(from, to, categories) {
+          _ingAllRows = [];
+          for (const cat of categories) {
+            try {
+              const r = await fetch(`/api/accounting/income/drilldown?account_id=${encodeURIComponent(cat.account_id)}&from=${from}&to=${to}`);
+              if (!r.ok) continue;
+              const d = await r.json();
+              _ingAllRows.push(...d.items.map(row => ({ ...row, cat_name: cat.name, cat_code: cat.code })));
+            } catch(_) {}
+          }
+          _ingAllRows.sort((a,b) => b.transaction_date.localeCompare(a.transaction_date));
+          renderIngresosDetailTable(_ingAllRows);
+        }
+
+        function renderIngresosDetailTable(rows) {
+          const tbody = document.getElementById('ing-detail-tbody');
+          const footer = document.getElementById('ing-detail-footer');
+          if (!rows.length) {
+            tbody.innerHTML = '<tr><td colspan="5" style="padding:30px;text-align:center;color:#94a3b8;font-size:14px">No hay ingresos para el período seleccionado.</td></tr>';
+            if (footer) footer.textContent = '';
+            return;
+          }
+          const REF = { booking:'Reserva', bank_statement:'Banco', manual:'Manual', asset:'Activo', other:'Otros', payroll:'Nómina' };
+          tbody.innerHTML = rows.map(r => {
+            const date = r.transaction_date ? r.transaction_date.substring(0,10) : '—';
+            const desc = (r.description||'').substring(0,60);
+            const cat  = `${r.account_code||r.cat_code} ${r.account_name||r.cat_name||''}`.substring(0,30);
+            const ref  = REF[r.reference_type] || r.reference_type || '—';
+            return `<tr style="border-bottom:1px solid #f1f5f9" data-testid="row-ingreso-${r.id}">
+              <td style="padding:9px 12px;color:#374151;font-size:12px;white-space:nowrap">${date}</td>
+              <td style="padding:9px 12px;color:#1a1a2e;max-width:260px">
+                <div style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.description||''}">${desc}</div>
+                ${r.notes ? `<div style="font-size:11px;color:#94a3b8">${r.notes.substring(0,40)}</div>` : ''}
+              </td>
+              <td style="padding:9px 12px;font-size:12px;color:#374151">${cat}</td>
+              <td style="padding:9px 12px;text-align:right;font-weight:700;color:#059669;white-space:nowrap">${fmtUSD(r.amount)}</td>
+              <td style="padding:9px 12px;font-size:11px;color:#64748b">${ref}</td>
+            </tr>`;
+          }).join('');
+          if (footer) footer.textContent = `${rows.length} movimiento${rows.length!==1?'s':''} · Total: ${fmtUSD(rows.reduce((s,r)=>s+parseFloat(r.amount||0),0))}`;
+        }
+
+        function filterIngresosTable() {
+          const q = (document.getElementById('ing-search').value || '').toLowerCase().trim();
+          const filtered = q ? _ingAllRows.filter(r =>
+            (r.description||'').toLowerCase().includes(q) ||
+            (r.notes||'').toLowerCase().includes(q) ||
+            (r.account_name||'').toLowerCase().includes(q)
+          ) : _ingAllRows;
+          renderIngresosDetailTable(filtered);
+        }
+
+        async function drilldownIngresos(accountId, name, total) {
+          const from = document.getElementById('ing-from').value;
+          const to   = document.getElementById('ing-to').value;
+          const panel = document.getElementById('ing-drilldown-panel');
+          const tbody = document.getElementById('ing-drill-tbody');
+          document.getElementById('ing-drill-title').textContent   = name;
+          document.getElementById('ing-drill-summary').textContent = 'Cargando detalle…';
+          document.getElementById('ing-drill-total').textContent   = '…';
+          panel.style.display = 'block';
+          panel.scrollIntoView({ behavior:'smooth', block:'start' });
+          tbody.innerHTML = '<tr><td colspan="4" style="padding:20px;text-align:center;color:#94a3b8">Cargando…</td></tr>';
+          try {
+            const r = await fetch(`/api/accounting/income/drilldown?account_id=${encodeURIComponent(accountId)}&from=${from}&to=${to}`);
+            if (!r.ok) throw new Error(await r.text());
+            const d = await r.json();
+            document.getElementById('ing-drill-summary').textContent =
+              `${d.count} movimiento${d.count!==1?'s':''} · ${from} → ${to}`;
+            document.getElementById('ing-drill-total').textContent = fmtUSD(d.total);
+            const REF = { booking:'Reserva', bank_statement:'Banco', manual:'Manual', asset:'Activo', other:'Otros', payroll:'Nómina' };
+            tbody.innerHTML = d.items.length
+              ? d.items.map(row => `<tr style="border-bottom:1px solid #f1f5f9" data-testid="row-ing-drill-${row.id}">
+                  <td style="padding:9px 12px;font-size:12px;color:#374151;white-space:nowrap">${row.transaction_date?row.transaction_date.substring(0,10):'—'}</td>
+                  <td style="padding:9px 12px;font-size:13px;color:#1a1a2e">${(row.description||'').substring(0,60)}</td>
+                  <td style="padding:9px 12px;text-align:right;font-weight:700;color:#059669;white-space:nowrap">${fmtUSD(row.amount)}</td>
+                  <td style="padding:9px 12px;font-size:11px;color:#64748b">${REF[row.reference_type]||row.reference_type||'—'}</td>
+                </tr>`).join('')
+              : '<tr><td colspan="4" style="padding:20px;text-align:center;color:#94a3b8">Sin movimientos</td></tr>';
+          } catch(e) {
+            tbody.innerHTML = `<tr><td colspan="4" style="padding:20px;text-align:center;color:#dc2626">Error: ${e.message}</td></tr>`;
+          }
+        }
+
+        function closeIngresosDrilldown() {
+          const p = document.getElementById('ing-drilldown-panel');
+          if (p) p.style.display = 'none';
+        }
+
+        function renderIngresosTrend(trend) {
+          const barsEl   = document.getElementById('ing-trend-bars');
+          const labelsEl = document.getElementById('ing-trend-labels');
+          if (!barsEl || !trend || !trend.length) return;
+          const maxVal = Math.max(...trend.map(t => t.total), 1);
+          const months = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+          barsEl.innerHTML = trend.map(t => {
+            const pct = Math.round(t.total / maxVal * 100);
+            return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:2px" title="${fmtUSD(t.total)}">
+              <div style="font-size:10px;color:#059669;font-weight:700">${fmtUSD(t.total).replace('$','')}</div>
+              <div style="width:100%;background:#bbf7d0;border-radius:3px 3px 0 0;height:${Math.max(pct,4)}%"></div>
+            </div>`;
+          }).join('');
+          labelsEl.innerHTML = trend.map(t => {
+            const [y, m] = t.month.split('-');
+            return `<div style="flex:1;text-align:center;font-size:10px;color:#64748b">${months[parseInt(m)-1]}</div>`;
+          }).join('');
+        }
 
         // ── Load boats into modal and bulk selects ─────────────────────────
         async function loadBoatsIntoClassifModal() {

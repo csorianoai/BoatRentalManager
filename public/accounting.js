@@ -154,7 +154,7 @@ async function loadData() {
         await loadRules();
         
         // Update KPIs and charts
-        updateDashboard();
+        await updateDashboard();
         
     } catch (error) {
         console.error('Error loading data:', error);
@@ -265,33 +265,49 @@ async function loadRules() {
     `).join('');
 }
 
-function updateDashboard() {
-    // Calculate KPIs
-    const incomeTransactions = transactionsData.filter(t => t.transaction_type === 'income');
-    const expenseTransactions = transactionsData.filter(t => t.transaction_type === 'expense');
+async function updateDashboard() {
+    // Unreconciled count uses local transactionsData (raw movement list)
     const unreconciledTransactions = transactionsData.filter(t => t.reconciled === 0);
-    
-    const totalIncome = incomeTransactions.reduce((sum, t) => sum + parseFloat(t.amount), 0);
-    const totalExpenses = expenseTransactions.reduce((sum, t) => sum + parseFloat(t.amount), 0);
-    const netBalance = totalIncome - totalExpenses;
-    const profitMargin = totalIncome > 0 ? ((netBalance / totalIncome) * 100).toFixed(1) : 0;
     const unreconciledAmount = unreconciledTransactions.reduce((sum, t) => sum + parseFloat(t.amount), 0);
-    
-    // Update KPI values
-    document.getElementById('totalIncome').textContent = `$${totalIncome.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
-    document.getElementById('incomeCount').textContent = `${incomeTransactions.length} transacciones`;
-    
-    document.getElementById('totalExpenses').textContent = `$${totalExpenses.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
-    document.getElementById('expensesCount').textContent = `${expenseTransactions.length} transacciones`;
-    
-    document.getElementById('netBalance').textContent = `$${netBalance.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
-    document.getElementById('profitMargin').textContent = `${profitMargin}% margen`;
-    
     document.getElementById('unreconciledCount').textContent = unreconciledTransactions.length;
     document.getElementById('unreconciledAmount').textContent = `$${unreconciledAmount.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
-    
-    // Update charts
-    updateCharts(totalIncome, totalExpenses);
+
+    // TRUE income/expense KPIs — use analysis endpoints filtered to current date range
+    const startDate = document.getElementById('startDate').value;
+    const endDate   = document.getElementById('endDate').value;
+    try {
+        const [incR, expR] = await Promise.all([
+            fetch(`/api/accounting/income/analysis?from=${startDate}&to=${endDate}`),
+            fetch(`/api/accounting/expenses/analysis?from=${startDate}&to=${endDate}`)
+        ]);
+        const incData = incR.ok ? await incR.json() : null;
+        const expData = expR.ok ? await expR.json() : null;
+
+        const totalIncome   = incData  ? incData.total_income    : 0;
+        const incomeCount   = incData  ? incData.income_count    : 0;
+        const totalExpenses = expData  ? expData.total_expenses  : 0;
+        const expensesCount = expData  ? expData.expense_count   : 0;
+        const netBalance    = totalIncome - totalExpenses;
+        const profitMargin  = totalIncome > 0 ? ((netBalance / totalIncome) * 100).toFixed(1) : 0;
+
+        document.getElementById('totalIncome').textContent    = `$${totalIncome.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+        document.getElementById('incomeCount').textContent    = `${incomeCount} transacciones`;
+        document.getElementById('totalExpenses').textContent  = `$${totalExpenses.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+        document.getElementById('expensesCount').textContent  = `${expensesCount} transacciones`;
+        document.getElementById('netBalance').textContent     = `$${Math.abs(netBalance).toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+        document.getElementById('profitMargin').textContent   = `${profitMargin}% margen`;
+
+        updateCharts(totalIncome, totalExpenses);
+    } catch(err) {
+        console.error('updateDashboard KPI error:', err);
+        // Fallback: unfiltered totals from loaded transactions
+        const inc = transactionsData.filter(t => t.transaction_type === 'income').reduce((s,t)=>s+parseFloat(t.amount),0);
+        const exp = transactionsData.filter(t => t.transaction_type === 'expense').reduce((s,t)=>s+parseFloat(t.amount),0);
+        document.getElementById('totalIncome').textContent   = `$${inc.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+        document.getElementById('totalExpenses').textContent = `$${exp.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+        document.getElementById('netBalance').textContent    = `$${Math.abs(inc-exp).toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+        updateCharts(inc, exp);
+    }
 }
 
 function updateCharts(totalIncome, totalExpenses) {
