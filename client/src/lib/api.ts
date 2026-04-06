@@ -12,17 +12,25 @@ async function safeFetch<T>(url: string, fallback: T): Promise<T> {
   }
 }
 
-function fmt(n: number) {
-  return new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(n);
-}
-
 export async function fetchDashboardData(filters: { from?: string; to?: string; platform?: string }): Promise<DashboardData> {
   const params = new URLSearchParams();
-  if (filters.from) params.set('from', filters.from);
-  if (filters.to) params.set('to', filters.to);
-  if (filters.platform && filters.platform !== 'Todas las plataformas') params.set('platform', filters.platform);
+  if (filters.from && filters.to) {
+    params.set('dateRange', 'custom');
+    params.set('dateFrom', filters.from);
+    params.set('dateTo', filters.to);
+  }
+  if (filters.platform && filters.platform !== 'Todas las plataformas') {
+    params.set('platform', filters.platform);
+  }
 
-  const raw = await safeFetch<any>(`/api/dashboard-data?${params}`, null);
+  const expenseParams = new URLSearchParams();
+  if (filters.from) expenseParams.set('from', filters.from);
+  if (filters.to) expenseParams.set('to', filters.to);
+
+  const [raw, expRaw] = await Promise.all([
+    safeFetch<any>(`/api/dashboard-data?${params}`, null),
+    safeFetch<any>(`/api/accounting/expenses/analysis?${expenseParams}`, null),
+  ]);
 
   if (!raw) {
     return {
@@ -35,16 +43,25 @@ export async function fetchDashboardData(filters: { from?: string; to?: string; 
     };
   }
 
-  const totalRevenue = raw.revenue?.total ?? raw.totalRevenue ?? 0;
-  const totalExpenses = raw.expenses?.total ?? raw.totalExpenses ?? 0;
+  const totalRevenue = Number(raw.period_revenue ?? raw.total_revenue ?? 0);
+  const totalExpenses = Number(expRaw?.total_expenses ?? 0);
+
+  const recentBookings = (raw.recent_bookings ?? []).map((b: any) => ({
+    id: b.id ?? '',
+    guestName: b.customer_name ?? '',
+    date: b.booking_date ?? '',
+    amount: Number(b.total_amount ?? 0),
+    platform: b.platform ?? '',
+    status: b.status ?? '',
+  }));
 
   return {
     totalRevenue,
     totalExpenses,
     netBalance: totalRevenue - totalExpenses,
-    bookingCount: raw.bookings?.count ?? raw.bookingCount ?? 0,
-    pendingAlerts: raw.alerts?.pending ?? 0,
-    recentBookings: raw.recentBookings ?? [],
+    bookingCount: Number(raw.period_bookings ?? raw.total_bookings ?? 0),
+    pendingAlerts: 0,
+    recentBookings,
   };
 }
 
@@ -53,14 +70,14 @@ export async function fetchExpenseAnalysis(filters: { from?: string; to?: string
   if (filters.from) params.set('from', filters.from);
   if (filters.to) params.set('to', filters.to);
 
-  const data = await safeFetch<any>(`/api/accounting/analysis/expenses?${params}`, null);
+  const data = await safeFetch<any>(`/api/accounting/expenses/analysis?${params}`, null);
 
   if (!data) return { categories: [] };
 
-  const categories = (data.categories ?? data.groups ?? []).map((c: any) => ({
-    key: c.key ?? c.category_key ?? '',
-    label: c.label ?? c.name ?? c.key ?? '',
-    amount: Number(c.amount ?? c.total ?? 0),
+  const categories = (data.by_category ?? []).map((c: any) => ({
+    key: c.category_key ?? '',
+    label: c.name ?? c.category_key ?? '',
+    amount: Number(c.total ?? 0),
     count: Number(c.count ?? 0),
   }));
 
@@ -72,28 +89,60 @@ export async function fetchIncomeAnalysis(filters: { from?: string; to?: string 
   if (filters.from) params.set('from', filters.from);
   if (filters.to) params.set('to', filters.to);
 
-  const data = await safeFetch<any>(`/api/accounting/analysis/income?${params}`, null);
+  const data = await safeFetch<any>(`/api/accounting/income/analysis?${params}`, null);
 
   if (!data) return { total: 0, categories: [] };
 
-  const categories = (data.categories ?? data.groups ?? []).map((c: any) => ({
-    key: c.key ?? c.category_key ?? '',
-    label: c.label ?? c.name ?? '',
-    amount: Number(c.amount ?? c.total ?? 0),
+  const categories = (data.by_category ?? []).map((c: any) => ({
+    key: c.category_key ?? '',
+    label: c.name ?? c.category_key ?? '',
+    amount: Number(c.total ?? 0),
   }));
 
-  return { total: data.total ?? 0, categories };
+  return { total: Number(data.total_income ?? 0), categories };
 }
 
 export async function fetchMonthlyTrend(): Promise<MonthlyDataPoint[]> {
-  const data = await safeFetch<any>('/api/dashboard-data', null);
-  if (!data?.monthlyRevenue) return [];
+  const sixMonthsAgo = new Date();
+  sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
+  sixMonthsAgo.setDate(1);
+  const from = sixMonthsAgo.toISOString().slice(0, 10);
+  const to = new Date().toISOString().slice(0, 10);
 
-  return (data.monthlyRevenue as any[]).map((m: any) => ({
-    month: m.month ?? '',
-    ingresos: Number(m.revenue ?? m.ingresos ?? 0),
-    gastos: Number(m.expenses ?? m.gastos ?? 0),
-  }));
+  const [incRaw, expRaw] = await Promise.all([
+    safeFetch<any>(`/api/accounting/income/analysis?from=${from}&to=${to}`, null),
+    safeFetch<any>(`/api/accounting/expenses/analysis?from=${from}&to=${to}`, null),
+  ]);
+
+  const incTrend: Record<string, number> = {};
+  const expTrend: Record<string, number> = {};
+
+  for (const row of (incRaw?.trend ?? [])) {
+    incTrend[row.month] = Number(row.total ?? 0);
+  }
+  for (const row of (expRaw?.trend ?? [])) {
+    expTrend[row.month] = Number(row.total ?? 0);
+  }
+
+  const allMonths = Array.from(new Set([...Object.keys(incTrend), ...Object.keys(expTrend)])).sort();
+
+  if (allMonths.length === 0) return [];
+
+  const MONTH_NAMES: Record<string, string> = {
+    '01': 'Ene', '02': 'Feb', '03': 'Mar', '04': 'Abr',
+    '05': 'May', '06': 'Jun', '07': 'Jul', '08': 'Ago',
+    '09': 'Sep', '10': 'Oct', '11': 'Nov', '12': 'Dic',
+  };
+
+  return allMonths.map(m => {
+    const [year, mon] = m.split('-');
+    const label = `${MONTH_NAMES[mon] ?? mon} ${year.slice(2)}`;
+    return {
+      month: label,
+      ingresos: incTrend[m] ?? 0,
+      gastos: expTrend[m] ?? 0,
+    };
+  });
 }
 
 export function formatCurrency(amount: number): string {
