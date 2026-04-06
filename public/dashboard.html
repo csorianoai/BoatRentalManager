@@ -3,15 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="theme-color" content="#0066cc">
+    <meta name="theme-color" content="#0F172A">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Nadaki">
     <meta name="mobile-web-app-capable" content="yes">
-    <meta name="description" content="Portal de gestión Nadaki Excursions - Reservas, flotilla, capitanes y más">
+    <meta name="description" content="Portal de gestión Nadaki Excursions — Reservas, flotilla, capitanes, contabilidad y más">
     <link rel="manifest" href="/manifest.json">
     <link rel="apple-touch-icon" href="/icon-192.svg">
-    <title>Nadaki Excursions - Business Intelligence Dashboard</title>
+    <title>Nadaki Excursions — Centro de Operaciones</title>
     <link rel="stylesheet" href="dashboard.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/date-fns@3.0.0/index.min.js"></script>
@@ -19,165 +19,103 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body class="light-mode">
-    <!-- Header -->
-    <header class="dashboard-header">
-        <div class="header-content">
-            <div class="logo-section">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" stroke-width="2" style="flex-shrink:0"><path d="M3 17l3-7 6 4 6-8 3 11H3z"/><path d="M3 21h18"/></svg>
-                <h1>Nadaki Excursions</h1>
-                <p class="subtitle" data-i18n="dashboard-title">Operations Dashboard</p>
-            </div>
-            <div class="header-controls">
-                <!-- Global Search -->
-                <div class="global-search-wrap" id="globalSearchWrap">
-                    <button class="btn-icon" id="searchToggle" title="Buscar" data-testid="button-search-toggle" onclick="toggleGlobalSearch()">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                    </button>
-                    <div class="global-search-box" id="globalSearchBox" style="display:none;">
-                        <input type="text" id="globalSearchInput" placeholder="Buscar módulo, capitán, stew..." autocomplete="off" data-testid="input-global-search" oninput="runGlobalSearch(this.value)" onkeydown="searchKeyNav(event)">
-                        <div class="global-search-results" id="globalSearchResults"></div>
-                    </div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     HEADER
+     ═══════════════════════════════════════════════════════════════ -->
+<header class="dashboard-header">
+    <div class="header-content">
+        <div class="logo-section">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" stroke-width="2" style="flex-shrink:0"><path d="M3 17l3-7 6 4 6-8 3 11H3z"/><path d="M3 21h18"/></svg>
+            <h1>Nadaki Excursions</h1>
+            <p class="subtitle">Centro de Operaciones</p>
+        </div>
+        <div class="header-controls">
+            <div class="global-search-wrap" id="globalSearchWrap">
+                <button class="btn-icon" id="searchToggle" title="Buscar módulo" data-testid="button-search-toggle" onclick="toggleGlobalSearch()">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                </button>
+                <div class="global-search-box" id="globalSearchBox" style="display:none;">
+                    <input type="text" id="globalSearchInput" placeholder="Buscar módulo, capitán, stew..." autocomplete="off" data-testid="input-global-search" oninput="runGlobalSearch(this.value)" onkeydown="searchKeyNav(event)">
+                    <div class="global-search-results" id="globalSearchResults"></div>
                 </div>
-                <button class="btn-icon" id="langToggle" title="Cambiar idioma">
-                    <span id="currentLang">ES</span>
-                </button>
-                <button class="btn-icon" id="themeToggle" title="Cambiar tema">
-                    <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
-                        <path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z"/>
-                    </svg>
-                </button>
-                <button class="btn-primary" id="refreshBtn" data-i18n="refresh">
-                    🔄 Actualizar
-                </button>
-                <a href="/api/logout" class="btn-secondary" data-testid="button-logout" style="text-decoration: none;">
-                    🚪 Cerrar Sesión
-                </a>
             </div>
-        </div>
-    </header>
-
-    <!-- Filters Panel -->
-    <section class="filters-panel">
-        <div class="filters-header">
-            <div class="filter-group">
-                <label data-i18n="date-range">Rango de Fecha:</label>
-                <select id="dateRange" class="filter-select" data-testid="select-date-range">
-                    <option value="all" selected>Todo el historial</option>
-                    <option value="last7days">Últimos 7 días</option>
-                    <option value="last30days">Últimos 30 días</option>
-                    <option value="last3months">Últimos 3 meses</option>
-                    <option value="last6months">Últimos 6 meses</option>
-                    <option value="last12months">Últimos 12 meses</option>
-                    <option value="today">Hoy</option>
-                    <option value="week">Esta Semana</option>
-                    <option value="month">Este Mes</option>
-                    <option value="quarter">Trimestre</option>
-                    <option value="year">Este Año</option>
-                    <option value="custom">Personalizado...</option>
-                </select>
-            </div>
-            <div class="filter-group" id="customDateRow" style="display:none;">
-                <label>Desde:</label>
-                <input type="date" id="customDateFrom" class="filter-select" data-testid="input-custom-date-from" style="padding:6px 8px;">
-                <label style="margin-left:6px;">Hasta:</label>
-                <input type="date" id="customDateTo" class="filter-select" data-testid="input-custom-date-to" style="padding:6px 8px;">
-            </div>
-            <div class="filter-group">
-                <label data-i18n="platform">Plataforma:</label>
-                <select id="platformFilter" class="filter-select" data-testid="select-platform-filter">
-                    <option value="all" data-i18n="all-platforms">Todas las Plataformas</option>
-                </select>
-            </div>
-            <div class="filter-group" style="font-size:12px;color:#64748b;align-self:center;">
-                <span id="periodLabel"></span>
-            </div>
-            <div class="export-actions">
-                <button class="export-btn" id="exportPDF" data-testid="button-export-pdf" data-i18n="export-pdf">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                        <polyline points="14 2 14 8 20 8"></polyline>
-                        <line x1="12" y1="18" x2="12" y2="12"></line>
-                        <line x1="9" y1="15" x2="15" y2="15"></line>
-                    </svg>
-                    <span>PDF</span>
-                </button>
-                <button class="export-btn" id="exportExcel" data-testid="button-export-excel" data-i18n="export-excel">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                        <polyline points="14 2 14 8 20 8"></polyline>
-                        <line x1="9" y1="15" x2="15" y2="15"></line>
-                        <line x1="9" y1="11" x2="15" y2="11"></line>
-                    </svg>
-                    <span>Excel</span>
-                </button>
-            </div>
-        </div>
-        
-        <div class="nav-grid">
-            <a href="/schedule.html" class="nav-card" data-testid="link-schedule">
-                <div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>
-                <span class="nav-label">Calendario</span>
-            </a>
-            <a href="/commissions.html" class="nav-card" data-testid="link-commissions">
-                <div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
-                <span class="nav-label">Comisiones</span>
-            </a>
-            <a href="/pricing.html" class="nav-card" data-testid="link-pricing">
-                <div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg></div>
-                <span class="nav-label">Precios</span>
-            </a>
-            <a href="/dynamic-pricing.html" class="nav-card" data-testid="link-dynamic-pricing">
-                <div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg></div>
-                <span class="nav-label">Pricing Dinámico</span>
-            </a>
-            <a href="/accounting.html" class="nav-card" data-testid="link-accounting">
-                <div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div>
-                <span class="nav-label">Contabilidad</span>
-            </a>
-            <a href="/messages.html" class="nav-card" data-testid="link-messages" style="position:relative;">
-                <div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
-                <span class="nav-label">Mensajes</span>
-                <span id="unread-badge" class="badge-notification" style="display:none;">0</span>
-            </a>
-            <a href="/boat-maintenance.html" class="nav-card" data-testid="link-boat-maintenance">
-                <div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></div>
-                <span class="nav-label">Mantenimiento</span>
-            </a>
-            <a href="/marine-conditions.html" class="nav-card" data-testid="link-marine-conditions">
-                <div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></div>
-                <span class="nav-label">Condiciones</span>
-            </a>
-            <a href="/fleet.html" class="nav-card" data-testid="link-fleet">
-                <div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17l3-7 6 4 6-8 3 11H3z"/><path d="M3 21h18"/></svg></div>
-                <span class="nav-label">Flotilla</span>
-            </a>
-            <a href="/operations.html" class="nav-card" data-testid="link-operations">
-                <div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>
-                <span class="nav-label">Operaciones</span>
-            </a>
-            <a href="/documents.html" class="nav-card" data-testid="link-documents">
-                <div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
-                <span class="nav-label" data-i18n="docs.nav_label">Documentos</span>
-            </a>
-            <a href="/assets.html" class="nav-card" data-testid="link-assets">
-                <div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></div>
-                <span class="nav-label">Activos</span>
-            </a>
-            <a href="/executive.html" class="nav-card" data-testid="link-executive">
-                <div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div>
-                <span class="nav-label">Dashboard Ejecutivo</span>
-            </a>
-            <a href="/crew.html" class="nav-card" data-testid="link-crew">
-                <div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
-                <span class="nav-label">Tripulación</span>
+            <button class="btn-icon" id="langToggle" title="Cambiar idioma">
+                <span id="currentLang" style="font-size:11px;font-weight:700;">ES</span>
+            </button>
+            <button class="btn-icon" id="themeToggle" title="Cambiar tema">
+                <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z"/></svg>
+            </button>
+            <button class="btn-primary" id="refreshBtn" data-i18n="refresh">
+                Actualizar
+            </button>
+            <a href="/api/logout" class="btn-secondary" data-testid="button-logout" style="text-decoration:none;">
+                Cerrar Sesión
             </a>
         </div>
-    </section>
+    </div>
+</header>
 
-    <!-- Main Dashboard Grid -->
-    <main class="dashboard-grid">
+<!-- ═══════════════════════════════════════════════════════════════
+     CONTROL BAR — slim executive filter strip
+     ═══════════════════════════════════════════════════════════════ -->
+<div class="control-bar">
+    <div class="control-bar-inner">
+        <div class="filter-group">
+            <label data-i18n="date-range">Período:</label>
+            <select id="dateRange" class="filter-select" data-testid="select-date-range">
+                <option value="all" selected>Todo el historial</option>
+                <option value="today">Hoy</option>
+                <option value="week">Esta Semana</option>
+                <option value="month">Este Mes</option>
+                <option value="quarter">Trimestre</option>
+                <option value="year">Este Año</option>
+                <option value="last7days">Últimos 7 días</option>
+                <option value="last30days">Últimos 30 días</option>
+                <option value="last3months">Últimos 3 meses</option>
+                <option value="last6months">Últimos 6 meses</option>
+                <option value="last12months">Últimos 12 meses</option>
+                <option value="custom">Personalizado...</option>
+            </select>
+        </div>
 
-        <!-- ── ROW 1: Primary KPIs ── -->
+        <div class="filter-group control-bar-custom-dates" id="customDateRow" style="display:none;">
+            <label>Desde:</label>
+            <input type="date" id="customDateFrom" data-testid="input-custom-date-from">
+            <label>Hasta:</label>
+            <input type="date" id="customDateTo" data-testid="input-custom-date-to">
+        </div>
+
+        <div class="filter-group">
+            <label data-i18n="platform">Plataforma:</label>
+            <select id="platformFilter" class="filter-select" data-testid="select-platform-filter">
+                <option value="all" data-i18n="all-platforms">Todas las Plataformas</option>
+            </select>
+        </div>
+
+        <span class="period-tag" id="periodLabel"></span>
+
+        <div class="export-actions">
+            <button class="export-btn" id="exportPDF" data-testid="button-export-pdf">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+                PDF
+            </button>
+            <button class="export-btn" id="exportExcel" data-testid="button-export-excel">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/><line x1="9" y1="11" x2="15" y2="11"/></svg>
+                Excel
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     MAIN CONTENT
+     ═══════════════════════════════════════════════════════════════ -->
+<main class="db-main">
+
+    <!-- ── ROW 1: Primary KPIs ── -->
+    <div class="db-kpi-primary">
+
         <a href="/schedule.html" class="kpi-card kpi-blue kpi-card-link" data-testid="link-kpi-period-bookings" style="text-decoration:none;">
             <div class="kpi-accent-bar"></div>
             <div class="kpi-inner">
@@ -191,7 +129,7 @@
             <div class="kpi-icon-bg">
                 <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
             </div>
-            <div style="position:absolute;right:16px;top:50%;transform:translateY(-50%);font-size:20px;opacity:.3">›</div>
+            <div style="position:absolute;right:16px;top:50%;transform:translateY(-50%);font-size:20px;opacity:.3;">›</div>
         </a>
 
         <a href="/accounting.html" class="kpi-card kpi-green kpi-card-link" data-testid="link-kpi-period-revenue" style="text-decoration:none;">
@@ -207,36 +145,7 @@
             <div class="kpi-icon-bg">
                 <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
             </div>
-            <div style="position:absolute;right:16px;top:50%;transform:translateY(-50%);font-size:20px;opacity:.3">›</div>
-        </a>
-
-        <div class="kpi-card kpi-teal">
-            <div class="kpi-accent-bar"></div>
-            <div class="kpi-inner">
-                <div class="kpi-label">Ticket Promedio</div>
-                <div class="kpi-value" id="avgTicket">—</div>
-                <div class="kpi-meta">
-                    <span class="kpi-sublabel">por reserva en el período</span>
-                </div>
-            </div>
-            <div class="kpi-icon-bg">
-                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
-            </div>
-        </div>
-
-        <a href="/schedule.html" class="kpi-card kpi-purple kpi-card-link" data-testid="link-kpi-total-historic" style="text-decoration:none;">
-            <div class="kpi-accent-bar"></div>
-            <div class="kpi-inner">
-                <div class="kpi-label">Total Histórico</div>
-                <div class="kpi-value" id="totalBookingsCount">—</div>
-                <div class="kpi-meta">
-                    <span class="kpi-sublabel" id="totalRevenueBadge">$0 total revenue</span>
-                </div>
-            </div>
-            <div class="kpi-icon-bg">
-                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3h18v18H3z"/><path d="M3 9h18M9 21V9"/></svg>
-            </div>
-            <div style="position:absolute;right:16px;top:50%;transform:translateY(-50%);font-size:20px;opacity:.3">›</div>
+            <div style="position:absolute;right:16px;top:50%;transform:translateY(-50%);font-size:20px;opacity:.3;">›</div>
         </a>
 
         <a href="/schedule.html" class="kpi-card kpi-orange kpi-card-link" data-testid="link-kpi-upcoming" style="text-decoration:none;">
@@ -251,40 +160,10 @@
             <div class="kpi-icon-bg">
                 <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
             </div>
-            <div style="position:absolute;right:16px;top:50%;transform:translateY(-50%);font-size:20px;opacity:.3">›</div>
+            <div style="position:absolute;right:16px;top:50%;transform:translateY(-50%);font-size:20px;opacity:.3;">›</div>
         </a>
 
-        <a href="/schedule.html" class="kpi-card kpi-gray kpi-card-link" data-testid="link-kpi-past-bookings" style="text-decoration:none;">
-            <div class="kpi-accent-bar"></div>
-            <div class="kpi-inner">
-                <div class="kpi-label">Completadas (pasado)</div>
-                <div class="kpi-value" id="pastBookings">—</div>
-                <div class="kpi-meta">
-                    <span class="kpi-sublabel" id="pastRevenue">$0 en revenue pasado</span>
-                </div>
-            </div>
-            <div class="kpi-icon-bg">
-                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="20 6 9 17 4 12"/></svg>
-            </div>
-            <div style="position:absolute;right:16px;top:50%;transform:translateY(-50%);font-size:20px;opacity:.3">›</div>
-        </a>
-
-        <a href="/schedule.html" class="kpi-card kpi-navy kpi-card-link" data-testid="link-kpi-today" style="text-decoration:none;">
-            <div class="kpi-accent-bar"></div>
-            <div class="kpi-inner">
-                <div class="kpi-label">Reservas Hoy</div>
-                <div class="kpi-value" id="todayBookings">—</div>
-                <div class="kpi-meta">
-                    <span class="kpi-sublabel" id="todayRevenue">$0 hoy</span>
-                </div>
-            </div>
-            <div class="kpi-icon-bg">
-                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-            </div>
-            <div style="position:absolute;right:16px;top:50%;transform:translateY(-50%);font-size:20px;opacity:.3">›</div>
-        </a>
-
-        <a href="/crew.html?tab=captains" class="kpi-card kpi-slate kpi-card-link" data-testid="link-kpi-captains">
+        <a href="/crew.html?tab=captains" class="kpi-card kpi-slate kpi-card-link" data-testid="link-kpi-captains" style="text-decoration:none;">
             <div class="kpi-accent-bar"></div>
             <div class="kpi-inner">
                 <div class="kpi-label">Tripulación Activa</div>
@@ -296,49 +175,308 @@
             <div class="kpi-icon-bg">
                 <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
             </div>
-            <div style="position:absolute;right:16px;top:50%;transform:translateY(-50%);font-size:20px;opacity:.4">›</div>
+            <div style="position:absolute;right:16px;top:50%;transform:translateY(-50%);font-size:20px;opacity:.3;">›</div>
         </a>
 
-        <!-- ── Upcoming Bookings (prominent) ── -->
-        <div class="chart-card full-width upcoming-section" id="upcomingSection">
-            <div class="card-header">
-                <div>
-                    <h2>Próximas Reservas</h2>
-                    <p style="font-size:12px;color:var(--text-secondary);margin:0;">Charters programados — próximos 30 días</p>
+    </div>
+
+    <!-- ── ROW 2: Secondary KPIs ── -->
+    <div class="db-kpi-secondary">
+
+        <a href="/schedule.html" class="kpi-card kpi-purple kpi-card-link" data-testid="link-kpi-total-historic" style="text-decoration:none;">
+            <div class="kpi-accent-bar"></div>
+            <div class="kpi-inner">
+                <div class="kpi-label">Total Histórico</div>
+                <div class="kpi-value" id="totalBookingsCount">—</div>
+                <div class="kpi-meta">
+                    <span class="kpi-sublabel" id="totalRevenueBadge">$0 total revenue</span>
                 </div>
-                <a href="/schedule.html" class="btn-primary" style="text-decoration:none;font-size:13px;">Ver Calendario</a>
             </div>
-            <div id="upcomingBookingsList" class="upcoming-list">
-                <p style="color:var(--text-secondary);text-align:center;padding:24px;">Cargando...</p>
+            <div style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:18px;opacity:.25;">›</div>
+        </a>
+
+        <a href="/schedule.html" class="kpi-card kpi-gray kpi-card-link" data-testid="link-kpi-past-bookings" style="text-decoration:none;">
+            <div class="kpi-accent-bar"></div>
+            <div class="kpi-inner">
+                <div class="kpi-label">Completadas</div>
+                <div class="kpi-value" id="pastBookings">—</div>
+                <div class="kpi-meta">
+                    <span class="kpi-sublabel" id="pastRevenue">$0 en revenue</span>
+                </div>
+            </div>
+            <div style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:18px;opacity:.25;">›</div>
+        </a>
+
+        <div class="kpi-card kpi-teal">
+            <div class="kpi-accent-bar"></div>
+            <div class="kpi-inner">
+                <div class="kpi-label">Ticket Promedio</div>
+                <div class="kpi-value" id="avgTicket">—</div>
+                <div class="kpi-meta">
+                    <span class="kpi-sublabel">por reserva en el período</span>
+                </div>
             </div>
         </div>
 
-        <!-- ── Charts Row ── -->
-        <div class="chart-card medium">
-            <div class="card-header">
-                <h2>Revenue por Plataforma</h2>
-                <span class="card-badge" id="totalRevenueBadge2">$0</span>
+        <a href="/schedule.html" class="kpi-card kpi-navy kpi-card-link" data-testid="link-kpi-today" style="text-decoration:none;">
+            <div class="kpi-accent-bar"></div>
+            <div class="kpi-inner">
+                <div class="kpi-label">Reservas Hoy</div>
+                <div class="kpi-value" id="todayBookings">—</div>
+                <div class="kpi-meta">
+                    <span class="kpi-sublabel" id="todayRevenue">$0 hoy</span>
+                </div>
             </div>
-            <canvas id="revenueByPlatform" style="height:260px;"></canvas>
+            <div style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:18px;opacity:.25;">›</div>
+        </a>
+
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         CENTRO DE CONTROL — grouped module navigation
+         ══════════════════════════════════════════════════════════════ -->
+    <div class="module-hub">
+        <div class="module-hub-header">
+            <div class="module-hub-header-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+            </div>
+            <h2>Centro de Control</h2>
+            <div class="module-hub-divider"></div>
+            <span style="font-size:11px;color:var(--text-tertiary);white-space:nowrap;">14 módulos activos</span>
         </div>
 
-        <div class="chart-card compact">
-            <div class="card-header">
-                <h2>Distribución de Reservas</h2>
-            </div>
-            <canvas id="bookingDistribution" style="height:260px;"></canvas>
-        </div>
+        <div class="module-groups">
 
-        <!-- Platform Leaderboard -->
-        <div class="chart-card compact leaderboard-card">
-            <div class="card-header">
-                <h2>Ranking Plataformas</h2>
-            </div>
-            <div class="leaderboard" id="platformLeaderboard"></div>
-        </div>
+            <!-- ── Grupo 1: Operación ── -->
+            <div class="module-group">
+                <div class="mg-header">
+                    <div class="mg-dot mg-dot--blue"></div>
+                    <span class="mg-title mg-title--blue">Operación</span>
+                    <div class="mg-line"></div>
+                </div>
+                <div class="mg-cards">
 
-        <!-- Monthly Trends Chart -->
-        <div class="chart-card medium">
+                    <a href="/schedule.html" class="module-card module-card--blue" data-testid="link-module-schedule">
+                        <div class="mc-icon mc-icon--blue">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                        </div>
+                        <div class="mc-text">
+                            <span class="mc-title">Calendario</span>
+                            <span class="mc-desc">Reservas y agenda</span>
+                        </div>
+                    </a>
+
+                    <a href="/operations.html" class="module-card module-card--blue" data-testid="link-module-operations">
+                        <div class="mc-icon mc-icon--blue">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                        </div>
+                        <div class="mc-text">
+                            <span class="mc-title">Operaciones</span>
+                            <span class="mc-desc">Control operativo diario</span>
+                        </div>
+                    </a>
+
+                    <a href="/messages.html" class="module-card module-card--blue" data-testid="link-module-messages" style="position:relative;">
+                        <span id="unread-badge" class="mc-badge" style="display:none;">0</span>
+                        <div class="mc-icon mc-icon--blue">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                        </div>
+                        <div class="mc-text">
+                            <span class="mc-title">Mensajes</span>
+                            <span class="mc-desc">Inbox unificado &amp; IA</span>
+                        </div>
+                    </a>
+
+                    <a href="/marine-conditions.html" class="module-card module-card--teal" data-testid="link-module-marine">
+                        <div class="mc-icon mc-icon--teal">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+                        </div>
+                        <div class="mc-text">
+                            <span class="mc-title">Condiciones Marinas</span>
+                            <span class="mc-desc">Clima, viento y mareas</span>
+                        </div>
+                    </a>
+
+                </div>
+            </div>
+
+            <!-- ── Grupo 2: Flotilla & Tripulación ── -->
+            <div class="module-group">
+                <div class="mg-header">
+                    <div class="mg-dot mg-dot--emerald"></div>
+                    <span class="mg-title mg-title--emerald">Flotilla &amp; Tripulación</span>
+                    <div class="mg-line"></div>
+                </div>
+                <div class="mg-cards">
+
+                    <a href="/fleet.html" class="module-card module-card--emerald" data-testid="link-module-fleet">
+                        <div class="mc-icon mc-icon--emerald">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17l3-7 6 4 6-8 3 11H3z"/><path d="M3 21h18"/></svg>
+                        </div>
+                        <div class="mc-text">
+                            <span class="mc-title">Flotilla</span>
+                            <span class="mc-desc">Inventario y disponibilidad</span>
+                        </div>
+                    </a>
+
+                    <a href="/boat-maintenance.html" class="module-card module-card--emerald" data-testid="link-module-maintenance">
+                        <div class="mc-icon mc-icon--emerald">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+                        </div>
+                        <div class="mc-text">
+                            <span class="mc-title">Mantenimiento</span>
+                            <span class="mc-desc">Gastos, órdenes y piezas</span>
+                        </div>
+                    </a>
+
+                    <a href="/assets.html" class="module-card module-card--emerald" data-testid="link-module-assets">
+                        <div class="mc-icon mc-icon--emerald">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+                        </div>
+                        <div class="mc-text">
+                            <span class="mc-title">Activos &amp; Inventario</span>
+                            <span class="mc-desc">Equipo y control de stock</span>
+                        </div>
+                    </a>
+
+                    <a href="/crew.html" class="module-card module-card--emerald" data-testid="link-module-crew">
+                        <div class="mc-icon mc-icon--emerald">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                        </div>
+                        <div class="mc-text">
+                            <span class="mc-title">Tripulación</span>
+                            <span class="mc-desc">Capitanes, stews y pagos</span>
+                        </div>
+                    </a>
+
+                </div>
+            </div>
+
+            <!-- ── Grupo 3: Finanzas & Contabilidad ── -->
+            <div class="module-group">
+                <div class="mg-header">
+                    <div class="mg-dot mg-dot--violet"></div>
+                    <span class="mg-title mg-title--violet">Finanzas &amp; Contabilidad</span>
+                    <div class="mg-line"></div>
+                </div>
+                <div class="mg-cards">
+
+                    <a href="/accounting.html" class="module-card module-card--violet" data-testid="link-module-accounting">
+                        <div class="mc-icon mc-icon--violet">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                        </div>
+                        <div class="mc-text">
+                            <span class="mc-title">Contabilidad</span>
+                            <span class="mc-desc">Transacciones y conciliación</span>
+                        </div>
+                    </a>
+
+                    <a href="/accounting.html#income" class="module-card module-card--violet" data-testid="link-module-income-analysis">
+                        <div class="mc-icon mc-icon--violet">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+                        </div>
+                        <div class="mc-text">
+                            <span class="mc-title">Análisis de Ingresos</span>
+                            <span class="mc-desc">Categorías y tendencias</span>
+                        </div>
+                    </a>
+
+                    <a href="/accounting.html#expenses" class="module-card module-card--violet" data-testid="link-module-expense-analysis">
+                        <div class="mc-icon mc-icon--violet">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                        </div>
+                        <div class="mc-text">
+                            <span class="mc-title">Análisis de Gastos</span>
+                            <span class="mc-desc">20 categorías contables</span>
+                        </div>
+                    </a>
+
+                    <a href="/executive.html" class="module-card module-card--violet" data-testid="link-module-executive">
+                        <div class="mc-icon mc-icon--violet">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                        </div>
+                        <div class="mc-text">
+                            <span class="mc-title">Dashboard Ejecutivo</span>
+                            <span class="mc-desc">KPIs, rentabilidad y análisis</span>
+                        </div>
+                    </a>
+
+                </div>
+            </div>
+
+            <!-- ── Grupo 4: Comercial & Configuración ── -->
+            <div class="module-group">
+                <div class="mg-header">
+                    <div class="mg-dot mg-dot--amber"></div>
+                    <span class="mg-title mg-title--amber">Comercial &amp; Configuración</span>
+                    <div class="mg-line"></div>
+                </div>
+                <div class="mg-cards">
+
+                    <a href="/commissions.html" class="module-card module-card--amber" data-testid="link-module-commissions">
+                        <div class="mc-icon mc-icon--amber">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                        </div>
+                        <div class="mc-text">
+                            <span class="mc-title">Comisiones</span>
+                            <span class="mc-desc">Reglas y pagos a canales</span>
+                        </div>
+                    </a>
+
+                    <a href="/pricing.html" class="module-card module-card--amber" data-testid="link-module-pricing">
+                        <div class="mc-icon mc-icon--amber">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+                        </div>
+                        <div class="mc-text">
+                            <span class="mc-title">Precios Base</span>
+                            <span class="mc-desc">Tarifas por barco y temporada</span>
+                        </div>
+                    </a>
+
+                    <a href="/dynamic-pricing.html" class="module-card module-card--amber" data-testid="link-module-dynamic-pricing">
+                        <div class="mc-icon mc-icon--amber">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                        </div>
+                        <div class="mc-text">
+                            <span class="mc-title">Pricing Dinámico</span>
+                            <span class="mc-desc">Ajuste inteligente de precios</span>
+                        </div>
+                    </a>
+
+                    <a href="/documents.html" class="module-card module-card--amber" data-testid="link-module-documents">
+                        <div class="mc-icon mc-icon--amber">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                        </div>
+                        <div class="mc-text">
+                            <span class="mc-title">Documentos</span>
+                            <span class="mc-desc">Contratos, licencias y archivos</span>
+                        </div>
+                    </a>
+
+                </div>
+            </div>
+
+        </div><!-- /module-groups -->
+    </div><!-- /module-hub -->
+
+    <!-- ── Upcoming Bookings ── -->
+    <div class="chart-card full-width upcoming-section" id="upcomingSection">
+        <div class="card-header">
+            <div>
+                <h2>Próximas Reservas</h2>
+                <p style="font-size:12px;color:var(--text-secondary);margin:0;">Charters programados — próximos 30 días</p>
+            </div>
+            <a href="/schedule.html" class="btn-primary" style="text-decoration:none;font-size:13px;">Ver Calendario</a>
+        </div>
+        <div id="upcomingBookingsList" class="upcoming-list">
+            <p style="color:var(--text-secondary);text-align:center;padding:24px;">Cargando...</p>
+        </div>
+    </div>
+
+    <!-- ── Analytics Row ── -->
+    <div class="db-analytics-row">
+
+        <div class="chart-card">
             <div class="card-header">
                 <h2>Tendencia Mensual</h2>
                 <div class="trend-legend">
@@ -346,129 +484,145 @@
                     <span class="legend-item"><span class="legend-dot green"></span>Revenue</span>
                 </div>
             </div>
-            <canvas id="monthlyTrends" style="height:260px;"></canvas>
+            <canvas id="monthlyTrends" style="height:240px;"></canvas>
         </div>
 
-        <!-- Boat Breakdown -->
-        <div class="chart-card compact leaderboard-card">
+        <div class="chart-card">
+            <div class="card-header">
+                <h2>Revenue por Plataforma</h2>
+                <span class="card-badge" id="totalRevenueBadge2">$0</span>
+            </div>
+            <canvas id="revenueByPlatform" style="height:240px;"></canvas>
+        </div>
+
+        <div class="chart-card">
+            <div class="card-header">
+                <h2>Distribución</h2>
+            </div>
+            <canvas id="bookingDistribution" style="height:240px;"></canvas>
+        </div>
+
+    </div>
+
+    <!-- ── Rankings Row ── -->
+    <div class="db-rankings-row">
+
+        <div class="chart-card leaderboard-card">
+            <div class="card-header">
+                <h2>Ranking Plataformas</h2>
+            </div>
+            <div class="leaderboard" id="platformLeaderboard"></div>
+        </div>
+
+        <div class="chart-card leaderboard-card">
             <div class="card-header">
                 <h2>Por Embarcación</h2>
             </div>
             <div class="leaderboard" id="boatBreakdown"></div>
         </div>
 
-        <!-- Broker Breakdown -->
-        <div class="chart-card compact leaderboard-card">
+        <div class="chart-card leaderboard-card">
             <div class="card-header">
                 <h2>Por Broker / Canal</h2>
             </div>
             <div class="leaderboard" id="brokerBreakdown"></div>
         </div>
 
-        <!-- ── All Bookings Table ── -->
-        <div class="chart-card full-width">
-            <div class="card-header">
-                <div>
-                    <h2>Todas las Reservas del Período</h2>
-                    <p style="font-size:12px;color:var(--text-secondary);margin:0;" id="bookingsTableCount"></p>
-                </div>
-                <a href="/schedule.html" class="btn-link">Abrir Calendario</a>
+    </div>
+
+    <!-- ── All Bookings Table ── -->
+    <div class="chart-card full-width">
+        <div class="card-header">
+            <div>
+                <h2>Todas las Reservas del Período</h2>
+                <p style="font-size:12px;color:var(--text-secondary);margin:0;" id="bookingsTableCount"></p>
             </div>
-            <div class="table-container">
-                <table class="bookings-table" id="recentBookingsTable">
-                    <thead>
-                        <tr>
-                            <th>Fecha</th>
-                            <th>Cliente</th>
-                            <th>Plataforma</th>
-                            <th>Embarcación</th>
-                            <th>Hora</th>
-                            <th>Monto</th>
-                            <th>Estado</th>
-                        </tr>
-                    </thead>
-                    <tbody id="bookingsTableBody">
-                        <tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--text-secondary);">Cargando...</td></tr>
-                    </tbody>
-                </table>
-            </div>
+            <a href="/schedule.html" class="btn-link">Abrir Calendario</a>
         </div>
-
-        <!-- ── Sync Status (colapsado al fondo) ── -->
-        <div class="chart-card full-width">
-            <div class="card-header">
-                <h2>Estado de Sincronización</h2>
-                <button class="btn-primary" id="syncAllPlatforms" data-testid="button-sync-all" style="font-size:13px;">Sincronizar Todas</button>
-            </div>
-            <div class="sync-status-grid" id="syncStatusGrid"></div>
-        </div>
-
-        <div class="chart-card full-width" id="conflictsSection" style="display:none;">
-            <div class="card-header">
-                <h2>Conflictos Detectados</h2>
-                <span class="badge badge-danger" id="conflictCount">0</span>
-            </div>
-            <div class="conflicts-list" id="conflictsList"></div>
-        </div>
-
-    </main>
-
-    <!-- Footer -->
-    <footer class="dashboard-footer">
-        <p><span data-i18n="last-updated">Actualizado</span>: <span id="lastUpdate">--</span></p>
-        <p>© 2025 Nadaki Excursions - <span data-i18n="auto-refresh">Actualización automática cada 30s</span></p>
-    </footer>
-
-    <!-- AI Chat Widget -->
-    <button class="chat-widget-trigger" id="chatTrigger" data-testid="button-chat-trigger">
-        💬
-    </button>
-
-    <div class="chat-widget-container" id="chatWidget">
-        <!-- Header -->
-        <div class="chat-widget-header">
-            <div class="chat-widget-header-left">
-                <div class="chat-avatar">⚓</div>
-                <div>
-                    <div class="chat-widget-title">Nadaki Assistant</div>
-                    <div class="chat-status">
-                        <span class="status-dot"></span>
-                        <span>Online</span>
-                    </div>
-                </div>
-            </div>
-            <button class="chat-close-btn" id="chatClose" data-testid="button-chat-close">✕</button>
-        </div>
-
-        <!-- Messages -->
-        <div class="chat-messages-container" id="chatMessages"></div>
-
-        <!-- Input -->
-        <div class="chat-input-area">
-            <textarea 
-                class="chat-input" 
-                id="chatInput" 
-                placeholder="Escribe tu mensaje..."
-                rows="1"
-                data-testid="input-chat-message"
-            ></textarea>
-            <button class="chat-send-btn" id="chatSend" data-testid="button-chat-send">
-                ➤
-            </button>
+        <div class="table-container">
+            <table class="bookings-table" id="recentBookingsTable">
+                <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Cliente</th>
+                        <th>Plataforma</th>
+                        <th>Embarcación</th>
+                        <th>Hora</th>
+                        <th>Monto</th>
+                        <th>Estado</th>
+                    </tr>
+                </thead>
+                <tbody id="bookingsTableBody">
+                    <tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--text-secondary);">Cargando...</td></tr>
+                </tbody>
+            </table>
         </div>
     </div>
 
-    <script src="/i18n.js"></script>
-    <script src="dashboard.js"></script>
-    <script>
-        // Register Service Worker for PWA
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js')
-                    .then(reg => console.log('Service Worker registered:', reg.scope))
-                    .catch(err => console.error('SW registration failed:', err));
-            });
-        }
-    </script>
+    <!-- ── Sync Status ── -->
+    <div class="chart-card full-width">
+        <div class="card-header">
+            <h2>Estado de Sincronización</h2>
+            <button class="btn-primary" id="syncAllPlatforms" data-testid="button-sync-all" style="font-size:13px;">Sincronizar Todas</button>
+        </div>
+        <div class="sync-status-grid" id="syncStatusGrid"></div>
+    </div>
+
+    <div class="chart-card full-width" id="conflictsSection" style="display:none;">
+        <div class="card-header">
+            <h2>Conflictos Detectados</h2>
+            <span class="badge badge-danger" id="conflictCount">0</span>
+        </div>
+        <div class="conflicts-list" id="conflictsList"></div>
+    </div>
+
+</main>
+
+<!-- Footer -->
+<footer class="dashboard-footer">
+    <p><span data-i18n="last-updated">Actualizado</span>: <span id="lastUpdate">--</span></p>
+    <p>© 2025 Nadaki Excursions &mdash; <span data-i18n="auto-refresh">Actualización automática cada 30s</span></p>
+</footer>
+
+<!-- AI Chat Widget -->
+<button class="chat-widget-trigger" id="chatTrigger" data-testid="button-chat-trigger">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+</button>
+
+<div class="chat-widget-container" id="chatWidget">
+    <div class="chat-widget-header">
+        <div class="chat-widget-header-left">
+            <div class="chat-avatar">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17l3-7 6 4 6-8 3 11H3z"/></svg>
+            </div>
+            <div>
+                <div class="chat-widget-title">Nadaki Assistant</div>
+                <div class="chat-status"><span class="status-dot"></span><span>Online</span></div>
+            </div>
+        </div>
+        <button class="chat-close-btn" id="chatClose" data-testid="button-chat-close">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+    </div>
+    <div class="chat-messages-container" id="chatMessages"></div>
+    <div class="chat-input-area">
+        <textarea class="chat-input" id="chatInput" placeholder="Escribe tu mensaje..." rows="1" data-testid="input-chat-message"></textarea>
+        <button class="chat-send-btn" id="chatSend" data-testid="button-chat-send">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </button>
+    </div>
+</div>
+
+<script src="/i18n.js"></script>
+<script src="dashboard.js"></script>
+<script>
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/sw.js')
+                .then(reg => console.log('SW registered:', reg.scope))
+                .catch(err => console.error('SW failed:', err));
+        });
+    }
+</script>
 </body>
 </html>
