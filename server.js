@@ -7628,6 +7628,51 @@ app.get('/api/accounting/conciliation/items', isAuthenticated, async (req, res) 
   }
 });
 
+// ── UNIFIED CATEGORY TAXONOMY ──────────────────────────────────────────────
+// Single source of truth. Same keys, labels and code lists used by:
+//   - Intelligent Classification (smartClassify)
+//   - Expense Analysis (/api/accounting/expenses/analysis)
+//   - Income  Analysis (/api/accounting/income/analysis)
+//   - Drill-down endpoints
+const UNIFIED_EXPENSE_CATEGORIES = [
+  { key:'fuel',         label:'Combustible',              codes:['5010'] },
+  { key:'marina_fees',  label:'Marina / Docking',         codes:['5050','5200'] },
+  { key:'maintenance',  label:'Mantenimiento',            codes:['5020','5030','5070','5100'] },
+  { key:'cleaning',     label:'Limpieza',                 codes:['5040'] },
+  { key:'insurance',    label:'Seguros',                  codes:['5060','5300'] },
+  { key:'crew_payroll', label:'Nómina Tripulación',       codes:['5400'] },
+  { key:'commissions',  label:'Comisiones Plataforma',    codes:['5500'] },
+  { key:'marketing',    label:'Marketing',                codes:['5600'] },
+  { key:'bank_fees',    label:'Comisiones Bancarias',     codes:['5910','5920'] },
+  { key:'depreciation', label:'Depreciación',             codes:['5810'] },
+  { key:'admin',        label:'Gastos Administrativos',   codes:['5800','5900'] },
+  { key:'operational',  label:'Gastos Operativos',        codes:['5080','5700','5930','5940','5950','5960','5970','5975','5980','5985','5990'] },
+];
+
+const UNIFIED_INCOME_CATEGORIES = [
+  { key:'rentals', label:'Alquileres',         codes:['4020'] },
+  { key:'tours',   label:'Tours y Excursiones',codes:['4010'] },
+  { key:'fishing', label:'Pesca Deportiva',    codes:['4030'] },
+  { key:'events',  label:'Eventos Especiales', codes:['4040'] },
+  { key:'other',   label:'Otros Ingresos',     codes:['4900'] },
+];
+
+// Helper: build SQL CASE expression for semantic category grouping
+function buildCategoryCase(categories) {
+  const branches = categories.map(cat => {
+    const inList = cat.codes.map(c => `'${c}'`).join(',');
+    return `WHEN ca.account_code IN (${inList}) THEN '${cat.key}'`;
+  });
+  return `CASE ${branches.join(' ')} ELSE 'other' END`;
+}
+
+// Helper: look up codes for a given category key
+function codesForCategory(categories, key) {
+  const cat = categories.find(c => c.key === key);
+  if (!cat) return null;
+  return cat.codes;
+}
+
 // --- Post a confirmed statement to accounting (create transaction) ---
 // ── Category → preferred account code mapping ──────────────────────────────
 const CATEGORY_ACCOUNT_CODE = {
@@ -8171,47 +8216,41 @@ app.get('/api/accounting/reconciliations/:id/variance-analysis', isAuthenticated
 // ─────────────────────────────────────────────────────────────────────────────
 
 // GET /api/accounting/expenses/analysis?from=YYYY-MM-DD&to=YYYY-MM-DD
+// Groups by UNIFIED_EXPENSE_CATEGORIES (same taxonomy as Intelligent Classification)
 app.get('/api/accounting/expenses/analysis', isAuthenticated, async (req, res) => {
   try {
     let { from, to } = req.query;
-    // Default: current month
     if (!from) from = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0,10);
     if (!to)   to   = new Date().toISOString().slice(0,10);
+    const params = [from, to];
 
-    // RULE: only transactions where account_type = 'expense' are real operational expenses
-    const baseWhere = `
+    // 1. Grand total (real operational expenses only)
+    const totals = await pool.query(`
+      SELECT COUNT(*) AS count, COALESCE(SUM(t.amount), 0) AS total
+      FROM transactions t
+      JOIN chart_of_accounts ca ON ca.id = t.account_id
       WHERE t.transaction_type = 'expense'
         AND ca.account_type = 'expense'
         AND t.transaction_date BETWEEN $1 AND $2
-    `;
-    const params = [from, to];
-
-    // 1. Totals
-    const totals = await pool.query(`
-      SELECT
-        COUNT(*)          AS count,
-        COALESCE(SUM(t.amount), 0) AS total
-      FROM transactions t
-      JOIN chart_of_accounts ca ON ca.id = t.account_id
-      ${baseWhere}
     `, params);
 
-    // 2. By category (account_code + account_name as category proxy)
+    // 2. Grouped by canonical category key (CASE WHEN on account_code)
+    const categoryCase = buildCategoryCase(UNIFIED_EXPENSE_CATEGORIES);
     const byCategory = await pool.query(`
       SELECT
-        ca.id           AS account_id,
-        ca.account_code AS code,
-        ca.account_name AS name,
-        COUNT(*)        AS count,
+        ${categoryCase} AS category_key,
+        COUNT(*) AS count,
         COALESCE(SUM(t.amount), 0) AS total
       FROM transactions t
       JOIN chart_of_accounts ca ON ca.id = t.account_id
-      ${baseWhere}
-      GROUP BY ca.id, ca.account_code, ca.account_name
+      WHERE t.transaction_type = 'expense'
+        AND ca.account_type = 'expense'
+        AND t.transaction_date BETWEEN $1 AND $2
+      GROUP BY category_key
       ORDER BY total DESC
     `, params);
 
-    // 3. Monthly trend (last 6 months regardless of filter)
+    // 3. Monthly trend (last 6 months)
     const trend = await pool.query(`
       SELECT
         TO_CHAR(DATE_TRUNC('month', t.transaction_date), 'YYYY-MM') AS month,
@@ -8225,7 +8264,7 @@ app.get('/api/accounting/expenses/analysis', isAuthenticated, async (req, res) =
       ORDER BY month
     `);
 
-    // 4. Income total for the same period (for net balance KPI)
+    // 4. Income same period (for net balance KPI)
     const income = await pool.query(`
       SELECT COALESCE(SUM(t.amount), 0) AS total, COUNT(*) AS count
       FROM transactions t
@@ -8238,6 +8277,25 @@ app.get('/api/accounting/expenses/analysis', isAuthenticated, async (req, res) =
     const totalExpenses = parseFloat(totals.rows[0].total) || 0;
     const totalIncome   = parseFloat(income.rows[0].total) || 0;
 
+    // Merge DB rows with canonical taxonomy (adds label, preserves order)
+    const catMap = {};
+    byCategory.rows.forEach(r => { catMap[r.category_key] = r; });
+
+    const categoriesOut = UNIFIED_EXPENSE_CATEGORIES
+      .map(cat => {
+        const row = catMap[cat.key];
+        if (!row || parseFloat(row.total) === 0) return null;
+        return {
+          category_key: cat.key,
+          name:   cat.label,
+          codes:  cat.codes,
+          count:  parseInt(row.count),
+          total:  parseFloat(row.total),
+          pct:    totalExpenses > 0 ? Math.round(parseFloat(row.total) / totalExpenses * 100) : 0
+        };
+      })
+      .filter(Boolean);
+
     res.json({
       from, to,
       total_expenses: totalExpenses,
@@ -8245,14 +8303,7 @@ app.get('/api/accounting/expenses/analysis', isAuthenticated, async (req, res) =
       total_income:   totalIncome,
       income_count:   parseInt(income.rows[0].count) || 0,
       net_balance:    totalIncome - totalExpenses,
-      by_category:    byCategory.rows.map(r => ({
-        account_id: r.account_id,
-        code:       r.code,
-        name:       r.name,
-        count:      parseInt(r.count),
-        total:      parseFloat(r.total),
-        pct:        totalExpenses > 0 ? Math.round(parseFloat(r.total) / totalExpenses * 100) : 0
-      })),
+      by_category:    categoriesOut,
       trend: trend.rows.map(r => ({ month: r.month, total: parseFloat(r.total) }))
     });
   } catch (err) {
@@ -8261,36 +8312,45 @@ app.get('/api/accounting/expenses/analysis', isAuthenticated, async (req, res) =
   }
 });
 
-// GET /api/accounting/expenses/drilldown?account_id=&from=&to=
+// GET /api/accounting/expenses/drilldown?category_key=fuel&from=&to=
+// Uses UNIFIED_EXPENSE_CATEGORIES to resolve which account codes belong to the category
 app.get('/api/accounting/expenses/drilldown', isAuthenticated, async (req, res) => {
   try {
-    let { account_id, from, to } = req.query;
-    if (!account_id) return res.status(400).json({ error: 'account_id required' });
+    let { category_key, from, to } = req.query;
+    if (!category_key) return res.status(400).json({ error: 'category_key required' });
     if (!from) from = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0,10);
     if (!to)   to   = new Date().toISOString().slice(0,10);
 
+    // Resolve account codes for this category key
+    const codes = codesForCategory(UNIFIED_EXPENSE_CATEGORIES, category_key);
+    if (!codes) return res.status(400).json({ error: `Unknown category_key: ${category_key}` });
+
+    const placeholders = codes.map((_, i) => `$${i+3}`).join(',');
     const result = await pool.query(`
       SELECT
-        t.id,
-        t.transaction_date,
-        t.description,
-        t.amount,
-        t.reference_type,
-        t.reference_id,
-        t.notes,
-        ca.account_code,
-        ca.account_name
+        t.id, t.transaction_date, t.description, t.amount,
+        t.reference_type, t.reference_id, t.notes,
+        ca.account_code, ca.account_name
       FROM transactions t
       JOIN chart_of_accounts ca ON ca.id = t.account_id
       WHERE t.transaction_type = 'expense'
         AND ca.account_type = 'expense'
-        AND t.account_id = $1
-        AND t.transaction_date BETWEEN $2 AND $3
+        AND ca.account_code IN (${placeholders})
+        AND t.transaction_date BETWEEN $1 AND $2
       ORDER BY t.transaction_date DESC, t.id
-    `, [account_id, from, to]);
+    `, [from, to, ...codes]);
 
     const total = result.rows.reduce((s, r) => s + parseFloat(r.amount), 0);
-    res.json({ account_id, from, to, total, count: result.rows.length, items: result.rows });
+    const cat   = UNIFIED_EXPENSE_CATEGORIES.find(c => c.key === category_key);
+    res.json({
+      category_key,
+      category_label: cat ? cat.label : category_key,
+      codes,
+      from, to,
+      total,
+      count: result.rows.length,
+      items: result.rows
+    });
   } catch (err) {
     console.error('expenses/drilldown error:', err);
     res.status(500).json({ error: err.message });
@@ -8298,15 +8358,15 @@ app.get('/api/accounting/expenses/drilldown', isAuthenticated, async (req, res) 
 });
 
 // GET /api/accounting/income/analysis?from=YYYY-MM-DD&to=YYYY-MM-DD
+// Groups by UNIFIED_INCOME_CATEGORIES (same taxonomy as Intelligent Classification)
 app.get('/api/accounting/income/analysis', isAuthenticated, async (req, res) => {
   try {
     let { from, to } = req.query;
     if (!from) from = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0,10);
     if (!to)   to   = new Date().toISOString().slice(0,10);
-
     const params = [from, to];
 
-    // TRUE income: transaction_type='income' AND account_type IN ('revenue','income')
+    // 1. Grand total (real revenue accounts only)
     const totals = await pool.query(`
       SELECT COUNT(*) AS count, COALESCE(SUM(t.amount), 0) AS total
       FROM transactions t
@@ -8316,20 +8376,23 @@ app.get('/api/accounting/income/analysis', isAuthenticated, async (req, res) => 
         AND t.transaction_date BETWEEN $1 AND $2
     `, params);
 
+    // 2. Grouped by canonical income category key (CASE WHEN on account_code)
+    const categoryCase = buildCategoryCase(UNIFIED_INCOME_CATEGORIES);
     const byCategory = await pool.query(`
       SELECT
-        ca.id AS account_id, ca.account_code AS code, ca.account_name AS name,
-        COUNT(*) AS count, COALESCE(SUM(t.amount), 0) AS total
+        ${categoryCase} AS category_key,
+        COUNT(*) AS count,
+        COALESCE(SUM(t.amount), 0) AS total
       FROM transactions t
       JOIN chart_of_accounts ca ON ca.id = t.account_id
       WHERE t.transaction_type = 'income'
         AND ca.account_type IN ('revenue','income')
         AND t.transaction_date BETWEEN $1 AND $2
-      GROUP BY ca.id, ca.account_code, ca.account_name
+      GROUP BY category_key
       ORDER BY total DESC
     `, params);
 
-    // Monthly trend (last 6 months)
+    // 3. Monthly trend (last 6 months)
     const trend = await pool.query(`
       SELECT
         TO_CHAR(DATE_TRUNC('month', t.transaction_date), 'YYYY-MM') AS month,
@@ -8343,7 +8406,7 @@ app.get('/api/accounting/income/analysis', isAuthenticated, async (req, res) => 
       ORDER BY month
     `);
 
-    // Expenses same period (for net balance)
+    // 4. Expenses same period (for net balance KPI)
     const expenses = await pool.query(`
       SELECT COALESCE(SUM(t.amount), 0) AS total, COUNT(*) AS count
       FROM transactions t
@@ -8356,21 +8419,33 @@ app.get('/api/accounting/income/analysis', isAuthenticated, async (req, res) => 
     const totalIncome   = parseFloat(totals.rows[0].total) || 0;
     const totalExpenses = parseFloat(expenses.rows[0].total) || 0;
 
+    // Merge DB rows with canonical taxonomy
+    const catMap = {};
+    byCategory.rows.forEach(r => { catMap[r.category_key] = r; });
+
+    const categoriesOut = UNIFIED_INCOME_CATEGORIES
+      .map(cat => {
+        const row = catMap[cat.key];
+        if (!row || parseFloat(row.total) === 0) return null;
+        return {
+          category_key: cat.key,
+          name:  cat.label,
+          codes: cat.codes,
+          count: parseInt(row.count),
+          total: parseFloat(row.total),
+          pct:   totalIncome > 0 ? Math.round(parseFloat(row.total) / totalIncome * 100) : 0
+        };
+      })
+      .filter(Boolean);
+
     res.json({
       from, to,
-      total_income:    totalIncome,
-      income_count:    parseInt(totals.rows[0].count) || 0,
-      total_expenses:  totalExpenses,
-      expense_count:   parseInt(expenses.rows[0].count) || 0,
-      net_balance:     totalIncome - totalExpenses,
-      by_category:     byCategory.rows.map(r => ({
-        account_id: r.account_id,
-        code:       r.code,
-        name:       r.name,
-        count:      parseInt(r.count),
-        total:      parseFloat(r.total),
-        pct:        totalIncome > 0 ? Math.round(parseFloat(r.total) / totalIncome * 100) : 0
-      })),
+      total_income:   totalIncome,
+      income_count:   parseInt(totals.rows[0].count) || 0,
+      total_expenses: totalExpenses,
+      expense_count:  parseInt(expenses.rows[0].count) || 0,
+      net_balance:    totalIncome - totalExpenses,
+      by_category:    categoriesOut,
       trend: trend.rows.map(r => ({ month: r.month, total: parseFloat(r.total) }))
     });
   } catch (err) {
@@ -8379,14 +8454,19 @@ app.get('/api/accounting/income/analysis', isAuthenticated, async (req, res) => 
   }
 });
 
-// GET /api/accounting/income/drilldown?account_id=&from=&to=
+// GET /api/accounting/income/drilldown?category_key=rentals&from=&to=
+// Uses UNIFIED_INCOME_CATEGORIES to resolve which account codes belong to the category
 app.get('/api/accounting/income/drilldown', isAuthenticated, async (req, res) => {
   try {
-    let { account_id, from, to } = req.query;
-    if (!account_id) return res.status(400).json({ error: 'account_id required' });
+    let { category_key, from, to } = req.query;
+    if (!category_key) return res.status(400).json({ error: 'category_key required' });
     if (!from) from = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0,10);
     if (!to)   to   = new Date().toISOString().slice(0,10);
 
+    const codes = codesForCategory(UNIFIED_INCOME_CATEGORIES, category_key);
+    if (!codes) return res.status(400).json({ error: `Unknown category_key: ${category_key}` });
+
+    const placeholders = codes.map((_, i) => `$${i+3}`).join(',');
     const result = await pool.query(`
       SELECT
         t.id, t.transaction_date, t.description, t.amount,
@@ -8396,13 +8476,22 @@ app.get('/api/accounting/income/drilldown', isAuthenticated, async (req, res) =>
       JOIN chart_of_accounts ca ON ca.id = t.account_id
       WHERE t.transaction_type = 'income'
         AND ca.account_type IN ('revenue','income')
-        AND t.account_id = $1
-        AND t.transaction_date BETWEEN $2 AND $3
+        AND ca.account_code IN (${placeholders})
+        AND t.transaction_date BETWEEN $1 AND $2
       ORDER BY t.transaction_date DESC, t.id
-    `, [account_id, from, to]);
+    `, [from, to, ...codes]);
 
     const total = result.rows.reduce((s, r) => s + parseFloat(r.amount), 0);
-    res.json({ account_id, from, to, total, count: result.rows.length, items: result.rows });
+    const cat   = UNIFIED_INCOME_CATEGORIES.find(c => c.key === category_key);
+    res.json({
+      category_key,
+      category_label: cat ? cat.label : category_key,
+      codes,
+      from, to,
+      total,
+      count: result.rows.length,
+      items: result.rows
+    });
   } catch (err) {
     console.error('income/drilldown error:', err);
     res.status(500).json({ error: err.message });

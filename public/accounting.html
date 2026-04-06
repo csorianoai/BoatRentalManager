@@ -3156,8 +3156,8 @@
               catEl.innerHTML = '<div style="color:#94a3b8;font-size:13px;text-align:center;padding:20px">Sin gastos en el período seleccionado</div>';
             } else {
               catEl.innerHTML = d.by_category.map(cat => `
-                <div onclick="drilldownGastos('${cat.account_id}','${cat.name.replace(/'/g,"\\'")}',${cat.total})"
-                     data-testid="cat-row-${cat.code}"
+                <div onclick="drilldownGastos('${cat.category_key}','${cat.name.replace(/'/g,"\\'")}',${cat.total})"
+                     data-testid="cat-row-${cat.category_key}"
                      style="cursor:pointer;padding:8px 10px;border-radius:8px;border:1px solid #e5e7eb;background:#fff;transition:background .15s"
                      onmouseover="this.style.background='#f0f9ff'" onmouseout="this.style.background='#fff'">
                   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
@@ -3170,7 +3170,7 @@
                   <div style="background:#f1f5f9;border-radius:4px;height:5px;overflow:hidden">
                     <div style="background:#dc2626;height:100%;width:${cat.pct}%;border-radius:4px"></div>
                   </div>
-                  <div style="font-size:11px;color:#94a3b8;margin-top:3px">${cat.count} movimiento${cat.count!==1?'s':''} · Código ${cat.code}</div>
+                  <div style="font-size:11px;color:#94a3b8;margin-top:3px">${cat.count} movimiento${cat.count!==1?'s':''} · ${Array.isArray(cat.codes)?cat.codes.join(', '):cat.category_key}</div>
                 </div>
               `).join('');
             }
@@ -3193,10 +3193,11 @@
           _gastosAllRows = [];
           for (const cat of categories) {
             try {
-              const r = await fetch(`/api/accounting/expenses/drilldown?account_id=${encodeURIComponent(cat.account_id)}&from=${from}&to=${to}`);
+              const r = await fetch(`/api/accounting/expenses/drilldown?category_key=${encodeURIComponent(cat.category_key)}&from=${from}&to=${to}`);
               if (!r.ok) continue;
               const d = await r.json();
-              _gastosAllRows.push(...d.items.map(row => ({ ...row, cat_name: cat.name, cat_code: cat.code })));
+              const codeLabel = Array.isArray(cat.codes) ? cat.codes.join(',') : cat.category_key;
+              _gastosAllRows.push(...d.items.map(row => ({ ...row, cat_name: cat.name, cat_code: codeLabel })));
             } catch(_) {}
           }
           // Sort by date desc
@@ -3238,7 +3239,7 @@
           renderGastosDetailTable(filtered);
         }
 
-        async function drilldownGastos(accountId, name, total) {
+        async function drilldownGastos(categoryKey, name, total) {
           const from = document.getElementById('gastos-from').value;
           const to   = document.getElementById('gastos-to').value;
           const panel = document.getElementById('gastos-drilldown-panel');
@@ -3250,7 +3251,7 @@
           panel.scrollIntoView({ behavior:'smooth', block:'start' });
           tbody.innerHTML = '<tr><td colspan="4" style="padding:20px;text-align:center;color:#94a3b8">Cargando…</td></tr>';
           try {
-            const r = await fetch(`/api/accounting/expenses/drilldown?account_id=${encodeURIComponent(accountId)}&from=${from}&to=${to}`);
+            const r = await fetch(`/api/accounting/expenses/drilldown?category_key=${encodeURIComponent(categoryKey)}&from=${from}&to=${to}`);
             if (!r.ok) throw new Error(await r.text());
             const d = await r.json();
             document.getElementById('gastos-drill-summary').textContent =
@@ -3394,8 +3395,8 @@
               catEl.innerHTML = '<div style="color:#94a3b8;font-size:13px;text-align:center;padding:20px">Sin ingresos en el período seleccionado</div>';
             } else {
               catEl.innerHTML = d.by_category.map(cat => `
-                <div onclick="drilldownIngresos('${cat.account_id}','${cat.name.replace(/'/g,"\\'")}',${cat.total})"
-                     data-testid="ing-cat-row-${cat.code}"
+                <div onclick="drilldownIngresos('${cat.category_key}','${cat.name.replace(/'/g,"\\'")}',${cat.total})"
+                     data-testid="ing-cat-row-${cat.category_key}"
                      style="cursor:pointer;padding:8px 10px;border-radius:8px;border:1px solid #e5e7eb;background:#fff;transition:background .15s"
                      onmouseover="this.style.background='#f0fdf4'" onmouseout="this.style.background='#fff'">
                   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
@@ -3408,7 +3409,7 @@
                   <div style="background:#f1f5f9;border-radius:4px;height:5px;overflow:hidden">
                     <div style="background:#059669;height:100%;width:${cat.pct}%;border-radius:4px"></div>
                   </div>
-                  <div style="font-size:11px;color:#94a3b8;margin-top:3px">${cat.count} movimiento${cat.count!==1?'s':''} · Código ${cat.code}</div>
+                  <div style="font-size:11px;color:#94a3b8;margin-top:3px">${cat.count} movimiento${cat.count!==1?'s':''} · ${Array.isArray(cat.codes)?cat.codes.join(', '):cat.category_key}</div>
                 </div>
               `).join('');
             }
@@ -3427,10 +3428,11 @@
           _ingAllRows = [];
           for (const cat of categories) {
             try {
-              const r = await fetch(`/api/accounting/income/drilldown?account_id=${encodeURIComponent(cat.account_id)}&from=${from}&to=${to}`);
+              const r = await fetch(`/api/accounting/income/drilldown?category_key=${encodeURIComponent(cat.category_key)}&from=${from}&to=${to}`);
               if (!r.ok) continue;
               const d = await r.json();
-              _ingAllRows.push(...d.items.map(row => ({ ...row, cat_name: cat.name, cat_code: cat.code })));
+              const codeLabel = Array.isArray(cat.codes) ? cat.codes.join(',') : cat.category_key;
+              _ingAllRows.push(...d.items.map(row => ({ ...row, cat_name: cat.name, cat_code: codeLabel })));
             } catch(_) {}
           }
           _ingAllRows.sort((a,b) => b.transaction_date.localeCompare(a.transaction_date));
@@ -3475,7 +3477,7 @@
           renderIngresosDetailTable(filtered);
         }
 
-        async function drilldownIngresos(accountId, name, total) {
+        async function drilldownIngresos(categoryKey, name, total) {
           const from = document.getElementById('ing-from').value;
           const to   = document.getElementById('ing-to').value;
           const panel = document.getElementById('ing-drilldown-panel');
@@ -3487,7 +3489,7 @@
           panel.scrollIntoView({ behavior:'smooth', block:'start' });
           tbody.innerHTML = '<tr><td colspan="4" style="padding:20px;text-align:center;color:#94a3b8">Cargando…</td></tr>';
           try {
-            const r = await fetch(`/api/accounting/income/drilldown?account_id=${encodeURIComponent(accountId)}&from=${from}&to=${to}`);
+            const r = await fetch(`/api/accounting/income/drilldown?category_key=${encodeURIComponent(categoryKey)}&from=${from}&to=${to}`);
             if (!r.ok) throw new Error(await r.text());
             const d = await r.json();
             document.getElementById('ing-drill-summary').textContent =

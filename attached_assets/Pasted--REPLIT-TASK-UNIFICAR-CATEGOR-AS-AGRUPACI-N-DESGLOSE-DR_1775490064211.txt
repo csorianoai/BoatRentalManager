@@ -1,0 +1,281 @@
+# REPLIT TASK — UNIFICAR CATEGORÍAS + AGRUPACIÓN + DESGLOSE (DRILL-DOWN) PARA GASTOS E INGRESOS
+
+Stop fragmented categorization.
+Stop showing flat data without structure.
+Stop dashboards that show totals without explaining them.
+
+I need expenses and income to be classified using the exact same categories defined in Intelligent Classification,
+AND I need those categories to support grouping, totals, and full drill-down (desglose) of movements.
+
+---
+
+## PRIMARY OBJECTIVE
+
+Build a unified financial analysis system where:
+
+- both expenses and income use the same category taxonomy from Intelligent Classification
+- data is grouped by category
+- totals per category are correct
+- each category can be expanded into a full detailed breakdown
+- date filters apply consistently
+- summary → category → movement traceability is guaranteed
+
+I must be able to:
+
+1. select a date range
+2. see total expenses and total income
+3. see both grouped by category
+4. click a category (e.g. Fuel)
+5. see ALL movements that make up that total
+6. verify that the sum of those movements equals the category total
+
+---
+
+## CORE REQUIREMENT — GROUPING + DRILL-DOWN
+
+Every category must support:
+
+### 1. Aggregation (Group level)
+- total amount per category
+- number of movements per category
+- percentage of total (optional but correct)
+
+### 2. Drill-down (Desglose)
+When clicking a category:
+
+- show full list of movements
+- include:
+  - date
+  - description
+  - amount
+  - type (expense / income)
+  - source/account if applicable
+  - reference if applicable
+  - status if applicable
+
+### RULE:
+The sum of the drill-down MUST exactly match the category total.
+
+If it does not → the system is broken.
+
+---
+
+## PHASE 1 — USE INTELLIGENT CLASSIFICATION AS SOURCE OF TRUTH
+
+All grouping must be based on categories defined in Intelligent Classification.
+
+Ensure:
+
+- same category names
+- same category IDs
+- same definitions
+- no duplicated labels
+- no alternative naming in charts or UI
+
+No module can override or redefine categories.
+
+---
+
+## PHASE 2 — FIX GROUPING LOGIC
+
+Audit and correct grouping logic across:
+
+- backend aggregation queries
+- frontend grouping logic
+- chart data preparation
+- dashboard widgets
+- filters
+
+Ensure grouping is done using:
+
+- canonical category ID (not label only)
+- consistent dataset
+- correct filtered records (date, state, type)
+
+Fix:
+
+- split categories due to naming mismatch
+- missing records in groups
+- duplicated records in groups
+- incorrect totals
+- grouping based on wrong fields
+
+---
+
+## PHASE 3 — BUILD DRILL-DOWN (DESGLOSE) SYSTEM
+
+For every grouped category, implement drill-down behavior:
+
+### Interaction
+- click category
+- open:
+  - modal OR
+  - side panel OR
+  - dedicated view
+
+### Must display:
+- category name
+- total amount
+- movement count
+- full list of records
+
+### Table requirements:
+- sortable by date and amount
+- filterable
+- searchable
+- paginated if large
+
+---
+
+## PHASE 4 — APPLY TO BOTH EXPENSES AND INCOME
+
+The same logic must apply to:
+
+### EXPENSE ANALYSIS
+- grouped by category
+- drill-down per category
+- totals match detail
+
+### INCOME ANALYSIS
+- grouped by category (same taxonomy)
+- drill-down per category
+- totals match detail
+
+No separate logic.
+No simplified version for income.
+Same depth and structure.
+
+---
+
+## PHASE 5 — DATE FILTER CONSISTENCY
+
+All grouping and drill-down must respect date filters.
+
+Validate:
+
+- changing date updates totals
+- changing date updates category groups
+- changing date updates drill-down results
+- drill-down only shows records within selected range
+
+---
+
+## PHASE 6 — DASHBOARD INTEGRATION
+
+Update dashboard so grouping is clear and structured:
+
+### Must include:
+- expenses by category (grouped)
+- income by category (grouped)
+- clickable categories
+- clear totals
+- no clutter
+- no duplicated widgets
+
+### Remove:
+- flat lists without grouping
+- charts without drill-down
+- inconsistent labels
+- empty or broken visuals
+
+---
+
+## PHASE 7 — BACKEND VALIDATION
+
+Audit queries to ensure:
+
+- grouping uses correct category field
+- filters are applied before aggregation
+- no duplicates
+- no missing records
+- expense vs income separation is correct
+- aggregation logic matches detail logic
+
+---
+
+## PHASE 8 — DATABASE VALIDATION
+
+Check:
+
+- category IDs are consistent
+- all records have valid category
+- no null categories unless explicitly allowed
+- no legacy categories breaking grouping
+- no duplicated records
+
+---
+
+## PHASE 9 — REQUIRED TESTS
+
+Validate:
+
+1. category total = sum of drill-down rows
+2. expense category grouping is correct
+3. income category grouping is correct
+4. Fuel category works (total + detail)
+5. date filter updates grouping
+6. date filter updates drill-down
+7. no duplicated totals
+8. no missing records
+9. same category label appears everywhere
+10. dashboard matches detailed tables
+
+---
+
+## ABSOLUTE PROHIBITIONS
+
+Do not allow:
+
+- category totals without drill-down
+- drill-down totals that don’t match summary
+- duplicated categories due to naming
+- charts without real data
+- grouping based on inconsistent logic
+- different categories for expenses vs income
+- orphan records outside categories
+- hardcoded grouping
+
+---
+
+## REQUIRED DELIVERABLE
+
+Provide:
+
+1. how categories are unified
+2. how grouping is implemented
+3. how drill-down works
+4. how totals are calculated
+5. proof that totals = detail
+6. how expenses and income now share the same structure
+7. what was broken before and why
+8. what was fixed
+9. validation results
+
+---
+
+## ACCEPTANCE CRITERIA
+
+This is not complete until:
+
+- expenses are grouped by category correctly
+- income is grouped by category correctly
+- categories come from Intelligent Classification
+- each category has working drill-down
+- totals match detailed records exactly
+- date filters work correctly
+- dashboard reflects grouped structure
+- no fake or inconsistent data remains
+- system supports real financial analysis
+
+---
+
+## FINAL INSTRUCTION
+
+I do not want totals without explanation.
+
+I want:
+- grouped data,
+- clear categories,
+- and full drill-down visibility.
+
+Every number must be traceable to its underlying movements.
