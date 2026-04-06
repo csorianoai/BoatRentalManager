@@ -1,0 +1,347 @@
+# REPLIT TASK — AGRUPAR TODOS LOS GASTOS POR LOS GRUPOS CONTABLES DEFINIDOS Y MOSTRAR DESGLOSE COMPLETO
+
+Stop using generic or inconsistent expense grouping.
+Stop showing isolated transactions without proper grouped analysis.
+Stop creating analytics that do not reflect the account groups already defined in Intelligent Classification and accounting records.
+
+I need all expense records to be grouped using the exact expense groups/accounts already defined in the system, such as:
+
+- GPS
+- Publicidad
+- Operating / Sistemas Operativos
+- Combustible
+- Viáticos
+- Comunicaciones
+- Equipo
+- Inventario
+- Gastos Administrativos
+- Gastos de Mantenimiento
+- Partes y Piezas
+- Transportación
+- Gastos de Seguro
+- Gastos de Marina
+- Sueldos / Tripulación
+- Renta de Oficina
+- Comisiones Bancarias
+- Gastos Generales
+- and any other existing accounting group already present in Intelligent Classification / accounting data
+
+These are the groups I need the system to use to organize all expenses.
+
+---
+
+## PRIMARY OBJECTIVE
+
+Create a real expense analysis structure where:
+
+- all expenses are grouped under the correct accounting group
+- the grouping matches the categories already defined in Intelligent Classification / accounting records
+- totals per group are correct
+- each group can be expanded to view its full transaction breakdown
+- date filters work correctly
+- the summary reconciles exactly to the underlying movements
+
+I must be able to:
+
+1. choose a date range
+2. see total expenses for that period
+3. see expenses grouped by the accounting groups listed above
+4. click a group such as `Combustible`
+5. see the full breakdown of all transactions inside that group
+6. verify that the detailed sum equals the group total
+
+---
+
+## MASTER GROUPING RULE
+
+Use the existing accounting groups as the canonical grouping structure for expenses.
+
+This means the system must group expenses by real groups such as:
+
+- GPS
+- Publicidad
+- Operating / Sistemas Operativos
+- Combustible
+- Viáticos
+- Comunicaciones
+- Equipo
+- Inventario
+- Gastos Administrativos
+- Gastos de Mantenimiento
+- Partes y Piezas
+- Transportación
+- Gastos de Seguro
+- Gastos de Marina
+- Sueldos / Tripulación
+- Renta de Oficina
+- Comisiones Bancarias
+- Gastos Generales
+
+If there are additional valid groups already present in the accounting data or Intelligent Classification, include them too.
+Do not invent parallel groups.
+Do not rename them inconsistently.
+Do not split the same group under multiple labels.
+
+---
+
+## PHASE 1 — AUDIT CURRENT EXPENSE GROUPING
+
+Review how expenses are currently grouped.
+
+Determine:
+
+- which field currently stores the category/group
+- whether grouping is based on canonical values or inconsistent labels
+- whether multiple labels are splitting one real group
+- whether some expense records are uncategorized
+- whether some records are mapped to wrong groups
+- whether charts and tables use different grouping logic
+- whether summary totals reconcile with grouped totals
+
+Find all issues that prevent clean grouping by the accounting groups above.
+
+---
+
+## PHASE 2 — UNIFY THE GROUP STRUCTURE
+
+Refactor the expense analysis so all expenses use one canonical group structure.
+
+Ensure:
+
+- one canonical key per group
+- one consistent display label per group
+- one consistent description if available
+- same group identity across backend, frontend, charts, tables, filters, and drill-down
+
+Fix:
+
+- duplicated groups caused by spelling variations
+- English vs Spanish mismatches
+- labels like `fuel` vs `Gastos de Combustible`
+- labels like `operating systems` vs `Sistemas Operativos`
+- labels like `publicidad` vs `Publicidad`
+- labels like `bank commissions` vs `Comisiones Bancarias`
+- labels like `crew payroll` vs `Sueldos / Tripulación`
+
+Grouping must be based on canonical category identity, not loose display text.
+
+---
+
+## PHASE 3 — BUILD GROUPED EXPENSE ANALYSIS
+
+Create or repair the grouped expense view.
+
+### Required grouped summary
+For the selected date range, show:
+
+- total expenses
+- total number of expense movements
+- grouped totals by accounting group
+- optional percentage share per group if accurate
+
+### Group list requirements
+Each group row/card must show:
+
+- group name
+- total amount
+- movement count
+
+Sort by highest total first unless another sorting option is provided.
+
+---
+
+## PHASE 4 — BUILD FULL DRILL-DOWN / DESGLOSE
+
+Every group must support drill-down.
+
+When clicking a group such as `Combustible`, `Publicidad`, `Viáticos`, or `GPS`, show the full breakdown of movements inside that group.
+
+### The drill-down must include:
+- date
+- description / bank memo
+- vendor / counterparty if available
+- amount
+- transaction ID / reference if available
+- accounting status if available
+- source account/card if available
+
+### The drill-down must also show:
+- group name
+- total amount for that group
+- number of transactions
+
+### Critical rule
+The sum of all rows in the drill-down must exactly equal the displayed group total.
+
+If it does not reconcile, the implementation is wrong.
+
+---
+
+## PHASE 5 — DATE FILTERING
+
+The grouped analysis and drill-down must respect date filters.
+
+Support at minimum:
+
+- this month
+- previous month
+- custom range
+- from / to date
+
+When date range changes, update consistently:
+
+- total expense summary
+- grouped totals
+- charts
+- drill-down detail
+- movement counts
+
+No stale totals.
+No partial refreshes.
+
+---
+
+## PHASE 6 — DASHBOARD INTEGRATION
+
+Update the dashboard so expense analytics are cleanly organized and useful.
+
+The dashboard must show:
+
+- total expenses
+- grouped expense analysis
+- clear visual hierarchy
+- ability to click into group detail
+- no visual clutter
+- no broken or empty widgets pretending to work
+
+Remove or fix:
+
+- disorganized blocks
+- duplicate widgets
+- flat ungrouped expense views
+- charts without drill-down
+- inconsistent labels across cards, tables, and charts
+
+---
+
+## PHASE 7 — BACKEND / QUERY AUDIT
+
+Audit the backend queries used for expense grouping.
+
+Ensure:
+
+- only expense records are included
+- aggregation is correct
+- filters are applied before grouping
+- no duplicate records inflate totals
+- category mapping is correct
+- grouped totals and detail rows come from the same filtered dataset
+- dashboard and drill-down do not use separate inconsistent logic
+
+Fix any root cause in:
+- SQL / ORM queries
+- mapping logic
+- transformation layers
+- grouping services
+- chart payload generation
+- filter application
+
+---
+
+## PHASE 8 — DATABASE VALIDATION
+
+Audit the DB records to confirm they support correct grouping.
+
+Check:
+
+- category/group field
+- canonical IDs
+- label consistency
+- null groups
+- duplicate transactions
+- legacy labels
+- misclassified rows
+- test/demo contamination if any
+
+Normalize where needed so totals do not split across equivalent groups.
+
+---
+
+## PHASE 9 — REQUIRED TESTS
+
+Validate at minimum:
+
+1. `Combustible` shows correct total
+2. `Combustible` drill-down matches that total
+3. `Publicidad` shows correct total
+4. `Publicidad` drill-down matches that total
+5. `Viáticos` shows correct total
+6. `GPS` shows correct total
+7. `Operating / Sistemas Operativos` shows correct total
+8. date filters update grouped totals correctly
+9. detail rows reconcile to each group total
+10. no expense record appears under the wrong group
+11. dashboard and grouped analysis match
+12. no duplicate or split groups remain
+
+---
+
+## ABSOLUTE PROHIBITIONS
+
+Do not allow:
+
+- totals without drill-down
+- drill-down totals that don’t reconcile
+- multiple labels for the same group
+- generic “Other” swallowing valid known groups
+- flat expense lists without grouped analysis
+- fake or hardcoded grouped totals
+- charts that don’t match table totals
+- dashboard widgets disconnected from real grouped data
+
+---
+
+## REQUIRED DELIVERABLE
+
+Do not respond with “done”.
+
+Provide a structured report with:
+
+1. what expense groups were detected as canonical
+2. what grouping issues were found
+3. what mappings or labels were corrected
+4. how grouping is now implemented
+5. how drill-down works
+6. how totals are calculated
+7. proof that group totals reconcile to detailed rows
+8. how date filtering works now
+9. what dashboard sections were reorganized
+10. any residual risks still present
+
+---
+
+## ACCEPTANCE CRITERIA
+
+This task is not complete until all of the following are true:
+
+- all expenses are grouped by the defined accounting groups
+- each group shows a correct total
+- each group has full drill-down
+- drill-down equals the group total
+- date filtering works correctly
+- dashboard shows grouped expense analysis clearly
+- no duplicate labels split the same group
+- no fake or inconsistent grouped data remains
+- the module supports real accounting analysis
+
+---
+
+## FINAL INSTRUCTION
+
+I do not want to see only raw expense transactions.
+
+I want all expenses grouped by the real accounting groups already defined in the system, such as:
+GPS, Publicidad, Operating, Combustible, Viáticos, and the rest.
+
+And for every group, I need to see the full breakdown of movements that make up that total.
+Every total must be traceable and reconciled.

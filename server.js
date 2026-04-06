@@ -6888,47 +6888,65 @@ function smartClassify(description, amount, transactionType, patterns = [], boat
   }
   const vendor = detectVendor(desc);
 
-  // --- Keyword rules ---
+  // --- Keyword rules (canonical keys match UNIFIED_EXPENSE_CATEGORIES) ---
   if (/fuel|gas(?:oline)?|diesel|petro|gasolina|shell\b|exxon|mobil\b|chevron|sunoco|bp\b|citgo|combustible/.test(desc))
-    return out('expense','fuel','high','Combustible detectado','Gastos de Combustible','Cuenta Bancaria', vendor||'Estación de Combustible','expenses',detectedBoatId);
+    return out('expense','combustible','high','Combustible detectado','Gastos de Combustible','Cuenta Bancaria', vendor||'Estación de Combustible','expenses',detectedBoatId);
 
   if (/marina|dock(?:age)?|harbour?|slip\b|mooring|anchorage|pier\b/.test(desc))
-    return out('expense','marina_fees','high','Marina/dock detectado','Gastos de Marina','Cuenta Bancaria', vendor||'Marina','expenses',detectedBoatId);
+    return out('expense','marina','high','Marina/dock detectado','Gastos de Marina','Cuenta Bancaria', vendor||'Marina','expenses',detectedBoatId);
 
   if (/repair|service|maintenance|maint\b|mechanic|engine\b|motor\b|propel|reparacion|servicio|overhaul/.test(desc))
-    return out('expense','maintenance_repair','high','Mantenimiento/reparación','Gastos de Mantenimiento','Cuenta Bancaria', vendor,'expenses',detectedBoatId);
+    return out('expense','mantenimiento','high','Mantenimiento/reparación','Gastos de Mantenimiento','Cuenta Bancaria', vendor,'expenses',detectedBoatId);
+
+  if (/parts?|pieza|repuesto|spare|west marine|hardware|component/.test(desc))
+    return out('expense','partes_piezas','high','Partes y piezas detectadas','Partes y Piezas','Cuenta Bancaria', vendor,'expenses',detectedBoatId);
 
   if (/clean(?:ing)?|laundry|wash\b|detail(?:ing)?|sanitiz|limpieza/.test(desc))
-    return out('expense','cleaning','high','Limpieza detectada','Gastos de Limpieza','Cuenta Bancaria', vendor,'expenses',detectedBoatId);
+    return out('expense','limpieza','high','Limpieza detectada','Gastos de Limpieza','Cuenta Bancaria', vendor,'expenses',detectedBoatId);
 
   if (/insurance|insur\b|poliz|premium\b|seguro/.test(desc))
-    return out('expense','insurance','high','Seguro detectado','Gastos de Seguro','Cuenta Bancaria', vendor,'expenses',null);
+    return out('expense','seguro','high','Seguro detectado','Gastos de Seguro','Cuenta Bancaria', vendor,'expenses',null);
 
   if (/bank\s*fee|bank\s*charge|service\s*charge|wire\s*fee|wire\s*transfer\s*fee|ach\s*fee|monthly\s*fee|account\s*fee|nsf\s*fee|overdraft|comision\s*bancaria|comisiones?\s*banco|cargo\s*bancario|cargos?\s*servicio|cuota\s*mantenimiento/.test(desc))
-    return out('expense','bank_commissions','high','Comisión bancaria detectada','Comisiones Bancarias','Cuenta Bancaria', vendor,'expenses',null);
+    return out('expense','comisiones_bancarias','high','Comisión bancaria detectada','Comisiones Bancarias','Cuenta Bancaria', vendor,'expenses',null);
 
   if (/interest\s*expense|interest\s*charge|interes\s*bancario|intereses?\s*prestamo|loan\s*interest|finance\s*charge/.test(desc))
-    return out('expense','interest_expense','high','Interés financiero detectado','Intereses Financieros','Cuenta Bancaria', vendor,'expenses',null);
+    return out('expense','comisiones_bancarias','high','Interés financiero detectado','Comisiones Bancarias','Cuenta Bancaria', vendor,'expenses',null);
 
-  if (/crew|captain|staff|salary|payroll|nomina|sueldo/.test(desc))
-    return out('expense','crew_payroll','high','Nómina/crew detectada','Gastos de Nómina','Cuenta Bancaria', vendor,'expenses',detectedBoatId);
+  if (/crew|captain|staff|salary|payroll|nomina|sueldo|tripulacion|capitan/.test(desc))
+    return out('expense','sueldos','high','Nómina/tripulación detectada','Sueldos / Tripulación','Cuenta Bancaria', vendor,'expenses',detectedBoatId);
 
-  if (/subscription|suscripcion|netflix|spotify|dropbox|google\s+cloud|aws\b|hosting/.test(desc))
-    return out('expense','subscriptions','medium','Suscripción detectada','Gastos de Suscripciones','Cuenta Bancaria', vendor,'expenses',null);
+  if (/gps\b|garmin|navico|furuno|simrad|chartplotter|chart\s*plotter|ais\s*tracker|vessel\s*tracker/.test(desc))
+    return out('expense','gps','high','GPS/navegación detectado','GPS Barcos','Cuenta Bancaria', vendor,'expenses',detectedBoatId);
 
-  if (/office|supply|supplies|staples|fedex|ups\b|printing|papel|oficina|admin/.test(desc))
-    return out('expense','office','medium','Gastos de oficina','Gastos de Oficina','Cuenta Bancaria', vendor,'expenses',null);
+  if (/publicidad|advertising|facebook\s*ads|google\s*ads|instagram\s*ads|meta\s*ads|marketing\s*digital|promo|anuncio/.test(desc))
+    return out('expense','publicidad','high','Publicidad/ads detectada','Publicidad','Cuenta Bancaria', vendor,'expenses',null);
 
-  if (/west marine/.test(desc))
-    return out('expense','marine_supplies','high','West Marine — suministros náuticos','Gastos de Suministros Marinos','Cuenta Bancaria','West Marine','expenses',detectedBoatId);
+  if (/viatico|per\s*diem|perdiem|meal\s*allowance|travel\s*expense|hospedaje|hotel|alojamiento/.test(desc))
+    return out('expense','viaticos','high','Viático detectado','Viáticos','Cuenta Bancaria', vendor,'expenses',detectedBoatId);
+
+  if (/uber|lyft|taxi|transporte|flete|traslado|shipping|freight|mensajeria|courier|fedex|ups\b|dhl/.test(desc))
+    return out('expense','transportacion','high','Transporte/flete detectado','Transportación','Cuenta Bancaria', vendor,'expenses',detectedBoatId);
+
+  if (/rent(?:al)?\s*office|oficina\s*renta|renta\s*oficina|alquiler\s*oficina|office\s*lease|coworking/.test(desc))
+    return out('expense','renta_oficina','high','Renta de oficina detectada','Renta de Oficina','Cuenta Bancaria', vendor,'expenses',null);
+
+  if (/telefon|celular|movil|internet|cable|wifi|t-mobile|at&t|verizon|comcast|comunicac|phone\s*bill|data\s*plan/.test(desc))
+    return out('expense','comunicaciones','high','Comunicaciones detectadas','Comunicaciones','Cuenta Bancaria', vendor,'expenses',null);
+
+  if (/software|sistema|platform|saas|subscription|suscripcion|netflix|spotify|dropbox|google\s+cloud|aws\b|hosting|microsoft|quickbooks|operativ/.test(desc))
+    return out('expense','sistemas_operativos','medium','Software/sistema detectado','Sistemas Operativos','Cuenta Bancaria', vendor,'expenses',null);
+
+  if (/office\s*supply|supplies|staples|paper|papel|toner|printer|impresora|admin(?:istrat)/.test(desc))
+    return out('expense','gastos_admin','medium','Gastos administrativos','Gastos Administrativos','Cuenta Bancaria', vendor,'expenses',null);
 
   if (/amazon|home depot|lowes?|walmart|costco|sam\'s club|harbor freight/.test(desc)) {
     if (amt > 1000) return out('asset','equipment','medium','Proveedor grande + monto alto → activo probable','Activos — Equipos','Cuenta Bancaria', vendor,'assets',detectedBoatId);
-    if (amt > 200) return out('expense','inventory','medium','Proveedor tipo inventario/partes','Gastos de Inventario','Cuenta Bancaria', vendor,'inventory',detectedBoatId);
-    return out('expense','office','medium','Proveedor suministros generales','Gastos Generales','Cuenta Bancaria', vendor,'expenses',null);
+    if (amt > 200) return out('expense','partes_piezas','medium','Proveedor tipo inventario/partes','Partes y Piezas','Cuenta Bancaria', vendor,'expenses',detectedBoatId);
+    return out('expense','suministros','medium','Proveedor suministros generales','Suministros / Equipo','Cuenta Bancaria', vendor,'expenses',null);
   }
 
-  if (/equipment|radio\b|gps\b|device|electronic|sensor|camera|sonar|equipo|chart plotter|autopilot/.test(desc))
+  if (/equipment|radio\b|device|electronic|sensor|camera|sonar|equipo|autopilot/.test(desc))
     return out('asset','equipment','high','Equipo náutico/electrónico','Activos — Equipos','Cuenta Bancaria', vendor,'assets',detectedBoatId);
 
   if ((/boat|yacht|hull|vessel|embarcacion|outboard|motor\s*boat/.test(desc)) && amt > 5000)
@@ -7634,19 +7652,36 @@ app.get('/api/accounting/conciliation/items', isAuthenticated, async (req, res) 
 //   - Expense Analysis (/api/accounting/expenses/analysis)
 //   - Income  Analysis (/api/accounting/income/analysis)
 //   - Drill-down endpoints
+// ─── CANONICAL EXPENSE TAXONOMY ───────────────────────────────────────────────
+// One group per real accounting category in the chart of accounts.
+// This is the SINGLE SOURCE OF TRUTH used by:
+//   - /api/accounting/expenses/analysis
+//   - /api/accounting/expenses/drilldown
+//   - Clasificación Inteligente
+//   - All dashboard KPIs
+// RULE: no account code appears in more than one group.
+// RULE: ELSE fallback → gastos_generales (never a mystery "other").
 const UNIFIED_EXPENSE_CATEGORIES = [
-  { key:'fuel',         label:'Combustible',              codes:['5010'] },
-  { key:'marina_fees',  label:'Marina / Docking',         codes:['5050','5200'] },
-  { key:'maintenance',  label:'Mantenimiento',            codes:['5020','5030','5070','5100'] },
-  { key:'cleaning',     label:'Limpieza',                 codes:['5040'] },
-  { key:'insurance',    label:'Seguros',                  codes:['5060','5300'] },
-  { key:'crew_payroll', label:'Nómina Tripulación',       codes:['5400'] },
-  { key:'commissions',  label:'Comisiones Plataforma',    codes:['5500'] },
-  { key:'marketing',    label:'Marketing',                codes:['5600'] },
-  { key:'bank_fees',    label:'Comisiones Bancarias',     codes:['5910','5920'] },
-  { key:'depreciation', label:'Depreciación',             codes:['5810'] },
-  { key:'admin',        label:'Gastos Administrativos',   codes:['5800','5900'] },
-  { key:'operational',  label:'Gastos Operativos',        codes:['5080','5700','5930','5940','5950','5960','5970','5975','5980','5985','5990'] },
+  { key:'combustible',           label:'Combustible',              codes:['5010'] },
+  { key:'marina',                label:'Gastos de Marina',         codes:['5050','5200'] },
+  { key:'mantenimiento',         label:'Gastos de Mantenimiento',  codes:['5030','5070','5100'] },
+  { key:'partes_piezas',         label:'Partes y Piezas',          codes:['5020','5975'] },
+  { key:'limpieza',              label:'Limpieza',                 codes:['5040'] },
+  { key:'seguro',                label:'Gastos de Seguro',         codes:['5060','5300'] },
+  { key:'sueldos',               label:'Sueldos / Tripulación',    codes:['5400'] },
+  { key:'comisiones_plataforma', label:'Comisiones de Plataforma', codes:['5500'] },
+  { key:'publicidad',            label:'Publicidad',               codes:['5600','5960'] },
+  { key:'suministros',           label:'Suministros / Equipo',     codes:['5700'] },
+  { key:'gastos_admin',          label:'Gastos Administrativos',   codes:['5800','5900'] },
+  { key:'depreciacion',          label:'Depreciación',             codes:['5810'] },
+  { key:'comisiones_bancarias',  label:'Comisiones Bancarias',     codes:['5910','5920'] },
+  { key:'viaticos',              label:'Viáticos',                 codes:['5930'] },
+  { key:'transportacion',        label:'Transportación',           codes:['5940'] },
+  { key:'gps',                   label:'GPS Barcos',               codes:['5950'] },
+  { key:'renta_oficina',         label:'Renta de Oficina',         codes:['5970'] },
+  { key:'sistemas_operativos',   label:'Sistemas Operativos',      codes:['5080','5980'] },
+  { key:'comunicaciones',        label:'Comunicaciones',           codes:['5985'] },
+  { key:'gastos_generales',      label:'Gastos Generales',         codes:['5990'] },
 ];
 
 const UNIFIED_INCOME_CATEGORIES = [
@@ -7657,13 +7692,15 @@ const UNIFIED_INCOME_CATEGORIES = [
   { key:'other',   label:'Otros Ingresos',     codes:['4900'] },
 ];
 
-// Helper: build SQL CASE expression for semantic category grouping
-function buildCategoryCase(categories) {
+// Helper: build SQL CASE expression for semantic category grouping.
+// defaultKey: which category key receives any account code not explicitly listed.
+// For expenses use 'gastos_generales'; for income use 'other'.
+function buildCategoryCase(categories, defaultKey = 'gastos_generales') {
   const branches = categories.map(cat => {
     const inList = cat.codes.map(c => `'${c}'`).join(',');
     return `WHEN ca.account_code IN (${inList}) THEN '${cat.key}'`;
   });
-  return `CASE ${branches.join(' ')} ELSE 'other' END`;
+  return `CASE ${branches.join(' ')} ELSE '${defaultKey}' END`;
 }
 
 // Helper: look up codes for a given category key
@@ -7675,28 +7712,50 @@ function codesForCategory(categories, key) {
 
 // --- Post a confirmed statement to accounting (create transaction) ---
 // ── Category → preferred account code mapping ──────────────────────────────
+// Maps canonical category keys (from smartClassify + UNIFIED_EXPENSE_CATEGORIES)
+// → preferred account_code for resolveAccountId when posting bank statements.
 const CATEGORY_ACCOUNT_CODE = {
-  // Expenses
-  fuel:              '5010',
-  marina_fees:       '5200',
-  maintenance_repair:'5100',
-  cleaning:          '5040',
-  insurance:         '5300',
-  crew_payroll:      '5400',
-  subscriptions:     '5080',
-  office:            '5080',
-  marine_supplies:   '5020',
-  inventory:         '5080',
-  deposit:           '5080',
-  other_expense:     '5080',
-  // Assets
-  equipment:         '1600',
-  boat_purchase:     '1500',
-  // Transfers
-  bank_transfer:     '1010',
-  // Bancario / Financiero
-  bank_commissions:  '5920',
-  interest_expense:  '5910',
+  // ── Expenses (canonical keys = UNIFIED_EXPENSE_CATEGORIES.key) ────────────
+  combustible:           '5010',
+  marina:                '5050',
+  mantenimiento:         '5100',
+  partes_piezas:         '5975',
+  limpieza:              '5040',
+  seguro:                '5300',
+  sueldos:               '5400',
+  comisiones_plataforma: '5500',
+  publicidad:            '5960',
+  suministros:           '5700',
+  gastos_admin:          '5900',
+  depreciacion:          '5810',
+  comisiones_bancarias:  '5920',
+  viaticos:              '5930',
+  transportacion:        '5940',
+  gps:                   '5950',
+  renta_oficina:         '5970',
+  sistemas_operativos:   '5980',
+  comunicaciones:        '5985',
+  gastos_generales:      '5990',
+  // ── Legacy keys (backward compat for old bank_statement records) ──────────
+  fuel:                  '5010',
+  marina_fees:           '5050',
+  maintenance_repair:    '5100',
+  cleaning:              '5040',
+  insurance:             '5300',
+  crew_payroll:          '5400',
+  subscriptions:         '5080',
+  office:                '5900',
+  marine_supplies:       '5020',
+  inventory:             '5975',
+  bank_commissions:      '5920',
+  interest_expense:      '5910',
+  other_expense:         '5990',
+  deposit:               '5080',
+  // ── Assets ───────────────────────────────────────────────────────────────
+  equipment:             '1600',
+  boat_purchase:         '1500',
+  // ── Transfers ────────────────────────────────────────────────────────────
+  bank_transfer:         '1010',
   // Income → revenue accounts found dynamically
 };
 
@@ -8377,7 +8436,7 @@ app.get('/api/accounting/income/analysis', isAuthenticated, async (req, res) => 
     `, params);
 
     // 2. Grouped by canonical income category key (CASE WHEN on account_code)
-    const categoryCase = buildCategoryCase(UNIFIED_INCOME_CATEGORIES);
+    const categoryCase = buildCategoryCase(UNIFIED_INCOME_CATEGORIES, 'other');
     const byCategory = await pool.query(`
       SELECT
         ${categoryCase} AS category_key,
