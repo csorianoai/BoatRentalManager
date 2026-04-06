@@ -1,0 +1,497 @@
+# REPLIT BUILD TASK — CREATE A WORLD-CLASS MODULAR DASHBOARD IN REACT + TAILWIND
+
+Build a production-quality dashboard in **React + Tailwind CSS**.
+Do not make a static mock.
+Do not create a decorative landing page.
+Do not build a generic admin template.
+
+I need a **real modular control-center dashboard** inspired by the old dashboard layout we had before, but redesigned into a much more modern, premium, structured, and operational interface.
+
+The old dashboard concept is important because it had:
+- visible module access
+- simple modular navigation
+- fast scanning
+- operational clarity
+
+Now rebuild that concept using the **new modules, new accounting workflows, and new financial analysis structure** we have developed.
+
+The result must feel like a top-tier SaaS product:
+- modern
+- elegant
+- clear
+- modular
+- premium
+- scalable
+- enterprise-ready
+- visually excellent
+- operationally useful
+
+---
+
+## TECH STACK REQUIREMENTS
+
+Use:
+
+- React
+- Tailwind CSS
+- component-based architecture
+- clean reusable UI primitives
+- responsive design
+- accessible interactions
+- modern icon system
+- smooth but subtle transitions
+- no heavy unnecessary animation
+
+If already available in project, use:
+- React Router for navigation
+- Lucide icons
+- Recharts for charts
+- shadcn-style component patterns if useful
+- Zustand / context only if really needed for dashboard state
+
+Keep the implementation clean and maintainable.
+
+---
+
+## PRIMARY GOAL
+
+Build a dashboard homepage / control center that:
+
+- restores the modular dashboard experience we had before
+- looks much more modern and premium
+- organizes modules by business domain
+- integrates the new financial and accounting modules
+- includes clear entry points to the main system areas
+- provides executive summary + operational access + financial intelligence
+
+This should not feel like a flat grid of random buttons.
+It must feel like a designed system.
+
+---
+
+## PAGE STRUCTURE TO BUILD
+
+Create the dashboard page with the following structure:
+
+### 1. Top Header / Toolbar
+Build a clean top control bar with:
+
+- page title: `Dashboard`
+- short subtitle describing it as the main control center
+- date range selector
+- platform selector if applicable
+- optional quick search field
+- action buttons on the right such as:
+  - Export PDF
+  - Export Excel
+
+This top section should feel executive, clean, and aligned.
+
+---
+
+### 2. Executive KPI Row
+Create a top KPI section with premium summary cards.
+
+Include cards such as:
+- Total Ingresos
+- Total Gastos
+- Balance Neto
+- Movimientos Procesados
+- Pendientes / Alertas if relevant
+
+Each KPI card must include:
+- label
+- value
+- optional trend / sublabel
+- icon
+- clean visual hierarchy
+
+If no real data is available yet, use clearly marked placeholder props and structure the components for real API integration later.
+Do not hardcode fake business claims in final logic.
+
+---
+
+### 3. Main Module Sections
+Build grouped module-card sections instead of one flat grid.
+
+Use sections like:
+
+#### Operación
+- Calendario
+- Operaciones
+- Flotilla
+- Mantenimiento
+- Mensajes
+
+#### Finanzas
+- Contabilidad
+- Análisis de Gastos
+- Análisis de Ingresos
+- Conciliación Final
+- Envío a Contabilidad
+- Dashboard Ejecutivo
+
+#### Inteligencia
+- Clasificación Inteligente
+- Pricing Dinámico
+- Precios
+- Comisiones
+- Condiciones
+
+#### Gestión
+- Documentos
+- Activos
+- Categorías / Grupos Contables
+- Reportes
+
+Each section must have:
+- section title
+- optional subtitle
+- consistent card grid
+- visual grouping
+
+---
+
+### 4. Financial Analysis Area
+Create a dashboard area dedicated to financial intelligence.
+
+Include:
+
+#### Expense Analysis Widget
+- title
+- grouped expenses by category
+- categories like:
+  - GPS
+  - Publicidad
+  - Operating / Sistemas Operativos
+  - Combustible
+  - Viáticos
+  - Comunicaciones
+  - Equipo
+  - Inventario
+  - Gastos Administrativos
+  - Gastos de Mantenimiento
+  - Partes y Piezas
+  - Transportación
+  - Gastos de Seguro
+  - Gastos de Marina
+  - Sueldos / Tripulación
+  - Renta de Oficina
+  - Comisiones Bancarias
+  - Gastos Generales
+- chart or grouped list
+- each category row clickable for drill-down later
+
+#### Income Analysis Widget
+- total ingresos
+- grouped income structure using canonical categories from intelligent classification
+- chart/list prepared for drill-down later
+
+#### Summary Comparison Widget
+- ingresos vs gastos
+- net result
+- clean comparison visualization
+
+Do not overcomplicate charts.
+Use readable, high-quality, restrained visuals.
+
+---
+
+### 5. Drill-Down Ready Components
+Even if real backend drill-down is not fully wired yet, structure the UI so it is ready.
+
+Create reusable components for:
+- grouped category row
+- expandable detail panel or modal
+- detailed movement table
+- filter toolbar
+- empty state
+- loading state
+- error state
+
+Prepare props so later we can pass:
+- category name
+- total amount
+- movement count
+- array of movements
+
+---
+
+## COMPONENTS TO CREATE
+
+Create reusable components such as:
+
+- `DashboardHeader`
+- `DashboardFilters`
+- `KpiCard`
+- `SectionHeader`
+- `ModuleCard`
+- `ModuleSection`
+- `FinancialSummaryCard`
+- `CategoryBreakdownCard`
+- `CategoryRow`
+- `IncomeExpenseComparison`
+- `EmptyState`
+- `LoadingState`
+- `DetailDrawer` or `DetailModal`
+- `MovementTable`
+
+Keep them modular and easy to reuse.
+
+---
+
+## MODULE CARD DESIGN REQUIREMENTS
+
+Each module card must feel premium and modern.
+
+Each card should include:
+- icon
+- title
+- optional small description
+- clear hover state
+- clear clickability only if real route exists
+- balanced padding
+- rounded corners
+- subtle shadow
+- strong typography
+- consistent height
+
+Cards must not look childish or template-like.
+
+They should feel closer to:
+- Stripe dashboard quality
+- Linear clarity
+- Apple-level spacing discipline
+- enterprise SaaS polish
+
+---
+
+## VISUAL DESIGN DIRECTION
+
+Use a premium modern visual language:
+
+- light theme first
+- soft neutral background
+- white cards
+- subtle shadows
+- disciplined blue accents
+- very clean spacing
+- readable typography
+- consistent icon sizes
+- elegant border radius
+- restrained gradients only if truly useful
+- polished layout rhythm
+
+Avoid:
+- clutter
+- giant empty gaps
+- overly saturated gradients
+- random colors
+- glassmorphism overload
+- toy-like UI
+- busy admin-template look
+
+The design should feel expensive, calm, and highly usable.
+
+---
+
+## LAYOUT REQUIREMENTS
+
+The layout must be responsive and well structured.
+
+### Desktop
+- wide executive layout
+- grouped sections clearly separated
+- module cards in responsive grid
+- financial widgets balanced visually
+
+### Tablet
+- sections stack gracefully
+- KPI cards wrap cleanly
+- toolbar remains usable
+
+### Mobile
+- single-column layout
+- horizontal overflow avoided
+- filters stack cleanly
+- cards remain tappable and readable
+
+Use Tailwind utilities carefully.
+Do not create inconsistent spacing.
+
+---
+
+## ROUTING / NAVIGATION REQUIREMENTS
+
+If routes exist, wire module cards to real routes.
+If routes do not exist yet, structure route targets cleanly with placeholder paths such as:
+
+- `/calendario`
+- `/operaciones`
+- `/flotilla`
+- `/mantenimiento`
+- `/contabilidad`
+- `/clasificacion-inteligente`
+- `/analisis-gastos`
+- `/analisis-ingresos`
+- `/conciliacion-final`
+- `/documentos`
+- `/activos`
+- `/dashboard-ejecutivo`
+
+Do not leave cards visually clickable if they do nothing.
+Use a disabled or coming-soon style only if absolutely necessary.
+
+---
+
+## DATA ARCHITECTURE REQUIREMENTS
+
+Structure the page so it can later receive real backend data.
+
+Create typed mock structures / interfaces such as:
+
+- dashboard KPIs
+- module definitions
+- expense category summary
+- income category summary
+- movement detail rows
+- filter state
+
+Example data shape expectations:
+- `kpis`
+- `modulesBySection`
+- `expenseGroups`
+- `incomeGroups`
+- `recentAlerts`
+- `filters`
+
+Keep business data separate from presentation components.
+
+---
+
+## FILE / CODE ORGANIZATION
+
+Organize code cleanly.
+
+Suggested structure:
+
+- `pages/DashboardPage.jsx` or `.tsx`
+- `components/dashboard/DashboardHeader`
+- `components/dashboard/KpiCard`
+- `components/dashboard/ModuleCard`
+- `components/dashboard/ModuleSection`
+- `components/dashboard/CategoryBreakdownCard`
+- `components/dashboard/MovementTable`
+- `data/dashboardMockData`
+- `types/dashboardTypes` if TS is used
+
+Keep code readable and production-oriented.
+
+---
+
+## UX REQUIREMENTS
+
+The dashboard must feel immediately understandable.
+
+A user should be able to:
+- understand the main areas quickly
+- identify financial controls quickly
+- access key modules quickly
+- scan KPIs without confusion
+- distinguish operation vs finance vs intelligence sections
+- feel that the system is organized again
+
+The dashboard must reduce confusion, not increase it.
+
+---
+
+## ACCESSIBILITY / INTERACTION REQUIREMENTS
+
+Ensure:
+- clear focus states
+- keyboard navigability for key controls
+- good contrast
+- button states for hover / active / disabled
+- consistent pointer behavior
+- semantic HTML where possible
+
+---
+
+## EMPTY / LOADING / ERROR STATES
+
+Build polished states for:
+- no data
+- loading
+- partial loading
+- fetch error
+
+Examples:
+- `No expense data for this period`
+- `No income data for this period`
+- `Unable to load dashboard data`
+
+Do not leave empty white boxes.
+
+---
+
+## DO NOT DO THIS
+
+Do not:
+- build a static fake dribbble shot
+- create one giant flat grid of cards
+- use random placeholder content everywhere
+- mix all modules without sections
+- use harsh colors or noisy gradients
+- make the dashboard look like a generic bootstrap admin
+- overanimate
+- create dead navigation
+- ignore the new accounting and financial flows
+
+---
+
+## BUILD DELIVERABLE
+
+Deliver a complete React + Tailwind dashboard page implementation with:
+
+1. modern top toolbar
+2. executive KPI cards
+3. grouped module sections
+4. financial analysis widgets
+5. reusable dashboard components
+6. responsive layout
+7. route-ready module cards
+8. clean code structure
+9. premium visual polish
+10. placeholders structured for real API integration
+
+---
+
+## SUCCESS CRITERIA
+
+This is successful only if:
+
+- the old modular dashboard spirit is recovered
+- the new dashboard looks dramatically better
+- modules are grouped intelligently
+- finance and accounting modules are prominently integrated
+- expense and income analysis areas exist
+- the layout feels premium and highly organized
+- the code is reusable and scalable
+- the page looks production-ready, not demo-level
+
+---
+
+## FINAL INSTRUCTION
+
+Build the dashboard as the elite modern version of the old control center we had before.
+
+Preserve the operational modular logic.
+Upgrade everything else:
+- design
+- structure
+- hierarchy
+- clarity
+- financial intelligence integration
+- engineering quality
+
+The result should feel like a top 0.1% SaaS dashboard built for real business operations.

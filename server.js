@@ -13165,9 +13165,47 @@ app.get('/api/executive-dashboard', isAuthenticated, async (req, res) => {
 const PORT = process.env.PORT || 5000;
 const HOST = '0.0.0.0'; // Required for deployment
 
-app.listen(PORT, HOST, () => {
-  console.log(`🚀 Nadaki Excursions Backend running on ${HOST}:${PORT}`);
-  console.log(`🌐 WordPress: ${WORDPRESS_DOMAIN}`);
-  console.log(`📧 Webhooks disponibles para ${PLATFORMS.length} plataformas`);
-  console.log(`🔗 Dashboard: http://localhost:${PORT}/api/dashboard-data`);
-});
+(async () => {
+  // React dashboard via Vite middleware (development)
+  if (process.env.NODE_ENV !== 'production') {
+    try {
+      const fs = require('fs');
+      const { createServer: createViteServer } = await import('vite');
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: 'custom',
+      });
+      app.use(vite.middlewares);
+      // Catch-all: serve React app for routes not handled above
+      app.use(async (req, res, next) => {
+        const url = req.url || '/';
+        if (url.startsWith('/api/') || url.startsWith('/uploads/')) return next();
+        const cleanPath = url.replace(/\?.*$/, '').replace(/#.*$/, '');
+        if (cleanPath !== '/') {
+          const staticFile = path.join(__dirname, 'public', cleanPath.startsWith('/') ? cleanPath.slice(1) : cleanPath);
+          if (fs.existsSync(staticFile) && !fs.statSync(staticFile).isDirectory()) return next();
+        }
+        try {
+          const indexHtml = path.join(__dirname, 'client', 'index.html');
+          const template = fs.readFileSync(indexHtml, 'utf-8');
+          const html = await vite.transformIndexHtml(url, template);
+          res.status(200).set({ 'Content-Type': 'text/html' }).end(html);
+        } catch (e) {
+          if (e instanceof Error) vite.ssrFixStacktrace(e);
+          next(e);
+        }
+      });
+      console.log('⚡ Vite middleware activo — React dashboard disponible');
+    } catch (e) {
+      console.warn('Vite middleware no disponible:', e.message);
+    }
+  }
+
+  app.listen(PORT, HOST, () => {
+    console.log(`🚀 Nadaki Excursions Backend running on ${HOST}:${PORT}`);
+    console.log(`🌐 WordPress: ${WORDPRESS_DOMAIN}`);
+    console.log(`📧 Webhooks disponibles para ${PLATFORMS.length} plataformas`);
+    console.log(`🔗 Dashboard clásico: http://localhost:${PORT}/dashboard.html`);
+    console.log(`⚡ Dashboard React: http://localhost:${PORT}/app`);
+  });
+})();
