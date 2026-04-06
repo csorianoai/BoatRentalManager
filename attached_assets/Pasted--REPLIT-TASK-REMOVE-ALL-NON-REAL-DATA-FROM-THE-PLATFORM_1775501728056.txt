@@ -1,0 +1,418 @@
+# REPLIT TASK — REMOVE ALL NON-REAL DATA FROM THE PLATFORM AND LEAVE ONLY REAL DATA (ZERO MOCK)
+
+Stop using fake data.
+Stop using placeholders disguised as real metrics.
+Stop using demo, seed, fallback, mock, hardcoded, or invented records anywhere in the platform.
+
+I need the entire platform to show ONLY real data.
+Zero mock.
+Zero demo.
+Zero fake fallback.
+Zero hardcoded business values.
+
+If real data does not exist, the system must show an honest empty state.
+Never invent values to make screens look complete.
+
+---
+
+## PRIMARY OBJECTIVE
+
+Audit the full platform and remove every non-real data source so that:
+
+- all modules display only real data from the real database / real backend sources
+- no screen uses mock arrays, seed data, hardcoded totals, or demo records
+- no chart fabricates values
+- no KPI shows invented numbers
+- no fake transactions, bookings, clients, platforms, categories, or summaries remain
+- if there is no real data, the UI shows `Sin datos` / `No hay información disponible`
+
+The platform must stop pretending and start reflecting the actual system truth.
+
+---
+
+## ABSOLUTE RULE
+
+If the data is not real and traceable to the real source of truth:
+- do not show it
+- do not simulate it
+- do not fallback to fake values
+- do not keep it for layout purposes
+
+Allowed outcomes only:
+1. real data is shown
+2. honest empty state is shown
+
+Nothing else.
+
+---
+
+## PHASE 1 — FULL PLATFORM AUDIT
+
+Audit the entire platform to find every place where non-real data may exist.
+
+Review:
+
+- dashboard
+- executive dashboard
+- expense analysis
+- income analysis
+- intelligent classification
+- accounting views
+- reconciliation views
+- bank statement flows
+- operational modules
+- maintenance
+- fleet
+- pricing
+- commissions
+- documents
+- assets
+- messages
+- reports
+- tables
+- charts
+- KPI cards
+- widgets
+- lists
+- filters
+- detail pages
+- drill-down views
+- exports
+
+Find every source of:
+- mock data
+- seed data
+- demo rows
+- hardcoded totals
+- hardcoded counts
+- fake categories
+- fake clients
+- fake vendors
+- fake bookings
+- fake revenue
+- fake expenses
+- fake income
+- fake rankings
+- placeholder charts
+- decorative fake trends
+- fallback arrays in frontend
+- local JSON sample data still used in production flow
+
+---
+
+## PHASE 2 — IDENTIFY ALL NON-REAL DATA SOURCES
+
+Find all places where the platform may be using fake data through patterns like:
+
+- inline arrays in components
+- local constants used as business data
+- fallback sample responses
+- development seed data leaking into production views
+- charts rendered from static objects
+- default KPIs with hardcoded numbers
+- fake recent activity
+- default categories inserted for layout purposes
+- “example” expense/income groups
+- mock financial records
+- fake bank movements
+- static transaction lists
+- static dashboard cards pretending to be real metrics
+
+Search both frontend and backend for:
+- mock
+- demo
+- seed
+- sample
+- placeholder
+- test data
+- fallback data
+- static KPI values
+- temporary chart datasets
+- fake default module content
+
+---
+
+## PHASE 3 — REMOVE MOCKS SAFELY
+
+Remove all non-real data from the platform, but do it safely.
+
+Rules:
+- do not break working real-data flows
+- do not remove real logic accidentally
+- do not leave components crashing because sample data was deleted
+- replace fake data with proper empty-state handling
+- replace fake charts with empty charts or hidden sections when no real data exists
+- replace fake KPI values with null-safe real queries
+
+If a module currently depends on mock data to render, refactor it so it handles:
+- loading
+- empty
+- real data
+- error
+
+without fake records.
+
+---
+
+## PHASE 4 — CONNECT ONLY TO REAL SOURCES
+
+For every screen and widget, verify the real source.
+
+Each visible metric, row, chart, or summary must come from:
+- real database records
+- real backend endpoints
+- real queries
+- real aggregation logic
+- real state transitions
+
+Validate for each module:
+- what source it uses
+- whether that source is real
+- whether that source is production-safe
+- whether summary and detail come from the same truth
+- whether filters are applied to real datasets only
+
+---
+
+## PHASE 5 — DASHBOARD CLEANUP
+
+The dashboard must stop showing fake or decorative business numbers.
+
+Remove or fix:
+- fake KPIs
+- hardcoded income/expense totals
+- fake booking counts
+- fake trend lines
+- fake category breakdowns
+- fake platform stats
+- fake “today” or “this week” summaries
+- any widget that exists only to fill space without real data
+
+If a dashboard section has no real data yet:
+- show an honest empty state
+- or hide the section until data exists
+
+Do not fill the dashboard with invented numbers.
+
+---
+
+## PHASE 6 — FINANCIAL MODULE CLEANUP
+
+Audit and clean:
+- expense analysis
+- income analysis
+- intelligent classification
+- send to accounting
+- final reconciliation
+- grouped category analysis
+- drill-down tables
+
+Ensure:
+- only real transactions appear
+- no test bank movements appear
+- no fake category totals appear
+- no fake income/expense groups appear
+- no chart uses sample values
+- totals reconcile to real detailed records
+- detail rows exist only if they are real rows
+
+---
+
+## PHASE 7 — BANK STATEMENT / ACCOUNTING CLEANUP
+
+Because this is a financial system, validate especially:
+
+- imported bank statements
+- classified movements
+- sent-to-accounting records
+- reconciled records
+- duplicate detection
+- old vs new statement separation
+- already-processed movement states
+
+No fake transaction should remain in:
+- classification
+- accounting send flow
+- reconciliation
+- expense analysis
+- income analysis
+
+Only real imported and validated movements should appear.
+
+---
+
+## PHASE 8 — EMPTY STATE REPLACEMENT
+
+Where mock data is removed, implement honest empty states.
+
+Examples:
+- `No hay datos disponibles`
+- `No hay movimientos para este período`
+- `No hay gastos registrados`
+- `No hay ingresos registrados`
+- `No hay datos para este filtro`
+- `No hay transacciones pendientes`
+
+Do not leave broken layouts.
+Do not leave blank white boxes.
+Do not insert sample records to make the UI look complete.
+
+---
+
+## PHASE 9 — BACKEND + QUERY AUDIT
+
+Review backend and DB logic to ensure no fake data is being injected there either.
+
+Audit:
+- endpoints
+- controllers
+- services
+- SQL / ORM queries
+- fallback responses
+- seed loaders
+- dev-only responses
+- default objects returned when query is empty
+- aggregation code
+- chart transformation layers
+
+Ensure:
+- empty query returns empty result, not fake result
+- summary endpoints return real totals only
+- detail endpoints return real rows only
+- no dev fixtures contaminate production responses
+
+---
+
+## PHASE 10 — DATABASE AUDIT
+
+Review the DB for any test/demo contamination.
+
+Find and handle:
+- seed records
+- test users
+- fake categories
+- fake clients
+- fake bookings
+- fake vendors
+- fake financial records
+- duplicate demo transactions
+- orphan sample data
+- sample imports
+- development-only rows
+
+Do not delete real records by mistake.
+Identify precisely what is fake vs real before cleanup.
+
+---
+
+## PHASE 11 — UI / UX REQUIREMENT
+
+After removing fake data, the platform must still feel clean and professional.
+
+Requirements:
+- no broken cards
+- no crashing charts
+- no undefined/null leaks in the UI
+- no dead widgets
+- no misleading placeholders
+- no fake interactions
+
+The UI must gracefully handle:
+- loading
+- empty
+- partial data
+- real data
+- errors
+
+---
+
+## PHASE 12 — VALIDATION TESTS
+
+Validate at minimum:
+
+1. dashboard shows only real data
+2. if no real data exists, dashboard shows honest empty state
+3. expense analysis contains only real transactions
+4. income analysis contains only real transactions
+5. charts disappear or show empty states when no real data exists
+6. no hardcoded KPI remains
+7. no mock rows remain in tables
+8. no fake categories remain in grouped analysis
+9. no fake bank transactions remain
+10. no dev/seed/demo records are visible in production views
+11. summary totals reconcile with real detailed rows
+12. filters operate only on real datasets
+
+---
+
+## ABSOLUTE PROHIBITIONS
+
+Do not leave any of the following anywhere in the platform:
+
+- mock data
+- demo data
+- seed data visible to users
+- hardcoded business values
+- placeholder financial totals
+- fake charts
+- fake rows
+- fake clients
+- fake vendors
+- fake bank transactions
+- fake trends
+- fake grouped analytics
+- sample activity feed
+- static dashboard numbers
+
+Zero tolerance.
+
+---
+
+## REQUIRED DELIVERABLE
+
+Do not answer with “done”.
+
+Provide a structured audit report with:
+
+1. where fake/non-real data was found
+2. what type of fake data it was
+3. what modules were affected
+4. what was removed
+5. what was replaced with real queries
+6. what was replaced with empty states
+7. what DB/test/demo contamination was found
+8. how you verified data is now real
+9. what screens now show empty because real data does not yet exist
+10. any residual risk still present
+
+---
+
+## ACCEPTANCE CRITERIA
+
+This task is not complete until all of the following are true:
+
+- the platform shows only real data
+- no mock or demo business data remains visible
+- no hardcoded KPI remains
+- no fake chart remains
+- no fake rows remain
+- empty states are honest
+- summary and detail use real data only
+- financial modules use real data only
+- dashboard uses real data only
+- the platform is trustworthy again
+
+---
+
+## FINAL INSTRUCTION
+
+This platform must stop simulating reality.
+
+Remove every non-real dataset.
+Keep only real data.
+If real data does not exist, show emptiness with honesty.
+
+Zero mock.
+Zero fake.
+Zero demo.
+Only truth.
