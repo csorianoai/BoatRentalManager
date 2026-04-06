@@ -7550,6 +7550,84 @@ app.get('/api/accounting/bank-statements/conciliation-summary', isAuthenticated,
   }
 });
 
+// --- Conciliation items: transactions cross-checked with bank statements ---
+app.get('/api/accounting/conciliation/items', isAuthenticated, async (req, res) => {
+  try {
+    const { status, limit = 200, offset = 0 } = req.query;
+
+    // Base: all transactions joined with bank_statement info when available
+    let where = '';
+    const params = [];
+    if (status === 'matched') {
+      where = "WHERE bs.id IS NOT NULL";
+    } else if (status === 'unmatched') {
+      where = "WHERE bs.id IS NULL";
+    }
+
+    const result = await pool.query(`
+      SELECT
+        t.id,
+        t.transaction_date,
+        t.description,
+        t.amount,
+        t.transaction_type,
+        t.reference_type,
+        t.reference_id,
+        t.reconciled,
+        t.notes,
+        ca.account_code,
+        ca.account_name,
+        ca.account_type,
+        -- bank statement details (if this transaction was created from one)
+        bs.id            AS bs_id,
+        bs.description   AS bs_description,
+        bs.statement_date,
+        bs.classification_status AS bs_status,
+        bs.confidence_level      AS bs_confidence,
+        bs.category              AS bs_category,
+        CASE
+          WHEN bs.id IS NOT NULL THEN 'matched'
+          ELSE 'unmatched'
+        END AS conciliation_status
+      FROM transactions t
+      LEFT JOIN chart_of_accounts ca ON ca.id = t.account_id
+      LEFT JOIN bank_statements bs
+        ON bs.matched_transaction_id = t.id
+        OR (t.reference_type = 'bank_statement' AND t.reference_id = bs.id)
+      ${where}
+      ORDER BY t.transaction_date DESC, t.id
+      LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+    `, [...params, parseInt(limit), parseInt(offset)]);
+
+    // Summary counts
+    const counts = await pool.query(`
+      SELECT
+        COUNT(*) as total,
+        COUNT(*) FILTER (WHERE t.reconciled = 1 OR bs.id IS NOT NULL) as matched,
+        COUNT(*) FILTER (WHERE t.reconciled = 0 AND bs.id IS NULL) as unmatched,
+        COUNT(*) FILTER (WHERE t.transaction_type = 'income') as income_count,
+        COUNT(*) FILTER (WHERE t.transaction_type = 'expense') as expense_count,
+        COALESCE(SUM(t.amount) FILTER (WHERE t.transaction_type = 'income'), 0) as total_income,
+        COALESCE(SUM(t.amount) FILTER (WHERE t.transaction_type = 'expense'), 0) as total_expense,
+        COUNT(DISTINCT bs.id) as bank_statements_linked
+      FROM transactions t
+      LEFT JOIN chart_of_accounts ca ON ca.id = t.account_id
+      LEFT JOIN bank_statements bs
+        ON bs.matched_transaction_id = t.id
+        OR (t.reference_type = 'bank_statement' AND t.reference_id = bs.id)
+    `);
+
+    res.json({
+      items: result.rows,
+      summary: counts.rows[0],
+      bank_statements_imported: (await pool.query('SELECT COUNT(*) as c FROM bank_statements')).rows[0].c
+    });
+  } catch (err) {
+    console.error('conciliation/items error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // --- Post a confirmed statement to accounting (create transaction) ---
 // ── Category → preferred account code mapping ──────────────────────────────
 const CATEGORY_ACCOUNT_CODE = {

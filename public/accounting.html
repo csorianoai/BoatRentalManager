@@ -1023,111 +1023,94 @@
         <!-- Conciliación Final Tab -->
         <div class="tab-content" id="conciliacion-final" data-testid="tab-content-conciliacion-final" style="display:none">
 
-          <!-- Metrics Grid -->
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px">
+          <!-- Bank-statements import notice (shown when none imported) -->
+          <div id="conc-no-bank-notice" style="display:none;background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;padding:14px 18px;margin-bottom:18px;font-size:13px;color:#92400e">
+            <strong>Sin estado bancario importado.</strong> Los movimientos contables que ves abajo provienen de reservas, depósitos y entradas manuales.
+            Para conciliar contra tu banco, importa un estado bancario en la pestaña de <strong>Clasificación Inteligente</strong>.
+          </div>
+
+          <!-- Summary cards -->
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px">
             <div class="classif-stat-card" data-testid="conc-total">
               <div class="csf-label">Total Movimientos</div>
               <div class="csf-val" id="conc-total">—</div>
             </div>
             <div class="classif-stat-card">
-              <div class="csf-label">Auto-sugeridos</div>
-              <div class="csf-val" id="conc-suggested" style="color:#f59e0b">—</div>
+              <div class="csf-label">Con respaldo bancario</div>
+              <div class="csf-val" id="conc-matched" style="color:#10b981">—</div>
             </div>
             <div class="classif-stat-card">
-              <div class="csf-label">Confirmados</div>
-              <div class="csf-val" id="conc-confirmed" style="color:#0066cc">—</div>
+              <div class="csf-label">Sin respaldo bancario</div>
+              <div class="csf-val" id="conc-unmatched" style="color:#f59e0b">—</div>
             </div>
             <div class="classif-stat-card">
-              <div class="csf-label">Registrados</div>
-              <div class="csf-val" id="conc-posted" style="color:#10b981">—</div>
+              <div class="csf-label">Total Ingresos</div>
+              <div class="csf-val" id="conc-income" style="color:#065f46;font-size:16px">—</div>
             </div>
             <div class="classif-stat-card">
-              <div class="csf-label">Pendientes Revisión</div>
-              <div class="csf-val" id="conc-pending" style="color:#ef4444">—</div>
+              <div class="csf-label">Total Gastos</div>
+              <div class="csf-val" id="conc-expense" style="color:#dc2626;font-size:16px">—</div>
             </div>
             <div class="classif-stat-card">
-              <div class="csf-label">Duplicados Detectados</div>
-              <div class="csf-val" id="conc-dupes" style="color:#dc2626">—</div>
+              <div class="csf-label">Banco importado</div>
+              <div class="csf-val" id="conc-posted" style="color:#0066cc">—</div>
             </div>
           </div>
 
-          <!-- Confidence Distribution -->
-          <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:16px;margin-bottom:20px">
-            <div style="font-weight:700;color:#1a1a2e;font-size:14px;margin-bottom:12px">Distribución por Confianza</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
-              <div style="text-align:center">
-                <div style="font-size:24px;font-weight:800;color:#065f46" id="conc-high">—</div>
-                <div style="font-size:11px;color:#64748b;margin-top:2px">Confianza Alta</div>
-                <div style="background:#d1fae5;border-radius:4px;height:6px;margin-top:6px">
-                  <div id="conc-high-bar" style="background:#059669;border-radius:4px;height:100%;width:0%;transition:width .4s"></div>
-                </div>
-              </div>
-              <div style="text-align:center">
-                <div style="font-size:24px;font-weight:800;color:#92400e" id="conc-medium">—</div>
-                <div style="font-size:11px;color:#64748b;margin-top:2px">Confianza Media</div>
-                <div style="background:#fde68a;border-radius:4px;height:6px;margin-top:6px">
-                  <div id="conc-medium-bar" style="background:#d97706;border-radius:4px;height:100%;width:0%;transition:width .4s"></div>
-                </div>
-              </div>
-              <div style="text-align:center">
-                <div style="font-size:24px;font-weight:800;color:#991b1b" id="conc-low">—</div>
-                <div style="font-size:11px;color:#64748b;margin-top:2px">Confianza Baja</div>
-                <div style="background:#fecaca;border-radius:4px;height:6px;margin-top:6px">
-                  <div id="conc-low-bar" style="background:#dc2626;border-radius:4px;height:100%;width:0%;transition:width .4s"></div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Module Distribution -->
-          <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:16px;margin-bottom:20px">
-            <div style="font-weight:700;color:#1a1a2e;font-size:14px;margin-bottom:12px">Destino por Módulo Contable</div>
-            <div id="conc-modules" style="display:flex;flex-wrap:wrap;gap:8px"></div>
-          </div>
-
-          <!-- Completion Progress -->
-          <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:16px;margin-bottom:20px">
+          <!-- Progress bar (% matched) -->
+          <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:14px 18px;margin-bottom:18px">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-              <div style="font-weight:700;color:#1a1a2e;font-size:14px">Progreso de Conciliación</div>
+              <div style="font-weight:700;color:#1a1a2e;font-size:14px">Cobertura Bancaria</div>
               <div id="conc-pct-label" style="font-size:20px;font-weight:800;color:#0066cc">0%</div>
             </div>
-            <div style="background:#f1f5f9;border-radius:6px;height:12px;overflow:hidden;margin-bottom:6px">
+            <div style="background:#f1f5f9;border-radius:6px;height:10px;overflow:hidden;margin-bottom:5px">
               <div id="conc-progress-bar" style="height:100%;background:linear-gradient(90deg,#0066cc,#10b981);border-radius:6px;width:0%;transition:width .6s"></div>
             </div>
-            <div style="font-size:11px;color:#64748b">Movimientos registrados en contabilidad vs total importados</div>
+            <div style="font-size:11px;color:#64748b">Movimientos contables respaldados por un estado de banco importado</div>
           </div>
 
-          <!-- Checklist -->
-          <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:16px;margin-bottom:20px">
-            <div style="font-weight:700;color:#1a1a2e;font-size:14px;margin-bottom:12px">Checklist de Cierre</div>
-            <div id="conc-checklist" style="display:flex;flex-direction:column;gap:8px">
-              <div style="color:#64748b;font-size:13px">Cargando checklist…</div>
+          <!-- Filter bar + Actions -->
+          <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px">
+            <div style="display:flex;gap:4px;background:#f1f5f9;border-radius:8px;padding:3px">
+              <button id="concf-all"      onclick="setConcFilter('all')"       data-testid="button-concf-all"      style="padding:5px 14px;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;background:#0066cc;color:#fff">Todos</button>
+              <button id="concf-unmatched" onclick="setConcFilter('unmatched')" data-testid="button-concf-unmatched" style="padding:5px 14px;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;background:transparent;color:#64748b">Sin banco</button>
+              <button id="concf-matched"   onclick="setConcFilter('matched')"   data-testid="button-concf-matched"   style="padding:5px 14px;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;background:transparent;color:#64748b">Con banco</button>
             </div>
-          </div>
-
-          <!-- Actions -->
-          <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">
-            <button onclick="loadConciliationSummary()" data-testid="button-refresh-conc"
-              style="padding:8px 16px;border:1px solid #e5e7eb;border-radius:6px;background:#fff;font-size:13px;cursor:pointer;font-weight:600">
-              🔄 Actualizar Datos
+            <div style="flex:1"></div>
+            <button onclick="loadConciliationItems()" data-testid="button-refresh-conc"
+              style="padding:7px 14px;border:1px solid #e5e7eb;border-radius:6px;background:#fff;font-size:12px;cursor:pointer;font-weight:600">
+              Actualizar
             </button>
             <button onclick="runDuplicateCheck()" data-testid="button-run-dupes"
-              style="padding:8px 16px;background:#f59e0b;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer;font-weight:600">
-              🔍 Detectar Duplicados
+              style="padding:7px 14px;background:#f59e0b;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600">
+              Detectar duplicados
             </button>
-            <button id="btn-delete-dupes-conc" onclick="deleteDuplicates()" data-testid="button-delete-dupes-conc"
-              style="padding:8px 16px;background:#ef4444;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer;font-weight:600;display:none">
-              🗑 Eliminar Duplicados
-            </button>
-            <button id="btn-reset-dupes-conc" onclick="resetDuplicateFlags()" data-testid="button-reset-dupes-conc"
-              style="padding:8px 16px;background:#64748b;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer;font-weight:600;display:none">
-              ↩ Desmarcar Todo
-            </button>
-            <button onclick="runSmartClassify();loadConciliationSummary();" data-testid="button-auto-all"
-              style="padding:8px 16px;background:#0066cc;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer;font-weight:600">
-              🧠 Clasificar Todo y Actualizar
+            <button onclick="runSmartClassify();loadConciliationItems();" data-testid="button-auto-all"
+              style="padding:7px 14px;background:#0066cc;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600">
+              Clasificar y actualizar
             </button>
           </div>
+
+          <!-- Movement list table -->
+          <div style="border:1px solid #e5e7eb;border-radius:10px;overflow:hidden">
+            <table style="width:100%;border-collapse:collapse;font-size:13px">
+              <thead>
+                <tr style="background:#f8fafc;border-bottom:2px solid #e5e7eb">
+                  <th style="padding:10px 12px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Fecha</th>
+                  <th style="padding:10px 12px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Descripción</th>
+                  <th style="padding:10px 12px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Cuenta</th>
+                  <th style="padding:10px 12px;text-align:right;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Monto</th>
+                  <th style="padding:10px 12px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Tipo</th>
+                  <th style="padding:10px 12px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Estado banco</th>
+                  <th style="padding:10px 12px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Origen</th>
+                </tr>
+              </thead>
+              <tbody id="conc-items-tbody" data-testid="table-conciliation-items">
+                <tr><td colspan="7" style="padding:40px;text-align:center;color:#94a3b8;font-size:14px">Cargando movimientos…</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div id="conc-items-footer" style="margin-top:8px;font-size:12px;color:#64748b;text-align:right"></div>
         </div>
 
         <!-- Reconciliation Tab -->
@@ -2756,55 +2739,102 @@
         }
 
         // ── Conciliación Final ──────────────────────────────────────────────
-        async function loadConciliationSummary() {
+        let _concFilter = 'all';
+
+        function setConcFilter(f) {
+          _concFilter = f;
+          ['all','unmatched','matched'].forEach(id => {
+            const btn = document.getElementById('concf-'+id);
+            if (!btn) return;
+            btn.style.background = id === f ? '#0066cc' : 'transparent';
+            btn.style.color      = id === f ? '#fff'    : '#64748b';
+          });
+          loadConciliationItems();
+        }
+
+        async function loadConciliationItems() {
+          const tbody = document.getElementById('conc-items-tbody');
+          if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="padding:30px;text-align:center;color:#94a3b8">Cargando…</td></tr>';
           try {
-            const r = await fetch('/api/accounting/bank-statements/conciliation-summary');
-            if (!r.ok) return;
+            const qs = _concFilter !== 'all' ? `?status=${_concFilter}` : '';
+            const r = await fetch('/api/accounting/conciliation/items'+qs);
+            if (!r.ok) throw new Error(await r.text());
             const d = await r.json();
-            const total = parseInt(d.total)||0;
+            const items = d.items || [];
+            const summ  = d.summary || {};
+            const bsImported = parseInt(d.bank_statements_imported||0);
 
-            document.getElementById('conc-total').textContent = total;
-            document.getElementById('conc-suggested').textContent = d.auto_suggested||0;
-            document.getElementById('conc-confirmed').textContent = d.confirmed||0;
-            document.getElementById('conc-posted').textContent = d.posted||0;
-            document.getElementById('conc-pending').textContent = d.pending_review||0;
-            document.getElementById('conc-dupes').textContent = d.duplicates||0;
+            // Notice banner
+            const notice = document.getElementById('conc-no-bank-notice');
+            if (notice) notice.style.display = bsImported === 0 ? 'block' : 'none';
 
-            const high = parseInt(d.high_conf||0), med = parseInt(d.medium_conf||0), low = parseInt(d.low_conf||0);
-            const confTotal = (high+med+low)||1;
-            document.getElementById('conc-high').textContent = high;
-            document.getElementById('conc-medium').textContent = med;
-            document.getElementById('conc-low').textContent = low;
-            document.getElementById('conc-high-bar').style.width = Math.round(high/confTotal*100)+'%';
-            document.getElementById('conc-medium-bar').style.width = Math.round(med/confTotal*100)+'%';
-            document.getElementById('conc-low-bar').style.width = Math.round(low/confTotal*100)+'%';
+            // Cards
+            const total   = parseInt(summ.total||0);
+            const matched = parseInt(summ.matched||0);
+            const unmatched = parseInt(summ.unmatched||0);
+            document.getElementById('conc-total').textContent    = total;
+            document.getElementById('conc-matched').textContent  = matched;
+            document.getElementById('conc-unmatched').textContent= unmatched;
+            document.getElementById('conc-posted').textContent   = bsImported;
+            const fmtAmt = v => '$'+(parseFloat(v||0)).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+            document.getElementById('conc-income').textContent   = fmtAmt(summ.total_income);
+            document.getElementById('conc-expense').textContent  = fmtAmt(summ.total_expense);
 
-            const pct = d.pct_posted||0;
+            // Progress bar
+            const pct = total > 0 ? Math.round(matched/total*100) : 0;
             document.getElementById('conc-pct-label').textContent = pct+'%';
             document.getElementById('conc-progress-bar').style.width = pct+'%';
 
-            // Module breakdown
-            const modEl = document.getElementById('conc-modules');
-            const MODULE_LABELS = { module_expenses:'Gastos',module_income:'Ingresos',module_assets:'Activos',module_inventory:'Inventario',module_deposits:'Depósitos',module_fleet:'Flota',module_transfer:'Transferencias' };
-            const MODULE_COLORS = { module_expenses:'#f1f5f9',module_income:'#f0fdf4',module_assets:'#eff6ff',module_inventory:'#fefce8',module_deposits:'#fdf4ff',module_fleet:'#fff7ed',module_transfer:'#f1f5f9' };
-            const MODULE_TEXT = { module_expenses:'#475569',module_income:'#065f46',module_assets:'#1e40af',module_inventory:'#854d0e',module_deposits:'#7e22ce',module_fleet:'#92400e',module_transfer:'#475569' };
-            modEl.innerHTML = Object.keys(MODULE_LABELS).map(k => {
-              const count = parseInt(d[k]||0);
-              if (!count) return '';
-              return `<div style="background:${MODULE_COLORS[k]};color:${MODULE_TEXT[k]};border-radius:6px;padding:6px 12px;font-size:12px;font-weight:700">
-                ${MODULE_LABELS[k]}: ${count}</div>`;
-            }).filter(Boolean).join('') || '<span style="color:#94a3b8;font-size:13px">Sin datos de módulos</span>';
+            // Table rows
+            const REF_LABELS = { booking:'Reserva', bank_statement:'Banco', manual:'Manual', asset:'Activo', other:'Otro', payroll:'Nómina' };
+            if (!items.length) {
+              tbody.innerHTML = `<tr><td colspan="7" style="padding:40px;text-align:center;color:#94a3b8;font-size:14px">
+                ${_concFilter === 'matched' ? 'No hay movimientos con respaldo bancario aún.' :
+                  _concFilter === 'unmatched' ? 'Todos los movimientos tienen respaldo bancario. ¡Excelente!' :
+                  'No hay movimientos contables registrados.'}
+              </td></tr>`;
+            } else {
+              tbody.innerHTML = items.map(tx => {
+                const isIncome  = tx.transaction_type === 'income';
+                const isMissing = tx.conciliation_status === 'unmatched';
+                const statusBadge = isMissing
+                  ? '<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700">Sin banco</span>'
+                  : '<span style="background:#d1fae5;color:#065f46;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700">Conciliado</span>';
+                const typeBadge = isIncome
+                  ? '<span style="background:#d1fae5;color:#065f46;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700">Ingreso</span>'
+                  : '<span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700">Gasto</span>';
+                const amtColor = isIncome ? '#065f46' : '#dc2626';
+                const amtSign  = isIncome ? '+' : '-';
+                const date = tx.transaction_date ? tx.transaction_date.substring(0,10) : '—';
+                const desc = (tx.description||'').substring(0,55);
+                const acct = tx.account_code ? `${tx.account_code} ${(tx.account_name||'').substring(0,20)}` : '—';
+                const refLabel = REF_LABELS[tx.reference_type] || tx.reference_type || '—';
+                return `<tr style="border-bottom:1px solid #f1f5f9;${isMissing?'':'background:#f9fafb'}" data-testid="row-concil-${tx.id}">
+                  <td style="padding:10px 12px;color:#374151;font-size:12px;white-space:nowrap">${date}</td>
+                  <td style="padding:10px 12px;color:#1a1a2e;max-width:240px">
+                    <div style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${desc}</div>
+                    ${tx.notes ? `<div style="font-size:11px;color:#94a3b8;margin-top:1px">${tx.notes.substring(0,40)}</div>` : ''}
+                  </td>
+                  <td style="padding:10px 12px;font-size:12px;color:#374151;white-space:nowrap">${acct}</td>
+                  <td style="padding:10px 12px;text-align:right;font-weight:700;color:${amtColor};white-space:nowrap">${amtSign}${fmtAmt(tx.amount)}</td>
+                  <td style="padding:10px 12px;text-align:center">${typeBadge}</td>
+                  <td style="padding:10px 12px;text-align:center">${statusBadge}</td>
+                  <td style="padding:10px 12px;font-size:11px;color:#64748b">${refLabel}</td>
+                </tr>`;
+              }).join('');
+            }
 
-            // Checklist
-            const clEl = document.getElementById('conc-checklist');
-            clEl.innerHTML = (d.checklist||[]).map(item =>
-              `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:${item.ok?'#f0fdf4':'#fef2f2'};border-radius:6px">
-                <span style="font-size:16px">${item.ok?'✅':'⚠️'}</span>
-                <span style="font-size:13px;color:${item.ok?'#065f46':'#991b1b'};font-weight:${item.ok?'400':'600'}">${item.label}</span>
-              </div>`
-            ).join('');
-          } catch(e) { console.error('conciliation summary error',e); }
+            const footerEl = document.getElementById('conc-items-footer');
+            if (footerEl) footerEl.textContent = items.length > 0 ? `Mostrando ${items.length} de ${total} movimientos` : '';
+
+          } catch(e) {
+            console.error('conciliation items error', e);
+            if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="padding:30px;text-align:center;color:#dc2626">Error al cargar: ${e.message}</td></tr>`;
+          }
         }
+
+        // Keep old name as alias for buttons that call it
+        function loadConciliationSummary() { loadConciliationItems(); }
 
         // ── Load boats into modal and bulk selects ─────────────────────────
         async function loadBoatsIntoClassifModal() {

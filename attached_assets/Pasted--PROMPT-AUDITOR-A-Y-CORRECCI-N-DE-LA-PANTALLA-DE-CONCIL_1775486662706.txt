@@ -1,0 +1,168 @@
+# PROMPT — AUDITORÍA Y CORRECCIÓN DE LA PANTALLA DE CONCILIACIÓN FINAL
+
+Existe un problema crítico:
+La pantalla de conciliación final no muestra ningún movimiento.
+
+Esto puede deberse a fallas en:
+- flujo previo,
+- estados,
+- queries,
+- o conexión frontend-backend.
+
+No asumas que es solo visual.
+Debes auditar todo el flujo completo.
+
+---
+
+# OBJETIVO
+
+Lograr que la conciliación final:
+
+- muestre movimientos reales,
+- reciba correctamente los datos del flujo previo,
+- refleje el estado real del sistema,
+- y funcione como última etapa operativa.
+
+---
+
+# FASE 1 — DEFINIR QUÉ DEBERÍA MOSTRAR
+
+Debes validar qué movimientos deberían aparecer aquí.
+
+## Solo deben aparecer movimientos que:
+- fueron enviados a contabilidad
+- están marcados como conciliables
+- están pendientes de conciliación o verificación final
+
+---
+
+# FASE 2 — TRAZABILIDAD DEL FLUJO
+
+Para un movimiento real, debes verificar:
+
+1. se creó desde el estado bancario
+2. fue clasificado correctamente
+3. fue enviado a contabilidad
+4. cambió de estado correctamente
+5. cumple condición para aparecer en conciliación
+
+Si falla en alguno → ese es el problema
+
+---
+
+# FASE 3 — AUDITORÍA DE ESTADOS
+
+Revisa si existen y funcionan estos estados:
+
+- pendiente
+- clasificado
+- enviado_contabilidad
+- listo_para_conciliar
+- conciliado
+
+## Validar:
+- si realmente cambian
+- si se guardan en DB
+- si se usan en queries
+- si están alineados frontend/backend
+
+---
+
+# FASE 4 — AUDITORÍA BACKEND
+
+Revisar:
+
+- endpoint de conciliación
+- query principal
+- filtros por estado
+- joins
+- condiciones
+- si devuelve datos reales
+
+Validar:
+¿la query devuelve datos en DB pero no en UI?
+¿o no devuelve nada?
+
+---
+
+# FASE 5 — AUDITORÍA FRONTEND
+
+Revisar:
+
+- si la pantalla llama al endpoint correcto
+- si recibe data
+- si la renderiza
+- si hay filtros activos invisibles
+- si hay errores silenciosos
+- si el estado está vacío por bug
+
+---
+
+# FASE 6 — IDENTIFICAR EL PROBLEMA EXACTO
+
+Debes determinar:
+
+- ¿no llegan datos?
+- ¿no existen datos en ese estado?
+- ¿no se actualizan estados?
+- ¿query mal?
+- ¿UI rota?
+
+---
+
+# FASE 7 — CORRECCIÓN
+
+Debes asegurar:
+
+- los movimientos enviados a contabilidad cambian a estado correcto
+- esos estados son consumidos por conciliación
+- la query los trae correctamente
+- la UI los muestra correctamente
+
+---
+
+# FASE 8 — VALIDACIÓN
+
+Caso real:
+
+1. subir estado bancario
+2. clasificar movimientos
+3. enviarlos a contabilidad
+4. verificar que:
+   - desaparecen de clasificación
+   - aparecen en conciliación
+
+---
+
+# PROHIBICIONES
+
+- no simular datos
+- no dejar la pantalla vacía si hay data real
+- no crear lógica paralela
+- no duplicar estados
+- no inventar movimientos
+
+---
+
+# ENTREGABLE
+
+Debes indicar:
+
+1. por qué conciliación estaba vacía
+2. en qué punto se rompía el flujo
+3. qué estados estaban mal
+4. qué query estaba mal (si aplica)
+5. qué corregiste
+6. evidencia de que ahora aparecen movimientos
+
+---
+
+# CRITERIO DE ÉXITO
+
+Después del envío a contabilidad:
+
+- los movimientos deben aparecer en conciliación final
+- el usuario debe verlos sin ambigüedad
+- el flujo completo debe ser coherente
+
+Si conciliación está vacía sin razón → el sistema está roto
