@@ -2592,29 +2592,58 @@
           try {
             const r = await fetch(`/api/accounting/bank-statements/${id}/post`, { method:'POST' });
             const d = await r.json();
-            if (!r.ok) throw new Error(d.error||'Error');
-            showNotice('✅ Movimiento registrado en contabilidad.','green');
+            if (!r.ok) {
+              if (d.already_posted) {
+                showNotice('Este movimiento ya estaba registrado en contabilidad.', 'orange');
+                await loadClassifStats();
+                await loadClassifStatements();
+              } else {
+                throw new Error(d.error || 'Error al registrar');
+              }
+              return;
+            }
+            showNotice('Movimiento registrado en contabilidad.', 'green');
             await loadClassifStats();
             await loadClassifStatements();
-          } catch(e) { showNotice('Error: '+e.message,'red'); }
+          } catch(e) { showNotice('Error: ' + e.message, 'red'); }
         }
 
         async function postAllConfirmed() {
-          const confirmed = classifData.filter(s=>s.classification_status==='confirmed');
-          if (!confirmed.length) { showNotice('No hay movimientos confirmados para registrar.','orange'); return; }
+          const confirmed = classifData.filter(s => s.classification_status === 'confirmed');
+          if (!confirmed.length) { showNotice('No hay movimientos confirmados para registrar.', 'orange'); return; }
           const btn = document.querySelector('[data-testid="button-post-all"]');
-          const orig = btn.textContent; btn.textContent = '⏳ Registrando...'; btn.disabled = true;
-          let count = 0;
-          for (const s of confirmed) {
-            try {
-              const r = await fetch(`/api/accounting/bank-statements/${s.id}/post`, { method:'POST' });
-              if (r.ok) count++;
-            } catch(_) {}
+          const orig = btn.textContent;
+          btn.textContent = '⏳ Registrando...';
+          btn.disabled = true;
+          try {
+            const ids = confirmed.map(s => s.id);
+            const r = await fetch('/api/accounting/bank-statements/bulk-post', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ids })
+            });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.error || 'Error en bulk-post');
+
+            let msg = `${d.posted} movimiento(s) registrado(s) en contabilidad.`;
+            let color = 'green';
+            if (d.already_posted > 0) msg += ` (${d.already_posted} ya registrados antes)`;
+            if (d.failed > 0) {
+              msg += ` ⚠️ ${d.failed} fallaron.`;
+              color = d.posted > 0 ? 'orange' : 'red';
+              if (d.details && d.details.failed) {
+                console.warn('Fallos en bulk-post:', d.details.failed);
+              }
+            }
+            showNotice(msg, color);
+          } catch(e) {
+            showNotice('Error al registrar: ' + e.message, 'red');
+          } finally {
+            btn.textContent = orig;
+            btn.disabled = false;
+            await loadClassifStats();
+            await loadClassifStatements();
           }
-          btn.textContent = orig; btn.disabled = false;
-          showNotice(`✅ ${count} movimientos registrados en contabilidad.`,'green');
-          await loadClassifStats();
-          await loadClassifStatements();
         }
 
         // ── Conciliación Final ──────────────────────────────────────────────

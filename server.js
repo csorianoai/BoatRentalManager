@@ -7545,39 +7545,180 @@ app.get('/api/accounting/bank-statements/conciliation-summary', isAuthenticated,
 });
 
 // --- Post a confirmed statement to accounting (create transaction) ---
+// ── Category → preferred account code mapping ──────────────────────────────
+const CATEGORY_ACCOUNT_CODE = {
+  // Expenses
+  fuel:              '5010',
+  marina_fees:       '5200',
+  maintenance_repair:'5100',
+  cleaning:          '5040',
+  insurance:         '5300',
+  crew_payroll:      '5400',
+  subscriptions:     '5080',
+  office:            '5080',
+  marine_supplies:   '5020',
+  inventory:         '5080',
+  deposit:           '5080',
+  other_expense:     '5080',
+  // Assets
+  equipment:         '1600',
+  boat_purchase:     '1500',
+  // Transfers
+  bank_transfer:     '1010',
+  // Income → revenue accounts found dynamically
+};
+
+async function resolveAccountId(pool, accounting_type, category) {
+  // 1. Try preferred code for this category
+  const code = CATEGORY_ACCOUNT_CODE[category];
+  if (code) {
+    const r = await pool.query('SELECT id FROM chart_of_accounts WHERE account_code=$1 LIMIT 1', [code]);
+    if (r.rows.length) return r.rows[0].id;
+  }
+  // 2. Fall back to first account of the matching type
+  const acctType = accounting_type === 'income' ? 'revenue'
+                 : accounting_type === 'asset'   ? 'asset'
+                 : accounting_type === 'transfer' ? 'asset'
+                 : 'expense';
+  const r2 = await pool.query(
+    'SELECT id FROM chart_of_accounts WHERE account_type=$1 ORDER BY account_code LIMIT 1', [acctType]
+  );
+  return r2.rows.length ? r2.rows[0].id : null;
+}
+
 app.post('/api/accounting/bank-statements/:id/post', isAuthenticated, async (req, res) => {
   try {
     const { id } = req.params;
     const stmt = await pool.query('SELECT * FROM bank_statements WHERE id=$1', [id]);
-    if (!stmt.rows.length) return res.status(404).json({ error: 'Statement not found' });
+    if (!stmt.rows.length) return res.status(404).json({ error: 'Movimiento no encontrado' });
     const s = stmt.rows[0];
-    if (!s.accounting_type || !s.category) return res.status(400).json({ error: 'Classify the statement before posting' });
+
+    // Idempotency: already posted
+    if (s.classification_status === 'posted') {
+      return res.status(400).json({ error: 'Este movimiento ya fue registrado en contabilidad', already_posted: true, transaction_id: s.matched_transaction_id });
+    }
+
+    if (!s.accounting_type || !s.category) {
+      return res.status(400).json({ error: 'El movimiento debe estar clasificado antes de registrarlo' });
+    }
+
+    const accountId = await resolveAccountId(pool, s.accounting_type, s.category);
+    if (!accountId) {
+      return res.status(400).json({
+        error: `No se encontró cuenta contable para el tipo '${s.accounting_type}'. Verifica el catálogo de cuentas.`
+      });
+    }
+
+    const txType = s.accounting_type === 'income'   ? 'income'
+                 : s.accounting_type === 'transfer'  ? 'transfer'
+                 : 'expense';
 
     const { nanoid } = await import('nanoid');
-    const txType = s.accounting_type === 'income' ? 'income' : s.accounting_type === 'asset' ? 'expense' : s.accounting_type === 'transfer' ? 'transfer' : 'expense';
     const txId = nanoid();
 
-    // Find a valid account for the type — fall back to first matching type
-    const acctType = s.accounting_type==='income'?'revenue':s.accounting_type==='asset'?'asset':'expense';
-    const acctR = await pool.query(
-      `SELECT id FROM chart_of_accounts WHERE account_type=$1 LIMIT 1`, [acctType]
-    );
-    const accountId = acctR.rows.length ? acctR.rows[0].id : null;
+    const noteText = [s.suggested_account_debit, s.suggested_account_credit]
+      .filter(Boolean).join(' / ');
 
     await pool.query(
-      `INSERT INTO transactions (id, transaction_date, description, amount, transaction_type, category, boat_id, notes, reconciled)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,1)`,
-      [txId, s.statement_date, s.description, Math.abs(parseFloat(s.amount)), txType, s.category, s.boat_id||null, `Importado del extracto bancario — ${s.suggested_account_debit} / ${s.suggested_account_credit}`, ]
+      `INSERT INTO transactions
+         (id, transaction_date, account_id, description, amount, transaction_type,
+          boat_id, reference_type, notes, reconciled)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'manual',$8,1)`,
+      [txId, s.statement_date, accountId, s.description,
+       Math.abs(parseFloat(s.amount)), txType,
+       s.boat_id || null,
+       noteText || `Importado del extracto bancario — ${s.category}`]
     );
 
     await pool.query(
-      `UPDATE bank_statements SET classification_status='posted', matched_transaction_id=$1, reconciliation_status='matched', updated_at=CURRENT_TIMESTAMP WHERE id=$2`,
+      `UPDATE bank_statements
+       SET classification_status='posted', matched_transaction_id=$1,
+           reconciliation_status='matched', updated_at=CURRENT_TIMESTAMP
+       WHERE id=$2`,
       [txId, id]
     );
 
-    res.json({ success: true, transaction_id: txId });
+    console.log(`✅ Bank statement ${id} posted → transaction ${txId} (account ${accountId})`);
+    res.json({ success: true, transaction_id: txId, account_id: accountId });
   } catch(err) {
-    console.error('post error:', err);
+    console.error('post bank-statement error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Bulk-post: post multiple confirmed statements in one call ---
+app.post('/api/accounting/bank-statements/bulk-post', isAuthenticated, async (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || !ids.length) {
+      return res.status(400).json({ error: 'ids array requerido' });
+    }
+
+    const { nanoid } = await import('nanoid');
+    const results = { posted: [], already_posted: [], failed: [] };
+
+    for (const id of ids) {
+      try {
+        const stmt = await pool.query('SELECT * FROM bank_statements WHERE id=$1', [id]);
+        if (!stmt.rows.length) { results.failed.push({ id, reason: 'No encontrado' }); continue; }
+        const s = stmt.rows[0];
+
+        if (s.classification_status === 'posted') {
+          results.already_posted.push({ id, transaction_id: s.matched_transaction_id });
+          continue;
+        }
+        if (!s.accounting_type || !s.category) {
+          results.failed.push({ id, reason: 'Sin clasificar', description: s.description });
+          continue;
+        }
+
+        const accountId = await resolveAccountId(pool, s.accounting_type, s.category);
+        if (!accountId) {
+          results.failed.push({ id, reason: `Sin cuenta contable para '${s.accounting_type}'`, description: s.description });
+          continue;
+        }
+
+        const txType = s.accounting_type === 'income' ? 'income'
+                     : s.accounting_type === 'transfer' ? 'transfer'
+                     : 'expense';
+        const txId = nanoid();
+        const noteText = [s.suggested_account_debit, s.suggested_account_credit]
+          .filter(Boolean).join(' / ');
+
+        await pool.query(
+          `INSERT INTO transactions
+             (id, transaction_date, account_id, description, amount, transaction_type,
+              boat_id, reference_type, notes, reconciled)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,'manual',$8,1)`,
+          [txId, s.statement_date, accountId, s.description,
+           Math.abs(parseFloat(s.amount)), txType,
+           s.boat_id || null, noteText || `Importado — ${s.category}`]
+        );
+
+        await pool.query(
+          `UPDATE bank_statements
+           SET classification_status='posted', matched_transaction_id=$1,
+               reconciliation_status='matched', updated_at=CURRENT_TIMESTAMP
+           WHERE id=$2`,
+          [txId, id]
+        );
+
+        results.posted.push({ id, transaction_id: txId });
+      } catch(itemErr) {
+        results.failed.push({ id, reason: itemErr.message });
+      }
+    }
+
+    console.log(`✅ bulk-post: ${results.posted.length} posted, ${results.already_posted.length} already posted, ${results.failed.length} failed`);
+    res.json({
+      success: true,
+      posted: results.posted.length,
+      already_posted: results.already_posted.length,
+      failed: results.failed.length,
+      details: results
+    });
+  } catch(err) {
+    console.error('bulk-post error:', err);
     res.status(500).json({ error: err.message });
   }
 });

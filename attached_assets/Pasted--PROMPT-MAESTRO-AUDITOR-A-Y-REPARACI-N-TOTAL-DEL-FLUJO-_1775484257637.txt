@@ -1,0 +1,422 @@
+# PROMPT MAESTRO — AUDITORÍA Y REPARACIÓN TOTAL DEL FLUJO:
+# SUBIDA DE ESTADO BANCARIO → CLASIFICACIÓN INTELIGENTE → ENVÍO A CONTABILIDAD
+
+Detén cualquier ajuste superficial.
+
+No quiero parches visuales.
+No quiero suposiciones.
+No quiero que se marque como “completado” un flujo que en la práctica no está funcionando.
+
+Necesito que revises, valides y repares de punta a punta el flujo completo que inicia cuando se sube el estado del banco y continúa con la clasificación inteligente hasta el envío final de gastos o ingresos a contabilidad.
+
+---
+
+# CONTEXTO DEL PROBLEMA
+
+Actualmente existe una falla en el flujo posterior a la subida del estado bancario.
+
+## Flujo esperado
+1. se sube el estado del banco,
+2. el sistema procesa el archivo,
+3. entra en clasificación inteligente,
+4. se clasifican movimientos como gastos o ingresos,
+5. y luego esos movimientos deben enviarse correctamente a contabilidad.
+
+## Problema actual
+Cuando el estado del banco llega a clasificación inteligente y se procede a enviar los gastos o ingresos a contabilidad, **no funciona**.
+
+No asumas que el problema está en un solo punto.
+Debes revisar el flujo completo de extremo a extremo.
+
+---
+
+# OBJETIVO PRINCIPAL
+
+Quiero una auditoría técnica total y una reparación funcional completa del flujo para garantizar que:
+
+- el archivo se reciba correctamente,
+- se procese correctamente,
+- la clasificación inteligente funcione como debe,
+- los movimientos queden bien tipificados,
+- el envío a contabilidad se ejecute realmente,
+- los estados cambien correctamente,
+- y todo el proceso quede estable, trazable y operativo.
+
+---
+
+# REGLA CRÍTICA
+
+No quiero que repares solo el síntoma visible.
+
+Quiero que identifiques:
+- dónde se rompe realmente el flujo,
+- por qué se rompe,
+- desde cuándo puede romperse,
+- qué parte sí funciona,
+- qué parte no,
+- qué dependencias están fallando,
+- y qué debe corregirse para que el flujo quede confiable.
+
+---
+
+# FASE 1 — AUDITORÍA COMPLETA DEL FLUJO
+
+Debes revisar el flujo completo desde el inicio hasta el final.
+
+## Auditar paso por paso
+
+### 1. Subida del estado bancario
+Validar:
+- si el archivo se carga correctamente,
+- si se guarda correctamente,
+- si se registra en base de datos,
+- si el formato se interpreta bien,
+- si hay validación de tipo de archivo,
+- si hay errores silenciosos,
+- si el backend recibe realmente el archivo,
+- si el estado inicial del proceso se actualiza correctamente.
+
+### 2. Procesamiento del archivo
+Validar:
+- parsing del archivo,
+- extracción de movimientos,
+- estructura de los registros generados,
+- campos requeridos,
+- importes,
+- fechas,
+- descripción,
+- referencia,
+- cuenta bancaria,
+- moneda,
+- duplicados,
+- errores de normalización.
+
+### 3. Clasificación inteligente
+Validar:
+- si el motor de clasificación se dispara realmente,
+- si recibe los datos correctos,
+- si clasifica todos los movimientos,
+- si clasifica parcialmente,
+- si deja estados intermedios inconsistentes,
+- si distingue correctamente ingresos vs gastos,
+- si existe fallback incorrecto,
+- si hay reglas rotas,
+- si hay servicios externos fallando,
+- si hay timeout,
+- si hay errores no visibles en logs.
+
+### 4. Preparación para envío a contabilidad
+Validar:
+- qué condición habilita el envío,
+- si el sistema marca correctamente los movimientos como listos,
+- si la validación previa al envío existe y funciona,
+- si se están filtrando registros incorrectamente,
+- si se están excluyendo movimientos válidos,
+- si los campos requeridos por contabilidad están completos,
+- si se arma bien el payload de gastos e ingresos.
+
+### 5. Envío a contabilidad
+Validar:
+- si el botón, acción o trigger realmente ejecuta algo,
+- si llama al endpoint correcto,
+- si el endpoint existe,
+- si el método HTTP es correcto,
+- si el payload sale bien formado,
+- si el backend recibe la solicitud,
+- si la integración con contabilidad responde,
+- si hay errores de autenticación,
+- si hay errores de validación,
+- si hay errores de mapping,
+- si hay errores de sincronización,
+- si la respuesta se persiste correctamente,
+- si el estado final del movimiento cambia correctamente.
+
+### 6. Confirmación y trazabilidad posterior
+Validar:
+- si queda registro de qué se envió,
+- si queda registro de qué no se envió,
+- si hay logs por movimiento,
+- si se puede reintentar,
+- si se duplican envíos,
+- si el usuario ve el estado real,
+- si el dashboard o módulo refleja correctamente el resultado final.
+
+---
+
+# FASE 2 — IDENTIFICAR EL PUNTO EXACTO DE QUIEBRE
+
+Debes determinar con precisión en cuál de estas capas se rompe el flujo:
+
+- UI / botón / acción visual
+- validación frontend
+- manejo de estado frontend
+- hook / store / loader
+- endpoint backend
+- servicio de clasificación
+- servicio de contabilidad
+- transformación de payload
+- reglas de negocio
+- permisos
+- autenticación
+- base de datos
+- cola / job / proceso asíncrono si existe
+- integraciones externas
+- actualización de estados
+- manejo de errores
+
+No quiero un diagnóstico ambiguo como “parece haber un problema”.
+Quiero el punto exacto de falla.
+
+---
+
+# FASE 3 — REVISIÓN TÉCNICA OBLIGATORIA
+
+## Frontend
+Revisa:
+- botones
+- formularios
+- carga de archivo
+- validaciones
+- estados de carga
+- estados de error
+- modales
+- eventos onClick
+- hooks
+- stores
+- queries / mutations
+- render condicional
+- mensajes al usuario
+- refresco de estado tras clasificación
+- refresco de estado tras envío a contabilidad
+
+## Backend
+Revisa:
+- endpoints
+- controladores
+- servicios
+- validadores
+- lógica de clasificación
+- lógica de envío a contabilidad
+- reglas de elegibilidad
+- transformaciones de payload
+- manejo de errores
+- retries
+- logs
+- estados transaccionales
+- actualizaciones de base de datos
+- idempotencia
+
+## Base de datos
+Revisa:
+- tablas involucradas
+- registros generados tras la subida
+- registros clasificados
+- estados de movimientos
+- bandera de enviado a contabilidad
+- duplicados
+- inconsistencias
+- nulos indebidos
+- relaciones huérfanas
+- timestamps
+- usuario que ejecuta la acción
+- historial de cambios si existe
+
+## Integración contable
+Revisa:
+- endpoint real
+- credenciales
+- autenticación
+- estructura esperada
+- campos obligatorios
+- mapping gasto / ingreso
+- códigos de cuenta si aplican
+- respuesta del sistema contable
+- errores devueltos
+- reintentos
+- confirmación de recepción
+
+---
+
+# FASE 4 — PROHIBICIONES ABSOLUTAS
+
+Queda prohibido:
+
+- marcar movimientos como enviados si no fueron enviados realmente,
+- simular éxito sin confirmación real,
+- ocultar errores técnicos,
+- dejar errores silenciosos,
+- usar mocks para aparentar que contabilidad respondió,
+- dejar botones activos que no hacen nada,
+- dejar estados inconsistentes entre clasificación y contabilidad,
+- duplicar envíos,
+- perder trazabilidad,
+- romper la clasificación inteligente mientras reparas el envío,
+- romper la subida del banco mientras corriges lo posterior.
+
+---
+
+# FASE 5 — REPARACIÓN DEL FLUJO
+
+Una vez detectado el problema, debes corregirlo de forma completa y segura.
+
+## La corrección debe asegurar
+- que el archivo se procese bien,
+- que la clasificación inteligente deje movimientos utilizables,
+- que los gastos e ingresos elegibles puedan enviarse,
+- que el envío a contabilidad se ejecute de verdad,
+- que el estado se actualice correctamente,
+- que el usuario vea el resultado real,
+- que haya trazabilidad completa,
+- y que no se generen duplicados ni falsos positivos.
+
+## Si el problema está en más de una capa
+Debes corregir todas las capas necesarias, no solo la primera que falle.
+
+---
+
+# FASE 6 — NO ROMPER LO QUE YA FUNCIONA
+
+Antes de modificar cualquier parte del flujo, identifica qué componentes hoy sí funcionan correctamente.
+
+## Debes preservar
+- carga correcta de archivos si ya funciona,
+- parsing correcto si ya funciona,
+- clasificación correcta si ya funciona,
+- registros correctos en base si ya funcionan,
+- integraciones sanas ya existentes,
+- validaciones correctas,
+- trazabilidad útil ya implementada.
+
+No quiero que arregles el envío a contabilidad rompiendo la clasificación o la importación.
+
+---
+
+# FASE 7 — MANEJO DE ERRORES Y OBSERVABILIDAD
+
+Quiero que el flujo deje de fallar en silencio.
+
+## Debes implementar o corregir
+- mensajes de error útiles,
+- logs claros por etapa,
+- identificación del movimiento afectado,
+- respuesta clara cuando falle contabilidad,
+- posibilidad de reintento seguro,
+- prevención de doble envío,
+- visibilidad del estado real del proceso,
+- diferenciación entre:
+  - pendiente,
+  - clasificado,
+  - listo para enviar,
+  - enviado,
+  - fallido,
+  - reintento requerido.
+
+---
+
+# FASE 8 — CASOS DE PRUEBA OBLIGATORIOS
+
+Debes validar el flujo con pruebas reales o equivalentes reales.
+
+## Casos mínimos
+1. subida correcta de estado bancario válido
+2. parsing correcto de múltiples movimientos
+3. clasificación correcta de gastos
+4. clasificación correcta de ingresos
+5. envío correcto de gastos a contabilidad
+6. envío correcto de ingresos a contabilidad
+7. mezcla de gastos e ingresos en el mismo lote
+8. archivo con datos incompletos
+9. archivo duplicado
+10. movimientos ya enviados previamente
+11. error de autenticación con contabilidad
+12. error de validación del payload
+13. timeout del servicio externo
+14. reintento sin duplicar registros
+15. actualización correcta de estado luego del envío
+
+---
+
+# FASE 9 — ENTREGABLE OBLIGATORIO
+
+No me entregues un simple “ya está arreglado”.
+
+Necesito evidencia concreta.
+
+## Debes reportar:
+1. dónde se rompía exactamente el flujo
+2. cuál era la causa raíz
+3. qué parte sí funcionaba y cuál no
+4. qué endpoints, servicios o queries revisaste
+5. qué error encontraste en la lógica
+6. qué error encontraste en frontend si aplica
+7. qué error encontraste en backend si aplica
+8. qué error encontraste en base de datos si aplica
+9. qué error encontraste en la integración contable si aplica
+10. qué corregiste exactamente
+11. cómo evitaste romper lo que sí funcionaba
+12. cómo validaste el flujo completo
+13. qué logs o trazas agregaste
+14. qué estados finales quedan definidos
+15. qué riesgos residuales quedan si existen
+
+---
+
+# CRITERIOS DE ACEPTACIÓN
+
+No se considera resuelto hasta que se cumpla todo esto:
+
+- el estado bancario se sube correctamente
+- los movimientos se generan correctamente
+- la clasificación inteligente se ejecuta correctamente
+- gastos e ingresos quedan bien identificados
+- el envío a contabilidad funciona realmente
+- no hay errores silenciosos
+- no hay estados falsos de éxito
+- no hay duplicados
+- el usuario puede identificar qué se envió y qué falló
+- el sistema permite reintento seguro si aplica
+- no se rompió ninguna funcionalidad previa válida
+- el flujo queda trazable de extremo a extremo
+
+---
+
+# AUTOEVALUACIÓN OBLIGATORIA — 25 CONTROLES
+
+1. ¿Revisé el flujo completo de punta a punta?
+2. ¿Identifiqué exactamente dónde falla?
+3. ¿Encontré la causa raíz y no solo el síntoma?
+4. ¿Validé la carga del archivo?
+5. ¿Validé el parsing del estado bancario?
+6. ¿Validé la generación de movimientos?
+7. ¿Validé la clasificación inteligente?
+8. ¿Confirmé que distingue ingresos y gastos correctamente?
+9. ¿Validé la condición que habilita el envío a contabilidad?
+10. ¿Revisé el botón o trigger que inicia el envío?
+11. ¿Revisé el endpoint real de envío?
+12. ¿Revisé el payload enviado?
+13. ¿Revisé la respuesta del sistema contable?
+14. ¿Revisé persistencia de resultados en base de datos?
+15. ¿Revisé estados intermedios y finales?
+16. ¿Verifiqué que no haya errores silenciosos?
+17. ¿Verifiqué que no haya duplicados?
+18. ¿Verifiqué que no se marquen como enviados registros no enviados?
+19. ¿Agregué trazabilidad suficiente?
+20. ¿Agregué manejo de errores claro?
+21. ¿Verifiqué posibilidad de reintento seguro?
+22. ¿Confirmé que no rompí lo que sí funcionaba?
+23. ¿Probé gastos e ingresos por separado?
+24. ¿Probé un caso mixto real?
+25. ¿Puedo defender técnicamente que el flujo quedó operativo de extremo a extremo?
+
+---
+
+# ORDEN FINAL
+
+No arregles solo lo visible.
+No cierres la tarea con un parche.
+No marques éxito hasta comprobar el flujo completo.
+
+Primero diagnostica.
+Luego corrige la causa raíz.
+Luego valida el flujo end-to-end.
+Luego documenta con evidencia.
