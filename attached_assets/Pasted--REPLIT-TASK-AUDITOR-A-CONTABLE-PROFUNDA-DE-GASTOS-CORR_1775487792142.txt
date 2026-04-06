@@ -1,0 +1,464 @@
+# REPLIT TASK — AUDITORÍA CONTABLE PROFUNDA DE GASTOS + CORRECCIÓN TOTAL DE RESÚMENES, CATEGORÍAS Y VISUALES
+
+Stop cosmetic work.
+Do not patch symptoms.
+Do not create fake dashboards.
+Do not optimize appearance before validating accounting truth.
+
+I need a full audit and repair of the expense accounting flow, because the expense summary currently shown is not reliable and I do not trust the totals.
+
+The system must support real financial analysis by category and date range, including the ability to inspect totals and drill down into detailed movements.
+
+---
+
+## PRIMARY OBJECTIVE
+
+Review and fix the full expense pipeline so that:
+
+- expense totals are correct,
+- accounting treatment is correct,
+- expenses are not mixed with income,
+- category assignment is correct and consistent,
+- summaries match the real underlying records,
+- category totals are accurate,
+- date filtering works correctly,
+- category drill-down works correctly,
+- and the UI provides real, useful visuals for decision-making.
+
+I need to be able to do this with confidence:
+
+- choose a date range,
+- see total expenses for that period,
+- see totals by category,
+- click a category such as `Fuel`,
+- see the total for Fuel,
+- and see the full breakdown of movements that make up that total.
+
+If the data is wrong, the accounting is wrong.
+If the accounting is wrong, the visuals are meaningless.
+So fix the truth first, then the product.
+
+---
+
+## CURRENT SUSPICION
+
+The current expense summary is incorrect.
+
+Possible reasons include:
+
+- wrong accounting logic,
+- wrong category assignment,
+- expenses duplicated,
+- expenses omitted,
+- income included in expense totals,
+- incorrect date filters,
+- broken aggregation queries,
+- inconsistent frontend vs backend logic,
+- inconsistent summary vs detail logic,
+- bad joins,
+- wrong signs on amounts,
+- stale or fake fallback data,
+- records sent to accounting but not reflected correctly.
+
+Do not assume the issue is visual.
+Audit the real source of truth first.
+
+---
+
+## EXECUTION ORDER
+
+Work in this order only:
+
+1. Audit accounting truth
+2. Audit categorization logic
+3. Audit date filtering and aggregation
+4. Audit backend queries and DB consistency
+5. Fix the data logic
+6. Fix summary/detail consistency
+7. Build or repair visuals
+8. Validate end-to-end with real records
+
+---
+
+## PHASE 1 — ACCOUNTING AUDIT OF EXPENSES
+
+Audit the full expense flow from source record to displayed summary.
+
+Review:
+
+- bank-originated movements
+- imported transactions
+- classified transactions
+- expense/income separation
+- expense records stored in DB
+- category mapping
+- accounting export / sent-to-accounting state if applicable
+- summary calculation
+- per-category calculation
+- per-period calculation
+- table detail calculation
+- dashboard widgets
+- any reporting endpoints related to expenses
+
+Determine:
+
+1. which expense records are valid,
+2. which are duplicated,
+3. which are misclassified,
+4. which are omitted from summaries,
+5. which are incorrectly included,
+6. which categories are wrong or too generic,
+7. where totals start diverging from real records.
+
+---
+
+## PHASE 2 — EXPENSE VS INCOME SEPARATION
+
+Validate that expense summaries include only real expense movements.
+
+Check:
+
+- movement type
+- sign normalization
+- classification rules
+- accounting labels
+- category compatibility
+- excluded statuses
+- reversed/cancelled records
+- refunds or special cases
+- duplicated imports
+- adjustment records
+
+Rules:
+
+- income must never inflate expense totals
+- duplicates must never count twice
+- invalid or cancelled movements must not appear as normal expenses
+- every expense total must be traceable to real underlying movements
+
+---
+
+## PHASE 3 — CATEGORY AUDIT
+
+I need a proper category model that supports analysis.
+
+Audit how categories are assigned:
+
+- AI classification
+- rules engine
+- mapping table
+- manual override
+- persisted category field
+- fallback categories
+- category edits after classification
+- category consistency across modules
+
+Validate:
+
+- whether categories are saved correctly
+- whether categories are reused consistently in summaries
+- whether generic categories are hiding problems
+- whether a transaction can end up uncategorized or wrongly categorized
+- whether category totals match the detailed records
+
+Example requirement:
+
+If a movement is Fuel, I must be able to:
+
+- see it under Fuel
+- see the total Fuel amount for selected dates
+- open Fuel and inspect all movements included
+- verify that the detailed sum equals the shown category total
+
+Expected useful categories may include:
+
+- Fuel
+- Maintenance
+- Port / Marina
+- Crew
+- Cleaning
+- Repairs
+- Supplies
+- Insurance
+- Taxes
+- Food
+- Transportation
+- Commissions
+- Other
+
+Do not create decorative categories.
+Use categories that support real accounting analysis.
+
+---
+
+## PHASE 4 — DATE FILTER AUDIT
+
+Date filtering must be reliable.
+
+Review and fix:
+
+- from / to filters
+- today
+- this week
+- this month
+- previous month
+- quarter
+- year
+- custom range
+- timezone handling
+- booking date vs bank date vs accounting date if relevant
+- aggregation boundaries
+- UI refresh behavior when changing dates
+
+When a date range changes, the following must update consistently:
+
+- total expenses
+- totals by category
+- charts
+- detailed table
+- drill-down totals
+- comparison widgets if enabled
+
+No visual may keep stale totals after filters change.
+
+---
+
+## PHASE 5 — BACKEND AUDIT
+
+Audit all backend logic related to expense summaries and category analysis.
+
+Review:
+
+- endpoints
+- controllers
+- services
+- SQL / ORM queries
+- joins
+- aggregations
+- group by category
+- date filtering
+- exclusion rules
+- state filtering
+- sent-to-accounting logic
+- summary query vs detail query
+- performance issues if they affect correctness
+
+Specifically determine:
+
+- whether summary and detail use the same business logic
+- whether dashboard and tables use different sources
+- whether records are counted more than once
+- whether category totals are computed from the same filtered universe as the table
+- whether expense summaries depend on stale cached or hardcoded logic
+
+---
+
+## PHASE 6 — DATABASE AUDIT
+
+Audit the actual DB state and find data integrity issues.
+
+Review:
+
+- transaction tables
+- expense tables
+- classification tables
+- category tables
+- accounting export tables
+- state/status fields
+- duplicate rows
+- orphan records
+- null categories
+- null amounts
+- wrong amount sign
+- wrong currency normalization if applicable
+- wrong timestamps
+- inconsistent state transitions
+- test/demo rows contaminating production views
+
+Determine exactly which DB issues are causing incorrect expense reporting.
+
+---
+
+## PHASE 7 — REPAIR THE ACCOUNTING LOGIC
+
+After identifying the root causes, fix the logic completely.
+
+The final system must guarantee:
+
+- correct total expenses
+- correct category totals
+- correct date filtering
+- strict separation of expense vs income
+- consistent summary vs detail
+- no fake totals
+- no duplicate inflation
+- no hidden category errors
+- full traceability from widget total to row-level detail
+
+If a KPI or visual cannot be supported by real data, remove it or show an honest empty state.
+
+Never invent data to fill the UI.
+
+---
+
+## PHASE 8 — BUILD OR FIX REQUIRED VISUALS
+
+Create or repair the expense analysis visuals so they are actually useful.
+
+### Required visual 1 — Total Expenses Summary
+Show:
+- total expenses for selected period
+- count of expense movements
+- optional comparison vs previous period only if reliable
+
+### Required visual 2 — Expenses by Category
+Show:
+- categories sorted high to low
+- total amount by category
+- percentage of total
+
+### Required visual 3 — Category Drill-down
+When clicking a category such as `Fuel`, show:
+- total Fuel for selected period
+- number of related movements
+- detailed list of movements
+- date
+- description
+- amount
+- account/source if applicable
+- reference if applicable
+
+### Required visual 4 — Expense Time Trend
+Show daily / weekly / monthly trend only if underlying data is correct.
+
+### Required visual 5 — Detailed Expense Table
+Must support filters by:
+- date range
+- category
+- amount
+- status
+- account/source
+- text search / description
+
+### Required visual 6 — Honest Empty States
+If no records exist for the selected filters, show:
+- `No expenses found for this period`
+Do not fabricate fallback numbers.
+
+---
+
+## PHASE 9 — UX / PRODUCT REQUIREMENTS
+
+The module must support real analysis, not just display totals.
+
+The user must be able to:
+
+- select dates easily
+- understand total expense immediately
+- identify the largest categories
+- click into category detail
+- trace totals back to movements
+- return to summary without losing context
+- trust that the totals match the records
+
+Avoid:
+
+- ambiguous categories
+- summary/detail mismatch
+- charts that do not reconcile with tables
+- filters that only affect part of the screen
+- empty screens with no explanation
+- decorative charts with no accounting value
+
+---
+
+## ABSOLUTE PROHIBITIONS
+
+Do not leave any of the following:
+
+- fake totals
+- hardcoded summaries
+- mocked charts
+- summary values that do not reconcile to detailed rows
+- income included in expenses
+- duplicate transactions inflating totals
+- “Other” swallowing major classification errors
+- stale UI after changing filters
+- category totals with no drill-down traceability
+
+---
+
+## REQUIRED VALIDATION TESTS
+
+Test at minimum:
+
+1. single expense correctly categorized
+2. multiple expenses in same category
+3. expenses across multiple categories
+4. custom date range
+5. monthly filter
+6. Fuel total + drill-down
+7. Maintenance total + drill-down
+8. duplicated records
+9. uncategorized records
+10. misclassified records
+11. expense summary vs detailed table reconciliation
+12. dashboard vs DB reconciliation
+13. empty-state scenario
+14. filter changes updating all visuals
+15. row-level detail summing exactly to category total
+
+---
+
+## REQUIRED DELIVERABLE
+
+Do not respond with “done” or “fixed”.
+
+Provide a technical and accounting report with:
+
+1. why the expense summary was wrong
+2. what accounting issues were found
+3. what category issues were found
+4. what query or aggregation issues were found
+5. whether date filters were wrong
+6. what duplicate or invalid records were found
+7. what logic was corrected
+8. what visuals were created or fixed
+9. how category totals now work
+10. how category drill-down now works
+11. how Fuel was validated as a real category total + detail example
+12. how totals were validated against DB
+13. any residual risks still present
+
+---
+
+## ACCEPTANCE CRITERIA
+
+This is not complete until all of the following are true:
+
+- expense summary matches real records
+- income is fully excluded from expense totals
+- categories are useful, consistent and auditable
+- date filtering is correct
+- category totals are correct
+- category drill-down works
+- Fuel can be analyzed with total + detail
+- visuals reconcile with detailed tables
+- detailed tables reconcile with DB
+- no fake data remains
+- no duplicate inflation remains
+- traceability exists from summary to movement
+- the module is trustworthy for real financial analysis
+
+---
+
+## FINAL INSTRUCTION
+
+I do not want a prettier expense screen.
+I want a trustworthy expense accounting module.
+
+Fix the truth.
+Fix the categorization.
+Fix the queries.
+Fix the filters.
+Then build the visuals needed for real analysis.

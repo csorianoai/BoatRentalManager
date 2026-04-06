@@ -339,6 +339,9 @@
             <button class="tab active" data-tab="transactions" data-testid="tab-transactions">
                 💸 Transacciones
             </button>
+            <button class="tab" data-tab="gastos-analisis" data-testid="tab-gastos-analisis">
+                📉 Análisis de Gastos
+            </button>
             <button class="tab" data-tab="clasificacion" data-testid="tab-clasificacion">
                 🧠 Clasificación Inteligente
             </button>
@@ -566,6 +569,126 @@
                     </tbody>
                 </table>
             </div>
+        </div>
+
+        <!-- Análisis de Gastos Tab -->
+        <div class="tab-content" id="gastos-analisis" data-testid="tab-content-gastos-analisis" style="display:none">
+
+          <!-- Date range controls -->
+          <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:18px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:12px 16px">
+            <span style="font-size:12px;font-weight:700;color:#374151">Período:</span>
+            <div style="display:flex;gap:4px;flex-wrap:wrap">
+              <button onclick="setGastosPreset('month')"   data-testid="button-gastos-month"   id="gpreset-month"   style="padding:5px 12px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;cursor:pointer;background:#0066cc;color:#fff;font-weight:600">Este mes</button>
+              <button onclick="setGastosPreset('prev')"    data-testid="button-gastos-prev"    id="gpreset-prev"    style="padding:5px 12px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;cursor:pointer;background:#fff;color:#374151">Mes anterior</button>
+              <button onclick="setGastosPreset('quarter')" data-testid="button-gastos-quarter" id="gpreset-quarter" style="padding:5px 12px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;cursor:pointer;background:#fff;color:#374151">Trimestre</button>
+              <button onclick="setGastosPreset('year')"    data-testid="button-gastos-year"    id="gpreset-year"    style="padding:5px 12px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;cursor:pointer;background:#fff;color:#374151">Este año</button>
+              <button onclick="setGastosPreset('all')"     data-testid="button-gastos-all"     id="gpreset-all"     style="padding:5px 12px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;cursor:pointer;background:#fff;color:#374151">Todo</button>
+            </div>
+            <input type="date" id="gastos-from" data-testid="input-gastos-from" style="padding:5px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:12px">
+            <span style="font-size:12px;color:#94a3b8">→</span>
+            <input type="date" id="gastos-to"   data-testid="input-gastos-to"   style="padding:5px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:12px">
+            <button onclick="loadGastosAnalysis()" data-testid="button-gastos-refresh"
+              style="padding:5px 14px;background:#0066cc;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;font-weight:700">Actualizar</button>
+          </div>
+
+          <!-- KPI Cards -->
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px">
+            <div class="classif-stat-card">
+              <div class="csf-label">Total Gastos</div>
+              <div class="csf-val" id="gastos-total" style="color:#dc2626;font-size:22px">—</div>
+              <div id="gastos-count" style="font-size:11px;color:#94a3b8;margin-top:2px"></div>
+            </div>
+            <div class="classif-stat-card">
+              <div class="csf-label">Total Ingresos</div>
+              <div class="csf-val" id="gastos-income" style="color:#059669;font-size:22px">—</div>
+              <div id="gastos-income-count" style="font-size:11px;color:#94a3b8;margin-top:2px"></div>
+            </div>
+            <div class="classif-stat-card">
+              <div class="csf-label">Balance Neto</div>
+              <div class="csf-val" id="gastos-net" style="font-size:22px">—</div>
+            </div>
+            <div class="classif-stat-card">
+              <div class="csf-label">Categoría Mayor</div>
+              <div id="gastos-top-cat" style="font-size:14px;font-weight:700;color:#1a1a2e;margin-top:4px">—</div>
+            </div>
+          </div>
+
+          <!-- Two-column: category list + trend -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+
+            <!-- Expenses by category -->
+            <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:16px">
+              <div style="font-weight:700;color:#1a1a2e;font-size:14px;margin-bottom:12px">Gastos por Categoría</div>
+              <div id="gastos-by-category" style="display:flex;flex-direction:column;gap:8px">
+                <div style="color:#94a3b8;font-size:13px;text-align:center;padding:20px">Cargando…</div>
+              </div>
+            </div>
+
+            <!-- Monthly trend -->
+            <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:16px">
+              <div style="font-weight:700;color:#1a1a2e;font-size:14px;margin-bottom:12px">Tendencia Mensual (6 meses)</div>
+              <div id="gastos-trend-bars" style="display:flex;align-items:flex-end;gap:8px;height:120px;padding-bottom:4px"></div>
+              <div id="gastos-trend-labels" style="display:flex;gap:8px;margin-top:4px"></div>
+            </div>
+          </div>
+
+          <!-- Category drill-down (shown when clicking a category) -->
+          <div id="gastos-drilldown-panel" style="display:none;background:#fff;border:2px solid #0066cc;border-radius:10px;padding:16px;margin-bottom:20px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+              <div>
+                <div id="gastos-drill-title" style="font-size:16px;font-weight:800;color:#1a1a2e"></div>
+                <div id="gastos-drill-summary" style="font-size:12px;color:#64748b;margin-top:2px"></div>
+              </div>
+              <button onclick="closeGastosDrilldown()" data-testid="button-close-drilldown"
+                style="background:none;border:none;font-size:20px;cursor:pointer;color:#64748b">×</button>
+            </div>
+            <table style="width:100%;border-collapse:collapse;font-size:13px">
+              <thead>
+                <tr style="background:#f8fafc">
+                  <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;border-bottom:1px solid #e5e7eb">Fecha</th>
+                  <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;border-bottom:1px solid #e5e7eb">Descripción</th>
+                  <th style="padding:8px 12px;text-align:right;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;border-bottom:1px solid #e5e7eb">Monto</th>
+                  <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;border-bottom:1px solid #e5e7eb">Origen</th>
+                </tr>
+              </thead>
+              <tbody id="gastos-drill-tbody"></tbody>
+              <tfoot>
+                <tr style="border-top:2px solid #e5e7eb;background:#f0f9ff">
+                  <td colspan="2" style="padding:10px 12px;font-weight:700;color:#374151;font-size:13px">Total</td>
+                  <td style="padding:10px 12px;text-align:right;font-weight:800;color:#dc2626;font-size:14px" id="gastos-drill-total"></td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          <!-- Full expense table with search -->
+          <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:16px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+              <div style="font-weight:700;color:#1a1a2e;font-size:14px">Detalle de Gastos</div>
+              <input type="text" id="gastos-search" data-testid="input-gastos-search"
+                placeholder="Buscar descripción…"
+                oninput="filterGastosTable()"
+                style="padding:6px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;width:220px">
+            </div>
+            <div style="overflow-x:auto">
+              <table style="width:100%;border-collapse:collapse;font-size:13px" id="gastos-detail-table">
+                <thead>
+                  <tr style="background:#f1f5f9">
+                    <th style="padding:9px 12px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Fecha</th>
+                    <th style="padding:9px 12px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Descripción</th>
+                    <th style="padding:9px 12px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Cuenta / Categoría</th>
+                    <th style="padding:9px 12px;text-align:right;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Monto</th>
+                    <th style="padding:9px 12px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Origen</th>
+                  </tr>
+                </thead>
+                <tbody id="gastos-detail-tbody" data-testid="table-gastos-detail">
+                  <tr><td colspan="5" style="padding:30px;text-align:center;color:#94a3b8">Cargando gastos…</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div id="gastos-detail-footer" style="margin-top:8px;font-size:12px;color:#64748b;text-align:right"></div>
+          </div>
         </div>
 
         <!-- Clasificación Inteligente Tab -->
@@ -2835,6 +2958,242 @@
 
         // Keep old name as alias for buttons that call it
         function loadConciliationSummary() { loadConciliationItems(); }
+
+        // ══════════════════════════════════════════════════════════════════
+        // ANÁLISIS DE GASTOS
+        // ══════════════════════════════════════════════════════════════════
+        let _gastosData = null;          // cached last API response
+        let _gastosAllRows = [];         // flat detail rows for client search
+
+        function fmtUSD(v) {
+          return '$' + parseFloat(v||0).toLocaleString('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 });
+        }
+
+        function setGastosPreset(preset) {
+          const now = new Date();
+          let from, to;
+          if (preset === 'month') {
+            from = new Date(now.getFullYear(), now.getMonth(), 1);
+            to   = now;
+          } else if (preset === 'prev') {
+            from = new Date(now.getFullYear(), now.getMonth()-1, 1);
+            to   = new Date(now.getFullYear(), now.getMonth(), 0);
+          } else if (preset === 'quarter') {
+            const q = Math.floor(now.getMonth()/3);
+            from = new Date(now.getFullYear(), q*3, 1);
+            to   = now;
+          } else if (preset === 'year') {
+            from = new Date(now.getFullYear(), 0, 1);
+            to   = now;
+          } else { // all
+            from = new Date('2020-01-01');
+            to   = now;
+          }
+          document.getElementById('gastos-from').value = from.toISOString().slice(0,10);
+          document.getElementById('gastos-to').value   = to.toISOString().slice(0,10);
+          // Update active preset button styles
+          ['month','prev','quarter','year','all'].forEach(p => {
+            const btn = document.getElementById('gpreset-'+p);
+            if (btn) { btn.style.background = p===preset ? '#0066cc' : '#fff'; btn.style.color = p===preset ? '#fff' : '#374151'; }
+          });
+          loadGastosAnalysis();
+        }
+
+        async function loadGastosAnalysis() {
+          const from = document.getElementById('gastos-from').value;
+          const to   = document.getElementById('gastos-to').value;
+          if (!from || !to) return;
+
+          // Loading state
+          document.getElementById('gastos-total').textContent   = '…';
+          document.getElementById('gastos-income').textContent  = '…';
+          document.getElementById('gastos-net').textContent     = '…';
+          document.getElementById('gastos-by-category').innerHTML =
+            '<div style="color:#94a3b8;font-size:13px;text-align:center;padding:20px">Cargando…</div>';
+          document.getElementById('gastos-detail-tbody').innerHTML =
+            '<tr><td colspan="5" style="padding:30px;text-align:center;color:#94a3b8">Cargando…</td></tr>';
+          closeGastosDrilldown();
+
+          try {
+            const r = await fetch(`/api/accounting/expenses/analysis?from=${from}&to=${to}`);
+            if (!r.ok) throw new Error(await r.text());
+            const d = await r.json();
+            _gastosData = d;
+
+            // KPI cards
+            document.getElementById('gastos-total').textContent  = fmtUSD(d.total_expenses);
+            document.getElementById('gastos-count').textContent  = `${d.expense_count} movimiento${d.expense_count!==1?'s':''}`;
+            document.getElementById('gastos-income').textContent = fmtUSD(d.total_income);
+            document.getElementById('gastos-income-count').textContent = `${d.income_count} movimiento${d.income_count!==1?'s':''}`;
+            const net = d.net_balance;
+            const netEl = document.getElementById('gastos-net');
+            netEl.textContent = fmtUSD(Math.abs(net));
+            netEl.style.color = net >= 0 ? '#059669' : '#dc2626';
+            if (d.by_category.length)
+              document.getElementById('gastos-top-cat').textContent = d.by_category[0].name + ' (' + fmtUSD(d.by_category[0].total) + ')';
+            else
+              document.getElementById('gastos-top-cat').textContent = '—';
+
+            // Category list
+            const catEl = document.getElementById('gastos-by-category');
+            if (!d.by_category.length) {
+              catEl.innerHTML = '<div style="color:#94a3b8;font-size:13px;text-align:center;padding:20px">Sin gastos en el período seleccionado</div>';
+            } else {
+              catEl.innerHTML = d.by_category.map(cat => `
+                <div onclick="drilldownGastos('${cat.account_id}','${cat.name.replace(/'/g,"\\'")}',${cat.total})"
+                     data-testid="cat-row-${cat.code}"
+                     style="cursor:pointer;padding:8px 10px;border-radius:8px;border:1px solid #e5e7eb;background:#fff;transition:background .15s"
+                     onmouseover="this.style.background='#f0f9ff'" onmouseout="this.style.background='#fff'">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+                    <div style="font-size:13px;font-weight:700;color:#1a1a2e">${cat.name}</div>
+                    <div style="display:flex;gap:8px;align-items:center">
+                      <span style="font-size:11px;color:#64748b">${cat.pct}%</span>
+                      <span style="font-weight:800;color:#dc2626;font-size:14px">${fmtUSD(cat.total)}</span>
+                    </div>
+                  </div>
+                  <div style="background:#f1f5f9;border-radius:4px;height:5px;overflow:hidden">
+                    <div style="background:#dc2626;height:100%;width:${cat.pct}%;border-radius:4px"></div>
+                  </div>
+                  <div style="font-size:11px;color:#94a3b8;margin-top:3px">${cat.count} movimiento${cat.count!==1?'s':''} · Código ${cat.code}</div>
+                </div>
+              `).join('');
+            }
+
+            // Trend bars
+            renderGastosTrend(d.trend);
+
+            // Detail table — fetch ALL items by category detail
+            await loadGastosDetailAll(from, to, d.by_category);
+
+          } catch(e) {
+            console.error('loadGastosAnalysis error', e);
+            document.getElementById('gastos-detail-tbody').innerHTML =
+              `<tr><td colspan="5" style="padding:30px;text-align:center;color:#dc2626">Error: ${e.message}</td></tr>`;
+          }
+        }
+
+        async function loadGastosDetailAll(from, to, categories) {
+          // Load drilldown for each category and merge into flat list
+          _gastosAllRows = [];
+          for (const cat of categories) {
+            try {
+              const r = await fetch(`/api/accounting/expenses/drilldown?account_id=${encodeURIComponent(cat.account_id)}&from=${from}&to=${to}`);
+              if (!r.ok) continue;
+              const d = await r.json();
+              _gastosAllRows.push(...d.items.map(row => ({ ...row, cat_name: cat.name, cat_code: cat.code })));
+            } catch(_) {}
+          }
+          // Sort by date desc
+          _gastosAllRows.sort((a,b) => b.transaction_date.localeCompare(a.transaction_date));
+          renderGastosDetailTable(_gastosAllRows);
+        }
+
+        function renderGastosDetailTable(rows) {
+          const tbody = document.getElementById('gastos-detail-tbody');
+          const footer = document.getElementById('gastos-detail-footer');
+          if (!rows.length) {
+            tbody.innerHTML = '<tr><td colspan="5" style="padding:30px;text-align:center;color:#94a3b8;font-size:14px">No hay gastos para el período seleccionado.</td></tr>';
+            if (footer) footer.textContent = '';
+            return;
+          }
+          const REF = { booking:'Reserva', bank_statement:'Banco', manual:'Manual', asset:'Activo', other:'Gasto operativo', payroll:'Nómina' };
+          tbody.innerHTML = rows.map(r => {
+            const date = r.transaction_date ? r.transaction_date.substring(0,10) : '—';
+            const desc = (r.description||'').substring(0,60);
+            const cat  = `${r.account_code} ${r.account_name||r.cat_name||''}`.substring(0,30);
+            const ref  = REF[r.reference_type] || r.reference_type || '—';
+            return `<tr style="border-bottom:1px solid #f1f5f9" data-desc="${(r.description||'').toLowerCase()}" data-testid="row-gasto-${r.id}">
+              <td style="padding:9px 12px;color:#374151;font-size:12px;white-space:nowrap">${date}</td>
+              <td style="padding:9px 12px;color:#1a1a2e;max-width:260px">
+                <div style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.description||''}">${desc}</div>
+                ${r.notes ? `<div style="font-size:11px;color:#94a3b8">${r.notes.substring(0,40)}</div>` : ''}
+              </td>
+              <td style="padding:9px 12px;font-size:12px;color:#374151">${cat}</td>
+              <td style="padding:9px 12px;text-align:right;font-weight:700;color:#dc2626;white-space:nowrap">${fmtUSD(r.amount)}</td>
+              <td style="padding:9px 12px;font-size:11px;color:#64748b">${ref}</td>
+            </tr>`;
+          }).join('');
+          if (footer) footer.textContent = `${rows.length} movimiento${rows.length!==1?'s':''} · Total: ${fmtUSD(rows.reduce((s,r)=>s+parseFloat(r.amount||0),0))}`;
+        }
+
+        function filterGastosTable() {
+          const q = (document.getElementById('gastos-search').value || '').toLowerCase().trim();
+          const filtered = q ? _gastosAllRows.filter(r => (r.description||'').toLowerCase().includes(q) || (r.notes||'').toLowerCase().includes(q) || (r.account_name||'').toLowerCase().includes(q)) : _gastosAllRows;
+          renderGastosDetailTable(filtered);
+        }
+
+        async function drilldownGastos(accountId, name, total) {
+          const from = document.getElementById('gastos-from').value;
+          const to   = document.getElementById('gastos-to').value;
+          const panel = document.getElementById('gastos-drilldown-panel');
+          const tbody = document.getElementById('gastos-drill-tbody');
+          document.getElementById('gastos-drill-title').textContent = name;
+          document.getElementById('gastos-drill-summary').textContent = 'Cargando detalle…';
+          document.getElementById('gastos-drill-total').textContent = '…';
+          panel.style.display = 'block';
+          panel.scrollIntoView({ behavior:'smooth', block:'start' });
+          tbody.innerHTML = '<tr><td colspan="4" style="padding:20px;text-align:center;color:#94a3b8">Cargando…</td></tr>';
+          try {
+            const r = await fetch(`/api/accounting/expenses/drilldown?account_id=${encodeURIComponent(accountId)}&from=${from}&to=${to}`);
+            if (!r.ok) throw new Error(await r.text());
+            const d = await r.json();
+            document.getElementById('gastos-drill-summary').textContent =
+              `${d.count} movimiento${d.count!==1?'s':''} · ${from} → ${to}`;
+            document.getElementById('gastos-drill-total').textContent = fmtUSD(d.total);
+            const REF = { booking:'Reserva', bank_statement:'Banco', manual:'Manual', asset:'Activo', other:'Gasto operativo', payroll:'Nómina' };
+            if (!d.items.length) {
+              tbody.innerHTML = '<tr><td colspan="4" style="padding:20px;text-align:center;color:#94a3b8">Sin movimientos</td></tr>';
+            } else {
+              tbody.innerHTML = d.items.map(row => {
+                const date = row.transaction_date ? row.transaction_date.substring(0,10) : '—';
+                const ref  = REF[row.reference_type] || row.reference_type || '—';
+                return `<tr style="border-bottom:1px solid #f1f5f9" data-testid="row-drill-${row.id}">
+                  <td style="padding:9px 12px;font-size:12px;color:#374151;white-space:nowrap">${date}</td>
+                  <td style="padding:9px 12px;font-size:13px;color:#1a1a2e">${(row.description||'').substring(0,60)}</td>
+                  <td style="padding:9px 12px;text-align:right;font-weight:700;color:#dc2626;white-space:nowrap">${fmtUSD(row.amount)}</td>
+                  <td style="padding:9px 12px;font-size:11px;color:#64748b">${ref}</td>
+                </tr>`;
+              }).join('');
+            }
+          } catch(e) {
+            tbody.innerHTML = `<tr><td colspan="4" style="padding:20px;text-align:center;color:#dc2626">Error: ${e.message}</td></tr>`;
+          }
+        }
+
+        function closeGastosDrilldown() {
+          const p = document.getElementById('gastos-drilldown-panel');
+          if (p) p.style.display = 'none';
+        }
+
+        function renderGastosTrend(trend) {
+          const barsEl = document.getElementById('gastos-trend-bars');
+          const labelsEl = document.getElementById('gastos-trend-labels');
+          if (!barsEl || !trend || !trend.length) return;
+          const maxVal = Math.max(...trend.map(t => t.total), 1);
+          const months = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+          barsEl.innerHTML = trend.map(t => {
+            const pct = Math.round(t.total / maxVal * 100);
+            return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:2px" title="${fmtUSD(t.total)}">
+              <div style="font-size:10px;color:#dc2626;font-weight:700">${fmtUSD(t.total).replace('$','')}</div>
+              <div style="width:100%;background:#fecaca;border-radius:3px 3px 0 0;height:${Math.max(pct,4)}%"></div>
+            </div>`;
+          }).join('');
+          labelsEl.innerHTML = trend.map(t => {
+            const [y, m] = t.month.split('-');
+            return `<div style="flex:1;text-align:center;font-size:10px;color:#64748b">${months[parseInt(m)-1]}</div>`;
+          }).join('');
+        }
+
+        // Tab listener for gastos-analisis
+        document.querySelectorAll('.tab[data-tab="gastos-analisis"]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            if (!document.getElementById('gastos-from').value) {
+              setGastosPreset('month'); // auto-set to current month on first open
+            } else {
+              loadGastosAnalysis();
+            }
+          });
+        });
 
         // ── Load boats into modal and bulk selects ─────────────────────────
         async function loadBoatsIntoClassifModal() {

@@ -8166,6 +8166,137 @@ app.get('/api/accounting/reconciliations/:id/variance-analysis', isAuthenticated
 // ===== FINANCIAL REPORTS =====
 
 // Profit & Loss Report
+// ─────────────────────────────────────────────────────────────────────────────
+// EXPENSE ANALYSIS ENDPOINTS (truthful: only account_type='expense' accounts)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GET /api/accounting/expenses/analysis?from=YYYY-MM-DD&to=YYYY-MM-DD
+app.get('/api/accounting/expenses/analysis', isAuthenticated, async (req, res) => {
+  try {
+    let { from, to } = req.query;
+    // Default: current month
+    if (!from) from = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0,10);
+    if (!to)   to   = new Date().toISOString().slice(0,10);
+
+    // RULE: only transactions where account_type = 'expense' are real operational expenses
+    const baseWhere = `
+      WHERE t.transaction_type = 'expense'
+        AND ca.account_type = 'expense'
+        AND t.transaction_date BETWEEN $1 AND $2
+    `;
+    const params = [from, to];
+
+    // 1. Totals
+    const totals = await pool.query(`
+      SELECT
+        COUNT(*)          AS count,
+        COALESCE(SUM(t.amount), 0) AS total
+      FROM transactions t
+      JOIN chart_of_accounts ca ON ca.id = t.account_id
+      ${baseWhere}
+    `, params);
+
+    // 2. By category (account_code + account_name as category proxy)
+    const byCategory = await pool.query(`
+      SELECT
+        ca.id           AS account_id,
+        ca.account_code AS code,
+        ca.account_name AS name,
+        COUNT(*)        AS count,
+        COALESCE(SUM(t.amount), 0) AS total
+      FROM transactions t
+      JOIN chart_of_accounts ca ON ca.id = t.account_id
+      ${baseWhere}
+      GROUP BY ca.id, ca.account_code, ca.account_name
+      ORDER BY total DESC
+    `, params);
+
+    // 3. Monthly trend (last 6 months regardless of filter)
+    const trend = await pool.query(`
+      SELECT
+        TO_CHAR(DATE_TRUNC('month', t.transaction_date), 'YYYY-MM') AS month,
+        COALESCE(SUM(t.amount), 0) AS total
+      FROM transactions t
+      JOIN chart_of_accounts ca ON ca.id = t.account_id
+      WHERE t.transaction_type = 'expense'
+        AND ca.account_type = 'expense'
+        AND t.transaction_date >= (CURRENT_DATE - INTERVAL '5 months')::date
+      GROUP BY DATE_TRUNC('month', t.transaction_date)
+      ORDER BY month
+    `);
+
+    // 4. Income total for the same period (for net balance KPI)
+    const income = await pool.query(`
+      SELECT COALESCE(SUM(t.amount), 0) AS total, COUNT(*) AS count
+      FROM transactions t
+      JOIN chart_of_accounts ca ON ca.id = t.account_id
+      WHERE t.transaction_type = 'income'
+        AND ca.account_type IN ('revenue','income')
+        AND t.transaction_date BETWEEN $1 AND $2
+    `, params);
+
+    const totalExpenses = parseFloat(totals.rows[0].total) || 0;
+    const totalIncome   = parseFloat(income.rows[0].total) || 0;
+
+    res.json({
+      from, to,
+      total_expenses: totalExpenses,
+      expense_count:  parseInt(totals.rows[0].count) || 0,
+      total_income:   totalIncome,
+      income_count:   parseInt(income.rows[0].count) || 0,
+      net_balance:    totalIncome - totalExpenses,
+      by_category:    byCategory.rows.map(r => ({
+        account_id: r.account_id,
+        code:       r.code,
+        name:       r.name,
+        count:      parseInt(r.count),
+        total:      parseFloat(r.total),
+        pct:        totalExpenses > 0 ? Math.round(parseFloat(r.total) / totalExpenses * 100) : 0
+      })),
+      trend: trend.rows.map(r => ({ month: r.month, total: parseFloat(r.total) }))
+    });
+  } catch (err) {
+    console.error('expenses/analysis error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/accounting/expenses/drilldown?account_id=&from=&to=
+app.get('/api/accounting/expenses/drilldown', isAuthenticated, async (req, res) => {
+  try {
+    let { account_id, from, to } = req.query;
+    if (!account_id) return res.status(400).json({ error: 'account_id required' });
+    if (!from) from = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0,10);
+    if (!to)   to   = new Date().toISOString().slice(0,10);
+
+    const result = await pool.query(`
+      SELECT
+        t.id,
+        t.transaction_date,
+        t.description,
+        t.amount,
+        t.reference_type,
+        t.reference_id,
+        t.notes,
+        ca.account_code,
+        ca.account_name
+      FROM transactions t
+      JOIN chart_of_accounts ca ON ca.id = t.account_id
+      WHERE t.transaction_type = 'expense'
+        AND ca.account_type = 'expense'
+        AND t.account_id = $1
+        AND t.transaction_date BETWEEN $2 AND $3
+      ORDER BY t.transaction_date DESC, t.id
+    `, [account_id, from, to]);
+
+    const total = result.rows.reduce((s, r) => s + parseFloat(r.amount), 0);
+    res.json({ account_id, from, to, total, count: result.rows.length, items: result.rows });
+  } catch (err) {
+    console.error('expenses/drilldown error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/accounting/profit-loss', isAuthenticated, async (req, res) => {
   try {
     const { start_date, end_date } = req.query;
