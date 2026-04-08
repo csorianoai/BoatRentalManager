@@ -809,6 +809,7 @@ function init() {
   setupDarkMode();
   setupDetailTabs();
   setupFuelForm();
+  setupQuickFuelModal();
 
   // Default: this month
   setPreset('month');
@@ -863,6 +864,158 @@ function init() {
 
   // Load
   loadBoats().then(() => loadAll());
+}
+
+// ── Quick Fuel Modal ──────────────────────────────────────────────────
+function openQuickFuelModal(boatId = '') {
+  // Populate boats if not done yet
+  const sel = $('qf-boat');
+  if (sel && S.boats.length) {
+    sel.innerHTML = '<option value="">Seleccionar barco...</option>';
+    for (const b of S.boats) {
+      const opt = new Option(b.boat_name, b.boat_id);
+      if (b.boat_id === boatId) opt.selected = true;
+      sel.appendChild(opt);
+    }
+  }
+  // Default date to today
+  $('qf-date').value = new Date().toISOString().slice(0, 10);
+  // Clear fields
+  ['qf-gallons','qf-cpg','qf-total','qf-odometer','qf-station','qf-notes'].forEach(id => {
+    const el = $(id);
+    if (el) el.value = '';
+  });
+  $('qf-preview').style.display = 'none';
+  $('quick-fuel-modal').style.display = 'flex';
+  setTimeout(() => $('qf-boat').focus(), 80);
+}
+
+function closeQuickFuelModal() {
+  $('quick-fuel-modal').style.display = 'none';
+}
+
+function updateQuickFuelPreview() {
+  const gals = parseFloat($('qf-gallons').value) || 0;
+  const cpg  = parseFloat($('qf-cpg').value) || 0;
+  const total = parseFloat($('qf-total').value) || (gals * cpg);
+  const boatSel = $('qf-boat');
+  const boatName = boatSel.options[boatSel.selectedIndex]?.text || '—';
+  const station  = $('qf-station').value.trim() || '—';
+
+  // Auto-calculate total
+  if (gals && cpg) {
+    $('qf-total').value = (gals * cpg).toFixed(2);
+  }
+
+  const preview = $('qf-preview');
+  if (gals) {
+    preview.style.display = 'grid';
+    $('qf-prev-boat').textContent    = boatName !== 'Seleccionar barco...' ? boatName : '—';
+    $('qf-prev-station').textContent = station;
+    $('qf-prev-gallons').textContent = gals.toFixed(1) + ' gal';
+    $('qf-prev-total').textContent   = total ? '$' + total.toFixed(2) : '—';
+  } else {
+    preview.style.display = 'none';
+  }
+}
+
+async function submitQuickFuel(keepOpen = false) {
+  const boat_id = $('qf-boat').value;
+  if (!boat_id) { toast('Selecciona una embarcación', 'error'); $('qf-boat').focus(); return; }
+  const gallons = parseFloat($('qf-gallons').value);
+  if (!gallons || gallons <= 0) { toast('Ingresa la cantidad de galones', 'error'); $('qf-gallons').focus(); return; }
+
+  const btn = $('btn-save-quick-fuel');
+  btn.disabled = true;
+  btn.innerHTML = `<span class="spinner" style="width:14px;height:14px;border-color:#fff;border-top-color:rgba(255,255,255,0.4)"></span> Guardando...`;
+
+  const boat     = S.boats.find(b => b.boat_id === boat_id);
+  const cpg      = $('qf-cpg').value   ? parseFloat($('qf-cpg').value)      : null;
+  const total_c  = $('qf-total').value ? parseFloat($('qf-total').value)     : (cpg ? gallons * cpg : null);
+  const odometer = $('qf-odometer').value ? parseFloat($('qf-odometer').value) : null;
+
+  const body = {
+    boat_id,
+    boat_name:       boat?.boat_name || boat_id,
+    log_date:        $('qf-date').value,
+    gallons,
+    cost_per_gallon: cpg,
+    total_cost:      total_c,
+    odometer_hours:  odometer,
+    station:         $('qf-station').value.trim() || null,
+    notes:           $('qf-notes').value.trim()   || null,
+  };
+
+  try {
+    await api('/api/fuel-tracker/fuel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    const boatName = boat?.boat_name || boat_id;
+    toast(`✓ Carga registrada — ${boatName} · ${gallons.toFixed(1)} gal${total_c ? ` · $${total_c.toFixed(2)}` : ''}`, 'success');
+
+    if (keepOpen) {
+      // Reset form but keep boat, date, station selected
+      const savedBoat    = boat_id;
+      const savedDate    = $('qf-date').value;
+      const savedStation = $('qf-station').value;
+      ['qf-gallons','qf-cpg','qf-total','qf-odometer','qf-notes'].forEach(id => {
+        const el = $(id); if (el) el.value = '';
+      });
+      $('qf-boat').value    = savedBoat;
+      $('qf-date').value    = savedDate;
+      $('qf-station').value = savedStation;
+      $('qf-preview').style.display = 'none';
+      setTimeout(() => $('qf-gallons').focus(), 60);
+    } else {
+      closeQuickFuelModal();
+    }
+
+    // Refresh data in background
+    await Promise.all([loadFuel(), loadSummary(), loadTrend()]);
+  } catch (err) {
+    toast('Error: ' + err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Guardar Carga`;
+  }
+}
+
+function setupQuickFuelModal() {
+  // Open triggers
+  $('btn-quick-fuel')?.addEventListener('click', () => openQuickFuelModal());
+  $('fab-fuel')?.addEventListener('click',       () => openQuickFuelModal());
+
+  // Close
+  $('btn-close-quick-fuel')?.addEventListener('click',  closeQuickFuelModal);
+  $('btn-cancel-quick-fuel')?.addEventListener('click', closeQuickFuelModal);
+  $('quick-fuel-modal')?.addEventListener('click', (e) => {
+    if (e.target === $('quick-fuel-modal')) closeQuickFuelModal();
+  });
+
+  // Save & close
+  $('quick-fuel-form')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    submitQuickFuel(false);
+  });
+
+  // Save & keep open (register another)
+  $('btn-save-fuel-another')?.addEventListener('click', () => submitQuickFuel(true));
+
+  // Live preview on any input change
+  ['qf-boat','qf-gallons','qf-cpg','qf-total','qf-station'].forEach(id => {
+    $(id)?.addEventListener('input', updateQuickFuelPreview);
+    $(id)?.addEventListener('change', updateQuickFuelPreview);
+  });
+
+  // Keyboard shortcut: Escape to close
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && $('quick-fuel-modal').style.display !== 'none') {
+      closeQuickFuelModal();
+    }
+  });
 }
 
 document.addEventListener('DOMContentLoaded', init);
