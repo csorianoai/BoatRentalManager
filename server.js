@@ -1532,6 +1532,39 @@ async function initializeDatabase() {
     `);
     console.log('✅ company_assets and asset_movements tables ready');
 
+    // FASE 15: Fuel & Engine Usage Tracker
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS boat_usage_log (
+        id TEXT PRIMARY KEY,
+        booking_id TEXT NOT NULL UNIQUE,
+        boat_id TEXT,
+        boat_name TEXT,
+        booking_date DATE,
+        hours_reserved NUMERIC(6,2) NOT NULL DEFAULT 0,
+        hours_engine NUMERIC(6,2),
+        status TEXT NOT NULL DEFAULT 'pending',
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS boat_fuel_log (
+        id TEXT PRIMARY KEY,
+        boat_id TEXT NOT NULL,
+        boat_name TEXT,
+        log_date DATE NOT NULL,
+        gallons NUMERIC(8,3) NOT NULL,
+        cost_per_gallon NUMERIC(6,3),
+        total_cost NUMERIC(10,2),
+        odometer_hours NUMERIC(8,1),
+        station TEXT,
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    console.log('✅ FASE 15: boat_usage_log and boat_fuel_log tables ready');
+
     // Extend bookings table with manual booking fields
     const bookingCols = [
       `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS stew_id TEXT`,
@@ -2684,7 +2717,24 @@ app.post('/api/bookings', isAuthenticated, async (req, res) => {
         notes || null, internal_notes || null, true,
       ]
     );
-    res.status(201).json(result.rows[0]);
+    const newBooking = result.rows[0];
+
+    // Auto-create usage_log entry
+    try {
+      const usageId = 'ulog_' + nanoid(10);
+      const boatName = boat_type || boat_id || 'Sin asignar';
+      const reservedHrs = parseFloat(duration_hours) || 0;
+      await pool.query(
+        `INSERT INTO boat_usage_log (id, booking_id, boat_id, boat_name, booking_date, hours_reserved, status)
+         VALUES ($1, $2, $3, $4, $5, $6, 'pending')
+         ON CONFLICT (booking_id) DO NOTHING`,
+        [usageId, id, boat_id || null, boatName, booking_date, reservedHrs]
+      );
+    } catch (usageErr) {
+      console.error('⚠️ Auto usage_log creation failed (non-critical):', usageErr.message);
+    }
+
+    res.status(201).json(newBooking);
   } catch (err) {
     console.error('Error creating booking:', err);
     res.status(500).json({ error: err.message });
@@ -2718,7 +2768,31 @@ app.patch('/api/bookings/:id', isAuthenticated, async (req, res) => {
       vals
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Reserva no encontrada' });
-    res.json(result.rows[0]);
+    const updatedBooking = result.rows[0];
+
+    // Auto-sync usage_log when booking is completed
+    if (req.body.status === 'completed') {
+      try {
+        await pool.query(
+          `UPDATE boat_usage_log SET status='complete', updated_at=NOW()
+           WHERE booking_id=$1 AND status='pending'`,
+          [id]
+        );
+      } catch (syncErr) {
+        console.error('⚠️ usage_log sync on completion failed (non-critical):', syncErr.message);
+      }
+    }
+    // Sync hours_reserved if duration_hours changed
+    if (req.body.duration_hours !== undefined) {
+      try {
+        await pool.query(
+          `UPDATE boat_usage_log SET hours_reserved=$1, updated_at=NOW() WHERE booking_id=$2`,
+          [parseFloat(req.body.duration_hours) || 0, id]
+        );
+      } catch (syncErr) { /* non-critical */ }
+    }
+
+    res.json(updatedBooking);
   } catch (err) {
     console.error('Error updating booking:', err);
     res.status(500).json({ error: err.message });
@@ -12566,6 +12640,342 @@ app.patch('/api/booking-receivables/:id/cancel', isAuthenticated, async (req, re
     );
     if (!result.rows.length) return res.status(404).json({ error: 'Cuenta por cobrar no encontrada' });
     res.json(result.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── FASE 15: Fuel & Engine Usage Tracker ───────────────────────────────────
+
+// GET /api/fuel-tracker/summary — per-boat aggregated metrics
+app.get('/api/fuel-tracker/summary', isAuthenticated, async (req, res) => {
+  try {
+    const { from, to, boat_id } = req.query;
+    const dateFilter = from && to ? `AND ul.booking_date BETWEEN '${from}' AND '${to}'` : '';
+    const boatFilter = boat_id ? `AND ul.boat_id = '${boat_id}'` : '';
+
+    const usageRows = await pool.query(`
+      SELECT
+        ul.boat_id,
+        ul.boat_name,
+        COUNT(*) AS booking_count,
+        SUM(ul.hours_reserved) AS total_reserved,
+        SUM(ul.hours_engine) AS total_engine,
+        SUM(CASE WHEN ul.hours_engine IS NULL THEN 1 ELSE 0 END) AS pending_engine_count
+      FROM boat_usage_log ul
+      WHERE 1=1 ${dateFilter} ${boatFilter}
+      GROUP BY ul.boat_id, ul.boat_name
+      ORDER BY ul.boat_name
+    `);
+
+    const fuelRows = await pool.query(`
+      SELECT
+        fl.boat_id,
+        SUM(fl.gallons) AS total_gallons,
+        SUM(fl.total_cost) AS total_cost,
+        COUNT(*) AS fuel_entries
+      FROM boat_fuel_log fl
+      WHERE 1=1 ${from && to ? `AND fl.log_date BETWEEN '${from}' AND '${to}'` : ''}
+            ${boat_id ? `AND fl.boat_id = '${boat_id}'` : ''}
+      GROUP BY fl.boat_id
+    `);
+
+    const fuelMap = {};
+    for (const row of fuelRows.rows) {
+      fuelMap[row.boat_id] = row;
+    }
+
+    const summary = usageRows.rows.map(u => {
+      const f = fuelMap[u.boat_id] || { total_gallons: 0, total_cost: 0, fuel_entries: 0 };
+      const totalReserved = parseFloat(u.total_reserved) || 0;
+      const totalEngine = parseFloat(u.total_engine) || null;
+      const totalGallons = parseFloat(f.total_gallons) || 0;
+      const totalCost = parseFloat(f.total_cost) || 0;
+
+      const engineConsumption = totalEngine && totalGallons ? totalGallons / totalEngine : null;
+      const bookingConsumption = totalReserved && totalGallons ? totalGallons / totalReserved : null;
+      const efficiencyRatio = totalEngine && totalReserved ? (totalEngine / totalReserved) * 100 : null;
+
+      const insights = [];
+      if (efficiencyRatio !== null && efficiencyRatio < 70) insights.push('low_engine_vs_booking');
+      if (engineConsumption !== null && engineConsumption > 5) insights.push('high_fuel_vs_engine');
+      if (totalGallons > 0 && !totalEngine) insights.push('fuel_without_engine_hours');
+      if (totalReserved > 0 && totalGallons === 0) insights.push('bookings_without_fuel');
+
+      return {
+        boat_id: u.boat_id,
+        boat_name: u.boat_name || u.boat_id,
+        booking_count: parseInt(u.booking_count),
+        hours_reserved: totalReserved,
+        hours_engine: totalEngine,
+        pending_engine_count: parseInt(u.pending_engine_count),
+        gallons: totalGallons,
+        fuel_cost: totalCost,
+        fuel_entries: parseInt(f.fuel_entries),
+        engine_consumption_gal_hr: engineConsumption ? Math.round(engineConsumption * 100) / 100 : null,
+        booking_consumption_gal_hr: bookingConsumption ? Math.round(bookingConsumption * 100) / 100 : null,
+        efficiency_pct: efficiencyRatio ? Math.round(efficiencyRatio) : null,
+        cost_per_reserved_hour: totalReserved && totalCost ? Math.round((totalCost / totalReserved) * 100) / 100 : null,
+        insights,
+      };
+    });
+
+    const totals = {
+      booking_count: summary.reduce((s, b) => s + b.booking_count, 0),
+      hours_reserved: Math.round(summary.reduce((s, b) => s + b.hours_reserved, 0) * 10) / 10,
+      hours_engine: summary.some(b => b.hours_engine) ? Math.round(summary.reduce((s, b) => s + (b.hours_engine || 0), 0) * 10) / 10 : null,
+      gallons: Math.round(summary.reduce((s, b) => s + b.gallons, 0) * 10) / 10,
+      fuel_cost: Math.round(summary.reduce((s, b) => s + b.fuel_cost, 0) * 100) / 100,
+    };
+
+    res.json({ summary, totals, from, to });
+  } catch (err) {
+    console.error('fuel-tracker/summary error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/fuel-tracker/usage — usage log with filters
+app.get('/api/fuel-tracker/usage', isAuthenticated, async (req, res) => {
+  try {
+    const { boat_id, status, from, to, limit = 100, offset = 0 } = req.query;
+    const where = ['1=1'];
+    const params = [];
+    if (boat_id) { params.push(boat_id); where.push(`ul.boat_id = $${params.length}`); }
+    if (status)  { params.push(status);  where.push(`ul.status = $${params.length}`); }
+    if (from)    { params.push(from);    where.push(`ul.booking_date >= $${params.length}`); }
+    if (to)      { params.push(to);      where.push(`ul.booking_date <= $${params.length}`); }
+
+    params.push(parseInt(limit));
+    params.push(parseInt(offset));
+
+    const result = await pool.query(`
+      SELECT ul.*,
+             b.customer_name, b.platform, b.total_amount, b.start_time
+      FROM boat_usage_log ul
+      LEFT JOIN bookings b ON b.id = ul.booking_id
+      WHERE ${where.join(' AND ')}
+      ORDER BY ul.booking_date DESC, ul.created_at DESC
+      LIMIT $${params.length - 1} OFFSET $${params.length}
+    `, params);
+
+    const countResult = await pool.query(
+      `SELECT COUNT(*) FROM boat_usage_log ul WHERE ${where.join(' AND ')}`,
+      params.slice(0, -2)
+    );
+
+    res.json({ rows: result.rows, total: parseInt(countResult.rows[0].count) });
+  } catch (err) {
+    console.error('fuel-tracker/usage error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PATCH /api/fuel-tracker/usage/:id — update engine hours and notes
+app.patch('/api/fuel-tracker/usage/:id', isAuthenticated, async (req, res) => {
+  try {
+    const { hours_engine, notes, status } = req.body;
+    const sets = ['updated_at = NOW()'];
+    const vals = [];
+    let idx = 1;
+    if (hours_engine !== undefined) { sets.push(`hours_engine = $${idx++}`); vals.push(parseFloat(hours_engine) || null); }
+    if (notes !== undefined)        { sets.push(`notes = $${idx++}`); vals.push(notes || null); }
+    if (status !== undefined)       { sets.push(`status = $${idx++}`); vals.push(status); }
+    vals.push(req.params.id);
+
+    const result = await pool.query(
+      `UPDATE boat_usage_log SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`,
+      vals
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Registro no encontrado' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('fuel-tracker/usage PATCH error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/fuel-tracker/usage/backfill — create usage_log entries for existing bookings that don't have one
+app.post('/api/fuel-tracker/usage/backfill', isAuthenticated, async (req, res) => {
+  try {
+    const { nanoid } = await import('nanoid');
+    const bookings = await pool.query(`
+      SELECT b.id, b.boat_id, b.boat_type, b.booking_date, b.duration_hours
+      FROM bookings b
+      WHERE b.duration_hours IS NOT NULL AND b.duration_hours > 0
+        AND NOT EXISTS (SELECT 1 FROM boat_usage_log ul WHERE ul.booking_id = b.id)
+      ORDER BY b.booking_date DESC
+      LIMIT 500
+    `);
+
+    let created = 0;
+    for (const b of bookings.rows) {
+      try {
+        await pool.query(
+          `INSERT INTO boat_usage_log (id, booking_id, boat_id, boat_name, booking_date, hours_reserved, status)
+           VALUES ($1, $2, $3, $4, $5, $6, 'pending')
+           ON CONFLICT (booking_id) DO NOTHING`,
+          [
+            'ulog_' + nanoid(10),
+            b.id,
+            b.boat_id || null,
+            b.boat_type || b.boat_id || 'Sin asignar',
+            b.booking_date,
+            parseFloat(b.duration_hours) || 0,
+          ]
+        );
+        created++;
+      } catch (e) { /* skip */ }
+    }
+    res.json({ created, total_bookings: bookings.rows.length });
+  } catch (err) {
+    console.error('fuel-tracker backfill error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/fuel-tracker/fuel — list fuel entries
+app.get('/api/fuel-tracker/fuel', isAuthenticated, async (req, res) => {
+  try {
+    const { boat_id, from, to, limit = 100, offset = 0 } = req.query;
+    const where = ['1=1'];
+    const params = [];
+    if (boat_id) { params.push(boat_id); where.push(`boat_id = $${params.length}`); }
+    if (from)    { params.push(from);    where.push(`log_date >= $${params.length}`); }
+    if (to)      { params.push(to);      where.push(`log_date <= $${params.length}`); }
+    params.push(parseInt(limit));
+    params.push(parseInt(offset));
+
+    const result = await pool.query(
+      `SELECT * FROM boat_fuel_log WHERE ${where.join(' AND ')}
+       ORDER BY log_date DESC, created_at DESC
+       LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      params
+    );
+    const countResult = await pool.query(
+      `SELECT COUNT(*) FROM boat_fuel_log WHERE ${where.join(' AND ')}`,
+      params.slice(0, -2)
+    );
+    res.json({ rows: result.rows, total: parseInt(countResult.rows[0].count) });
+  } catch (err) {
+    console.error('fuel-tracker/fuel GET error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/fuel-tracker/fuel — add fuel entry
+app.post('/api/fuel-tracker/fuel', isAuthenticated, async (req, res) => {
+  try {
+    const { nanoid } = await import('nanoid');
+    const { boat_id, boat_name, log_date, gallons, cost_per_gallon, total_cost, odometer_hours, station, notes } = req.body;
+    if (!boat_id || !log_date || !gallons) {
+      return res.status(400).json({ error: 'boat_id, log_date y gallons son obligatorios' });
+    }
+    const gals = parseFloat(gallons);
+    const cpg = cost_per_gallon ? parseFloat(cost_per_gallon) : null;
+    const tc = total_cost ? parseFloat(total_cost) : (cpg ? gals * cpg : null);
+
+    const result = await pool.query(
+      `INSERT INTO boat_fuel_log (id, boat_id, boat_name, log_date, gallons, cost_per_gallon, total_cost, odometer_hours, station, notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      ['fuel_' + nanoid(10), boat_id, boat_name || null, log_date, gals, cpg, tc,
+       odometer_hours ? parseFloat(odometer_hours) : null, station || null, notes || null]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error('fuel-tracker/fuel POST error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/fuel-tracker/fuel/:id
+app.delete('/api/fuel-tracker/fuel/:id', isAuthenticated, async (req, res) => {
+  try {
+    const result = await pool.query('DELETE FROM boat_fuel_log WHERE id=$1 RETURNING id', [req.params.id]);
+    if (!result.rows.length) return res.status(404).json({ error: 'Entrada de combustible no encontrada' });
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/fuel-tracker/insights — anomaly detection across all boats
+app.get('/api/fuel-tracker/insights', isAuthenticated, async (req, res) => {
+  try {
+    const { from, to } = req.query;
+    const dateFilter = from && to ? `AND ul.booking_date BETWEEN '${from}' AND '${to}'` : '';
+    const fuelDateFilter = from && to ? `AND fl.log_date BETWEEN '${from}' AND '${to}'` : '';
+
+    const stats = await pool.query(`
+      SELECT
+        ul.boat_id,
+        ul.boat_name,
+        SUM(ul.hours_reserved) AS reserved,
+        SUM(ul.hours_engine) AS engine,
+        COUNT(*) FILTER (WHERE ul.hours_engine IS NULL) AS missing_engine,
+        COALESCE((
+          SELECT SUM(fl.gallons) FROM boat_fuel_log fl
+          WHERE fl.boat_id = ul.boat_id ${fuelDateFilter}
+        ), 0) AS gallons
+      FROM boat_usage_log ul
+      WHERE 1=1 ${dateFilter}
+      GROUP BY ul.boat_id, ul.boat_name
+    `);
+
+    const insights = [];
+    for (const row of stats.rows) {
+      const reserved = parseFloat(row.reserved) || 0;
+      const engine = parseFloat(row.engine) || 0;
+      const gallons = parseFloat(row.gallons) || 0;
+      const missing = parseInt(row.missing_engine) || 0;
+      const boatName = row.boat_name || row.boat_id;
+
+      if (missing > 0) {
+        insights.push({ type: 'missing_engine_hours', severity: 'warning', boat_name: boatName, message: `${missing} reserva(s) sin horas de motor registradas`, count: missing });
+      }
+      if (reserved > 0 && engine > 0 && (engine / reserved) < 0.6) {
+        insights.push({ type: 'low_engine_efficiency', severity: 'info', boat_name: boatName, message: `Motor al ${Math.round((engine/reserved)*100)}% de las horas reservadas`, pct: Math.round((engine/reserved)*100) });
+      }
+      if (gallons > 0 && engine === 0) {
+        insights.push({ type: 'fuel_no_engine', severity: 'warning', boat_name: boatName, message: `${gallons.toFixed(1)} galones registrados sin horas de motor` });
+      }
+      if (reserved > 0 && gallons === 0) {
+        insights.push({ type: 'bookings_no_fuel', severity: 'info', boat_name: boatName, message: `${reserved.toFixed(1)} horas reservadas sin entradas de combustible` });
+      }
+      if (engine > 0 && gallons > 0 && gallons / engine > 6) {
+        insights.push({ type: 'high_consumption', severity: 'alert', boat_name: boatName, message: `Consumo alto: ${(gallons/engine).toFixed(1)} gal/hr de motor`, gal_per_hr: parseFloat((gallons/engine).toFixed(2)) });
+      }
+    }
+
+    res.json({ insights, count: insights.length });
+  } catch (err) {
+    console.error('fuel-tracker/insights error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/fuel-tracker/boats — list boats with usage data for dropdowns
+app.get('/api/fuel-tracker/boats', isAuthenticated, async (req, res) => {
+  try {
+    const boatRows = await pool.query(`
+      SELECT DISTINCT boat_id, boat_name FROM boat_usage_log WHERE boat_id IS NOT NULL
+      UNION
+      SELECT boat_id, boat_name FROM boat_fuel_log WHERE boat_id IS NOT NULL
+      ORDER BY boat_name
+    `);
+    const fleetRows = await pool.query(`SELECT id, name FROM boats ORDER BY name`);
+    const fleetMap = {};
+    for (const b of fleetRows.rows) fleetMap[b.id] = b.name;
+
+    const boats = boatRows.rows.map(b => ({
+      boat_id: b.boat_id,
+      boat_name: fleetMap[b.boat_id] || b.boat_name || b.boat_id,
+    }));
+
+    // Also add fleet boats that have no logs yet
+    for (const b of fleetRows.rows) {
+      if (!boats.find(r => r.boat_id === b.id)) {
+        boats.push({ boat_id: b.id, boat_name: b.name });
+      }
+    }
+
+    res.json(boats);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
