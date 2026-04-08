@@ -76,6 +76,9 @@
 
   <main class="page-body">
 
+    <!-- ── BASELINE BANNER ───────────────────────────────────────── -->
+    <div class="baseline-banner" id="baseline-banner" style="display:none"></div>
+
     <!-- ── EXECUTIVE KPIs ────────────────────────────────────────── -->
     <section class="section">
       <div class="kpi-strip" id="kpi-strip">
@@ -304,12 +307,13 @@
                 <th class="th-num">Total</th>
                 <th class="th-num">Horómetro</th>
                 <th>Estación</th>
+                <th>Proveedor</th>
                 <th>Notas</th>
                 <th></th>
               </tr>
             </thead>
             <tbody id="fuel-body">
-              <tr><td colspan="9" class="table-loading"><div class="spinner"></div> Cargando...</td></tr>
+              <tr><td colspan="10" class="table-loading"><div class="spinner"></div> Cargando...</td></tr>
             </tbody>
           </table>
         </div>
@@ -485,15 +489,15 @@
             </div>
           </div>
 
-          <!-- Fila 2: Marina -->
+          <!-- Fila 2: Marina + Proveedor -->
           <div class="qf-row">
-            <div class="qf-field qf-full">
+            <div class="qf-field">
               <label>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                Marina / Estación de Combustible
+                Marina / Estación
               </label>
               <input type="text" id="qf-station"
-                placeholder="Ej: Marina Casa de Campo, Shell Boca Chica…"
+                placeholder="Ej: Marina Casa de Campo…"
                 list="marina-suggestions">
               <datalist id="marina-suggestions">
                 <option value="Marina Casa de Campo">
@@ -501,6 +505,22 @@
                 <option value="Marina Cap Cana">
                 <option value="Marina de Guerra">
                 <option value="Shell Puerto Plata">
+              </datalist>
+            </div>
+            <div class="qf-field">
+              <label>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="2"/></svg>
+                Proveedor / A quién se compró
+              </label>
+              <input type="text" id="qf-vendor"
+                placeholder="Ej: Texaco, Shell, Gasolinera XYZ…"
+                list="vendor-suggestions">
+              <datalist id="vendor-suggestions">
+                <option value="Texaco">
+                <option value="Shell">
+                <option value="Puma Energy">
+                <option value="Gasoil Nacional">
+                <option value="ExxonMobil">
               </datalist>
             </div>
           </div>

@@ -629,7 +629,7 @@ function renderFuelTable() {
   const moreBtn = $('btn-load-more-fuel');
 
   if (!S.fuelRows.length) {
-    tbody.innerHTML = `<tr><td colspan="9" class="table-empty">
+    tbody.innerHTML = `<tr><td colspan="10" class="table-empty">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
       <p>Sin entradas de combustible — usa "Registrar Carga" para comenzar</p>
     </td></tr>`;
@@ -647,6 +647,11 @@ function renderFuelTable() {
       <td class="td-num">${row.total_cost ? `<strong style="color:var(--rose)">${fmtMon(row.total_cost)}</strong>` : nullSpan()}</td>
       <td class="td-num">${row.odometer_hours != null ? row.odometer_hours + 'h' : nullSpan()}</td>
       <td style="color:var(--text-2)">${esc(row.station || '')}</td>
+      <td>
+        ${row.vendor
+          ? `<span style="display:inline-flex;align-items:center;gap:0.3rem;font-size:0.78rem;font-weight:600;color:var(--indigo)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px"><path d="M20 7H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="2"/></svg>${esc(row.vendor)}</span>`
+          : nullSpan()}
+      </td>
       <td style="color:var(--text-3);font-size:0.8rem">${esc(row.notes || '')}</td>
       <td>
         <button class="row-action-btn danger btn-del-fuel" data-id="${row.id}">
@@ -788,6 +793,32 @@ function setupDarkMode() {
   });
 }
 
+// ── Baseline date ─────────────────────────────────────────────────────
+async function loadBaseline() {
+  try {
+    const data = await api('/api/fuel-tracker/config');
+    S.baselineDate = data.baseline_date;
+    renderBaselineBanner();
+  } catch (e) {
+    S.baselineDate = new Date().toISOString().slice(0, 10);
+  }
+}
+
+function renderBaselineBanner() {
+  const banner = $('baseline-banner');
+  if (!banner || !S.baselineDate) return;
+  const d = new Date(S.baselineDate + 'T12:00:00');
+  const label = d.toLocaleDateString('es', { day: '2-digit', month: 'long', year: 'numeric' });
+  banner.innerHTML = `
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <polyline points="9 11 12 14 22 4"/>
+      <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+    </svg>
+    <span>Control de combustible activo desde <strong>${label}</strong> — reservas anteriores excluidas de métricas y alertas</span>
+  `;
+  banner.style.display = 'flex';
+}
+
 // ── Load all ─────────────────────────────────────────────────────────
 async function loadAll() {
   updatePeriodLabel();
@@ -810,6 +841,8 @@ function init() {
   setupDetailTabs();
   setupFuelForm();
   setupQuickFuelModal();
+  S.baselineDate = null;
+  loadBaseline();
 
   // Default: this month
   setPreset('month');
@@ -881,7 +914,7 @@ function openQuickFuelModal(boatId = '') {
   // Default date to today
   $('qf-date').value = new Date().toISOString().slice(0, 10);
   // Clear fields
-  ['qf-gallons','qf-cpg','qf-total','qf-odometer','qf-station','qf-notes'].forEach(id => {
+  ['qf-gallons','qf-cpg','qf-total','qf-odometer','qf-station','qf-vendor','qf-notes'].forEach(id => {
     const el = $(id);
     if (el) el.value = '';
   });
@@ -943,6 +976,7 @@ async function submitQuickFuel(keepOpen = false) {
     total_cost:      total_c,
     odometer_hours:  odometer,
     station:         $('qf-station').value.trim() || null,
+    vendor:          $('qf-vendor').value.trim()  || null,
     notes:           $('qf-notes').value.trim()   || null,
   };
 

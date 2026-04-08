@@ -1,0 +1,313 @@
+# REPLIT TASK — RESET FUEL CONTROL BASELINE FROM TODAY FORWARD
+
+There is a critical logic issue in the fuel control module.
+
+All bookings that happened before today must NOT be treated as bookings without fuel.
+They happened before we filled the boats with fuel, so they cannot be used to calculate averages, fuel efficiency, anomalies, or control metrics.
+
+We need to establish **today as the official starting baseline** for fuel control.
+
+From today forward, the system must track fuel correctly.
+Anything before today should remain as historical booking data, but it must be excluded from fuel-control calculations.
+
+---
+
+## PRIMARY OBJECTIVE
+
+Reset the fuel control logic so that:
+
+- today becomes the starting point for fuel analysis
+- previous bookings are excluded from fuel performance calculations
+- previous bookings are NOT flagged as missing fuel
+- previous bookings are NOT used in averages
+- previous bookings are NOT used in anomaly detection
+- only bookings from today onward participate in fuel control metrics
+
+We want a clean and correct operational baseline starting now.
+
+---
+
+## BUSINESS RULE
+
+Any booking before the fuel baseline date must be treated as:
+
+- historical only
+- excluded from fuel control calculations
+- excluded from missing-fuel alerts
+- excluded from efficiency averages
+- excluded from comparisons and anomaly logic
+
+They can remain visible in historical views if needed,
+but they must not contaminate fuel control.
+
+---
+
+## BASELINE DATE
+
+Use **today** as the official start date for the fuel control system.
+
+That means:
+
+- baseline_start_date = today
+- fuel metrics must only consider records on or after baseline_start_date
+- any booking before baseline_start_date is outside the fuel control universe
+
+If a config or system parameter is better, create one such as:
+- `fuel_control_start_date`
+so this can be managed explicitly and safely.
+
+---
+
+## PHASE 1 — AUDIT CURRENT FUEL LOGIC
+
+Review the current fuel dashboard, backend logic, queries, and calculations.
+
+Determine where old bookings are currently affecting:
+
+- missing fuel alerts
+- average fuel usage
+- average fuel cost
+- fuel per booking
+- fuel per engine hour
+- fuel per reserved hour
+- boat efficiency
+- anomaly detection
+- dashboard KPIs
+- trend charts
+- tables
+- comparisons
+
+Find every place where pre-baseline bookings are incorrectly being treated as part of the fuel system.
+
+---
+
+## PHASE 2 — INTRODUCE FUEL CONTROL BASELINE
+
+Implement a clear fuel-control baseline starting today.
+
+Recommended implementation:
+- add `fuel_control_start_date`
+- use it across backend and frontend filtering
+- apply it consistently in all fuel-related calculations
+
+This baseline must affect:
+
+- KPI cards
+- grouped summaries
+- per-boat analysis
+- alerts
+- trends
+- tables
+- drill-down
+- averages
+- comparisons
+- exception logic
+
+---
+
+## PHASE 3 — EXCLUDE OLD BOOKINGS FROM FUEL METRICS
+
+Bookings before the baseline date must NOT:
+
+- count as bookings without fuel
+- count as missing engine-hour records for fuel control
+- count in average fuel consumption
+- count in average cost per hour
+- count in fuel-efficiency calculations
+- count in anomaly detection
+- count in “boats with missing fuel data”
+- count in “bookings pending fuel registration”
+
+They should be ignored by fuel analytics logic.
+
+---
+
+## PHASE 4 — PRESERVE HISTORICAL BOOKINGS WITHOUT CONTAMINATING FUEL CONTROL
+
+Do not delete historical bookings.
+
+Instead:
+
+- preserve them for calendar/history purposes
+- preserve them for booking history
+- preserve them for operational recordkeeping
+- exclude them only from fuel control scope
+
+This is a logic reset, not a destructive deletion.
+
+---
+
+## PHASE 5 — UPDATE DASHBOARD MESSAGING
+
+Update the fuel dashboard so the UI makes this clear.
+
+The dashboard should communicate that:
+
+- fuel control starts from today
+- historical bookings before that date are excluded
+- averages and alerts are based only on the active fuel-control period
+
+Examples of helpful UI text:
+- `Control de combustible desde hoy`
+- `Métricas calculadas desde la fecha base de combustible`
+- `Reservas anteriores excluidas del análisis de combustible`
+
+This avoids confusion and builds trust.
+
+---
+
+## PHASE 6 — FIX ALERTS AND EXCEPTIONS
+
+Review all current alerts related to fuel.
+
+Ensure that no alert is triggered by bookings before the baseline date.
+
+Examples to fix:
+- booking without fuel
+- fuel missing
+- abnormal efficiency
+- missing engine hours
+- incomplete fuel tracking
+
+These alerts must only apply to bookings within the active fuel-control period.
+
+---
+
+## PHASE 7 — FIX AVERAGES AND TRENDS
+
+All averages and trends must be recalculated only from the baseline date forward.
+
+This includes:
+- average fuel per boat
+- average fuel per booking
+- average fuel per engine hour
+- average fuel cost
+- average cost per reserved hour
+- trend charts
+- comparison widgets
+
+No historical booking before the baseline can affect these numbers.
+
+---
+
+## PHASE 8 — BACKEND / QUERY CHANGES
+
+Audit and fix all backend queries and services that calculate fuel metrics.
+
+Ensure all of them apply the baseline filter correctly.
+
+Review:
+- KPI endpoints
+- summary endpoints
+- boat-level queries
+- alert queries
+- trend queries
+- drill-down queries
+- dashboard loaders
+- aggregation services
+
+If needed, centralize this rule in one shared fuel-control filter layer.
+
+---
+
+## PHASE 9 — FRONTEND FILTERING AND LABELING
+
+Update the frontend so it reflects the new logic cleanly.
+
+Requirements:
+- show only relevant fuel-control records by default
+- do not visually flag old bookings as missing fuel
+- clarify the starting point of analysis
+- ensure charts and cards update based on the baseline
+- keep the dashboard clean and understandable
+
+---
+
+## PHASE 10 — OPTIONAL VALID ENHANCEMENTS
+
+If possible, add these valid options now:
+
+- baseline date shown in dashboard header
+- “desde hoy” badge or label
+- toggle for:
+  - active fuel-control period
+  - historical booking view
+- explanation tooltip for excluded historical bookings
+- counts for:
+  - tracked bookings
+  - excluded historical bookings
+
+Only add these if they improve clarity and are supported by real logic.
+
+---
+
+## PHASE 11 — REQUIRED TESTS
+
+Validate at minimum:
+
+1. bookings before today are excluded from fuel metrics
+2. bookings before today are not flagged as missing fuel
+3. averages are recalculated only from today forward
+4. trend charts start from the baseline date
+5. alerts only affect current fuel-control period
+6. boat efficiency only uses post-baseline records
+7. historical bookings still exist but do not contaminate fuel control
+8. dashboard messaging clearly explains the baseline
+9. no fake data is introduced
+10. the fuel module becomes trustworthy from today onward
+
+---
+
+## ABSOLUTE PROHIBITIONS
+
+Do not:
+- delete valid booking history unnecessarily
+- keep old bookings in fuel averages
+- keep old bookings in fuel alerts
+- mark old bookings as missing fuel
+- mix pre-baseline and post-baseline records in the same control logic
+- fake corrections only at UI level while backend remains wrong
+
+The logic must be corrected at the root.
+
+---
+
+## REQUIRED DELIVERABLE
+
+Do not answer with “done”.
+
+Provide a structured report with:
+
+1. where old bookings were contaminating fuel metrics
+2. what baseline mechanism was implemented
+3. how old bookings are now excluded
+4. what calculations were corrected
+5. what alerts were corrected
+6. what dashboard messaging was updated
+7. how historical bookings were preserved safely
+8. validation evidence that the control now starts correctly from today
+9. any residual limitations if they still exist
+
+---
+
+## ACCEPTANCE CRITERIA
+
+This is not complete until all of the following are true:
+
+- today is the starting point for fuel control
+- bookings before today do not count as missing fuel
+- bookings before today do not affect averages
+- bookings before today do not affect alerts
+- historical records remain preserved
+- dashboard reflects the new baseline clearly
+- fuel control is trustworthy from today forward
+
+---
+
+## FINAL INSTRUCTION
+
+We do not want historical bookings to distort fuel control.
+
+Use today as the official starting point.
+From today onward, track fuel correctly.
+Everything before today remains historical, but excluded from fuel analytics.

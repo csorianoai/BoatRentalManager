@@ -308,6 +308,33 @@ body {
   gap: 1.5rem;
 }
 
+/* ── Baseline Banner ───────────────────────────────────────────────── */
+.baseline-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  background: var(--green-bg);
+  border: 1px solid var(--green-muted);
+  color: #166534;
+  border-radius: 10px;
+  padding: 0.7rem 1rem;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+.baseline-banner svg {
+  width: 16px; height: 16px;
+  stroke: #16a34a;
+  flex-shrink: 0;
+}
+.baseline-banner strong { color: #14532d; }
+.dark .baseline-banner {
+  background: rgba(34,197,94,0.1);
+  border-color: rgba(34,197,94,0.25);
+  color: #86efac;
+}
+.dark .baseline-banner svg { stroke: #4ade80; }
+.dark .baseline-banner strong { color: #bbf7d0; }
+
 /* ── Section ───────────────────────────────────────────────────────── */
 .section-header {
   display: flex;

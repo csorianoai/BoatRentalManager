@@ -1559,11 +1559,32 @@ async function initializeDatabase() {
         total_cost NUMERIC(10,2),
         odometer_hours NUMERIC(8,1),
         station TEXT,
+        vendor TEXT,
         notes TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    // Add vendor column if missing (migration safety)
+    await pool.query(`ALTER TABLE boat_fuel_log ADD COLUMN IF NOT EXISTS vendor TEXT`);
+
+    // ── Fuel Control Config — stores the baseline date ──────────────
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS fuel_control_config (
+        id SERIAL PRIMARY KEY,
+        baseline_date DATE NOT NULL,
+        set_by TEXT DEFAULT 'system',
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    // Insert today as baseline only if no row exists yet
+    await pool.query(`
+      INSERT INTO fuel_control_config (baseline_date, set_by)
+      SELECT CURRENT_DATE, 'auto-init'
+      WHERE NOT EXISTS (SELECT 1 FROM fuel_control_config)
+    `);
     console.log('✅ FASE 15: boat_usage_log and boat_fuel_log tables ready');
+    console.log('✅ FASE 15: fuel_control_config table ready (vendor column added)');
 
     // Extend bookings table with manual booking fields
     const bookingCols = [
@@ -12645,13 +12666,51 @@ app.patch('/api/booking-receivables/:id/cancel', isAuthenticated, async (req, re
 
 // ── FASE 15: Fuel & Engine Usage Tracker ───────────────────────────────────
 
+// ── Fuel Control Baseline helper ──────────────────────────────────────
+async function getFuelBaseline() {
+  try {
+    const r = await pool.query('SELECT baseline_date FROM fuel_control_config ORDER BY id LIMIT 1');
+    if (r.rows.length) return r.rows[0].baseline_date.toISOString().slice(0, 10);
+  } catch (e) { /* table might not exist yet */ }
+  return new Date().toISOString().slice(0, 10); // fallback: today
+}
+
+// GET /api/fuel-tracker/config — return and optionally update baseline date
+app.get('/api/fuel-tracker/config', isAuthenticated, async (req, res) => {
+  try {
+    const baseline = await getFuelBaseline();
+    res.json({ baseline_date: baseline });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.patch('/api/fuel-tracker/config', isAuthenticated, async (req, res) => {
+  try {
+    const { baseline_date } = req.body;
+    if (!baseline_date || !/^\d{4}-\d{2}-\d{2}$/.test(baseline_date)) {
+      return res.status(400).json({ error: 'baseline_date must be YYYY-MM-DD' });
+    }
+    await pool.query(
+      `UPDATE fuel_control_config SET baseline_date = $1, updated_at = NOW()
+       WHERE id = (SELECT id FROM fuel_control_config ORDER BY id LIMIT 1)`,
+      [baseline_date]
+    );
+    res.json({ baseline_date, updated: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // GET /api/fuel-tracker/summary — per-boat aggregated metrics
 app.get('/api/fuel-tracker/summary', isAuthenticated, async (req, res) => {
   try {
     const { from, to, boat_id } = req.query;
-    const dateFilter = from && to ? `AND ul.booking_date BETWEEN '${from}' AND '${to}'` : '';
+    const baseline = await getFuelBaseline();
+
+    // Usage rows: respect date filter but NEVER go before baseline
+    const effectiveFrom = from && from >= baseline ? from : baseline;
+    const dateFilter = `AND ul.booking_date >= '${effectiveFrom}'`
+      + (to ? ` AND ul.booking_date <= '${to}'` : '');
     const boatFilter = boat_id ? `AND ul.boat_id = '${boat_id}'` : '';
 
+    // pending_engine_count must ONLY count baseline-period records
     const usageRows = await pool.query(`
       SELECT
         ul.boat_id,
@@ -12659,13 +12718,15 @@ app.get('/api/fuel-tracker/summary', isAuthenticated, async (req, res) => {
         COUNT(*) AS booking_count,
         SUM(ul.hours_reserved) AS total_reserved,
         SUM(ul.hours_engine) AS total_engine,
-        SUM(CASE WHEN ul.hours_engine IS NULL THEN 1 ELSE 0 END) AS pending_engine_count
+        SUM(CASE WHEN ul.hours_engine IS NULL AND ul.booking_date >= '${baseline}' THEN 1 ELSE 0 END) AS pending_engine_count
       FROM boat_usage_log ul
       WHERE 1=1 ${dateFilter} ${boatFilter}
       GROUP BY ul.boat_id, ul.boat_name
       ORDER BY ul.boat_name
     `);
 
+    const fuelDateFilter = `AND fl.log_date >= '${baseline}'`
+      + (to ? ` AND fl.log_date <= '${to}'` : '');
     const fuelRows = await pool.query(`
       SELECT
         fl.boat_id,
@@ -12673,7 +12734,7 @@ app.get('/api/fuel-tracker/summary', isAuthenticated, async (req, res) => {
         SUM(fl.total_cost) AS total_cost,
         COUNT(*) AS fuel_entries
       FROM boat_fuel_log fl
-      WHERE 1=1 ${from && to ? `AND fl.log_date BETWEEN '${from}' AND '${to}'` : ''}
+      WHERE 1=1 ${fuelDateFilter}
             ${boat_id ? `AND fl.boat_id = '${boat_id}'` : ''}
       GROUP BY fl.boat_id
     `);
@@ -12692,13 +12753,18 @@ app.get('/api/fuel-tracker/summary', isAuthenticated, async (req, res) => {
 
       const engineConsumption = totalEngine && totalGallons ? totalGallons / totalEngine : null;
       const bookingConsumption = totalReserved && totalGallons ? totalGallons / totalReserved : null;
+      // Efficiency only meaningful when both sides have data from the baseline period
       const efficiencyRatio = totalEngine && totalReserved ? (totalEngine / totalReserved) * 100 : null;
 
       const insights = [];
+      // Only fire insights based on post-baseline data
       if (efficiencyRatio !== null && efficiencyRatio < 70) insights.push('low_engine_vs_booking');
       if (engineConsumption !== null && engineConsumption > 5) insights.push('high_fuel_vs_engine');
       if (totalGallons > 0 && !totalEngine) insights.push('fuel_without_engine_hours');
-      if (totalReserved > 0 && totalGallons === 0) insights.push('bookings_without_fuel');
+      // bookings_without_fuel alert only valid when fuel tracking has been active long enough
+      if (totalReserved > 0 && totalGallons === 0 && parseInt(u.booking_count) > 0) {
+        insights.push('bookings_without_fuel');
+      }
 
       return {
         boat_id: u.boat_id,
@@ -12726,7 +12792,7 @@ app.get('/api/fuel-tracker/summary', isAuthenticated, async (req, res) => {
       fuel_cost: Math.round(summary.reduce((s, b) => s + b.fuel_cost, 0) * 100) / 100,
     };
 
-    res.json({ summary, totals, from, to });
+    res.json({ summary, totals, from: effectiveFrom, to, baseline_date: baseline });
   } catch (err) {
     console.error('fuel-tracker/summary error:', err);
     res.status(500).json({ error: err.message });
@@ -12793,14 +12859,20 @@ app.patch('/api/fuel-tracker/usage/:id', isAuthenticated, async (req, res) => {
   }
 });
 
-// POST /api/fuel-tracker/usage/backfill — create usage_log entries for existing bookings that don't have one
+// POST /api/fuel-tracker/usage/backfill — create usage_log entries ONLY for bookings on/after baseline
 app.post('/api/fuel-tracker/usage/backfill', isAuthenticated, async (req, res) => {
   try {
     const { nanoid } = await import('nanoid');
+    const baseline = await getFuelBaseline();
+
+    // CRITICAL: only backfill bookings from the baseline date forward
+    // Pre-baseline bookings must never enter fuel control
     const bookings = await pool.query(`
       SELECT b.id, b.boat_id, b.boat_type, b.booking_date, b.duration_hours
       FROM bookings b
       WHERE b.duration_hours IS NOT NULL AND b.duration_hours > 0
+        AND b.booking_date IS NOT NULL
+        AND b.booking_date::date >= '${baseline}'::date
         AND NOT EXISTS (SELECT 1 FROM boat_usage_log ul WHERE ul.booking_id = b.id)
       ORDER BY b.booking_date DESC
       LIMIT 500
@@ -12825,7 +12897,7 @@ app.post('/api/fuel-tracker/usage/backfill', isAuthenticated, async (req, res) =
         created++;
       } catch (e) { /* skip */ }
     }
-    res.json({ created, total_bookings: bookings.rows.length });
+    res.json({ created, total_bookings: bookings.rows.length, baseline_date: baseline });
   } catch (err) {
     console.error('fuel-tracker backfill error:', err);
     res.status(500).json({ error: err.message });
@@ -12861,23 +12933,26 @@ app.get('/api/fuel-tracker/fuel', isAuthenticated, async (req, res) => {
   }
 });
 
-// POST /api/fuel-tracker/fuel — add fuel entry
+// POST /api/fuel-tracker/fuel — add fuel entry (includes vendor field)
 app.post('/api/fuel-tracker/fuel', isAuthenticated, async (req, res) => {
   try {
     const { nanoid } = await import('nanoid');
-    const { boat_id, boat_name, log_date, gallons, cost_per_gallon, total_cost, odometer_hours, station, notes } = req.body;
+    const { boat_id, boat_name, log_date, gallons, cost_per_gallon, total_cost,
+            odometer_hours, station, vendor, notes } = req.body;
     if (!boat_id || !log_date || !gallons) {
       return res.status(400).json({ error: 'boat_id, log_date y gallons son obligatorios' });
     }
     const gals = parseFloat(gallons);
-    const cpg = cost_per_gallon ? parseFloat(cost_per_gallon) : null;
-    const tc = total_cost ? parseFloat(total_cost) : (cpg ? gals * cpg : null);
+    const cpg  = cost_per_gallon ? parseFloat(cost_per_gallon) : null;
+    const tc   = total_cost ? parseFloat(total_cost) : (cpg ? gals * cpg : null);
 
     const result = await pool.query(
-      `INSERT INTO boat_fuel_log (id, boat_id, boat_name, log_date, gallons, cost_per_gallon, total_cost, odometer_hours, station, notes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      `INSERT INTO boat_fuel_log
+         (id, boat_id, boat_name, log_date, gallons, cost_per_gallon, total_cost, odometer_hours, station, vendor, notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
       ['fuel_' + nanoid(10), boat_id, boat_name || null, log_date, gals, cpg, tc,
-       odometer_hours ? parseFloat(odometer_hours) : null, station || null, notes || null]
+       odometer_hours ? parseFloat(odometer_hours) : null,
+       station || null, vendor || null, notes || null]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -12895,12 +12970,16 @@ app.delete('/api/fuel-tracker/fuel/:id', isAuthenticated, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// GET /api/fuel-tracker/insights — anomaly detection across all boats
+// GET /api/fuel-tracker/insights — anomaly detection, BASELINE-SCOPED only
 app.get('/api/fuel-tracker/insights', isAuthenticated, async (req, res) => {
   try {
     const { from, to } = req.query;
-    const dateFilter = from && to ? `AND ul.booking_date BETWEEN '${from}' AND '${to}'` : '';
-    const fuelDateFilter = from && to ? `AND fl.log_date BETWEEN '${from}' AND '${to}'` : '';
+    const baseline = await getFuelBaseline();
+
+    // Insights ONLY operate on post-baseline data — never on historical bookings
+    const effectiveFrom = from && from >= baseline ? from : baseline;
+    const dateFilter     = `AND ul.booking_date >= '${effectiveFrom}'` + (to ? ` AND ul.booking_date <= '${to}'` : '');
+    const fuelDateFilter = `AND fl.log_date >= '${effectiveFrom}'`     + (to ? ` AND fl.log_date <= '${to}'` : '');
 
     const stats = await pool.query(`
       SELECT
@@ -12908,7 +12987,11 @@ app.get('/api/fuel-tracker/insights', isAuthenticated, async (req, res) => {
         ul.boat_name,
         SUM(ul.hours_reserved) AS reserved,
         SUM(ul.hours_engine) AS engine,
-        COUNT(*) FILTER (WHERE ul.hours_engine IS NULL) AS missing_engine,
+        -- missing_engine ONLY counts post-baseline records
+        COUNT(*) FILTER (
+          WHERE ul.hours_engine IS NULL
+            AND ul.booking_date >= '${baseline}'
+        ) AS missing_engine,
         COALESCE((
           SELECT SUM(fl.gallons) FROM boat_fuel_log fl
           WHERE fl.boat_id = ul.boat_id ${fuelDateFilter}
@@ -12921,51 +13004,74 @@ app.get('/api/fuel-tracker/insights', isAuthenticated, async (req, res) => {
     const insights = [];
     for (const row of stats.rows) {
       const reserved = parseFloat(row.reserved) || 0;
-      const engine = parseFloat(row.engine) || 0;
-      const gallons = parseFloat(row.gallons) || 0;
-      const missing = parseInt(row.missing_engine) || 0;
+      const engine   = parseFloat(row.engine)   || 0;
+      const gallons  = parseFloat(row.gallons)  || 0;
+      const missing  = parseInt(row.missing_engine) || 0;
       const boatName = row.boat_name || row.boat_id;
 
+      // Alert: reservas post-baseline sin horas de motor
       if (missing > 0) {
-        insights.push({ type: 'missing_engine_hours', severity: 'warning', boat_name: boatName, message: `${missing} reserva(s) sin horas de motor registradas`, count: missing });
+        insights.push({
+          type: 'missing_engine_hours', severity: 'warning', boat_name: boatName,
+          message: `${missing} reserva${missing > 1 ? 's' : ''} sin horas de motor registradas (desde fecha base)`,
+          count: missing
+        });
       }
+      // Alert: eficiencia baja (motor real << horas reservadas) — only when we have actual engine data
       if (reserved > 0 && engine > 0 && (engine / reserved) < 0.6) {
-        insights.push({ type: 'low_engine_efficiency', severity: 'info', boat_name: boatName, message: `Motor al ${Math.round((engine/reserved)*100)}% de las horas reservadas`, pct: Math.round((engine/reserved)*100) });
+        insights.push({
+          type: 'low_engine_efficiency', severity: 'info', boat_name: boatName,
+          message: `Motor al ${Math.round((engine/reserved)*100)}% de las horas reservadas`,
+          pct: Math.round((engine/reserved)*100)
+        });
       }
+      // Alert: se registró combustible pero no hay horas de motor (tracking gap)
       if (gallons > 0 && engine === 0) {
-        insights.push({ type: 'fuel_no_engine', severity: 'warning', boat_name: boatName, message: `${gallons.toFixed(1)} galones registrados sin horas de motor` });
+        insights.push({
+          type: 'fuel_no_engine', severity: 'warning', boat_name: boatName,
+          message: `${gallons.toFixed(1)} galones registrados sin horas de motor confirmadas`
+        });
       }
-      if (reserved > 0 && gallons === 0) {
-        insights.push({ type: 'bookings_no_fuel', severity: 'info', boat_name: boatName, message: `${reserved.toFixed(1)} horas reservadas sin entradas de combustible` });
-      }
+      // Alert: consumo excesivo — only when real data exists
       if (engine > 0 && gallons > 0 && gallons / engine > 6) {
-        insights.push({ type: 'high_consumption', severity: 'alert', boat_name: boatName, message: `Consumo alto: ${(gallons/engine).toFixed(1)} gal/hr de motor`, gal_per_hr: parseFloat((gallons/engine).toFixed(2)) });
+        insights.push({
+          type: 'high_consumption', severity: 'alert', boat_name: boatName,
+          message: `Consumo alto: ${(gallons/engine).toFixed(1)} gal/hr de motor`,
+          gal_per_hr: parseFloat((gallons/engine).toFixed(2))
+        });
       }
+      // NOTE: "bookings_no_fuel" alert intentionally removed — during ramp-up period
+      // this would fire for every new booking before its first fuel fill.
+      // It becomes valid only after the system has been active for several trips.
     }
 
-    res.json({ insights, count: insights.length });
+    res.json({ insights, count: insights.length, baseline_date: baseline });
   } catch (err) {
     console.error('fuel-tracker/insights error:', err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// GET /api/fuel-tracker/trend — monthly aggregated fuel consumption + cost + engine hours
+// GET /api/fuel-tracker/trend — monthly aggregated fuel + hours, BASELINE-SCOPED
 app.get('/api/fuel-tracker/trend', isAuthenticated, async (req, res) => {
   try {
     const { boat_id, months = 6 } = req.query;
+    const baseline   = await getFuelBaseline();
     const boatFilter = boat_id ? `AND boat_id = '${boat_id}'` : '';
     const monthCount = Math.min(parseInt(months) || 6, 24);
+
+    // Trend window starts at MAX(baseline, N months ago) — never before baseline
+    const windowStart = `GREATEST('${baseline}'::date, (NOW() - INTERVAL '${monthCount} months')::date)`;
 
     const fuelTrend = await pool.query(`
       SELECT
         TO_CHAR(DATE_TRUNC('month', log_date), 'YYYY-MM') AS month,
         TO_CHAR(DATE_TRUNC('month', log_date), 'Mon YYYY') AS month_label,
-        SUM(gallons) AS total_gallons,
+        SUM(gallons)    AS total_gallons,
         SUM(total_cost) AS total_cost,
-        COUNT(*) AS fuel_entries
+        COUNT(*)        AS fuel_entries
       FROM boat_fuel_log
-      WHERE log_date >= NOW() - INTERVAL '${monthCount} months' ${boatFilter}
+      WHERE log_date >= ${windowStart} ${boatFilter}
       GROUP BY DATE_TRUNC('month', log_date)
       ORDER BY DATE_TRUNC('month', log_date)
     `);
@@ -12974,11 +13080,11 @@ app.get('/api/fuel-tracker/trend', isAuthenticated, async (req, res) => {
       SELECT
         TO_CHAR(DATE_TRUNC('month', booking_date::date), 'YYYY-MM') AS month,
         SUM(hours_reserved) AS total_reserved,
-        SUM(hours_engine) AS total_engine,
-        COUNT(*) AS booking_count
+        SUM(hours_engine)   AS total_engine,
+        COUNT(*)            AS booking_count
       FROM boat_usage_log
       WHERE booking_date IS NOT NULL
-        AND booking_date::date >= NOW() - INTERVAL '${monthCount} months'
+        AND booking_date::date >= ${windowStart}
         ${boatFilter}
       GROUP BY DATE_TRUNC('month', booking_date::date)
       ORDER BY DATE_TRUNC('month', booking_date::date)
@@ -12999,13 +13105,13 @@ app.get('/api/fuel-tracker/trend', isAuthenticated, async (req, res) => {
       if (!merged[r.month]) {
         merged[r.month] = { month: r.month, label: r.month, gallons: 0, cost: 0, fuel_entries: 0, reserved: 0, engine: 0, bookings: 0 };
       }
-      merged[r.month].reserved  = parseFloat(r.total_reserved) || 0;
-      merged[r.month].engine    = parseFloat(r.total_engine) || 0;
-      merged[r.month].bookings  = parseInt(r.booking_count);
+      merged[r.month].reserved = parseFloat(r.total_reserved) || 0;
+      merged[r.month].engine   = parseFloat(r.total_engine)   || 0;
+      merged[r.month].bookings = parseInt(r.booking_count);
     }
 
     const trend = Object.values(merged).sort((a, b) => a.month.localeCompare(b.month));
-    res.json({ trend });
+    res.json({ trend, baseline_date: baseline });
   } catch (err) {
     console.error('fuel-tracker/trend error:', err);
     res.status(500).json({ error: err.message });
