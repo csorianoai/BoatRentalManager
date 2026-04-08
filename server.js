@@ -12950,6 +12950,68 @@ app.get('/api/fuel-tracker/insights', isAuthenticated, async (req, res) => {
   }
 });
 
+// GET /api/fuel-tracker/trend — monthly aggregated fuel consumption + cost + engine hours
+app.get('/api/fuel-tracker/trend', isAuthenticated, async (req, res) => {
+  try {
+    const { boat_id, months = 6 } = req.query;
+    const boatFilter = boat_id ? `AND boat_id = '${boat_id}'` : '';
+    const monthCount = Math.min(parseInt(months) || 6, 24);
+
+    const fuelTrend = await pool.query(`
+      SELECT
+        TO_CHAR(DATE_TRUNC('month', log_date), 'YYYY-MM') AS month,
+        TO_CHAR(DATE_TRUNC('month', log_date), 'Mon YYYY') AS month_label,
+        SUM(gallons) AS total_gallons,
+        SUM(total_cost) AS total_cost,
+        COUNT(*) AS fuel_entries
+      FROM boat_fuel_log
+      WHERE log_date >= NOW() - INTERVAL '${monthCount} months' ${boatFilter}
+      GROUP BY DATE_TRUNC('month', log_date)
+      ORDER BY DATE_TRUNC('month', log_date)
+    `);
+
+    const usageTrend = await pool.query(`
+      SELECT
+        TO_CHAR(DATE_TRUNC('month', booking_date::date), 'YYYY-MM') AS month,
+        SUM(hours_reserved) AS total_reserved,
+        SUM(hours_engine) AS total_engine,
+        COUNT(*) AS booking_count
+      FROM boat_usage_log
+      WHERE booking_date IS NOT NULL
+        AND booking_date::date >= NOW() - INTERVAL '${monthCount} months'
+        ${boatFilter}
+      GROUP BY DATE_TRUNC('month', booking_date::date)
+      ORDER BY DATE_TRUNC('month', booking_date::date)
+    `);
+
+    // Merge by month key
+    const merged = {};
+    for (const r of fuelTrend.rows) {
+      merged[r.month] = {
+        month: r.month, label: r.month_label,
+        gallons: parseFloat(r.total_gallons) || 0,
+        cost: parseFloat(r.total_cost) || 0,
+        fuel_entries: parseInt(r.fuel_entries),
+        reserved: 0, engine: 0, bookings: 0,
+      };
+    }
+    for (const r of usageTrend.rows) {
+      if (!merged[r.month]) {
+        merged[r.month] = { month: r.month, label: r.month, gallons: 0, cost: 0, fuel_entries: 0, reserved: 0, engine: 0, bookings: 0 };
+      }
+      merged[r.month].reserved  = parseFloat(r.total_reserved) || 0;
+      merged[r.month].engine    = parseFloat(r.total_engine) || 0;
+      merged[r.month].bookings  = parseInt(r.booking_count);
+    }
+
+    const trend = Object.values(merged).sort((a, b) => a.month.localeCompare(b.month));
+    res.json({ trend });
+  } catch (err) {
+    console.error('fuel-tracker/trend error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/fuel-tracker/boats — list boats with usage data for dropdowns
 app.get('/api/fuel-tracker/boats', isAuthenticated, async (req, res) => {
   try {
