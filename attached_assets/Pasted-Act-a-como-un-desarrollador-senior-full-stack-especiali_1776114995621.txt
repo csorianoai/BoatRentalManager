@@ -1,0 +1,177 @@
+Actúa como un desarrollador senior full-stack especializado en debugging de frontend y UX. Necesito que corrijas varios errores en la web de **NadakiExcursions**, especialmente en la Home y en las páginas de reserva de yates.
+
+Trabaja directamente sobre el código existente, sin romper funcionalidades actuales, y al final entrégame un resumen claro de:
+
+1. qué archivos modificaste,
+2. qué problema causaba cada error,
+3. qué solución aplicaste,
+4. qué pruebas hiciste para validar cada cambio.
+
+## Objetivo general
+
+Resolver inconsistencias de disponibilidad, textos con caracteres extraños, calendario, mapa, capitanes/precios y timing del banner de ofertas especiales.
+
+## Errores a corregir
+
+### 1) Home: “2 hrs / 40 Sea Ray” aparece como “not available” pero sí deja entrar
+
+Problema:
+
+* En la Home, la tarjeta/opción de **2 hrs - 40 Sea Ray** muestra que no está disponible.
+* Sin embargo, el usuario sí puede hacer click y entrar a la página.
+
+Corrección requerida:
+
+* Revisar la lógica que controla el estado visual de disponibilidad y la navegación/click.
+* Ambas cosas deben ser consistentes:
+
+  * o está disponible y entonces debe verse disponible y permitir entrar,
+  * o no está disponible y entonces debe verse no disponible y bloquear el acceso.
+* No dejes estados contradictorios.
+* Verifica que esta lógica funcione también para otras cards similares.
+
+### 2) Reserva por WhatsApp: aparecen caracteres no definidos
+
+Problema:
+
+* Al reservar por WhatsApp aparecen caracteres extraños o “undefined characters”.
+* En Word no aparecen, pero en la web sí.
+
+Corrección requerida:
+
+* Revisar encoding, sanitización, renderizado de strings y construcción del mensaje de WhatsApp.
+* Buscar:
+
+  * caracteres invisibles,
+  * saltos de línea incompatibles,
+  * comillas curvas,
+  * guiones especiales,
+  * non-breaking spaces,
+  * caracteres Unicode problemáticos,
+  * variables undefined/null concatenadas al mensaje.
+* Asegúrate de que el texto enviado a WhatsApp:
+
+  * no contenga `undefined`, `null`, símbolos rotos o caracteres invisibles,
+  * use encoding correcto para URLs (`encodeURIComponent` o equivalente),
+  * mantenga formato limpio y legible.
+* Si hay contenido proveniente de CMS, JSON, copy/paste o archivos externos, normalízalo antes de renderizarlo.
+
+### 3) Página de cualquier yate: cambiar los 3 capitanes por los OG y poner todos los precios iguales
+
+Problema:
+
+* En la página de reservas / selección de parámetros de cualquier yate, los 3 capitanes actuales deben ser reemplazados por los **capitanes OG**.
+* También hay que poner **todos los precios iguales** según la configuración correcta.
+
+Corrección requerida:
+
+* Identificar de dónde vienen los datos de capitanes y precios.
+* Reemplazar los 3 capitanes actuales por los “OG”.
+* Unificar los precios para que todos sean iguales donde corresponda.
+* Asegurarte de que el cambio se refleje en:
+
+  * selector de capitanes,
+  * resumen de reserva,
+  * precio final,
+  * cualquier cálculo relacionado.
+* Evita hardcodear si el sistema ya usa una fuente central de datos; corrige desde la fuente correcta.
+
+### 4) Availability calendar: leyenda correcta, pero fechas del calendario están blancas
+
+Problema:
+
+* El icono/leyenda del calendario está bien:
+
+  * available = verde
+  * booked = rojo
+* Pero las fechas del calendario se ven blancas y no reflejan bien el estado.
+
+Corrección requerida:
+
+* Ajustar estilos del calendario para que los días/fechas tengan contraste correcto y sean coherentes con la leyenda.
+* Si el color del texto o fondo está sobrescrito por CSS global, corrígelo.
+* Asegúrate de que:
+
+  * fechas disponibles se identifiquen claramente,
+  * fechas reservadas se identifiquen claramente,
+  * el texto sea legible en desktop y mobile,
+  * hover, selected, disabled y booked states no entren en conflicto visual.
+* Revisa también modo oscuro o clases globales si existen.
+
+### 5) CHARTER LOCATION: el mapa no está exactamente en Hollywood
+
+Problema:
+
+* El mapa de **CHARTER LOCATION** no apunta exactamente a Hollywood, aunque parece que esa es la intención.
+
+Corrección requerida:
+
+* Revisar las coordenadas, dirección, marcador y nivel de zoom.
+* Centrar el mapa exactamente en **Hollywood, Florida** si ese es el location correcto del charter.
+* Verifica que:
+
+  * el pin esté en el lugar correcto,
+  * el texto/dirección coincida con la ubicación mostrada,
+  * no haya desfase entre mapa, label y coordenadas.
+* Si existe una constante o config de ubicación, actualízala desde ahí.
+
+### 6) SPECIAL OFFERS: el banner cambia demasiado rápido
+
+Problema:
+
+* El banner de **SPECIAL OFFERS** cambia muy rápido y no da tiempo a leerlo.
+
+Corrección requerida:
+
+* Aumentar la duración de visualización del banner en **1 o 2 segundos más**.
+* Mantener una transición suave.
+* Si es un slider/carousel/autoplay, ajusta el intervalo sin afectar navegación manual.
+* Asegúrate de que la experiencia sea mejor en mobile y desktop.
+
+## Requisitos técnicos
+
+* No romper diseño ni responsive.
+* No introducir cambios innecesarios.
+* Mantener consistencia visual con el estilo actual del sitio.
+* Si detectas lógica duplicada, centralízala de forma segura.
+* Si hay textos hardcodeados y datos mezclados con lógica, separa lo necesario sin sobrecomplicar.
+* Corrige tanto el problema visual como la causa de fondo, no solo un parche superficial.
+
+## QA obligatorio
+
+Antes de terminar, valida lo siguiente:
+
+1. Home:
+
+* 40 Sea Ray / 2 hrs ya no muestra contradicción entre “not available” y click.
+
+2. WhatsApp:
+
+* El mensaje sale limpio, sin caracteres raros, sin `undefined`, sin símbolos corruptos.
+
+3. Yates:
+
+* Los 3 capitanes ya fueron reemplazados por los OG.
+* Los precios aparecen iguales en todos los lugares necesarios.
+
+4. Calendario:
+
+* Las fechas ya no se ven blancas.
+* Available y booked se entienden visualmente y tienen buen contraste.
+
+5. Mapa:
+
+* CHARTER LOCATION apunta correctamente a Hollywood, Florida.
+
+6. Special Offers:
+
+* El banner dura más tiempo visible y se puede leer bien.
+
+## Entrega final
+
+Cuando termines:
+
+* muestra los archivos modificados,
+* explica cada fix de forma breve,
+* incluye cualquier supuesto que hayas tenido que hacer,
+* y sugiere cualquier mejora adicional si encontraste deuda técnica relacionada.
