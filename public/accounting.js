@@ -162,10 +162,33 @@ async function loadData() {
     }
 }
 
+function showFutureDateBanner(show, endDate) {
+    let banner = document.getElementById('future-date-banner');
+    if (!show) { if (banner) banner.style.display = 'none'; return; }
+    if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'future-date-banner';
+        banner.style.cssText = [
+            'display:flex;align-items:center;gap:10px;padding:10px 16px;border-radius:8px',
+            'background:#fef9c3;border:1px solid #fde047;color:#854d0e',
+            'margin:8px 0 4px;font-size:13px;font-weight:500'
+        ].join(';');
+        const filtersPanel = document.querySelector('.filters-panel');
+        if (filtersPanel && filtersPanel.parentNode) {
+            filtersPanel.parentNode.insertBefore(banner, filtersPanel.nextSibling);
+        }
+    }
+    banner.style.display = 'flex';
+    banner.textContent = `⚠ La fecha de fin (${endDate}) es futura — no se mostrarán transacciones que aún no han ocurrido.`;
+}
+
 async function loadTransactions() {
     const startDate = document.getElementById('startDate').value;
     const endDate = document.getElementById('endDate').value;
-    
+
+    const today = new Date().toISOString().slice(0, 10);
+    showFutureDateBanner(endDate && endDate > today, endDate);
+
     const url = `/api/accounting/transactions?start_date=${startDate}&end_date=${endDate}&limit=100`;
     const response = await fetch(url);
     transactionsData = await response.json();

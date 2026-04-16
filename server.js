@@ -1773,6 +1773,35 @@ async function initializeDatabase() {
     if (mockAvailDel.rowCount > 0) {
       console.log(`🧹 Cleanup: eliminated ${mockAvailDel.rowCount} demo captain availability records`);
     }
+    // Clean up orphaned boat_usage_log entries (booking_id not in bookings, or empty boat_id)
+    const orphanedUsageDel = await pool.query(`
+      DELETE FROM boat_usage_log
+      WHERE booking_id NOT IN (SELECT id FROM bookings)
+         OR boat_id IS NULL
+         OR boat_id = ''
+    `);
+    if (orphanedUsageDel.rowCount > 0) {
+      console.log(`🧹 Cleanup: removed ${orphanedUsageDel.rowCount} orphaned boat_usage_log entries`);
+    }
+
+    // Merge duplicate CRANCHI boats — keep first (by id sort), deactivate second
+    const cranchiBothQ = await pool.query(
+      `SELECT id FROM boats WHERE UPPER(name) = 'CRANCHI' AND status = 'active' ORDER BY id`
+    );
+    if (cranchiBothQ.rows.length >= 2) {
+      const primaryId   = cranchiBothQ.rows[0].id;
+      const duplicateId = cranchiBothQ.rows[1].id;
+      console.log(`🔀 Merging duplicate CRANCHI: ${duplicateId} → ${primaryId}`);
+      // Move all data records from duplicate to primary
+      await pool.query(`UPDATE boat_fuel_log    SET boat_id=$1 WHERE boat_id=$2`, [primaryId, duplicateId]);
+      await pool.query(`UPDATE boat_usage_log   SET boat_id=$1 WHERE boat_id=$2`, [primaryId, duplicateId]);
+      await pool.query(`UPDATE stew_payments    SET boat_id=$1 WHERE boat_id=$2`, [primaryId, duplicateId]);
+      await pool.query(`UPDATE captain_payments SET boat_id=$1 WHERE boat_id=$2`, [primaryId, duplicateId]);
+      // Deactivate the duplicate (keeps history intact, removes from dropdowns)
+      await pool.query(`UPDATE boats SET status='inactive' WHERE id=$1`, [duplicateId]);
+      console.log(`✅ CRANCHI merge done — ${duplicateId} now inactive`);
+    }
+
     // ── END CLEANUP ─────────────────────────────────────────────────────
 
     console.log('✅ Database schema initialized successfully (all 10 phases + authentication)');
@@ -13105,8 +13134,10 @@ app.get('/api/fuel-tracker/trend', isAuthenticated, async (req, res) => {
     const boatFilter = boat_id ? `AND boat_id = '${boat_id}'` : '';
     const monthCount = Math.min(parseInt(months) || 6, 24);
 
-    // Trend window starts at MAX(baseline, N months ago) — never before baseline
-    const windowStart = `GREATEST('${baseline}'::date, (NOW() - INTERVAL '${monthCount} months')::date)`;
+    // Fuel window: plain N-month look-back (no baseline restriction — shows all logged fuel)
+    const fuelWindow  = `(NOW() - INTERVAL '${monthCount} months')::date`;
+    // Usage window: starts at MAX(baseline, N months ago) — engine hours only count post-baseline
+    const usageWindow = `GREATEST('${baseline}'::date, (NOW() - INTERVAL '${monthCount} months')::date)`;
 
     const fuelTrend = await pool.query(`
       SELECT
@@ -13116,7 +13147,7 @@ app.get('/api/fuel-tracker/trend', isAuthenticated, async (req, res) => {
         SUM(total_cost) AS total_cost,
         COUNT(*)        AS fuel_entries
       FROM boat_fuel_log
-      WHERE log_date >= ${windowStart} ${boatFilter}
+      WHERE log_date >= ${fuelWindow} ${boatFilter}
       GROUP BY DATE_TRUNC('month', log_date)
       ORDER BY DATE_TRUNC('month', log_date)
     `);
@@ -13129,7 +13160,7 @@ app.get('/api/fuel-tracker/trend', isAuthenticated, async (req, res) => {
         COUNT(*)            AS booking_count
       FROM boat_usage_log
       WHERE booking_date IS NOT NULL
-        AND booking_date::date >= ${windowStart}
+        AND booking_date::date >= ${usageWindow}
         ${boatFilter}
       GROUP BY DATE_TRUNC('month', booking_date::date)
       ORDER BY DATE_TRUNC('month', booking_date::date)

@@ -155,7 +155,7 @@
 
   <div class="kpi-row" id="cap-kpis">
     <div class="kpi-mini"><div class="km-label">Total pagado</div><div class="km-val" id="cap-total">$0</div><div class="km-sub" id="cap-count">0 pagos</div></div>
-    <div class="kpi-mini"><div class="km-label">Horas totales</div><div class="km-val" id="cap-hours">0h</div><div class="km-sub">trabajadas</div></div>
+    <div class="kpi-mini"><div class="km-label">Horas totales</div><div class="km-val" id="cap-hours-kpi">0h</div><div class="km-sub">trabajadas</div></div>
     <div class="kpi-mini"><div class="km-label">Barcos</div><div class="km-val" id="cap-boats">0</div><div class="km-sub">distintos</div></div>
     <div class="kpi-mini"><div class="km-label">Capitanes</div><div class="km-val" id="cap-people">0</div><div class="km-sub">distintos</div></div>
   </div>
@@ -207,7 +207,7 @@
 
   <div class="kpi-row">
     <div class="kpi-mini"><div class="km-label">Total pagado</div><div class="km-val" id="stew-total">$0</div><div class="km-sub" id="stew-count">0 pagos</div></div>
-    <div class="kpi-mini"><div class="km-label">Horas totales</div><div class="km-val" id="stew-hours">0h</div><div class="km-sub">trabajadas</div></div>
+    <div class="kpi-mini"><div class="km-label">Horas totales</div><div class="km-val" id="stew-hours-kpi">0h</div><div class="km-sub">trabajadas</div></div>
     <div class="kpi-mini"><div class="km-label">Barcos</div><div class="km-val" id="stew-boats">0</div><div class="km-sub">distintos</div></div>
     <div class="kpi-mini"><div class="km-label">Stew</div><div class="km-val" id="stew-people">0</div><div class="km-sub">distintos</div></div>
   </div>
@@ -319,11 +319,15 @@
 
     <div class="chart-card">
       <h3>Comisiones por Plataforma</h3>
-      <canvas id="platformChart" data-testid="chart-platform"></canvas>
+      <div class="chart-container">
+        <canvas id="platformChart" data-testid="chart-platform"></canvas>
+      </div>
     </div>
     <div class="chart-card">
       <h3>Comisiones por Capitán</h3>
-      <canvas id="captainChart" data-testid="chart-captain"></canvas>
+      <div class="chart-container">
+        <canvas id="captainChart" data-testid="chart-captain"></canvas>
+      </div>
     </div>
 
     <div class="data-table">
@@ -429,7 +433,7 @@
       </div>
       <div class="frow">
         <div class="fg2"><label>Fecha de trabajo <span class="req">*</span></label><input type="date" id="cap-work-date" data-testid="input-cap-date"></div>
-        <div class="fg2"><label>Horas trabajadas</label><input type="number" id="cap-hours" step="0.5" min="0" placeholder="0" data-testid="input-cap-hours"></div>
+        <div class="fg2"><label>Horas trabajadas</label><input type="number" id="cap-hours-input" step="0.5" min="0" placeholder="0" data-testid="input-cap-hours"></div>
       </div>
       <div class="fg2"><label>Descripción</label><textarea id="cap-description" rows="2" placeholder="Descripción del servicio..." data-testid="input-cap-desc"></textarea></div>
       <div class="frow">
@@ -465,7 +469,7 @@
       </div>
       <div class="frow">
         <div class="fg2"><label>Fecha de trabajo <span class="req">*</span></label><input type="date" id="stew-work-date" data-testid="input-stew-date"></div>
-        <div class="fg2"><label>Horas trabajadas</label><input type="number" id="stew-hours" step="0.5" min="0" placeholder="0" data-testid="input-stew-hours"></div>
+        <div class="fg2"><label>Horas trabajadas</label><input type="number" id="stew-hours-input" step="0.5" min="0" placeholder="0" data-testid="input-stew-hours"></div>
       </div>
       <div class="fg2"><label>Descripción</label><textarea id="stew-description" rows="2" placeholder="Descripción del servicio..." data-testid="input-stew-desc"></textarea></div>
       <div class="frow">
@@ -629,7 +633,7 @@ function updateCapKpis(data) {
   const people = new Set(data.map(r=>r.captain_name)).size;
   document.getElementById('cap-total').textContent  = fmt(total);
   document.getElementById('cap-count').textContent  = data.length + ' pagos';
-  document.getElementById('cap-hours').textContent  = hours.toFixed(1) + 'h';
+  document.getElementById('cap-hours-kpi').textContent  = hours.toFixed(1) + 'h';
   document.getElementById('cap-boats').textContent  = boats;
   document.getElementById('cap-people').textContent = people;
 }
@@ -663,7 +667,7 @@ function openCapModal(payment) {
   document.getElementById('cap-name').value        = payment?.captain_name || '';
   document.getElementById('cap-boat').value        = payment?.boat_id || '';
   document.getElementById('cap-work-date').value   = payment?.work_date?.slice(0,10) || new Date().toISOString().slice(0,10);
-  document.getElementById('cap-hours').value       = payment?.hours || '';
+  document.getElementById('cap-hours-input').value       = payment?.hours || '';
   document.getElementById('cap-description').value = payment?.description || '';
   document.getElementById('cap-amount').value      = payment?.amount || '';
   document.getElementById('cap-status').value      = payment?.status || 'paid';
@@ -679,7 +683,7 @@ async function submitCapPayment() {
     captain_name: document.getElementById('cap-name').value.trim(),
     boat_id:      document.getElementById('cap-boat').value,
     work_date:    document.getElementById('cap-work-date').value,
-    hours:        document.getElementById('cap-hours').value || null,
+    hours:        document.getElementById('cap-hours-input').value || null,
     description:  document.getElementById('cap-description').value.trim() || null,
     amount:       parseFloat(document.getElementById('cap-amount').value),
     status:       document.getElementById('cap-status').value,
@@ -759,7 +763,7 @@ function updateStewKpis(data) {
   const people = new Set(data.map(r=>r.stew_name)).size;
   document.getElementById('stew-total').textContent  = fmt(total);
   document.getElementById('stew-count').textContent  = data.length + ' pagos';
-  document.getElementById('stew-hours').textContent  = hours.toFixed(1) + 'h';
+  document.getElementById('stew-hours-kpi').textContent  = hours.toFixed(1) + 'h';
   document.getElementById('stew-boats').textContent  = boats;
   document.getElementById('stew-people').textContent = people;
 }
@@ -793,7 +797,7 @@ function openStewModal(payment) {
   document.getElementById('stew-name').value        = payment?.stew_name || '';
   document.getElementById('stew-boat').value        = payment?.boat_id || '';
   document.getElementById('stew-work-date').value   = payment?.work_date?.slice(0,10) || new Date().toISOString().slice(0,10);
-  document.getElementById('stew-hours').value       = payment?.hours || '';
+  document.getElementById('stew-hours-input').value       = payment?.hours || '';
   document.getElementById('stew-description').value = payment?.description || '';
   document.getElementById('stew-amount').value      = payment?.amount || '';
   document.getElementById('stew-status').value      = payment?.status || 'paid';
@@ -809,7 +813,7 @@ async function submitStewPayment() {
     stew_name:   document.getElementById('stew-name').value.trim(),
     boat_id:     document.getElementById('stew-boat').value,
     work_date:   document.getElementById('stew-work-date').value,
-    hours:       document.getElementById('stew-hours').value || null,
+    hours:       document.getElementById('stew-hours-input').value || null,
     description: document.getElementById('stew-description').value.trim() || null,
     amount:      parseFloat(document.getElementById('stew-amount').value),
     status:      document.getElementById('stew-status').value,
