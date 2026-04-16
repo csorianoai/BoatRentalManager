@@ -1730,6 +1730,51 @@ async function initializeDatabase() {
       console.log('✅ Parts inventory seeded with 10 common boat parts');
     }
     
+    // ── PRODUCTION DATA CLEANUP ─────────────────────────────────────────
+    // Remove seeded demo/mock bookings generated during system setup.
+    // Safe identification rules (ALL must match to delete):
+    //   • is_manual = false          → programmatically created, never manual entry
+    //   • customer_name LIKE 'Cliente %' → synthetic seed names (Cliente Viator 1, etc.)
+    //   • status = 'pending'         → seed records never progressed to confirmed/completed
+    //   • booking_date in 2025-10-31..2025-11-30 → demo date range, predates real operations
+    //   • id contains platform prefix pattern (e.g. viator_176..._0)
+    const mockBookingsDel = await pool.query(`
+      DELETE FROM bookings
+      WHERE is_manual = false
+        AND customer_name LIKE 'Cliente %'
+        AND status = 'pending'
+        AND booking_date::date BETWEEN '2025-10-31' AND '2025-11-30'
+      RETURNING id
+    `);
+    if (mockBookingsDel.rowCount > 0) {
+      console.log(`🧹 Cleanup: eliminated ${mockBookingsDel.rowCount} seeded demo bookings`);
+    }
+
+    // Remove mock commission_payments linked to test booking IDs
+    const mockCommDel = await pool.query(`
+      DELETE FROM commission_payments
+      WHERE booking_id LIKE 'booking_test_%'
+         OR id LIKE '%booking_test_%'
+      RETURNING id
+    `);
+    if (mockCommDel.rowCount > 0) {
+      console.log(`🧹 Cleanup: eliminated ${mockCommDel.rowCount} mock commission payment records`);
+    }
+
+    // Remove stale captain_availability records from the demo period (Oct 2025)
+    // Only removes records from early 2025-10 that predate real operations
+    // Preserves any record dated Nov 2025 onward (real ops started mid-Nov 2025)
+    const mockAvailDel = await pool.query(`
+      DELETE FROM captain_availability
+      WHERE date::date < '2025-11-01'
+        AND reason LIKE '%meeting%'
+      RETURNING id
+    `);
+    if (mockAvailDel.rowCount > 0) {
+      console.log(`🧹 Cleanup: eliminated ${mockAvailDel.rowCount} demo captain availability records`);
+    }
+    // ── END CLEANUP ─────────────────────────────────────────────────────
+
     console.log('✅ Database schema initialized successfully (all 10 phases + authentication)');
     
     // Insert default message templates if they don't exist

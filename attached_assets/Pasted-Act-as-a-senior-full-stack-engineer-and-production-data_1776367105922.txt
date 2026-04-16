@@ -1,0 +1,170 @@
+Act as a senior full-stack engineer and production data cleanup specialist.
+
+Project goal:
+Clean all mock/fake/test/demo seed data from gestion.nadaki.com carefully, without breaking any working production functionality, and preserve the real manually entered records with highest priority.
+
+Main business rule:
+For bookings/reservations and all related portal data, assume that manually entered records are real in about 90% of cases and should be preserved by default unless there is strong evidence they are mock/test/demo data.
+
+Current issue to start with:
+The portal shows:
+"Todas las Reservas del Período — 115 reservas encontradas"
+These must be reviewed and cleaned so that only real manually entered reservations remain, while mock/demo/test/seed/sample/generated data is removed or hidden safely.
+
+Execution mode:
+Be cost-efficient.
+Do not ask unnecessary questions.
+Audit first, then apply the smallest safe fix.
+Prefer direct solutions over long exploration.
+Do not rewrite large parts of the app if a precise fix is enough.
+
+Non-negotiable safety rules:
+
+1. Do not break working production flows.
+2. Do not delete data blindly.
+3. First identify how data is stored and how mock data enters the system.
+4. Prefer soft-delete, archival flag, filtering, or backup before hard deletion.
+5. Preserve manually entered records by default.
+6. If uncertain about a record, keep it and mark it for review instead of deleting it.
+7. Before any destructive action, export or snapshot the affected data.
+8. Audit all tables/collections/endpoints/views that surface mock data, not only bookings.
+9. Remove mock data with precision, not broad assumptions.
+10. At the end, verify the portal still loads correctly and the reservation counts are correct.
+
+Required workflow:
+PHASE 1 — FAST AUDIT
+
+* Inspect the codebase and identify:
+  a) where bookings/reservations are stored
+  b) how the "115 reservas encontradas" count is generated
+  c) whether mock/demo/seed/test data is inserted from seed scripts, fixtures, JSON files, fallback arrays, frontend mocks, database seeds, or dev-only API routes
+  d) whether the UI mixes real DB data with fallback mock data
+  e) whether there are other modules in the portal polluted by mock data
+
+* Search for patterns like:
+  mock
+  demo
+  seed
+  fixture
+  sample
+  fake
+  test
+  dummy
+  placeholder
+  hardcoded
+  fallback
+  development only
+  generated data
+  local data
+
+* Also inspect booking-related statuses and creation metadata, including fields like:
+  created_by
+  source
+  imported
+  manual
+  seed_flag
+  is_mock
+  is_demo
+  environment
+  tenant_id
+  notes
+  email
+  phone
+  customer_name
+  created_at
+  updated_at
+
+PHASE 2 — DEFINE SAFE IDENTIFICATION RULES
+Create a conservative classification strategy.
+
+Treat a record as LIKELY REAL if one or more of these are true:
+
+* it appears manually entered through admin/backoffice
+* it has realistic customer name, phone, email, date, boat, price, duration, notes
+* it is linked to real payment, real customer, real manual workflow, or real timestamps
+* it was created through a live admin form or production route
+* it does not contain suspicious seed/test/demo naming
+
+Treat a record as LIKELY MOCK if there is strong evidence such as:
+
+* explicit flags like is_mock, is_demo, seed, test, fake
+* names/emails like test, demo, sample, fake, john doe, jane doe, example.com
+* obviously artificial phone numbers
+* repeated placeholder dates/prices/boats
+* known seed scripts or fixtures generated them
+* frontend fallback arrays are inflating the count
+* dev-only API logic or local JSON is being merged into production data
+
+Important:
+If a record is ambiguous, preserve it.
+
+PHASE 3 — IMPLEMENT MINIMAL SAFE FIX
+Apply the smallest robust fix needed, such as:
+
+* remove frontend fallback mock arrays from production path
+* stop mixing seed/demo data with real queries
+* exclude mock/demo/test records from production queries
+* archive mock records instead of deleting first
+* if safe and backed up, delete only confirmed mock records
+* fix the count logic so the total reflects real production data only
+
+Priority order:
+
+1. Preserve real manually entered bookings
+2. Eliminate visible mock data from portal
+3. Prevent mock data from coming back
+4. Keep the rest of the app stable
+
+PHASE 4 — EXPAND CLEANUP TO ALL PORTAL MOCK DATA
+After bookings, inspect the full portal for other mock data with the same approach:
+
+* dashboards
+* tables
+* KPIs
+* customer lists
+* charts
+* boats
+* schedules
+* payments
+* campaigns
+* notifications
+* any fake statistics or fallback demo cards
+
+Remove or isolate all mock/demo/test data across the portal with the same conservative rule:
+preserve likely real manual data, remove only clearly fake/mock/demo/test data.
+
+PHASE 5 — VALIDATION
+After changes:
+
+* verify the reservations page loads
+* verify counts reflect cleaned data
+* verify no critical page crashes
+* verify manual real records still appear
+* verify mock records no longer appear in UI or totals
+* verify seed/fallback sources no longer contaminate production
+* provide a short report of:
+
+  1. root cause found
+  2. files changed
+  3. exact cleanup strategy used
+  4. whether data was archived, filtered, or deleted
+  5. any ambiguous records preserved for safety
+
+Implementation preference:
+
+* Prefer precise code edits over broad refactors
+* Prefer DB-safe operations
+* Prefer explicit production guards
+* Prefer environment-aware logic
+* Keep changes small, readable, and reversible
+
+Deliverables:
+
+1. Apply the fix
+2. Show the exact changed files
+3. Show the cleanup logic
+4. Summarize how many records were preserved vs removed/hidden
+5. Confirm whether the “115 reservas encontradas” issue is resolved
+
+Do not stop at analysis.
+Audit, fix, validate, and report.
