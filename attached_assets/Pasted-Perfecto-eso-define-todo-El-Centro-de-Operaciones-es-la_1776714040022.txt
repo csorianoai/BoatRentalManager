@@ -1,0 +1,238 @@
+Perfecto, eso define todo. El Centro de Operaciones es la fuente de verdad no-negociable. El NBIC tiene que leer exactamente de las mismas tablas, sin excepción.
+Pero levantaste un punto crítico y correcto: también hay que auditar el Centro de Operaciones mismo. Que sea "el estable" no significa que sus cálculos sean 100% correctos — solo significa que su data está conectada a lo real. Puede tener bugs silenciosos (dobles conteos, filtros mal aplicados, ticket promedio mal calculado) que nunca se validaron contra contabilidad.
+Entonces el sprint se reconfigura en dos auditorías paralelas:
+
+Auditoría del Centro de Operaciones — ¿los números que muestra son matemáticamente correctos?
+Reconexión del NBIC — apuntarlo a las mismas tablas y validar que replica los mismos números
+
+Aquí el prompt consolidado:
+
+# NBIC — RECONEXIÓN A FUENTE DE VERDAD + AUDITORÍA DEL CENTRO DE OPERACIONES
+
+## Contexto crítico
+
+Hemos detectado una inconsistencia estructural grave:
+
+**Centro de Operaciones (/dashboard.html)** — sistema estable, pre-NBIC, fuente de verdad del negocio:
+- 26 reservas totales
+- $24,299 revenue total
+- 24 completadas
+- Ticket promedio $935
+- Plataformas reales: Manual (20, $20,449), BoatSetter (2, $1,516), Airbnb (3, $1,184), GetMyBoat (1, $1,150)
+- Barcos reales: CRANCHI (11, $11,714), SEARAY 500 (5, $4,091), SILVER LINNING (3, $3,260), VIKING PRINCESS (2, $2,100), SEA RAY NAUTI NABOURS 40 (4, $2,034)
+- Tripulación activa: 8
+
+**NBIC (/reports.html)** — sistema nuevo construido recientemente:
+- 7 bookings totales
+- $0 ingresos brutos (contradicción matemática con ticket promedio $788)
+- Nombres técnicos: boat_WItvu3bNs1, boat_kpsniR3_In, etc.
+- Ninguna data coincide con el Centro de Operaciones
+
+**Decisión de negocio no-negociable:**
+El Centro de Operaciones es la fuente de verdad. El NBIC debe leer exactamente de las mismas tablas. Cualquier tabla paralela que el NBIC haya creado con seed data debe identificarse y deprecarse.
+
+Pero antes de reconectar el NBIC, también auditamos el Centro de Operaciones para asegurar que sus propios números sean matemáticamente correctos. Estable ≠ correcto.
+
+---
+
+## PARTE A — AUDITORÍA DEL CENTRO DE OPERACIONES
+
+### A.1 — Mapeo completo de fuentes de datos
+
+Para cada KPI y bloque del Centro de Operaciones (/dashboard.html), lista:
+- Nombre del componente UI
+- Endpoint backend que lo alimenta
+- Archivo + línea donde se hace el fetch desde frontend
+- Archivo + línea donde está el handler del endpoint
+- Query SQL o pipeline exacto que ejecuta
+- Tablas que consulta
+- Filtros y JOINs aplicados
+
+Cubrir como mínimo:
+- KPI "Reservas del Período" (26)
+- KPI "Revenue del Período" ($24,299)
+- KPI "Próximos 30 días" (2)
+- KPI "Tripulación Activa" (8)
+- KPI "Total Histórico" (26)
+- KPI "Completadas" (24)
+- KPI "Ticket Promedio" ($935)
+- KPI "Reservas Hoy" (0)
+- Bloque "Ranking Plataformas"
+- Bloque "Por Embarcación"
+
+### A.2 — Verificación matemática
+
+Ejecuta estas queries y compara contra lo que muestra el UI. Reporta cualquier discrepancia:
+
+```sql
+-- V1: Contar bookings totales sin filtros
+SELECT COUNT(*) AS total_bookings FROM <tabla_real_de_bookings>;
+
+-- V2: Contar bookings por status
+SELECT status, COUNT(*) 
+FROM <tabla_real_de_bookings> 
+GROUP BY status 
+ORDER BY COUNT(*) DESC;
+
+-- V3: Suma de revenue por plataforma
+SELECT <campo_plataforma>, 
+       COUNT(*) AS reservas, 
+       SUM(<campo_monto>) AS revenue
+FROM <tabla_real_de_bookings>
+GROUP BY <campo_plataforma>
+ORDER BY revenue DESC;
+
+-- V4: Suma de revenue por barco (JOIN con tabla de barcos)
+SELECT b.<campo_nombre_barco>, 
+       COUNT(bk.id) AS reservas,
+       SUM(bk.<campo_monto>) AS revenue
+FROM <tabla_real_de_bookings> bk
+JOIN <tabla_real_de_barcos> b ON bk.<boat_fk> = b.<boat_pk>
+GROUP BY b.<campo_nombre_barco>
+ORDER BY revenue DESC;
+
+-- V5: Ticket promedio real vs mostrado
+SELECT 
+  COUNT(*) AS bookings,
+  SUM(<campo_monto>) AS total_revenue,
+  AVG(<campo_monto>) AS avg_ticket,
+  ROUND(SUM(<campo_monto>) / NULLIF(COUNT(*), 0), 2) AS avg_ticket_manual
+FROM <tabla_real_de_bookings>;
+
+-- V6: ¿Hay bookings duplicados?
+SELECT id, COUNT(*) 
+FROM <tabla_real_de_bookings> 
+GROUP BY id 
+HAVING COUNT(*) > 1;
+
+-- V7: ¿Hay bookings con total_amount NULL o 0 que estén en el conteo?
+SELECT 
+  COUNT(*) FILTER (WHERE <campo_monto> IS NULL) AS sin_monto,
+  COUNT(*) FILTER (WHERE <campo_monto> = 0) AS monto_cero,
+  COUNT(*) FILTER (WHERE <campo_monto> > 0) AS monto_valido
+FROM <tabla_real_de_bookings>;
+
+-- V8: Tripulación activa real
+SELECT role, COUNT(*) 
+FROM <tabla_real_de_tripulacion> 
+WHERE active = true OR status = 'active' -- ajusta según schema
+GROUP BY role;
+```
+
+### A.3 — Reporte de discrepancias
+
+Para cada KPI del Centro de Operaciones, entrega:
+
+| KPI | Valor mostrado en UI | Valor correcto según SQL | Diferencia | ¿Bug? |
+|-----|---------------------|--------------------------|------------|-------|
+| Reservas del Período | 26 | ? | ? | SÍ/NO |
+| Revenue del Período | $24,299 | ? | ? | SÍ/NO |
+| Ticket Promedio | $935 | ? | ? | SÍ/NO |
+| Tripulación Activa | 8 | ? | ? | SÍ/NO |
+| ... | ... | ... | ... | ... |
+
+Si hay discrepancias, documenta la razón (ej: "incluye bookings canceladas en el revenue", "doble conteo por JOIN incorrecto", "filtro de fechas mal aplicado").
+
+### A.4 — Hallazgos adicionales
+
+Reporta cualquier anomalía detectada:
+- Bookings con estado inconsistente
+- Barcos sin nombre comercial
+- Plataformas duplicadas con distinto casing
+- Montos anómalos (negativos, extremadamente altos, fracciones sospechosas)
+- Referencias huérfanas
+
+---
+
+## PARTE B — MAPEO DE FUENTES DEL NBIC Y PLAN DE RECONEXIÓN
+
+### B.1 — Mapeo completo de fuentes del NBIC
+
+Para cada endpoint /api/nbic/* documenta:
+- Endpoint
+- Archivo + línea del handler
+- Query SQL o pipeline
+- Tablas que consulta
+- Filtros aplicados
+
+### B.2 — Diff crítico
+
+Tabla comparativa:
+
+| Componente | Tabla que usa Centro de Operaciones | Tabla que usa NBIC | ¿Coinciden? |
+|-----------|-------------------------------------|--------------------|--------------:|
+| Bookings | ? | ? | SÍ/NO |
+| Barcos | ? | ? | SÍ/NO |
+| Plataformas | ? | ? | SÍ/NO |
+| Usuarios/Vendedores | ? | ? | SÍ/NO |
+| Tripulación | ? | ? | SÍ/NO |
+| Transacciones | ? | ? | SÍ/NO |
+
+### B.3 — Identificación del problema raíz
+
+Respuestas explícitas:
+
+1. ¿El NBIC creó tablas propias con seed data en lugar de leer de las tablas reales? Si sí, lista esas tablas y cuántos registros de seed tienen.
+2. ¿Los IDs boat_WItvu3bNs1 etc. están en una tabla distinta a donde están CRANCHI, SEARAY 500, etc.? Nombre exacto de ambas tablas.
+3. ¿El schema `analytics` (si se llegó a crear) apunta correctamente a las tablas reales o a las de testing?
+4. ¿Cuántas tablas paralelas existen que deben deprecarse?
+
+### B.4 — Plan de reconexión
+
+Propón un plan en pasos ordenados para:
+1. Reapuntar cada endpoint del NBIC a las tablas reales
+2. Eliminar o archivar las tablas paralelas de seed data
+3. Validar que cada KPI del NBIC reproduce exactamente el número del Centro de Operaciones cuando aplica
+
+Para cada paso estima: esfuerzo en horas, riesgo (bajo/medio/alto), dependencia con otros pasos.
+
+---
+
+## PARTE C — PRUEBA DE EQUIVALENCIA POST-RECONEXIÓN
+
+Al terminar la reconexión (después de mi aprobación), define y ejecuta pruebas de equivalencia:
+
+Tabla esperada:
+
+| KPI | Centro de Operaciones | NBIC (post-fix) | ¿Coincide? |
+|-----|----------------------|-----------------|------------|
+| Reservas totales | 26 | debería ser 26 | ? |
+| Revenue total | $24,299 | debería ser $24,299 | ? |
+| Ticket promedio | $935 | debería ser $935 | ? |
+| Reservas Manual | 20 ($20,449) | debería coincidir | ? |
+| Reservas CRANCHI | 11 ($11,714) | debería coincidir | ? |
+| ... | ... | ... | ... |
+
+Cualquier KPI donde NO coincidan los números es un bug bloqueante que debe resolverse antes de considerar la reconexión completa.
+
+---
+
+## REGLAS DE EJECUCIÓN
+
+1. **Zero asunciones sobre nombres de tablas.** Si no sabes cómo se llama la tabla real de bookings, ejecuta queries de discovery primero.
+2. **No modifiques código hasta que yo apruebe el plan.** Esta iteración es 100% diagnóstico + propuesta.
+3. **Si encuentras tablas de seed data, NO las elimines aún.** Solo identifícalas.
+4. **Si el Centro de Operaciones tiene bugs propios (Parte A.3), documéntalos pero no los arregles todavía.** Primero decidimos prioridades juntos.
+5. **Reporta todo con SQL ejecutable y resultados reales.** No interpretes ni resumas datos que no tengas.
+
+---
+
+## ENTREGABLES
+
+1. **Parte A completa** — Mapeo del Centro de Operaciones, verificación matemática, reporte de discrepancias
+2. **Parte B completa** — Mapeo del NBIC, diff crítico, problema raíz identificado, plan de reconexión
+3. **Tabla de equivalencia esperada** — para Parte C una vez aprobado el plan
+4. **Resumen ejecutivo de máximo 10 líneas** con:
+   - Número de tablas paralelas encontradas
+   - Bugs del Centro de Operaciones (si los hay) y su gravedad
+   - Estimación total de esfuerzo para reconectar el NBIC
+   - Riesgo de pérdida de data durante la reconexión
+   - Recomendación: ¿reconectar incrementalmente o hacer cutover completo?
+
+---
+
+## CHECKPOINT ÚNICO
+
+Entrega Parte A + Parte B + Resumen Ejecutivo en un solo mensaje consolidado. **DETENTE ahí.** No toques código, no ejecutes reconexión, no deprecies tablas. Espera mi aprobación explícita con el plan aprobado antes de ejecutar la Parte C.
+
+Empieza ahora.

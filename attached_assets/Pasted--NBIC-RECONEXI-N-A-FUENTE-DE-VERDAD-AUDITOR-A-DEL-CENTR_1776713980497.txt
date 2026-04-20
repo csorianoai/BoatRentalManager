@@ -1,0 +1,58 @@
+# NBIC — RECONEXIÓN A FUENTE DE VERDAD + AUDITORÍA DEL CENTRO DE OPERACIONES
+
+## Contexto crítico
+
+Hemos detectado una inconsistencia estructural grave:
+
+**Centro de Operaciones (/dashboard.html)** — sistema estable, pre-NBIC, fuente de verdad del negocio:
+- 26 reservas totales
+- $24,299 revenue total
+- 24 completadas
+- Ticket promedio $935
+- Plataformas reales: Manual (20, $20,449), BoatSetter (2, $1,516), Airbnb (3, $1,184), GetMyBoat (1, $1,150)
+- Barcos reales: CRANCHI (11, $11,714), SEARAY 500 (5, $4,091), SILVER LINNING (3, $3,260), VIKING PRINCESS (2, $2,100), SEA RAY NAUTI NABOURS 40 (4, $2,034)
+- Tripulación activa: 8
+
+**NBIC (/reports.html)** — sistema nuevo construido recientemente:
+- 7 bookings totales
+- $0 ingresos brutos (contradicción matemática con ticket promedio $788)
+- Nombres técnicos: boat_WItvu3bNs1, boat_kpsniR3_In, etc.
+- Ninguna data coincide con el Centro de Operaciones
+
+**Decisión de negocio no-negociable:**
+El Centro de Operaciones es la fuente de verdad. El NBIC debe leer exactamente de las mismas tablas. Cualquier tabla paralela que el NBIC haya creado con seed data debe identificarse y deprecarse.
+
+Pero antes de reconectar el NBIC, también auditamos el Centro de Operaciones para asegurar que sus propios números sean matemáticamente correctos. Estable ≠ correcto.
+
+---
+
+## PARTE A — AUDITORÍA DEL CENTRO DE OPERACIONES
+
+### A.1 — Mapeo completo de fuentes de datos
+
+Para cada KPI y bloque del Centro de Operaciones (/dashboard.html), lista:
+- Nombre del componente UI
+- Endpoint backend que lo alimenta
+- Archivo + línea donde se hace el fetch desde frontend
+- Archivo + línea donde está el handler del endpoint
+- Query SQL o pipeline exacto que ejecuta
+- Tablas que consulta
+- Filtros y JOINs aplicados
+
+Cubrir como mínimo:
+- KPI "Reservas del Período" (26)
+- KPI "Revenue del Período" ($24,299)
+- KPI "Próximos 30 días" (2)
+- KPI "Tripulación Activa" (8)
+- KPI "Total Histórico" (26)
+- KPI "Completadas" (24)
+- KPI "Ticket Promedio" ($935)
+- KPI "Reservas Hoy" (0)
+- Bloque "Ranking Plataformas"
+- Bloque "Por Embarcación"
+
+### A.2 — Verificación matemática
+
+Ejecuta estas queries y compara contra lo que muestra el UI. Reporta cualquier discrepancia:
+
+```sql
