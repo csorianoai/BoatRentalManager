@@ -22,6 +22,17 @@ Developed with Express.js (Node.js), the backend provides RESTful APIs with cust
 
 PostgreSQL (Neon-backed via Replit) is the primary database, featuring a comprehensive schema across 36+ tables. Key tables include `bookings`, `captains`, `users`, `chat_conversations`, `platform_sync_status`, `commission_rules`, `captain_availability`, `boats`, `platform_pricing_policies`, a full suite of accounting tables, messaging tables, boat maintenance tables, and fleet management tables. New tables: `brokers` (agency/broker accounts), `customers` (direct client records), `bookings_ledger` (full booking record linking deposits + AR + parties), extended `booking_deposits` (booking_source, broker_id, customer_id, final_customer_*), extended `booking_receivables` (party_type, party_id, party_name, booking_id). **FASE 15 tables**: `boat_usage_log` (booking_id UNIQUE, boat_id, hours_reserved, hours_engine, status='pending'|'complete') auto-created on `POST /api/bookings`; `boat_fuel_log` (boat_id, log_date, gallons, cost_per_gallon, total_cost, odometer_hours, station). UUIDs/nanoid IDs are used for primary keys, and JSONB stores flexible data.
 
+**FASE 16 — Trazabilidad y Normalización (reporting foundation)**:
+- `bookings.total_amount` migrated from INTEGER to NUMERIC(12,2) (confirmed: USD dollar values, not cents, range $850–$1,521)
+- `transactions.booking_id TEXT` (FK to bookings) and `transactions.ledger_id TEXT` (FK to bookings_ledger) added — enables direct booking→transaction traceability. Rule: one booking → many transactions (N:1).
+- `payment_method TEXT` with CHECK constraint (`cash|card|transfer|online_platform|mixed|pending|unknown`) added to `bookings`, `bookings_ledger`, `booking_deposits`
+- `base_price NUMERIC(12,2)`, `discount_amount NUMERIC(12,2) DEFAULT 0`, `discount_pct NUMERIC(5,2) DEFAULT 0` added to `bookings` and `bookings_ledger`
+- `payment_date DATE` (date money was received, separate from `booking_date` which is date of service) added to `bookings` and `bookings_ledger`
+- `sold_by_user_id TEXT`, `sold_by_name TEXT` added to `bookings` and `bookings_ledger`
+- 19 transactions with `reference_type='booking'` that incorrectly pointed to `dep_*`/`ar_*` IDs corrected to `reference_type='other'`
+- 7 new indexes: `idx_transactions_booking_id`, `idx_transactions_ledger_id`, `idx_bookings_payment_date`, `idx_bookings_payment_method`, `idx_bookings_boat_platform`, `idx_ppp_platform_boat`, `idx_ar_booking`
+- **Known data gaps**: existing 6 bookings have `boat_id=NULL` (must be assigned manually); pricing policies point to non-existent `boat_id='boat1'` (must be updated to real boat IDs); no backfill possible for `payment_method`, `payment_date`, `sold_by_name` on historical records
+
 ## Authentication & Authorization
 
 Replit Auth with OpenID Connect (OIDC) is implemented using `passport.js` and `connect-pg-simple` for PostgreSQL-backed session storage. Sessions have a 7-day TTL and use httpOnly and secure cookies. An `isAuthenticated` middleware protects all administrative and data management endpoints. The captain app uses dual authentication: Replit Auth for access control and Captain ID selection for in-app role identification.

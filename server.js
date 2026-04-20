@@ -1804,6 +1804,75 @@ async function initializeDatabase() {
 
     // ── END CLEANUP ─────────────────────────────────────────────────────
 
+    // ── FASE 16: Trazabilidad y Normalización de Datos ──────────────────
+    // D-04: Migrate bookings.total_amount from INTEGER to NUMERIC(12,2)
+    // Evidence: production values 850–1521 are USD dollars (not cents). Safe cast.
+    await pool.query(`ALTER TABLE bookings ALTER COLUMN total_amount TYPE NUMERIC(12,2)`).catch(() => {});
+
+    // D-01: Add booking_id FK column to transactions (one booking → many transactions)
+    // Rule: one transaction belongs to at most one booking; a booking can have multiple
+    //       transactions (deposit receipt, completion income, deferred liability reversal).
+    // Backfill: 0 rows backfillable — no existing transaction uses a real book_* ID in reference_id.
+    await pool.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS booking_id TEXT REFERENCES bookings(id)`).catch(() => {});
+    await pool.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS ledger_id TEXT REFERENCES bookings_ledger(id)`).catch(() => {});
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_transactions_booking_id ON transactions(booking_id)`).catch(() => {});
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_transactions_ledger_id  ON transactions(ledger_id)`).catch(() => {});
+
+    // D-02: Standardize payment_method across all booking-related tables
+    // Catalog: cash | card | transfer | online_platform | mixed | pending | unknown
+    await pool.query(`ALTER TABLE bookings        ADD COLUMN IF NOT EXISTS payment_method TEXT CHECK (payment_method IN ('cash','card','transfer','online_platform','mixed','pending','unknown'))`).catch(() => {});
+    await pool.query(`ALTER TABLE bookings_ledger ADD COLUMN IF NOT EXISTS payment_method TEXT CHECK (payment_method IN ('cash','card','transfer','online_platform','mixed','pending','unknown'))`).catch(() => {});
+    await pool.query(`ALTER TABLE booking_deposits ADD COLUMN IF NOT EXISTS payment_method TEXT CHECK (payment_method IN ('cash','card','transfer','online_platform','mixed','pending','unknown'))`).catch(() => {});
+    // boat_expenses already has payment_method TEXT (no check constraint) — compatible, no change needed
+
+    // D-03: Add base price and discount fields to bookings and bookings_ledger
+    // base_price = tarifa de lista del motor de pricing (platform_pricing_policies)
+    // discount_amount = base_price - total_amount cuando base_price > total_amount (>= 0)
+    // discount_pct = discount_amount / base_price * 100
+    await pool.query(`ALTER TABLE bookings        ADD COLUMN IF NOT EXISTS base_price      NUMERIC(12,2)`).catch(() => {});
+    await pool.query(`ALTER TABLE bookings        ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(12,2) DEFAULT 0`).catch(() => {});
+    await pool.query(`ALTER TABLE bookings        ADD COLUMN IF NOT EXISTS discount_pct    NUMERIC(5,2)  DEFAULT 0`).catch(() => {});
+    await pool.query(`ALTER TABLE bookings_ledger ADD COLUMN IF NOT EXISTS base_price      NUMERIC(12,2)`).catch(() => {});
+    await pool.query(`ALTER TABLE bookings_ledger ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(12,2) DEFAULT 0`).catch(() => {});
+    await pool.query(`ALTER TABLE bookings_ledger ADD COLUMN IF NOT EXISTS discount_pct    NUMERIC(5,2)  DEFAULT 0`).catch(() => {});
+
+    // D-05: Add payment_date (date money was received) separate from booking_date (date of service)
+    await pool.query(`ALTER TABLE bookings        ADD COLUMN IF NOT EXISTS payment_date DATE`).catch(() => {});
+    await pool.query(`ALTER TABLE bookings_ledger ADD COLUMN IF NOT EXISTS payment_date DATE`).catch(() => {});
+
+    // D-06: Add seller/vendor fields to bookings and bookings_ledger
+    // sold_by_user_id = Replit Auth user ID; sold_by_name = human-readable name
+    await pool.query(`ALTER TABLE bookings        ADD COLUMN IF NOT EXISTS sold_by_user_id TEXT`).catch(() => {});
+    await pool.query(`ALTER TABLE bookings        ADD COLUMN IF NOT EXISTS sold_by_name    TEXT`).catch(() => {});
+    await pool.query(`ALTER TABLE bookings_ledger ADD COLUMN IF NOT EXISTS sold_by_user_id TEXT`).catch(() => {});
+    await pool.query(`ALTER TABLE bookings_ledger ADD COLUMN IF NOT EXISTS sold_by_name    TEXT`).catch(() => {});
+
+    // Indexes for reporting queries on new columns
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_bookings_payment_date   ON bookings(payment_date)`).catch(() => {});
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_bookings_payment_method ON bookings(payment_method)`).catch(() => {});
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_bookings_boat_platform  ON bookings(boat_id, platform)`).catch(() => {});
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_ppp_platform_boat ON platform_pricing_policies(platform, boat_id, is_active)`).catch(() => {});
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_ar_booking ON booking_receivables(booking_id)`).catch(() => {});
+
+    // D-F3: Fix misclassified reference_type in transactions
+    // Transactions with reference_type='booking' that actually point to dep_* (deposit IDs)
+    // or ar_* (receivable IDs) must have their reference_type corrected for accurate reporting.
+    const fixDepRef = await pool.query(`
+      UPDATE transactions
+      SET reference_type = 'other'
+      WHERE reference_type = 'booking'
+        AND (reference_id LIKE 'dep_%'
+             OR reference_id LIKE 'ar_%'
+             OR reference_id LIKE 'DEP-%')
+      RETURNING id
+    `).catch(() => ({ rows: [] }));
+    if (fixDepRef.rows.length > 0) {
+      console.log(`🔧 FASE 16: Fixed ${fixDepRef.rows.length} transactions with misclassified reference_type`);
+    }
+
+    console.log('✅ FASE 16: Trazabilidad y normalización aplicada (D-01 a D-06 + F3)');
+    // ── END FASE 16 ──────────────────────────────────────────────────────
+
     console.log('✅ Database schema initialized successfully (all 10 phases + authentication)');
     
     // Insert default message templates if they don't exist

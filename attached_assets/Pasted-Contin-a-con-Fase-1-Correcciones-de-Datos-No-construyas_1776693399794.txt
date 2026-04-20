@@ -1,0 +1,207 @@
+Continúa con **Fase 1 — Correcciones de Datos**.
+**No construyas todavía la UI del módulo de reportes.**
+
+## Decisión de ejecución
+
+La prioridad correcta es asegurar primero la trazabilidad y consistencia del dato.
+Quiero que trabajes en este orden:
+
+1. **Fase 1: Correcciones de Datos**
+2. **Fase 2: Vistas SQL y Backend**
+3. **Validación técnica mínima con datos reales**
+4. **Fase 3: UI del módulo de reportes**
+5. **Fase 4: Validación con usuario**
+
+La UI con datos incompletos o ambiguos solo generará reportes visualmente correctos pero funcionalmente poco confiables.
+Para nosotros, la prioridad es **exactitud contable, trazabilidad y reglas de negocio correctas**, no velocidad visual.
+
+---
+
+## Instrucción principal
+
+Empieza de inmediato por **Fase 1**, ejecutando primero las tareas críticas que bloquean la conciliación y el análisis de precios:
+
+### Orden obligatorio dentro de Fase 1
+
+1. **D-01: agregar `booking_id` en `transactions`**
+2. **D-02: estandarizar `payment_method` en `bookings`, `ledger` y `deposits`**
+3. **D-03: agregar `base_price` y `discount_amount` en `bookings`**
+4. **D-04: validar y migrar `total_amount` a `NUMERIC(12,2)`**
+5. **D-05: agregar `payment_date` en `bookings`**
+6. **D-06: agregar `sold_by_user_id` y/o `sold_by_name` en `bookings`**
+
+---
+
+## Forma de trabajo requerida
+
+No hagas cambios masivos sin documentar antes el impacto.
+
+Para cada tarea de Fase 1 necesito este formato de entrega:
+
+### 1. Diagnóstico
+
+* problema actual;
+* riesgo que genera;
+* por qué bloquea reportes;
+* tablas y columnas afectadas.
+
+### 2. Propuesta técnica
+
+* alter table o migración propuesta;
+* tipo de dato recomendado;
+* default/nullability;
+* backfill necesario;
+* riesgos de compatibilidad.
+
+### 3. Script de migración
+
+Incluye SQL o migración exacta lista para ejecutar.
+
+### 4. Script de backfill
+
+Si aplica, genera también el script para poblar datos históricos.
+
+### 5. Validaciones post-migración
+
+* conteos;
+* nulos remanentes;
+* inconsistencias detectadas;
+* posibles registros huérfanos.
+
+### 6. Impacto en reportes
+
+Explica exactamente cómo esa corrección habilita o mejora:
+
+* **RPT-A1 Conciliación de Ingresos**
+* **RPT-B1 Análisis de Precios por Barco**
+* demás reportes relacionados
+
+---
+
+## Reglas obligatorias antes de migrar
+
+Antes de ejecutar cualquier migración, valida y documenta:
+
+### A. `total_amount`
+
+Confirma si en producción está guardado en:
+
+* dólares decimales,
+* enteros tipo cents,
+* string,
+* o mezcla histórica.
+
+No asumas formato.
+Primero inspecciona una muestra suficiente y entrega evidencia.
+Si detectas mezcla de formatos, propón estrategia de normalización segura.
+
+### B. `payment_method`
+
+Define un catálogo estándar único para todo el sistema.
+Ejemplo base:
+
+* cash
+* card
+* transfer
+* online_platform
+* mixed
+* pending
+* unknown
+
+Si encuentras otros valores históricos, mapéalos y documenta equivalencias.
+
+### C. `booking_id` en transactions
+
+Define claramente:
+
+* si una transacción pertenece a un booking o a varios;
+* si puede haber múltiples transacciones por booking;
+* si existen refunds, reversals, adjustments o partial payments;
+* cuál será la regla oficial de vinculación.
+
+### D. `base_price` y `discount_amount`
+
+Define si `base_price` representa:
+
+* tarifa lista,
+* tarifa inicial antes de descuento,
+* o tarifa esperada según motor de pricing.
+
+Define también cómo se calculará `discount_amount` cuando existan:
+
+* descuentos manuales,
+* promociones,
+* cambios de precio por canal,
+* excepciones autorizadas.
+
+---
+
+## Entregables inmediatos que quiero ahora
+
+No pases todavía a la UI.
+Quiero que me entregues primero estos 5 bloques:
+
+### Bloque 1 — Data audit técnico de Fase 1
+
+* esquema actual relevante;
+* tablas implicadas;
+* columnas existentes;
+* vacíos detectados;
+* incompatibilidades.
+
+### Bloque 2 — Plan de migraciones detallado
+
+* migraciones en orden;
+* dependencias;
+* rollback plan;
+* riesgos.
+
+### Bloque 3 — SQL/migrations concretas
+
+* scripts listos para ejecutar;
+* separados por tarea D-01 a D-06.
+
+### Bloque 4 — Estrategia de backfill histórico
+
+* cómo poblarás los nuevos campos con datos ya existentes;
+* qué porcentaje podrá recuperarse;
+* qué quedará como null o unknown;
+* qué requerirá intervención manual.
+
+### Bloque 5 — Criterios de aceptación
+
+Define cómo sabremos que Fase 1 quedó lista para pasar a Fase 2.
+
+---
+
+## Criterios de aceptación mínimos de Fase 1
+
+Consideraré Fase 1 lista solo si se cumple lo siguiente:
+
+* `transactions.booking_id` existe y tiene estrategia clara de llenado;
+* `payment_method` está normalizado o al menos mapeado consistentemente;
+* `bookings.base_price` y `bookings.discount_amount` existen;
+* `total_amount` quedó validado y normalizado;
+* `payment_date` quedó separado de `service_date` o equivalente;
+* existe campo confiable para vendedor;
+* queda documentado qué datos históricos son confiables y cuáles no.
+
+---
+
+## Restricción importante
+
+No quiero respuesta genérica.
+Quiero resultados orientados a ejecución real en el sistema actual:
+
+* inspección del esquema,
+* SQL real,
+* propuestas de alter table,
+* mapeos concretos,
+* riesgos reales,
+* y supuestos explícitos.
+
+Si no puedes acceder a alguna parte del código o base de datos, indícalo exactamente y continúa con la mejor propuesta técnicamente viable basada en lo que sí puedas inspeccionar.
+
+Empieza ahora con:
+**Bloque 1 — Data audit técnico de Fase 1**
+y después continúa con el **Bloque 2 — Plan de migraciones detallado**.
