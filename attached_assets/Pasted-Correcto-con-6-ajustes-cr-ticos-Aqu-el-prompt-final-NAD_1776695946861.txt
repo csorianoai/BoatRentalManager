@@ -1,0 +1,219 @@
+Correcto con 6 ajustes críticos. Aquí el prompt final:
+
+NADAKI BUSINESS INTELLIGENCE CENTER (NBIC) — PROMPT EJECUTABLE
+INSTRUCCIÓN PRINCIPAL
+Actúa como arquitecto de datos, backend engineer, analista financiero y desarrollador full-stack senior.
+No estás construyendo un módulo de reportes. Estás construyendo el Nadaki Business Intelligence Center (NBIC) — el sistema único de verdad analítica del negocio.
+Prerrequisito: Fase 1 (correcciones de datos D-01 a D-06) debe estar completada y validada antes de iniciar este trabajo. Si no lo está, detente y avísame.
+
+REGLA NO NEGOCIABLE
+NO calcules reportes directamente desde tablas transaccionales.
+Arquitectura obligatoria:
+UI → API → Vistas Materializadas / Fact Tables → Tablas Transaccionales
+
+OBJETIVO DEL SISTEMA
+El NBIC debe responder SIEMPRE con precisión contable a:
+
+¿Cuánto se vendió, cobró y depositó?
+¿Dónde está el dinero que falta?
+¿Qué barcos generan valor vs destruyen valor?
+¿Dónde hay fuga de ingresos?
+¿Qué anomalías actuales predicen problemas futuros?
+
+
+ALCANCE OBLIGATORIO
+
+Data Layer (analytics schema + modelo dimensional)
+API analítica completa (/api/nbic/...)
+Mega UI (reports.html)
+Sistema de alertas
+Board Report exportable (PDF)
+
+
+STACK Y ENTORNO
+
+BD: PostgreSQL (Supabase). Usar pg_cron para jobs; si no está disponible, documentar y proponer alternativa (Supabase Edge Functions + cron externo).
+Toda migración corre dentro de BEGIN; ... COMMIT; con rollback plan.
+Antes de cualquier DDL en producción: backup con CREATE TABLE <t>_backup_<fecha> AS SELECT * FROM <t> para tablas tocadas.
+Si existe entorno staging, ejecutar primero ahí.
+Schema analytics NO reemplaza tablas transaccionales, las complementa.
+
+
+EJECUCIÓN — ORDEN OBLIGATORIO
+Regla de checkpoint: al final de cada paso, entrega resumen ejecutivo de 5 líneas (qué hiciste, qué encontraste, qué quedó parcial, qué necesitas de mí, estimado siguiente) y DETENTE hasta aprobación.
+PASO 1 — Schema analytics + dimensiones
+
+schema analytics
+dim_date, dim_boat, dim_user, dim_channel, dim_payment_method, dim_tour, dim_expense_category
+carga inicial de dim_date (rango 2020-2030)
+
+PASO 2 — Vistas base enriquecidas
+
+v_booking_enriched, v_transaction_enriched, v_expense_enriched
+v_reconciliation, v_price_variance, v_boat_daily
+cada vista con query de validación + sample de 10 filas reales
+
+PASO 3 — Fact tables materializadas + jobs
+
+mv_fact_daily_boat (refresh cada hora)
+mv_fact_weekly_boat (refresh nocturno)
+mv_fact_monthly_boat (refresh al cierre mensual)
+mv_executive_kpis (refresh cada 15 min)
+refresh incremental donde sea posible; reportar tiempo de refresh inicial
+
+PASO 4 — API base
+
+/api/nbic/catalog
+/api/nbic/executive/kpis
+/api/nbic/executive/alerts
+middleware de autenticación + logging (usuario, filtros, latencia)
+
+PASO 5 — Revenue domain
+
+RPT-A1 a RPT-A6
+
+PASO 6 — Pricing domain
+
+RPT-B1 a RPT-B6
+incluir z-score (ventana móvil 90 días) y revenue leakage waterfall
+
+PASO 7 — Expenses + Profitability
+
+RPT-C1 a C6
+RPT-D1 a D5
+documentar supuestos explícitos para estimación de costos (crew, combustible, etc.) si no hay data granular
+
+PASO 8 — UI base
+
+reports.html, sidebar, filter bar global, KPI cards, tablas, charts, estructura modular
+componentes reutilizables
+
+PASO 9 — UI completa + drilldown + exports
+
+drill-down obligatorio en toda celda agregada
+export CSV genérico
+export PDF del Board Report
+
+
+MODELO DIMENSIONAL
+Dimensiones: dim_date, dim_boat, dim_user, dim_channel, dim_payment_method, dim_tour, dim_expense_category
+Fact tables: fact_bookings, fact_transactions, fact_expenses, fact_daily_boat, fact_weekly_boat, fact_monthly_boat
+
+MÉTRICAS OBLIGATORIAS
+Revenue
+gross_revenue, net_revenue, take_home_revenue, collected, deposited, revenue_leakage, collection_rate, deposit_reconciliation_rate
+Performance por barco
+RevPAB, utilization_rate, average_ticket, contribution_margin, margin_pct
+Pricing
+price_variance, discount_rate, below_tariff_rate, outlier_rate (z-score)
+Cash
+cash_days_outstanding, unreconciled_cash, AR aging buckets (0-7, 8-15, 16-30, 31-60, 60+)
+Channel
+revenue por canal, discount rate por canal, comisión real vs esperada
+Anomalías
+WoW variance, z-score pricing, expense anomalies, reconciliation gaps
+
+CATÁLOGO DE REPORTES (27 reportes, 6 dominios)
+Revenue (A): A1 Conciliación · A2 Aging AR · A3 Flujo Método Pago · A4 Depósitos Pendientes · A5 Ingresos por Dimensión · A6 Cash Days Outstanding
+Pricing (B): B1 Precios por Barco · B2 Variación Semanal · B3 Outliers · B4 Ticket Promedio · B5 Descuentos · B6 Revenue Leakage Waterfall
+Expenses (C): C1 Gastos por Barco · C2 por Categoría · C3 Semanal vs Mensual · C4 Top Proveedores · C5 Anomalías · C6 Break-even
+Profitability (D): D1 Rentabilidad por Barco · D2 Margin Evolution · D3 Margen por Canal · D4 RevPAB y Utilization · D5 P&L por Barco
+Compare (E): E1 Barco vs Barco · E2 Período vs Período · E3 Seasonality Heatmap
+Executive (F): F1 Dashboard · F2 Alertas · F3 Board Report PDF
+
+ENDPOINTS OBLIGATORIOS
+Base: /api/nbic/
+Filtros globales estándar: date_from, date_to, boat_ids[], channel_ids[], payment_methods[], user_ids[], status[], granularity
+Endpoints: catalog, executive/kpis, executive/alerts, revenue/reconciliation, revenue/aging, revenue/payment-flow, revenue/pending-deposits, revenue/by-dimension, revenue/cash-days, pricing/variance, pricing/weekly, pricing/outliers, pricing/avg-ticket, pricing/discount-analysis, pricing/leakage-waterfall, expenses/by-boat, expenses/by-category, expenses/period, expenses/top-suppliers, expenses/anomalies, expenses/breakeven, profitability/by-boat, profitability/margin-trend, profitability/by-channel, profitability/revpab, profitability/pnl, compare/boats, compare/periods, compare/seasonality, export/board-report, export/csv
+
+FORMATO JSON ESTÁNDAR
+Todos los endpoints:
+json{
+  "meta": {
+    "report_code": "RPT-A1",
+    "generated_at": "ISO",
+    "filters_applied": {},
+    "granularity": "day",
+    "data_freshness": "ISO",
+    "completeness_score": 0.94,
+    "warnings": []
+  },
+  "kpis": [
+    {"code": "", "label": "", "value": 0, "unit": "", "delta_pct": 0, "trend": ""}
+  ],
+  "series": [],
+  "table": {"columns": [], "rows": []},
+  "alerts": []
+}
+
+MEGA UI
+Sidebar
+Executive · Revenue · Pricing · Expenses · Profitability · Compare · Alerts · Exports
+Componentes reutilizables
+KPICard, DataTable, TimeSeriesChart, ComparisonChart, HeatmapChart, WaterfallChart, AlertFeed, FilterBar, DrilldownModal, ExportButton
+Filtros globales (persisten en URL)
+Rango fechas con presets (Hoy, Ayer, 7d, Esta semana, Semana pasada, 30d, Este mes, Mes pasado, Trimestre, Año, Custom), granularidad, barcos, canales, métodos de pago, vendedores, estatus, toggles (con/sin depósito, con/sin descuento, solo completados), umbral de alerta configurable
+Drill-down
+Obligatorio: toda celda agregada debe abrir modal con detalle transaccional.
+
+ALERTAS
+Crear tabla analytics.alert_rules configurable (código, query, umbral, severity, canal, frecuencia).
+Alertas mínimas:
+CódigoDescripciónSeverityFrecuenciaALT-01Gap conciliación > $100criticaldiariaALT-02Booking completado sin depósito > 48hwarndiariaALT-03Precio < -15% tarifawarnreal-timeALT-04Descuento vendedor > 15% semanalwarnsemanalALT-05Revenue WoW < -20% por barcowarnsemanalALT-06Gasto categoría > 2σ históricocriticaldiariaALT-07Cash days outstanding > 7warndiariaALT-08AR vencida > 30 díascriticaldiariaALT-09Booking sin payment_methodinforeal-timeALT-10Z-score precio > 2 (90d)warnreal-time
+Alertas se persisten en analytics.alert_events con estado (open/ack/resolved).
+
+BOARD REPORT (PDF)
+
+Executive summary (KPIs mes + MoM + YoY)
+Revenue breakdown con waterfall
+Asset performance (tabla por barco: RevPAB, utilization, margin)
+Cost analysis con anomalías resaltadas
+Cash integrity (reconciliation rate, cash days, aging)
+Pricing integrity (% bajo tarifa, top 10 outliers, discount por canal)
+Alerts summary
+Forward outlook (bookings próximos 30 días)
+
+
+ENTREGABLES DE ESTA ITERACIÓN
+BLOQUE 1 — NBIC_REPORT_CATALOG.md
+27 reportes con: código, nombre, dominio, nivel, grain, métricas, fuente, visualización, filtros, completeness_score esperado.
+BLOQUE 2 — NBIC_ARCHITECTURE.md
+Diagrama de capas, vistas, fact tables, jobs, endpoints, JSON estándar, estrategia de refresh.
+BLOQUE 3 — DDL SQL completo
+Archivos separados:
+
+01_dimensions.sql
+02_views.sql
+03_materialized_views.sql
+04_jobs.sql
+05_alert_rules.sql
+
+BLOQUE 4 — NBIC_UI_SPEC.md
+Layout, componentes, rutas, estados, drill-down, filtros, wireframes textuales.
+BLOQUE 5 — Matriz de completitud
+Tabla: para cada uno de los 27 reportes, % construible hoy, qué lo bloquea, cuándo se desbloquea.
+
+REGLAS FINALES
+
+Nada directo contra tablas transaccionales
+Todo endpoint con JSON estándar
+Todo KPI con delta WoW y MoM
+Todo reporte con completeness_score
+Todo filtro persistente en URL
+Todo componente reutilizable (cero código duplicado)
+Todo drill-down funcional
+Toda anomalía detectada registrada en alert_events
+Supuestos de negocio documentados explícitamente
+Si un reporte es imposible con data actual, NO eliminar del catálogo — marcar como "bloqueado por D-XX"
+
+
+INICIO
+Ejecuta en este orden:
+
+BLOQUE 1 — NBIC_REPORT_CATALOG.md
+BLOQUE 2 — NBIC_ARCHITECTURE.md
+BLOQUE 3 — DDL completo (solo archivos, NO ejecutar en BD)
+BLOQUE 4 — NBIC_UI_SPEC.md
+BLOQUE 5 — Matriz de completitud
+
+DETENTE después de estos 5 bloques y espera aprobación explícita antes de ejecutar cualquier DDL en la base de datos.
