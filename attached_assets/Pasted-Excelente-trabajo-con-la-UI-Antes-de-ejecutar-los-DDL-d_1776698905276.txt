@@ -1,0 +1,60 @@
+Excelente trabajo con la UI. Antes de ejecutar los DDL del schema analytics, necesito 3 validaciones y 2 respuestas.
+
+## VALIDACIONES PENDIENTES
+
+### Validación 1 — Entregables faltantes del prompt v2
+No recibí 3 entregables que estaban en la lista obligatoria:
+
+1. Screenshots en dark mode Y light mode (uno de cada, del dashboard F1 completo)
+2. Video 30s o GIF 10s mostrando: abrir ⌘K, cambiar filtro con count-up de números, abrir drilldown, cambiar tema
+3. Completeness indicator visible en las esquinas superiores derechas de cada reporte (dot verde "Complete" / ámbar "Partial · X%" / rojo "Blocked + razón")
+
+Entrégalos antes de seguir.
+
+### Validación 2 — Checkpoint B retroactivo de KPICard
+Revisa la KPICard actual contra estos 5 criterios del spec y respóndeme uno por uno con SÍ/NO:
+
+1. ¿Los números del KPI están en JetBrains Mono con font-variant-numeric: tabular-nums?
+2. ¿El valor tiene font-weight 500 (no 700)?
+3. ¿Cada KPI card tiene su sparkline SVG de 30 puntos, color accent al 40% opacity, sin ejes?
+4. ¿El delta chip tiene fondo al 12% opacity del color (success o danger), NO un chip sólido de color?
+5. Hover en KPI card: ¿cambia solo el border (border-subtle → border-default) sin shadow bump?
+
+Si alguna es NO, itera solo la KPICard hasta que sean todas SÍ.
+
+### Validación 3 — Completeness score
+En el catálogo de los 27 reportes:
+- ¿Cuál es el completeness_score de cada uno ahora mismo?
+- ¿Cuáles están marcados como Complete, Partial, Blocked?
+- Dame la tabla completa.
+
+## RESPUESTAS QUE NECESITO
+
+### Pregunta 1 — Estado de Fase 1
+Confirma por cada migración si está en producción:
+- D-01: booking_id en transactions + % de transactions vinculadas a booking
+- D-02: payment_method normalizado en bookings, ledger, deposits + catálogo aplicado
+- D-03: base_price y discount_amount en bookings + estrategia aplicada a bookings históricos
+- D-04: total_amount migrado a NUMERIC(12,2) + formato confirmado (cents vs dollars)
+- D-05: payment_date en bookings
+- D-06: sold_by_user_id / sold_by_name en bookings
+
+Si alguna NO está en producción, los DDL de analytics que construyas sobre data no migrada van a dar resultados incorrectos.
+
+### Pregunta 2 — Clasificación real de los 19 reportes bloqueados
+Separa los 19 reportes bloqueados en 3 categorías:
+
+A) Se desbloquean SOLO con los DDL analytics (vistas, fact tables, materialized views)
+B) Se desbloquean con DDL analytics + alguna migración de Fase 1 pendiente
+C) Se desbloquean con DDL analytics + captura de data que aún no existe (ej: tabla de gastos estructurada, crew cost, combustible por salida)
+
+Para los de categoría C, dime exactamente qué data falta capturar y si existe algún módulo del sistema que ya la tenga aunque sea de forma parcial.
+
+## LO QUE SIGUE DESPUÉS
+
+Una vez recibidas las validaciones y respuestas, decidiremos:
+- Si ejecutamos DDL de Fase 2 completo o por lotes
+- Qué reportes se pueden desbloquear esta semana vs cuáles requieren trabajo de data capture antes
+- Prioridad de los 8 "Parcial" para llevarlos a "Complete"
+
+No ejecutes ningún DDL hasta que yo confirme con base en tus respuestas.

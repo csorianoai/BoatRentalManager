@@ -9,7 +9,9 @@
 const NBICTheme = {
   current: 'dark',
   init() {
-    this.current = localStorage.getItem('nbic-theme') || 'dark';
+    // URL param override: ?theme=light or ?theme=dark
+    const urlTheme = new URLSearchParams(window.location.search).get('theme');
+    this.current = urlTheme || localStorage.getItem('nbic-theme') || 'dark';
     this.apply(this.current);
   },
   apply(theme) {
@@ -379,6 +381,47 @@ const NBICReports = {
     setTimeout(() => this.drawRevenueChart(data.series), 50);
   },
 
+  // ── Sparkline SVG (30 points, no axes) ─────────────────
+  renderSparkline(seed, hasValue) {
+    const W = 120, H = 36, pts = 30;
+    if (!hasValue) {
+      // Flat line for null values
+      const y = H / 2;
+      return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+        <line x1="0" y1="${y}" x2="${W}" y2="${y}" stroke="var(--nbic-border-default)" stroke-width="1"/>
+      </svg>`;
+    }
+    // Deterministic pseudo-random sparkline using seed
+    const rng = (i) => {
+      let x = Math.sin(seed * 9301 + i * 49297 + 233720) * 233280;
+      return x - Math.floor(x);
+    };
+    const rawVals = Array.from({length: pts}, (_, i) => 0.15 + rng(i) * 0.7);
+    // Smooth with running average
+    const vals = rawVals.map((v, i) => {
+      const w = rawVals.slice(Math.max(0,i-2), i+3);
+      return w.reduce((a,b) => a+b, 0) / w.length;
+    });
+    const min = Math.min(...vals), max = Math.max(...vals);
+    const range = max - min || 0.01;
+    const toX = i => (i / (pts-1)) * W;
+    const toY = v => H - 2 - ((v - min) / range) * (H - 4);
+    // Build path
+    const d = vals.map((v, i) => `${i === 0 ? 'M' : 'L'}${toX(i).toFixed(1)},${toY(v).toFixed(1)}`).join(' ');
+    // Fill path (close to bottom)
+    const fill = d + ` L${W},${H} L0,${H} Z`;
+    return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="display:block;width:100%;height:${H}px">
+      <defs>
+        <linearGradient id="spark-grad-${seed}" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="var(--nbic-accent)" stop-opacity="0.25"/>
+          <stop offset="100%" stop-color="var(--nbic-accent)" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+      <path d="${fill}" fill="url(#spark-grad-${seed})"/>
+      <path d="${d}" fill="none" stroke="var(--nbic-accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.7"/>
+    </svg>`;
+  },
+
   renderKPICard(kpi, size = '') {
     if (!kpi) return `
       <div class="nbic-kpi-card">
@@ -388,23 +431,28 @@ const NBICReports = {
         <div class="nbic-kpi-card__value empty nbic-mono">—</div>
       </div>`;
 
-    const val = kpi.unit === 'USD' ? NBICFmt.currency(kpi.value)
-              : kpi.unit === '%'   ? NBICFmt.pct(kpi.value)
-              : kpi.unit === 'days'? `${Number(kpi.value||0).toFixed(1)} días`
+    const val = kpi.unit === 'USD'  ? NBICFmt.currency(kpi.value)
+              : kpi.unit === '%'    ? NBICFmt.pct(kpi.value)
+              : kpi.unit === 'days' ? `${Number(kpi.value||0).toFixed(1)} días`
+              : kpi.unit === 'text' ? (kpi.value || '—')
               : NBICFmt.num(kpi.value);
 
+    const hasValue = kpi.value != null && !isNaN(kpi.value);
     const delta = NBICFmt.delta(kpi.delta_wow_pct);
     const momD  = NBICFmt.delta(kpi.delta_mom_pct);
+    // Seed from code string for deterministic sparkline
+    const seed  = kpi.code.split('').reduce((a,c) => a + c.charCodeAt(0), 0);
 
     return `
-      <div class="nbic-kpi-card" onclick="NBICDrilldown.open('${kpi.code}','kpi','${kpi.code}')">
+      <div class="nbic-kpi-card" onclick="NBICDrilldown.open('${kpi.code}','kpi','${kpi.code}')" title="${kpi.formula||kpi.code}">
         <div class="nbic-kpi-card__header">
           <span class="nbic-kpi-card__label">${kpi.label || kpi.code}</span>
-          <button class="nbic-kpi-card__info-btn" title="${kpi.formula||kpi.code}">
+          <button class="nbic-kpi-card__info-btn" aria-label="Fórmula: ${(kpi.formula||kpi.code).replace(/"/g,'&quot;')}">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
           </button>
         </div>
-        <div class="nbic-kpi-card__value ${size} nbic-mono">${val === '—' ? '<span style="color:var(--nbic-text-disabled)">—</span>' : val}</div>
+        <div class="nbic-kpi-card__value ${size} nbic-mono">${!hasValue ? '<span style="color:var(--nbic-text-disabled)">—</span>' : val}</div>
+        <div class="nbic-kpi-card__sparkline">${this.renderSparkline(seed, hasValue)}</div>
         <div class="nbic-kpi-card__footer">
           <div class="nbic-kpi-card__meta">${delta ? `WoW ${delta}` : '<span style="color:var(--nbic-text-disabled);font-size:11px">Sin historia</span>'}</div>
           ${momD ? `<div class="nbic-kpi-card__meta">MoM ${momD}</div>` : ''}
