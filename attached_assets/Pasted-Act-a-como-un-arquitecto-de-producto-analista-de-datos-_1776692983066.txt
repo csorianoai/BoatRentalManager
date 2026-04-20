@@ -1,0 +1,416 @@
+Actúa como un arquitecto de producto + analista de datos + auditor funcional + desarrollador full-stack senior.
+
+Necesito que trabajes sobre nuestro sistema de gestión de excursiones en `gestion.nadakiexcursions.com`.
+
+## Objetivo general
+
+Antes de construir o modificar el módulo de reportes, debes realizar un análisis completo del sistema actual para entender:
+
+1. Qué reportes ya existen.
+2. Cómo funciona cada reporte.
+3. De dónde obtiene la información cada reporte.
+4. Qué tablas, vistas, endpoints, queries, filtros, cálculos y reglas de negocio utiliza.
+5. Qué inconsistencias, vacíos, errores o riesgos existen en la lógica actual.
+6. Qué correcciones debemos hacer antes de desarrollar nuevos reportes.
+
+Después de ese análisis, debes proponer y dejar diseñado el módulo de reportes necesario para cubrir dos necesidades principales:
+
+### Necesidad 1: Conciliación de ingresos
+Crear reportes que permitan validar el ingreso real de las rentas/excursiones contra:
+- los depósitos realizados en el banco,
+- el efectivo recibido,
+- y cualquier otro medio de pago registrado en el sistema.
+
+El objetivo es poder conciliar:
+- bookings / ventas,
+- cobros registrados,
+- depósitos bancarios,
+- efectivo recibido,
+- diferencias o faltantes.
+
+### Necesidad 2: Detección de bookings vendidos por debajo de precio
+Crear reportes que permitan identificar bookings vendidos por debajo de los precios esperados o comparar precios de venta entre bookings del mismo barco:
+- durante la semana,
+- durante el mes,
+- y por rango de fechas.
+
+El objetivo es evaluar diferencias de precios y detectar:
+- descuentos no autorizados,
+- inconsistencias tarifarias,
+- outliers,
+- variaciones anormales entre bookings del mismo barco,
+- diferencias por canal, vendedor, horario, tipo de cliente o tipo de tour si aplica.
+
+---
+
+## Fase 1: Auditoría del sistema actual
+
+Primero, NO desarrolles el módulo nuevo. Primero audita y documenta lo existente.
+
+### Debes identificar y documentar:
+- todos los reportes actuales del sistema;
+- nombre del reporte;
+- propósito del reporte;
+- módulos o pantallas donde aparece;
+- filtros disponibles;
+- columnas mostradas;
+- origen de datos exacto;
+- tablas involucradas;
+- joins;
+- campos usados;
+- fórmulas;
+- agregaciones;
+- reglas de negocio;
+- manejo de anulaciones, reembolsos, cancelaciones y descuentos;
+- diferencias entre monto vendido, monto cobrado y monto depositado;
+- si el reporte usa backend directo, SQL, vistas, procedimientos almacenados, APIs o cálculos en frontend;
+- si existen problemas de rendimiento;
+- si existen discrepancias entre reportes.
+
+### Entregables obligatorios de esta fase:
+1. Un inventario de reportes actuales.
+2. Un mapa de trazabilidad de datos por reporte:
+   - pantalla/reporte
+   - endpoint/query
+   - tablas fuente
+   - campos calculados
+   - observaciones
+3. Un diagnóstico de problemas encontrados.
+4. Una lista priorizada de correcciones recomendadas antes de construir nuevos reportes.
+
+---
+
+## Fase 2: Entendimiento del modelo de negocio y datos
+
+Debes localizar y documentar las entidades relacionadas con:
+- bookings
+- barcos
+- tours / excursiones
+- clientes
+- pagos
+- métodos de pago
+- caja / efectivo
+- depósitos bancarios
+- descuentos
+- tarifas / price lists
+- usuarios / vendedores
+- sucursales o locaciones, si existen
+- cancelaciones
+- reembolsos
+- notas de crédito o ajustes, si existen
+
+### Necesito que identifiques:
+- cuál es la tabla principal de bookings;
+- cuál es la tabla o fuente principal de pagos;
+- cómo se relacionan bookings con cobros;
+- cómo se registran depósitos bancarios;
+- cómo se registra el efectivo;
+- si existe fecha de servicio y fecha de cobro, y cuál debe usarse en cada reporte;
+- si existen múltiples estados de booking y cómo impactan los reportes;
+- si los precios base dependen de barco, ruta, temporada, horario, cantidad de personas, canal o tipo de cliente;
+- si existen descuentos manuales o precios especiales.
+
+### Debes producir:
+- un diagrama lógico de entidades y relaciones;
+- explicación clara del flujo: booking → cobro → ingreso → depósito / caja;
+- definición de campos críticos para conciliación y análisis de precios.
+
+---
+
+## Fase 3: Diseño del módulo de reportes nuevo
+
+Una vez terminado el análisis, diseña el módulo ideal de reportes.
+
+## Reporte A: Conciliación de ingresos
+
+Este reporte debe permitir validar los ingresos por período con suficiente detalle y resumen ejecutivo.
+
+### Debe incluir al menos:
+- fecha de booking
+- fecha de servicio
+- fecha de cobro
+- fecha de depósito
+- número de booking
+- barco
+- tour o producto
+- cliente
+- vendedor / usuario
+- canal de venta
+- método de pago
+- monto bruto
+- descuento
+- monto neto vendido
+- monto cobrado
+- monto en efectivo
+- monto con tarjeta / transferencia / otros
+- monto depositado en banco
+- diferencia entre vendido y cobrado
+- diferencia entre cobrado y depositado
+- estatus del booking
+- observaciones / alertas
+
+### Debe permitir detectar:
+- bookings cobrados pero no depositados;
+- depósitos sin booking relacionado;
+- bookings con diferencia entre monto vendido y monto cobrado;
+- cobros parciales;
+- exceso o faltante en caja;
+- diferencias por usuario, barco, fecha o canal;
+- posibles errores de captura.
+
+### Filtros mínimos:
+- rango de fechas
+- barco
+- usuario / vendedor
+- método de pago
+- canal de venta
+- estatus del booking
+- tour / producto
+- sucursal / location si aplica
+
+### Vistas requeridas:
+- resumen general
+- detalle transaccional
+- resumen por día
+- resumen por barco
+- resumen por usuario
+- resumen por método de pago
+
+---
+
+## Reporte B: Análisis de precios y detección de ventas por debajo de tarifa
+
+Este reporte debe comparar todos los bookings de cada barco semanal y mensualmente para identificar diferencias relevantes de precio.
+
+### Debe incluir al menos:
+- fecha de booking
+- fecha de servicio
+- número de booking
+- barco
+- tour / producto
+- tarifa esperada
+- precio vendido
+- descuento aplicado
+- diferencia absoluta
+- diferencia porcentual
+- usuario / vendedor
+- canal de venta
+- cliente / tipo de cliente si aplica
+- cantidad de pasajeros / unidades si impacta el precio
+- estatus del booking
+
+### Debe poder responder:
+- qué bookings fueron vendidos por debajo de la tarifa esperada;
+- cuáles barcos presentan más variación de precio;
+- comparación semanal por barco;
+- comparación mensual por barco;
+- precio promedio por barco;
+- precio mínimo, máximo y mediano por barco;
+- dispersión de precios;
+- descuentos anormales;
+- diferencias por vendedor;
+- diferencias por canal de venta;
+- diferencias por tipo de tour.
+
+### Debe clasificar alertas, por ejemplo:
+- dentro de rango normal
+- ligeramente por debajo
+- significativamente por debajo
+- precio atípico alto
+- descuento fuera de política
+
+### Filtros mínimos:
+- rango de fechas
+- semana
+- mes
+- barco
+- tour
+- vendedor
+- canal
+- estatus
+- rango de descuento
+- umbral de desviación
+
+### Agrupaciones necesarias:
+- por barco
+- por semana
+- por mes
+- por vendedor
+- por canal
+- por tour
+
+---
+
+## Fase 4: Validación de reglas de negocio
+
+Antes de implementar, debes revisar y documentar explícitamente estas reglas:
+
+1. ¿Qué se considera “ingreso”?
+   - ¿booking creado?
+   - ¿booking confirmado?
+   - ¿booking cobrado?
+   - ¿servicio realizado?
+   - ¿depósito recibido?
+
+2. ¿Qué fecha manda en cada reporte?
+   - fecha de creación
+   - fecha de pago
+   - fecha de servicio
+   - fecha de depósito
+
+3. ¿Cómo deben manejarse?
+   - cancelaciones
+   - no-shows
+   - reembolsos
+   - cambios de fecha
+   - descuentos manuales
+   - cortesías
+   - pagos parciales
+   - pagos mixtos
+   - reservas modificadas
+
+4. ¿Cuál es la tarifa “esperada”?
+   - price list actual
+   - tarifa por temporada
+   - tarifa por barco
+   - tarifa por horario
+   - tarifa promocional autorizada
+   - tarifa por canal
+   - tarifa por tipo de cliente
+
+Si la lógica actual no está clara, debes señalarlo y proponer una estructura clara de reglas.
+
+---
+
+## Fase 5: Propuesta técnica de implementación
+
+Después del análisis, genera una propuesta técnica completa incluyendo:
+
+### 1. Diagnóstico
+- qué está bien;
+- qué está mal;
+- qué falta;
+- qué debe corregirse primero.
+
+### 2. Diseño funcional
+- listado de reportes definitivos;
+- métricas y KPIs;
+- filtros;
+- columnas;
+- alertas;
+- jerarquía de vistas.
+
+### 3. Diseño técnico
+- tablas fuente;
+- vistas SQL recomendadas;
+- queries o endpoints necesarios;
+- transformaciones;
+- validaciones;
+- estrategia de performance;
+- indexes sugeridos;
+- manejo de grandes volúmenes si aplica.
+
+### 4. Plan de ejecución por fases
+- fase 1: auditoría y corrección de datos
+- fase 2: estandarización de reglas
+- fase 3: construcción de vistas/base de reportes
+- fase 4: UI del módulo
+- fase 5: validación con usuarios
+
+### 5. Riesgos y dependencias
+- campos faltantes
+- inconsistencias históricas
+- mala calidad de datos
+- reportes con lógica duplicada
+- ausencia de registro de depósitos
+- diferencias entre pagos y bookings
+
+---
+
+## Forma de trabajo requerida
+
+Quiero que trabajes de forma estructurada y entregues el resultado en este orden exacto:
+
+# Entrega esperada
+
+## A. Inventario de reportes actuales
+Tabla con:
+- nombre del reporte
+- ubicación
+- objetivo
+- fuente de datos
+- problemas detectados
+
+## B. Mapa de origen de datos
+Para cada reporte:
+- frontend/pantalla
+- backend/endpoint
+- query o vista
+- tablas involucradas
+- campos críticos
+- lógica de cálculo
+
+## C. Diagnóstico funcional y técnico
+- inconsistencias
+- huecos de información
+- errores de negocio
+- duplicidad de lógica
+- riesgos de conciliación
+- riesgos de precio
+
+## D. Correcciones previas obligatorias
+Lista priorizada de cambios que deben hacerse antes del módulo nuevo.
+
+## E. Diseño del módulo de reportes nuevo
+Debes definir:
+- reportes
+- filtros
+- métricas
+- alertas
+- layouts
+- reglas de negocio
+- criterios de conciliación
+- criterios de detección de precios anómalos
+
+## F. Propuesta técnica detallada
+- modelo de datos
+- vistas SQL
+- endpoints
+- componentes UI
+- estrategia de validación
+
+## G. Plan de implementación
+En fases, con prioridad alta/media/baja.
+
+---
+
+## Reglas importantes
+
+- No asumas que los reportes actuales son correctos.
+- No construyas sobre lógica dudosa sin documentarlo.
+- Si encuentras inconsistencias entre tablas y reportes, destácalas claramente.
+- Si falta información para conciliar ingresos o validar precios, debes decir exactamente qué falta.
+- Si existen múltiples interpretaciones del precio correcto, documenta todas y recomienda una definición estándar.
+- Prioriza exactitud contable/operativa y trazabilidad.
+- Documenta todo con lenguaje claro para negocio y técnico.
+- Siempre que sea posible, muestra ejemplos de consultas, estructuras de datos y propuesta de vistas.
+- Si puedes acceder al código, revisa frontend, backend, SQL y configuración.
+- Si puedes ejecutar el sistema localmente o revisar repositorios, hazlo.
+- Si no tienes acceso a alguna parte, indícalo explícitamente y sigue con lo que sí puedas auditar.
+
+---
+
+## Resultado final esperado
+
+Quiero un documento final que sirva como base para decidir:
+1. qué corregir del sistema actual,
+2. qué reportes nuevos construir,
+3. cómo deben calcularse,
+4. de dónde deben obtener la información,
+5. y cómo garantizar que la conciliación de ingresos y la validación de precios sean confiables.
+
+Además, al final incluye:
+- una propuesta de nombres para los nuevos reportes,
+- KPIs recomendados,
+- alertas automáticas recomendadas,
+- y sugerencias para un dashboard ejecutivo.
