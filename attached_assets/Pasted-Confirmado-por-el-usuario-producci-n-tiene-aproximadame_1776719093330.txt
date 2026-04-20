@@ -1,0 +1,141 @@
+Confirmado por el usuario: producción tiene aproximadamente 19 bookings en abril 2026. El reporte Conciliación muestra 0 registros con filtro "Últimos 30 días" hoy 20 de abril de 2026. Esto es un bug, no un reflejo correcto de la data.
+
+Ejecuta DIAGNÓSTICO FORENSE antes de tocar código.
+
+## PASO 1 — Verificación directa sobre producción
+
+Conéctate a la BD de producción (no dev) y ejecuta:
+
+```sql
+-- V1: Cuántos bookings hay realmente
+SELECT COUNT(*) FROM bookings;
+
+-- V2: Distribución por mes
+SELECT 
+  SUBSTRING(booking_date, 1, 7) AS mes,
+  COUNT(*) AS cantidad,
+  SUM(total_amount) AS revenue
+FROM bookings 
+GROUP BY mes 
+ORDER BY mes DESC;
+
+-- V3: Bookings de abril específicamente
+SELECT COUNT(*) 
+FROM bookings 
+WHERE booking_date >= '2026-04-01' AND booking_date <= '2026-04-30';
+
+-- V4: Bookings en ventana "últimos 30 días"
+SELECT COUNT(*) 
+FROM bookings 
+WHERE booking_date >= '2026-03-21' AND booking_date <= '2026-04-20';
+
+-- V5: Muestra de 5 bookings de abril con TODOS los campos que el endpoint de Conciliación consulta
+SELECT id, booking_date, customer_name, boat_type, platform, 
+       total_amount, status, created_at
+FROM bookings 
+WHERE booking_date LIKE '2026-04%'
+ORDER BY booking_date DESC 
+LIMIT 5;
+
+-- V6: Tipo real de booking_date
+SELECT column_name, data_type 
+FROM information_schema.columns 
+WHERE table_name = 'bookings' AND column_name = 'booking_date';
+
+-- V7: Formatos únicos de booking_date (buscar inconsistencias)
+SELECT DISTINCT LENGTH(booking_date) AS len, 
+                booking_date AS ejemplo
+FROM bookings 
+LIMIT 20;
+
+-- V8: ¿transactions tiene registros?
+SELECT COUNT(*) FROM transactions;
+
+-- V9: Si hay transactions, ¿de cuándo son?
+SELECT MIN(transaction_date), MAX(transaction_date), COUNT(*) 
+FROM transactions;
+```
+
+Reporta los 9 resultados SIN interpretar.
+
+## PASO 2 — Código exacto del endpoint que falla
+
+Pégame el código completo del endpoint `/api/nbic/revenue/reconciliation` desde el handler (línea 14138 aprox) hasta el return. Quiero ver:
+
+- Query SQL exacta que ejecuta
+- Parámetros de fecha que recibe
+- Si hace JOIN con transactions (INNER o LEFT)
+- Qué campo usa como filtro de fecha (booking_date, transaction_date, created_at, payment_date, otro)
+- Qué formato espera en el filtro (string, Date, timestamp)
+- Si hay algún WHERE status = X oculto
+- Si hace conversión de tipo en la fecha (CAST, TO_DATE, etc.)
+
+## PASO 3 — Reproducción manual
+
+Ejecuta sobre producción la misma query del endpoint con los parámetros exactos que envía la UI cuando selecciona "Últimos 30 días". Muéstrame:
+
+1. Los parámetros que envía la UI (`?date_from=X&date_to=Y&...`)
+2. La query resuelta con esos parámetros sustituidos
+3. El resultado crudo de ejecutar esa query
+
+Comparar ese resultado contra V4 del Paso 1 (19 bookings esperados).
+
+## PASO 4 — Diagnóstico
+
+Con los datos de Paso 1-3, responde explícitamente:
+
+1. ¿El endpoint está conectado a producción o a dev? ¿Cómo lo confirmas?
+2. ¿La query filtra por `booking_date` o por `transaction_date`?
+3. Si filtra por `transaction_date` y transactions está vacía → **ese es el bug**. El endpoint debe:
+   - Usar `bookings` como tabla principal
+   - LEFT JOIN con transactions
+   - Filtrar por `bookings.booking_date`
+4. Si filtra por `booking_date` pero devuelve 0, ¿por qué? (tipo de dato incorrecto, JOIN restrictivo, status oculto, conexión a dev)
+
+## PASO 5 — Corrección propuesta
+
+Escribe la query corregida del endpoint de Conciliación siguiendo esta estructura:
+
+```sql
+SELECT 
+  b.id AS booking_id,
+  b.booking_date,
+  b.customer_name,
+  b.boat_type AS barco,
+  b.platform AS canal,
+  b.total_amount AS facturado,
+  COALESCE(SUM(t.amount), 0) AS cobrado,
+  COALESCE(SUM(d.amount), 0) AS depositado,
+  b.total_amount - COALESCE(SUM(t.amount), 0) AS gap_facturado_cobrado,
+  COALESCE(SUM(t.amount), 0) - COALESCE(SUM(d.amount), 0) AS gap_cobrado_depositado,
+  CASE 
+    WHEN COALESCE(SUM(t.amount), 0) = 0 THEN 'Sin cobro'
+    WHEN COALESCE(SUM(t.amount), 0) < b.total_amount THEN 'Cobro parcial'
+    WHEN COALESCE(SUM(d.amount), 0) = 0 THEN 'Cobrado sin depósito'
+    WHEN COALESCE(SUM(d.amount), 0) < COALESCE(SUM(t.amount), 0) THEN 'Depósito parcial'
+    ELSE 'Conciliado'
+  END AS status_conciliacion
+FROM bookings b
+LEFT JOIN transactions t ON t.booking_id = b.id
+LEFT JOIN deposits d ON d.transaction_id = t.id  -- ajusta FK según schema real
+WHERE b.booking_date >= $1 AND b.booking_date <= $2
+GROUP BY b.id, b.booking_date, b.customer_name, b.boat_type, b.platform, b.total_amount
+ORDER BY b.booking_date DESC;
+```
+
+Adapta nombres de columnas a tu schema real. El principio es inviolable: **bookings es la tabla principal, el resto se suma vía LEFT JOIN**.
+
+## PASO 6 — Aplicar y validar
+
+Solo después de que confirmes mi aprobación del Paso 5, aplica la corrección.
+
+Post-fix ejecuta contra producción:
+- Filtro "Últimos 30 días": debe mostrar ~19 bookings
+- Filtro "Este mes": debe mostrar ~19 bookings
+- Filtro "Todo el historial": debe mostrar 26 bookings
+
+Si cualquiera de las tres no coincide con la realidad reportada por el usuario, detente y diagnostica antes de cerrar.
+
+## NO TOQUES NADA HASTA PASO 5
+
+Los Pasos 1-4 son solo diagnóstico. Entrega los resultados y espera aprobación antes de modificar código.
