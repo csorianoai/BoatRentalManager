@@ -541,8 +541,13 @@ const NBICReports = {
             <tr onclick="NBICDrilldown.open('booking','booking','${row.booking_id||''}')">
               ${cols.map(c => {
                 const val = row[c.key];
-                if (c.type === 'currency') return `<td class="num">${NBICFmt.currency(val)}</td>`;
-                if (c.type === 'date')     return `<td class="date">${NBICFmt.date(val)}</td>`;
+                if (c.type === 'currency')  return `<td class="num">${val != null ? NBICFmt.currency(val) : '<span style="color:var(--nbic-text-disabled)">—</span>'}</td>`;
+                if (c.type === 'date')      return `<td class="date">${NBICFmt.date(val)}</td>`;
+                if (c.type === 'pct')       return `<td class="num">${val != null ? NBICFmt.pct(val) : '<span style="color:var(--nbic-text-disabled)">—</span>'}</td>`;
+                if (c.key === 'status_conciliacion') {
+                  const b = val === 'Conciliado' ? 'success' : val === 'Cobro parcial' ? 'warning' : val === 'Sin cobro' ? 'danger' : 'neutral';
+                  return `<td><span class="nbic-badge nbic-badge--${b}">${val||'—'}</span></td>`;
+                }
                 if (c.type === 'badge')    return `<td><span class="nbic-badge nbic-badge--neutral">${val||'—'}</span></td>`;
                 if (c.key === 'alerta' || c.key === 'status') {
                   const badge = val === 'ok' || val === 'completed' ? 'success' : val === 'pending' ? 'warning' : 'danger';

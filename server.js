@@ -13930,41 +13930,62 @@ const HOST = '0.0.0.0'; // Required for deployment
   // =========================================================
 
   // Helper: parse date range from query params
-  // Supports preset values: all, mtd, ytd, last7, last30, last90, last365
+  // Supports preset values (UI names normalized to internal names):
+  //   all, today, yesterday, last_7d/last7, this_week, last_week,
+  //   last_30d/last30, this_month/mtd, last_month, this_quarter, this_year/ytd,
+  //   last_90d/last90, last_365d/last365, custom (with date_from+date_to)
   // Default (no params): all historical data from bookings table (matches Centro de Operaciones)
   async function nbicDateRange(query) {
     const now  = new Date();
     const pad  = n => String(n).padStart(2, '0');
-    const todayStr = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+    const fmt  = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+    const todayStr = fmt(now);
+    const daysBack = (n) => { const d = new Date(now); d.setDate(d.getDate() - n); return fmt(d); };
+    const startOfWeek = () => { const d = new Date(now); d.setDate(d.getDate() - d.getDay()); return fmt(d); };
+    const endOfWeek   = () => { const d = new Date(now); d.setDate(d.getDate() + (6 - d.getDay())); return fmt(d); };
 
     // If explicit from/to are provided, use them directly
     if (query.date_from && query.date_to && query.preset !== 'all') {
       return { from: query.date_from, to: query.date_to, preset: 'custom' };
     }
 
-    const preset = query.preset || 'all';
+    // Normalize UI preset names to internal aliases
+    const rawPreset = (query.preset || 'all').toLowerCase();
+    const ALIAS = {
+      'last_7d': 'last7', 'last7days': 'last7',
+      'last_30d': 'last30', 'last30days': 'last30',
+      'last_90d': 'last90', 'last90days': 'last90',
+      'last_365d': 'last365', 'last365days': 'last365',
+      'this_month': 'mtd', 'this_year': 'ytd',
+    };
+    const preset = ALIAS[rawPreset] || rawPreset;
 
-    if (preset === 'mtd') {
-      return { from: `${now.getFullYear()}-${pad(now.getMonth()+1)}-01`, to: todayStr, preset };
+    if (preset === 'today')     return { from: todayStr, to: todayStr, preset };
+    if (preset === 'yesterday') { const d = daysBack(1); return { from: d, to: d, preset }; }
+    if (preset === 'last7')     return { from: daysBack(6),   to: todayStr, preset };
+    if (preset === 'last30')    return { from: daysBack(29),  to: todayStr, preset };
+    if (preset === 'last90')    return { from: daysBack(89),  to: todayStr, preset };
+    if (preset === 'last365')   return { from: daysBack(364), to: todayStr, preset };
+    if (preset === 'mtd')       return { from: `${now.getFullYear()}-${pad(now.getMonth()+1)}-01`, to: todayStr, preset };
+    if (preset === 'ytd')       return { from: `${now.getFullYear()}-01-01`, to: todayStr, preset };
+    if (preset === 'this_week') return { from: startOfWeek(), to: endOfWeek(), preset };
+    if (preset === 'last_week') {
+      const d = new Date(now); d.setDate(d.getDate() - d.getDay() - 7);
+      const start = fmt(d);
+      d.setDate(d.getDate() + 6);
+      return { from: start, to: fmt(d), preset };
     }
-    if (preset === 'ytd') {
-      return { from: `${now.getFullYear()}-01-01`, to: todayStr, preset };
+    if (preset === 'last_month') {
+      const y = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+      const m = now.getMonth() === 0 ? 12 : now.getMonth();
+      const lastDay = new Date(y, m, 0).getDate();
+      return { from: `${y}-${pad(m)}-01`, to: `${y}-${pad(m)}-${lastDay}`, preset };
     }
-    if (preset === 'last7') {
-      const d = new Date(now); d.setDate(d.getDate() - 6);
-      return { from: `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`, to: todayStr, preset };
-    }
-    if (preset === 'last30') {
-      const d = new Date(now); d.setDate(d.getDate() - 29);
-      return { from: `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`, to: todayStr, preset };
-    }
-    if (preset === 'last90') {
-      const d = new Date(now); d.setDate(d.getDate() - 89);
-      return { from: `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`, to: todayStr, preset };
-    }
-    if (preset === 'last365') {
-      const d = new Date(now); d.setDate(d.getDate() - 364);
-      return { from: `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`, to: todayStr, preset };
+    if (preset === 'this_quarter') {
+      const q = Math.floor(now.getMonth() / 3);
+      const qStart = new Date(now.getFullYear(), q * 3, 1);
+      const qEnd   = new Date(now.getFullYear(), q * 3 + 3, 0);
+      return { from: fmt(qStart), to: fmt(qEnd), preset };
     }
 
     // Default/all: use full data range from bookings table (same source as Centro de Operaciones)
@@ -14207,12 +14228,78 @@ const HOST = '0.0.0.0'; // Required for deployment
   app.get('/api/nbic/revenue/reconciliation', isAuthenticated, async (req, res) => {
     try {
       const { from, to } = await nbicDateRange(req.query);
-      // Try bank_statements table
-      const bs = await pool.query(`SELECT COUNT(*) as cnt FROM bank_statements WHERE statement_date >= $1 AND statement_date <= $2`, [from, to]).catch(() => ({ rows: [{ cnt: 0 }] }));
-      if (parseInt(bs.rows[0].cnt) === 0) {
-        return res.json(NBIC_BLOCKED('RPT-A1','Conciliación', ['Requiere bank_statements cargados','Requiere bookings_ledger con datos']));
-      }
-      res.json({ meta: { report_code:'RPT-A1', completeness_score: 0.5 }, kpis:[], series:[], table:{ columns:[], rows:[] } });
+      const q = await pool.query(`
+        SELECT
+          b.id                                                              AS booking_id,
+          b.id                                                              AS ref,
+          b.booking_date,
+          NULL::date                                                        AS service_date,
+          b.customer_name,
+          COALESCE(b.boat_type, b.boat_id, 'Sin asignar')                  AS barco,
+          COALESCE(b.platform, 'Directo')                                   AS canal,
+          b.total_amount::numeric                                           AS facturado,
+          COALESCE(SUM(t.amount), 0)                                        AS cobrado,
+          NULL::numeric                                                     AS depositado,
+          b.total_amount::numeric - COALESCE(SUM(t.amount), 0)             AS gap,
+          CASE
+            WHEN b.total_amount = 0 THEN 0
+            ELSE ROUND(((b.total_amount::numeric - COALESCE(SUM(t.amount), 0)) / b.total_amount * 100), 2)
+          END                                                               AS gap_pct,
+          CASE
+            WHEN COALESCE(SUM(t.amount), 0) = 0              THEN 'Sin cobro'
+            WHEN COALESCE(SUM(t.amount), 0) < b.total_amount THEN 'Cobro parcial'
+            ELSE 'Conciliado'
+          END                                                               AS status_conciliacion
+        FROM bookings b
+        LEFT JOIN transactions t ON t.booking_id = b.id
+        WHERE b.booking_date >= $1
+          AND b.booking_date <= $2
+          AND b.status != 'cancelled'
+        GROUP BY b.id, b.booking_date, b.customer_name,
+                 b.boat_type, b.boat_id, b.platform, b.total_amount
+        ORDER BY b.booking_date DESC
+      `, [from, to]);
+      const rows = q.rows;
+      const totalFact  = rows.reduce((s, r) => s + parseFloat(r.facturado  || 0), 0);
+      const totalCob   = rows.reduce((s, r) => s + parseFloat(r.cobrado    || 0), 0);
+      const gapTotal   = totalFact - totalCob;
+      const conciliados = rows.filter(r => r.status_conciliacion === 'Conciliado').length;
+      const tasaConcil = rows.length > 0 ? Math.round(conciliados / rows.length * 100) : 0;
+      res.json({
+        meta: {
+          report_code: 'RPT-A1',
+          completeness_score: rows.length > 0 ? 0.75 : 0.2,
+          row_count: rows.length,
+          warnings: [
+            "Columna 'Depositado' no disponible: falta FK entre booking_deposits y bookings. Bloqueado por D-07.",
+            "Columna 'Ref' muestra ID interno — campo booking_reference no existe en schema actual.",
+            "Columna 'Fecha Servicio' no disponible: campo service_date no existe en schema actual."
+          ]
+        },
+        kpis: [
+          { code: 'total_facturado',    label: 'Total Facturado',       value: totalFact,  unit: 'USD' },
+          { code: 'total_cobrado',      label: 'Total Cobrado',         value: totalCob,   unit: 'USD' },
+          { code: 'gap_total',          label: 'Gap Facturado–Cobrado', value: gapTotal,   unit: 'USD' },
+          { code: 'tasa_conciliacion',  label: 'Tasa de Conciliación',  value: tasaConcil, unit: '%'   },
+        ],
+        series: [],
+        table: {
+          columns: [
+            { key: 'ref',                 label: 'Ref',           type: 'text'     },
+            { key: 'booking_date',        label: 'Fecha',         type: 'date'     },
+            { key: 'customer_name',       label: 'Cliente',       type: 'text'     },
+            { key: 'barco',               label: 'Barco',         type: 'text'     },
+            { key: 'canal',               label: 'Canal',         type: 'badge'    },
+            { key: 'facturado',           label: 'Facturado',     type: 'currency' },
+            { key: 'cobrado',             label: 'Cobrado',       type: 'currency' },
+            { key: 'depositado',          label: 'Depositado',    type: 'currency' },
+            { key: 'gap',                 label: 'Gap',           type: 'currency' },
+            { key: 'gap_pct',             label: 'Gap %',         type: 'pct'      },
+            { key: 'status_conciliacion', label: 'Estado',        type: 'badge'    },
+          ],
+          rows
+        }
+      });
     } catch(err) { res.json(NBIC_BLOCKED('RPT-A1','Conciliación',['Error al consultar: '+err.message])); }
   });
 

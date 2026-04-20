@@ -1,0 +1,150 @@
+Prompt de aprobación al agente
+Aprobado el PASO 5 con 3 ajustes y un hallazgo crítico a abordar en paralelo.
+
+## AJUSTE 1 — Mostrar columna "Depositado" como bloqueada, no omitirla
+
+Omitir la columna engaña al operador porque parece que todo está conciliado cuando en realidad no se está midiendo. 
+
+Corrección: mantener la columna `depositado` en la query y en la UI con valor NULL/"—", y agregar al meta del reporte:
+
+```json
+"warnings": [
+  "Columna 'Depositado' no disponible: falta FK entre booking_deposits y bookings. Bloqueado por D-07."
+]
+```
+
+En el header del reporte, debajo del title "Conciliación", mostrar un banner informativo con ese warning. Respetar la regla de completeness acordada: cada "—" debe explicar POR QUÉ está vacío.
+
+## AJUSTE 2 — Agregar columnas útiles para operación real
+
+Añadir a la query:
+
+- `b.booking_reference` (o el ID legible del booking, no el UUID) — alias `ref`
+- `b.service_date` si existe en schema — para cuando booking_date ≠ service_date  
+- Columna calculada `gap_pct` = `gap / facturado * 100`
+
+Query final propuesta:
+
+```sql
+SELECT 
+  b.id                                                  AS booking_id,
+  b.booking_reference                                   AS ref,
+  b.booking_date,
+  b.service_date,
+  b.customer_name,
+  COALESCE(b.boat_type, b.boat_id, 'Sin asignar')       AS barco,
+  COALESCE(b.platform, 'Directo')                       AS canal,
+  b.total_amount::numeric                               AS facturado,
+  COALESCE(SUM(t.amount), 0)                            AS cobrado,
+  NULL::numeric                                         AS depositado,
+  b.total_amount::numeric - COALESCE(SUM(t.amount), 0)  AS gap,
+  CASE 
+    WHEN b.total_amount = 0 THEN 0
+    ELSE ROUND(((b.total_amount::numeric - COALESCE(SUM(t.amount), 0)) / b.total_amount * 100), 2)
+  END                                                   AS gap_pct,
+  CASE 
+    WHEN COALESCE(SUM(t.amount), 0) = 0              THEN 'Sin cobro'
+    WHEN COALESCE(SUM(t.amount), 0) < b.total_amount THEN 'Cobro parcial'
+    ELSE 'Conciliado'
+  END                                                   AS status_conciliacion
+FROM bookings b
+LEFT JOIN transactions t ON t.booking_id = b.id
+WHERE b.booking_date >= $1
+  AND b.booking_date <= $2
+  AND b.status != 'cancelled'
+GROUP BY b.id, b.booking_reference, b.booking_date, b.service_date,
+         b.customer_name, b.boat_type, b.boat_id, b.platform, b.total_amount
+ORDER BY b.booking_date DESC;
+```
+
+Si `booking_reference` o `service_date` no existen en el schema, usa NULL y reporta qué campos faltan.
+
+## AJUSTE 3 — KPIs de cabecera en el reporte Conciliación
+
+Arriba de la tabla, mostrar 4 KPI cards resumen del período filtrado:
+
+1. TOTAL FACTURADO (SUM total_amount)
+2. TOTAL COBRADO (SUM transactions)
+3. GAP TOTAL (facturado - cobrado)  
+4. TASA DE CONCILIACIÓN (% de bookings con status = Conciliado sobre total)
+
+Con los deltas MoM correspondientes.
+
+## HALLAZGO CRÍTICO PARALELO — transactions.booking_id sin backfill
+
+Reportaste: "transactions.booking_id existe (TEXT FK) pero 0 de los 28 registros lo tienen poblado en dev". 
+
+Si esto se confirma en PRODUCCIÓN, toda la conciliación va a mostrar "Sin cobro" para el 100% de los bookings, porque el LEFT JOIN no va a encontrar coincidencias. La query sería correcta pero el resultado sería una foto de "nada está conciliado".
+
+### Diagnóstico adicional obligatorio antes de PASO 6
+
+Ejecuta SOLO sobre producción:
+
+```sql
+-- T1: Total transactions en prod
+SELECT COUNT(*) AS total_trans FROM transactions;
+
+-- T2: Cobertura de booking_id en transactions PROD
+SELECT 
+  COUNT(*) AS total,
+  COUNT(booking_id) AS con_booking_id,
+  ROUND(100.0 * COUNT(booking_id) / NULLIF(COUNT(*), 0), 2) AS pct_vinculadas,
+  COUNT(*) - COUNT(booking_id) AS sin_vincular
+FROM transactions;
+
+-- T3: Muestra de transactions sin booking_id para ver si hay pistas de vinculación
+SELECT id, amount, transaction_date, description, payment_method, 
+       customer_name, reference_number
+FROM transactions 
+WHERE booking_id IS NULL 
+ORDER BY transaction_date DESC 
+LIMIT 10;
+
+-- T4: Intentar matching heurístico por fecha + monto
+SELECT COUNT(*) AS potentially_matchable
+FROM transactions t
+JOIN bookings b 
+  ON ABS(t.amount - b.total_amount) < 1
+  AND DATE(t.transaction_date) BETWEEN b.booking_date::date - INTERVAL '7 days' 
+                                    AND b.booking_date::date + INTERVAL '7 days'
+WHERE t.booking_id IS NULL;
+```
+
+### Reporta antes de avanzar
+
+1. Cuántas transactions hay en prod (no dev)
+2. Qué % tienen booking_id poblado (esperado: 0%, confirmar)
+3. Si hay forma heurística de matchear transactions con bookings por fecha+monto+referencia
+4. Si existe una pantalla o proceso en el sistema actual donde se capturan las transactions (para entender por qué no se vinculan)
+
+Esto NO bloquea la implementación de PASO 6 — el endpoint corregido va a funcionar aunque no haya vínculos, simplemente mostrará "Sin cobro" para todos los bookings. Pero es información crítica para priorizar el backfill de D-01 después.
+
+## ORDEN DE EJECUCIÓN
+
+1. Ejecuta el diagnóstico T1-T4 contra producción y reporta resultados (10 min)
+2. Aplica PASO 6 con query corregida final (ajustes 1, 2, 3 incluidos) — 30 min
+3. Despliega a producción y ejecuta prueba de equivalencia:
+   - Filtro "Este mes": debe mostrar ~19 bookings (los que el usuario confirma que existen)
+   - Filtro "Últimos 30 días": debe mostrar ~19 bookings
+   - Filtro "Todo el historial": debe mostrar 26 bookings
+4. Entrega screenshot del reporte Conciliación funcionando en prod, con los 4 KPIs de cabecera y la tabla visible
+
+Si alguno de los 3 filtros no coincide con la cantidad esperada, detente y diagnostica antes de declarar el fix cerrado.
+
+## DESPUÉS DEL CIERRE DE ESTE FIX
+
+Al confirmar que Conciliación muestra 19 bookings (todos probablemente marcados "Sin cobro"), discutimos el siguiente paso:
+
+- ¿Backfill manual de transactions.booking_id? (si hay heurística viable según T4)
+- ¿Proceso operativo para vincular cobros a bookings de ahora en adelante?
+- ¿Qué sistema/pantalla debe capturar los cobros para que lleguen a transactions con booking_id?
+
+Eso lo definimos juntos después de ver los datos de T1-T4. No tomes decisión unilateral sobre backfill masivo.
+
+Empieza por T1-T4.
+
+Cuatro cosas importantes para ti, César, mientras el agente ejecuta:
+Primera. Este es probablemente el momento más revelador de todo el proyecto. Cuando veas el reporte Conciliación funcionando con 19 bookings y todos en "Sin cobro", vas a tener la foto real de la brecha operativa de Nadaki: se factura pero no se registra el cobro en el sistema. Eso puede ser porque los cobros se hacen por Zelle/Stripe/Square y nadie los reconcilia en el sistema, o porque la tabla transactions está destinada a otra cosa, o porque hay un proceso manual que quedó roto. Sea lo que sea, el NBIC te lo va a exponer con claridad por primera vez.
+Segunda. No te asustes si la "Tasa de Conciliación" sale en 0%. No es que el negocio esté mal — el negocio está bien, tienes $24,299 facturados y clientes reales. Lo que está mal es que esa información no está viviendo en la base de datos en un formato conciliable. Arreglarlo es un problema de proceso, no de código. Y es exactamente el problema que el NBIC fue diseñado para resolver.
+Tercera. Ya tienes un patrón establecido con el agente que está funcionando muy bien: diagnóstico exhaustivo → propuesta técnica → aprobación con matices → ejecución. Sigue usándolo. No lo rompas aprobando a ciegas porque vas con prisa. Cada fix matizado como este que te paso ahorra 3 iteraciones futuras.
+Cuarta. Cuando el reporte Conciliación quede funcionando, el siguiente paso natural es el reporte de Cuentas por Cobrar (RPT-A2 Aging). Pero antes de eso tenemos que hablar de qué hacer con transactions.booking_id vacío. No es trabajo de código, es trabajo de proceso operativo. Te lo planteo cuando llegue el diagnóstico T1-T4.
