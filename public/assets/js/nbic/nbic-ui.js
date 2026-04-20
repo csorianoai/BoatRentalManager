@@ -132,12 +132,13 @@ const NBICFilters = {
   current: {
     date_from: '',
     date_to:   '',
-    preset:    'this_month',
+    preset:    'all',
     boat_ids:  [],
     channel_ids: [],
     payment_methods: [],
   },
   presets: [
+    { key: 'all',          label: 'Todo el historial' },
     { key: 'today',        label: 'Hoy' },
     { key: 'yesterday',    label: 'Ayer' },
     { key: 'last_7d',      label: 'Últimos 7 días' },
@@ -155,6 +156,15 @@ const NBICFilters = {
     const pad   = n => String(n).padStart(2, '0');
     const fmt   = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
     const today = fmt(now);
+    // For 'all', send preset=all and let the backend determine the range from the DB
+    if (key === 'all') {
+      this.current.date_from = '';
+      this.current.date_to   = '';
+      this.current.preset    = 'all';
+      this.updateUI();
+      this.onChange();
+      return;
+    }
     let from = today, to = today;
     switch(key) {
       case 'yesterday':    { const y = new Date(now); y.setDate(y.getDate()-1); from=to=fmt(y); break; }
@@ -183,8 +193,14 @@ const NBICFilters = {
   },
   getParams() {
     const p = new URLSearchParams();
-    if (this.current.date_from) p.set('date_from', this.current.date_from);
-    if (this.current.date_to)   p.set('date_to', this.current.date_to);
+    // For 'all' preset: send preset=all, no date_from/date_to (backend queries DB range)
+    if (this.current.preset === 'all') {
+      p.set('preset', 'all');
+    } else {
+      if (this.current.date_from) p.set('date_from', this.current.date_from);
+      if (this.current.date_to)   p.set('date_to',   this.current.date_to);
+      if (this.current.preset)    p.set('preset',     this.current.preset);
+    }
     this.current.boat_ids.forEach(id => p.append('boat_ids[]', id));
     return p;
   },
@@ -192,7 +208,7 @@ const NBICFilters = {
     NBICReports.reload();
   },
   init() {
-    this.applyPreset('this_month');
+    this.applyPreset('all');
     // Date dropdown toggle
     const dateBtn = document.getElementById('nbic-date-chip');
     const dateDd  = document.getElementById('nbic-date-dropdown');

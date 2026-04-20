@@ -1,0 +1,87 @@
+Aprobado con una modificación importante en P2. Ejecuta P1, P2 (modificado) y P3 en ese orden. Tras cada paso, correr la prueba de equivalencia de la Parte C antes de avanzar al siguiente.
+
+## P1 — APROBADO SIN CAMBIOS
+
+Cambiar `boat_id` → `COALESCE(boat_type, boat_id, 'Sin asignar')` en los 4 endpoints:
+- Línea 14225 (pricing/variance)
+- Línea 14258 (pricing/avg-ticket)  
+- Línea 14354 (profitability/by-boat)
+- Línea 14390 (compare/boats)
+
+Post-P1: ejecuta equivalencia contra producción de los KPIs "Por Embarcación":
+- CRANCHI debe mostrar 11 reservas / $11,714
+- SEARAY 500 debe mostrar 5 / $4,091
+- SILVER LINNING debe mostrar 3 / $3,260
+- VIKING PRINCESS debe mostrar 2 / $2,100
+- SEA RAY NAUTI NABOURS 40 debe mostrar 4 / $2,034
+
+Si algún barco NO coincide, detente y reporta antes de seguir con P2.
+
+## P2 — APROBADO CON MODIFICACIÓN IMPORTANTE
+
+**NO reemplazar `transactions.revenue` por `bookings.total_amount`.** Eso pierde la granularidad contable crítica (facturado vs cobrado vs depositado).
+
+En su lugar, el Dashboard Ejecutivo F1 debe mostrar DOS KPIs distintos, no uno:
+
+1. **INGRESOS BRUTOS (facturado)** → `SUM(bookings.total_amount)` → este debe coincidir con el Centro de Operaciones ($24,299)
+2. **INGRESOS COBRADOS (efectivo recibido)** → `SUM(transactions.amount)` WHERE transaction_type = payment → este es el flujo real de caja
+
+Ambos KPIs visibles, etiquetados claramente. El delta entre ambos es "Collection Gap" y es una métrica clave para conciliación (que es el objetivo original del NBIC).
+
+Además:
+- Renombrar el KPI actual "INGRESOS BRUTOS" que muestra $0 → dejarlo con la definición de `bookings.total_amount` para que muestre $24,299
+- Agregar el KPI nuevo "INGRESOS COBRADOS" con `transactions`
+- El KPI "INGRESOS NETOS" que también muestra $0 → definirlo como `SUM(total_amount) - SUM(discount_amount)` si `discount_amount` existe, o "No disponible hasta D-03" si no
+
+Post-P2: ejecuta equivalencia contra producción:
+- INGRESOS BRUTOS NBIC debe = $24,299 (Centro de Operaciones)
+- TOTAL BOOKINGS NBIC debe = 26
+- TICKET PROMEDIO NBIC debe = $935
+
+Si alguno no coincide, detente.
+
+## P3 — APROBADO SIN CAMBIOS
+
+Añadir opción `all` a `nbicDateRange()` líneas 13933-13938. Cuando no se pase param de fecha, usar rango completo de BD (igual que Centro de Operaciones).
+
+**Preservar también los presets actuales** (hoy, 7d, 30d, MTD, etc.) — no los elimines, solo añade "Todo el historial" como opción y hazlo el default cuando no haya filtro explícito.
+
+Post-P3: verifica que cuando el usuario selecciona "Todo el historial" en el filter bar, el NBIC muestra exactamente los mismos 26 bookings que el Centro de Operaciones.
+
+## PARTE C — PRUEBA DE EQUIVALENCIA COMPLETA
+
+Después de P1+P2+P3, ejecuta contra PRODUCCIÓN (gestion.nadakiexcursions.com) la tabla de equivalencia:
+
+| KPI | Centro de Operaciones | NBIC post-fix | ¿Coincide? |
+|-----|----------------------|---------------|------------|
+| Reservas totales | 26 | ? | ? |
+| Ingresos Brutos (total_amount) | $24,299 | ? | ? |
+| Ticket Promedio | $935 | ? | ? |
+| Completadas | 24 | ? | ? |
+| Próximos 30 días | 2 | ? | ? |
+| Manual (plataforma) | 20 / $20,449 | ? | ? |
+| BoatSetter | 2 / $1,516 | ? | ? |
+| Airbnb | 3 / $1,184 | ? | ? |
+| GetMyBoat | 1 / $1,150 | ? | ? |
+| CRANCHI (barco) | 11 / $11,714 | ? | ? |
+| SEARAY 500 | 5 / $4,091 | ? | ? |
+| SILVER LINNING | 3 / $3,260 | ? | ? |
+| VIKING PRINCESS | 2 / $2,100 | ? | ? |
+| SEA RAY NAUTI NABOURS 40 | 4 / $2,034 | ? | ? |
+
+Regla de aceptación: TODOS los KPIs que existen en ambos sistemas deben coincidir al dólar y al número. Cero tolerancia a diferencias.
+
+Si hay diferencia en cualquier fila, detente, diagnostica, y reporta antes de cerrar.
+
+## DESPUÉS DE LA PRUEBA DE EQUIVALENCIA
+
+Entrega:
+1. Screenshot del NBIC F1 en producción con los números correctos
+2. Tabla de equivalencia completada con valores reales
+3. Confirmación de que los 4 endpoints modificados siguen funcionando con los otros filtros (fechas específicas, barcos específicos, canales)
+4. Documentación breve en NBIC_CHANGELOG.md con los 3 cambios aplicados
+
+**Nota adicional sobre dev vs prod:**
+El dev DB tiene solo 6 registros de seed. No intentes validar equivalencia contra dev. Ejecuta las pruebas directamente contra producción. Si el entorno actual del agente no tiene acceso directo a prod DB, genera los cambios en código, despliégalos, y valida abriendo el dashboard en producción manualmente — pero documenta cada número observado.
+
+Empieza con P1.

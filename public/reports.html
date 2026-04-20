@@ -186,10 +186,11 @@
   <div class="nbic-date-picker">
     <button class="nbic-filter-chip" id="nbic-date-chip" aria-haspopup="listbox" aria-label="Rango de fechas">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-      <span id="nbic-date-label">Este mes</span>
+      <span id="nbic-date-label">Todo el historial</span>
       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
     </button>
     <div class="nbic-dropdown" id="nbic-date-dropdown" style="display:none" role="listbox">
+      <div class="nbic-dropdown__item selected" data-preset="all">Todo el historial</div>
       <div class="nbic-dropdown__item" data-preset="today">Hoy</div>
       <div class="nbic-dropdown__item" data-preset="yesterday">Ayer</div>
       <div class="nbic-dropdown__divider"></div>
@@ -198,7 +199,7 @@
       <div class="nbic-dropdown__item" data-preset="last_week">Semana pasada</div>
       <div class="nbic-dropdown__divider"></div>
       <div class="nbic-dropdown__item" data-preset="last_30d">Últimos 30 días</div>
-      <div class="nbic-dropdown__item selected" data-preset="this_month">Este mes</div>
+      <div class="nbic-dropdown__item" data-preset="this_month">Este mes</div>
       <div class="nbic-dropdown__item" data-preset="last_month">Mes pasado</div>
       <div class="nbic-dropdown__divider"></div>
       <div class="nbic-dropdown__item" data-preset="this_quarter">Este trimestre</div>

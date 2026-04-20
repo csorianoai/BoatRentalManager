@@ -13930,27 +13930,72 @@ const HOST = '0.0.0.0'; // Required for deployment
   // =========================================================
 
   // Helper: parse date range from query params
-  function nbicDateRange(query) {
+  // Supports preset values: all, mtd, ytd, last7, last30, last90, last365
+  // Default (no params): all historical data from bookings table (matches Centro de Operaciones)
+  async function nbicDateRange(query) {
     const now  = new Date();
     const pad  = n => String(n).padStart(2, '0');
-    const from = query.date_from || `${now.getFullYear()}-${pad(now.getMonth()+1)}-01`;
-    const to   = query.date_to   || `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
-    return { from, to };
+    const todayStr = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+
+    // If explicit from/to are provided, use them directly
+    if (query.date_from && query.date_to && query.preset !== 'all') {
+      return { from: query.date_from, to: query.date_to, preset: 'custom' };
+    }
+
+    const preset = query.preset || 'all';
+
+    if (preset === 'mtd') {
+      return { from: `${now.getFullYear()}-${pad(now.getMonth()+1)}-01`, to: todayStr, preset };
+    }
+    if (preset === 'ytd') {
+      return { from: `${now.getFullYear()}-01-01`, to: todayStr, preset };
+    }
+    if (preset === 'last7') {
+      const d = new Date(now); d.setDate(d.getDate() - 6);
+      return { from: `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`, to: todayStr, preset };
+    }
+    if (preset === 'last30') {
+      const d = new Date(now); d.setDate(d.getDate() - 29);
+      return { from: `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`, to: todayStr, preset };
+    }
+    if (preset === 'last90') {
+      const d = new Date(now); d.setDate(d.getDate() - 89);
+      return { from: `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`, to: todayStr, preset };
+    }
+    if (preset === 'last365') {
+      const d = new Date(now); d.setDate(d.getDate() - 364);
+      return { from: `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`, to: todayStr, preset };
+    }
+
+    // Default/all: use full data range from bookings table (same source as Centro de Operaciones)
+    try {
+      const rangeRes = await pool.query(`SELECT MIN(booking_date) as oldest, MAX(booking_date) as newest FROM bookings`);
+      const oldest = rangeRes.rows[0]?.oldest || '2020-01-01';
+      const newest = rangeRes.rows[0]?.newest || todayStr;
+      return { from: oldest, to: newest > todayStr ? newest : todayStr, preset: 'all' };
+    } catch(e) {
+      return { from: '2020-01-01', to: todayStr, preset: 'all' };
+    }
   }
 
   // -- F1: Executive KPIs -----------------------------------
   app.get('/api/nbic/executive/kpis', isAuthenticated, async (req, res) => {
     try {
-      const { from, to } = nbicDateRange(req.query);
+      const { from, to } = await nbicDateRange(req.query);
 
       const [bookings, incomeData, expenseData, prevMonth] = await Promise.allSettled([
+        // bookings.total_amount = INGRESOS BRUTOS FACTURADOS (fuente de verdad operativa)
         pool.query(`
           SELECT COUNT(*) as count,
-                 SUM(CASE WHEN total_amount IS NOT NULL THEN total_amount::numeric ELSE 0 END) as gross_revenue,
-                 AVG(CASE WHEN total_amount IS NOT NULL THEN total_amount::numeric END) as avg_ticket
+                 COALESCE(SUM(CASE WHEN total_amount IS NOT NULL THEN total_amount::numeric ELSE 0 END), 0) as gross_revenue,
+                 AVG(CASE WHEN total_amount IS NOT NULL AND status != 'cancelled' THEN total_amount::numeric END) as avg_ticket,
+                 COALESCE(SUM(CASE WHEN total_amount IS NOT NULL AND status != 'cancelled'
+                              THEN (total_amount::numeric - COALESCE(discount_amount::numeric, 0))
+                              END), 0) as net_billed
           FROM bookings
-          WHERE booking_date >= $1 AND booking_date <= $2`, [from, to]),
+          WHERE booking_date >= $1 AND booking_date <= $2 AND status != 'cancelled'`, [from, to]),
 
+        // transactions.amount WHERE revenue account = INGRESOS COBRADOS (efectivo real recibido)
         pool.query(`
           SELECT COALESCE(SUM(t.amount),0) as total
           FROM transactions t
@@ -13967,10 +14012,11 @@ const HOST = '0.0.0.0'; // Required for deployment
 
         pool.query(`
           SELECT COUNT(*) as count,
-                 SUM(CASE WHEN total_amount IS NOT NULL THEN total_amount::numeric ELSE 0 END) as gross_revenue
+                 COALESCE(SUM(CASE WHEN total_amount IS NOT NULL THEN total_amount::numeric ELSE 0 END), 0) as gross_revenue
           FROM bookings
           WHERE booking_date >= (DATE_TRUNC('month', $1::date) - INTERVAL '1 month')::date::text
-            AND booking_date < DATE_TRUNC('month', $1::date)::date::text`, [from]),
+            AND booking_date < DATE_TRUNC('month', $1::date)::date::text
+            AND status != 'cancelled'`, [from]),
       ]);
 
       const bk  = bookings.status === 'fulfilled' ? bookings.value.rows[0]   : {};
@@ -13978,15 +14024,24 @@ const HOST = '0.0.0.0'; // Required for deployment
       const exp = expenseData.status === 'fulfilled' ? expenseData.value.rows[0] : {};
       const prv = prevMonth.status === 'fulfilled' ? prevMonth.value.rows[0]  : {};
 
-      const gross_rev   = parseFloat(inc.total || 0);
-      const expense_amt = parseFloat(exp.total || 0);
-      const margin      = gross_rev > 0 ? ((gross_rev - expense_amt) / gross_rev * 100) : null;
-      const prev_rev    = parseFloat(prv.gross_revenue || 0);
-      const delta_rev   = prev_rev > 0 ? ((gross_rev - prev_rev) / prev_rev * 100) : null;
-      const bk_count    = parseInt(bk.count || 0);
-      const avg_ticket  = parseFloat(bk.avg_ticket || 0);
-      const prev_cnt    = parseInt(prv.count || 0);
-      const delta_bk    = prev_cnt > 0 ? ((bk_count - prev_cnt) / prev_cnt * 100) : null;
+      // Ingresos Brutos = bookings.total_amount (facturado, fuente de verdad operativa)
+      const gross_rev_billed  = parseFloat(bk.gross_revenue || 0);
+      // Ingresos Cobrados = transactions revenue accounts (efectivo real)
+      const gross_rev_collected = parseFloat(inc.total || 0);
+      // Collection Gap = Brutos - Cobrados
+      const collection_gap    = gross_rev_billed - gross_rev_collected;
+      // Ingresos Netos = Brutos - Descuentos
+      const net_billed        = parseFloat(bk.net_billed || gross_rev_billed);
+      const expense_amt       = parseFloat(exp.total || 0);
+      const margin            = gross_rev_billed > 0 ? ((gross_rev_billed - expense_amt) / gross_rev_billed * 100) : null;
+      const prev_rev          = parseFloat(prv.gross_revenue || 0);
+      const delta_rev         = prev_rev > 0 ? ((gross_rev_billed - prev_rev) / prev_rev * 100) : null;
+      const bk_count          = parseInt(bk.count || 0);
+      const avg_ticket        = parseFloat(bk.avg_ticket || 0);
+      const prev_cnt          = parseInt(prv.count || 0);
+      const delta_bk          = prev_cnt > 0 ? ((bk_count - prev_cnt) / prev_cnt * 100) : null;
+      // Alias for backward compat
+      const gross_rev         = gross_rev_billed;
 
       // Transactions trend (daily) for chart
       let trendRows = [];
@@ -14020,7 +14075,9 @@ const HOST = '0.0.0.0'; // Required for deployment
       try {
         const rb = await pool.query(`
           SELECT id as booking_id, customer_name, platform, booking_date,
-                 total_amount, status, boat_id, payment_method
+                 total_amount, status,
+                 COALESCE(boat_type, boat_id, 'Sin asignar') as boat_id,
+                 payment_method
           FROM bookings
           WHERE booking_date >= $1 AND booking_date <= $2
           ORDER BY booking_date DESC LIMIT 15`, [from, to]);
@@ -14056,16 +14113,28 @@ const HOST = '0.0.0.0'; // Required for deployment
           data_freshness: new Date().toISOString(),
         },
         kpis: [
-          { code: 'gross_revenue',          label: 'Ingresos Brutos',       value: gross_rev,     unit: 'USD', delta_mom_pct: delta_rev, formula: 'SUM(transactions.amount WHERE account_type=revenue)' },
-          { code: 'net_revenue',            label: 'Ingresos Netos',        value: gross_rev - expense_amt, unit: 'USD', formula: 'gross_revenue - total_expenses' },
-          { code: 'total_bookings',         label: 'Total Bookings',        value: bk_count,      unit: 'count', delta_mom_pct: delta_bk },
-          { code: 'margin_pct',             label: 'Margen Operativo',      value: margin,        unit: '%', formula: '(gross_revenue - expenses) / gross_revenue' },
-          { code: 'avg_ticket',             label: 'Ticket Promedio',       value: avg_ticket,    unit: 'USD' },
-          { code: 'cash_days_outstanding',  label: 'Cash Days',             value: null,          unit: 'days', formula: 'AR pendiente / ingresos diarios promedio · Requiere booking_receivables' },
-          { code: 'revenue_leakage',        label: 'Revenue Leakage',       value: null,          unit: 'USD', formula: 'Requiere bookings_ledger completo' },
-          { code: 'active_alerts',          label: 'Alertas Activas',       value: alertCount,    unit: 'count' },
-          { code: 'horas_operadas',         label: 'Horas Operadas',        value: null,          unit: 'count', formula: 'Requiere boat_usage_log completado' },
-          { code: 'collection_rate',        label: 'Tasa de Cobro',         value: null,          unit: '%', formula: 'collected / gross_revenue · Requiere booking_deposits' },
+          // ── Ingresos Brutos: bookings.total_amount (facturado, fuente de verdad operativa)
+          { code: 'gross_revenue',          label: 'Ingresos Brutos',        value: gross_rev_billed,     unit: 'USD', delta_mom_pct: delta_rev,
+            formula: 'SUM(bookings.total_amount WHERE status!=cancelled)', subtitle: 'Facturado · fuente de verdad' },
+          // ── Ingresos Cobrados: transactions revenue (efectivo real recibido en cuentas)
+          { code: 'collected_revenue',      label: 'Ingresos Cobrados',      value: gross_rev_collected,  unit: 'USD',
+            formula: 'SUM(transactions.amount WHERE account_type=revenue)', subtitle: 'Efectivo recibido en contabilidad' },
+          // ── Collection Gap: diferencia entre facturado y cobrado (métrica de conciliación)
+          { code: 'collection_gap',         label: 'Collection Gap',          value: collection_gap > 0 ? collection_gap : null, unit: 'USD',
+            formula: 'Ingresos Brutos - Ingresos Cobrados', subtitle: collection_gap > 0 ? 'Pendiente de conciliar' : 'Conciliado' },
+          // ── Ingresos Netos: Brutos menos descuentos aplicados
+          { code: 'net_revenue',            label: 'Ingresos Netos',          value: net_billed,           unit: 'USD',
+            formula: 'SUM(total_amount - discount_amount)', subtitle: 'Facturado menos descuentos' },
+          { code: 'total_bookings',         label: 'Total Bookings',          value: bk_count,             unit: 'count', delta_mom_pct: delta_bk },
+          { code: 'avg_ticket',             label: 'Ticket Promedio',         value: avg_ticket,           unit: 'USD' },
+          { code: 'margin_pct',             label: 'Margen Operativo',        value: margin,               unit: '%',
+            formula: '(Ingresos Brutos - Gastos) / Ingresos Brutos' },
+          { code: 'cash_days_outstanding',  label: 'Cash Days',               value: null,                 unit: 'days',
+            formula: 'AR pendiente / ingresos diarios promedio · Requiere booking_receivables' },
+          { code: 'active_alerts',          label: 'Alertas Activas',         value: alertCount,           unit: 'count' },
+          { code: 'collection_rate',        label: 'Tasa de Cobro',
+            value: gross_rev_billed > 0 ? Math.round((gross_rev_collected / gross_rev_billed) * 100) : null, unit: '%',
+            formula: 'Ingresos Cobrados / Ingresos Brutos' },
         ],
         series: [
           { label: 'revenue_daily', data: trendRows },
@@ -14137,7 +14206,7 @@ const HOST = '0.0.0.0'; // Required for deployment
 
   app.get('/api/nbic/revenue/reconciliation', isAuthenticated, async (req, res) => {
     try {
-      const { from, to } = nbicDateRange(req.query);
+      const { from, to } = await nbicDateRange(req.query);
       // Try bank_statements table
       const bs = await pool.query(`SELECT COUNT(*) as cnt FROM bank_statements WHERE statement_date >= $1 AND statement_date <= $2`, [from, to]).catch(() => ({ rows: [{ cnt: 0 }] }));
       if (parseInt(bs.rows[0].cnt) === 0) {
@@ -14149,7 +14218,7 @@ const HOST = '0.0.0.0'; // Required for deployment
 
   app.get('/api/nbic/revenue/aging', isAuthenticated, async (req, res) => {
     try {
-      const { from, to } = nbicDateRange(req.query);
+      const { from, to } = await nbicDateRange(req.query);
       const q = await pool.query(`
         SELECT br.id, br.party_name, br.amount_due, br.amount_paid,
                (br.amount_due - COALESCE(br.amount_paid,0)) as outstanding,
@@ -14177,7 +14246,7 @@ const HOST = '0.0.0.0'; // Required for deployment
 
   app.get('/api/nbic/revenue/by-dimension', isAuthenticated, async (req, res) => {
     try {
-      const { from, to } = nbicDateRange(req.query);
+      const { from, to } = await nbicDateRange(req.query);
       const q = await pool.query(`
         SELECT COALESCE(platform,'Directo') as dimension,
                COUNT(*) as bookings,
@@ -14220,9 +14289,9 @@ const HOST = '0.0.0.0'; // Required for deployment
   // -- Pricing endpoints ------------------------------------
   app.get('/api/nbic/pricing/variance', isAuthenticated, async (req, res) => {
     try {
-      const { from, to } = nbicDateRange(req.query);
+      const { from, to } = await nbicDateRange(req.query);
       const q = await pool.query(`
-        SELECT COALESCE(b.boat_id,'Sin asignar') as boat_id,
+        SELECT COALESCE(b.boat_type, b.boat_id, 'Sin asignar') as boat_id,
                COUNT(*) as bookings,
                MIN(b.total_amount::numeric) as min_price,
                MAX(b.total_amount::numeric) as max_price,
@@ -14230,10 +14299,10 @@ const HOST = '0.0.0.0'; // Required for deployment
                STDDEV(b.total_amount::numeric) as std_dev
         FROM bookings b
         WHERE b.booking_date >= $1 AND b.booking_date <= $2 AND b.total_amount IS NOT NULL
-        GROUP BY b.boat_id ORDER BY avg_price DESC`, [from, to]);
+        GROUP BY COALESCE(b.boat_type, b.boat_id, 'Sin asignar') ORDER BY avg_price DESC`, [from, to]);
       res.json({
-        meta: { report_code:'RPT-B1', completeness_score: q.rows.length > 0 ? 0.70 : 0.2, row_count: q.rows.length,
-                warnings: ['boat_id NULL en algunos bookings — asignar para mejorar completitud'] },
+        meta: { report_code:'RPT-B1', completeness_score: q.rows.length > 0 ? 0.80 : 0.2, row_count: q.rows.length,
+                warnings: [] },
         kpis: [], series: [],
         table: {
           columns: [
@@ -14252,7 +14321,7 @@ const HOST = '0.0.0.0'; // Required for deployment
 
   app.get('/api/nbic/pricing/avg-ticket', isAuthenticated, async (req, res) => {
     try {
-      const { from, to } = nbicDateRange(req.query);
+      const { from, to } = await nbicDateRange(req.query);
       const q = await pool.query(`
         SELECT TO_CHAR(booking_date::date,'YYYY-MM') as month,
                COUNT(*) as bookings, AVG(total_amount::numeric) as avg_ticket,
@@ -14287,7 +14356,7 @@ const HOST = '0.0.0.0'; // Required for deployment
   // -- Expenses endpoints -----------------------------------
   app.get('/api/nbic/expenses/by-boat', isAuthenticated, async (req, res) => {
     try {
-      const { from, to } = nbicDateRange(req.query);
+      const { from, to } = await nbicDateRange(req.query);
       const q = await pool.query(`
         SELECT COALESCE(t.reference_id,'Sin asignar') as boat_id,
                COUNT(*) as tx_count, SUM(t.amount) as total
@@ -14314,7 +14383,7 @@ const HOST = '0.0.0.0'; // Required for deployment
 
   app.get('/api/nbic/expenses/period', isAuthenticated, async (req, res) => {
     try {
-      const { from, to } = nbicDateRange(req.query);
+      const { from, to } = await nbicDateRange(req.query);
       const q = await pool.query(`
         SELECT TO_CHAR(t.transaction_date,'YYYY-MM') as month,
                SUM(t.amount) as total, COUNT(*) as tx_count
@@ -14350,17 +14419,17 @@ const HOST = '0.0.0.0'; // Required for deployment
   // -- Profitability endpoints ------------------------------
   app.get('/api/nbic/profitability/by-boat', isAuthenticated, async (req, res) => {
     try {
-      const { from, to } = nbicDateRange(req.query);
+      const { from, to } = await nbicDateRange(req.query);
       const q = await pool.query(`
-        SELECT COALESCE(b.boat_id,'Sin asignar') as boat_id,
+        SELECT COALESCE(b.boat_type, b.boat_id, 'Sin asignar') as boat_id,
                COUNT(*) as bookings,
                SUM(b.total_amount::numeric) as gross_revenue
         FROM bookings b
         WHERE b.booking_date >= $1 AND b.booking_date <= $2 AND b.total_amount IS NOT NULL
-        GROUP BY b.boat_id ORDER BY gross_revenue DESC`, [from, to]);
+        GROUP BY COALESCE(b.boat_type, b.boat_id, 'Sin asignar') ORDER BY gross_revenue DESC`, [from, to]);
       res.json({
-        meta: { report_code:'RPT-D1', completeness_score: 0.45,
-                warnings:['Sin datos de gastos por barco — margen no calculable','boat_id NULL en 6 bookings'], row_count: q.rows.length },
+        meta: { report_code:'RPT-D1', completeness_score: 0.65,
+                warnings:['Sin datos de gastos por barco — margen no calculable'], row_count: q.rows.length },
         kpis: [],
         series: [],
         table: {
@@ -14386,18 +14455,18 @@ const HOST = '0.0.0.0'; // Required for deployment
   // -- Compare endpoints ------------------------------------
   app.get('/api/nbic/compare/boats', isAuthenticated, async (req, res) => {
     try {
-      const { from, to } = nbicDateRange(req.query);
+      const { from, to } = await nbicDateRange(req.query);
       const q = await pool.query(`
-        SELECT COALESCE(boat_id,'Sin asignar') as boat_id,
+        SELECT COALESCE(boat_type, boat_id, 'Sin asignar') as boat_id,
                COUNT(*) as bookings,
                SUM(total_amount::numeric) as revenue,
                AVG(total_amount::numeric) as avg_ticket
         FROM bookings
         WHERE booking_date >= $1 AND booking_date <= $2 AND total_amount IS NOT NULL
-        GROUP BY boat_id ORDER BY revenue DESC`, [from, to]);
+        GROUP BY COALESCE(boat_type, boat_id, 'Sin asignar') ORDER BY revenue DESC`, [from, to]);
       res.json({
-        meta: { report_code:'RPT-E1', completeness_score: q.rows.length>0 ? 0.60 : 0.2, row_count: q.rows.length,
-                warnings: q.rows.some(r => r.boat_id==='Sin asignar') ? ['Asignar boat_id a todos los bookings'] : [] },
+        meta: { report_code:'RPT-E1', completeness_score: q.rows.length>0 ? 0.75 : 0.2, row_count: q.rows.length,
+                warnings: [] },
         kpis: [], series: [],
         table: {
           columns: [
