@@ -1,0 +1,247 @@
+# NBIC — CONSOLIDATION & DATA INTEGRITY SPRINT
+
+## Contexto
+
+La v1 funcional del NBIC está desplegada con acceso desde dashboard.html y URL directa /reports.html. El shell, sidebar, filter bar, command palette (⌘K), drilldown y 9 reportes parciales están operativos.
+
+Antes de avanzar a Fase 2 (DDL analytics, vistas, fact tables) y al desbloqueo de los 18 reportes restantes, necesito cerrar cuatro frentes críticos de consolidación. Ejecuta en el orden exacto que sigue. No saltes pasos. No improvises. Zero supuestos: si una tabla no existe, una query falla o un campo tiene otro nombre, repórtalo textualmente y sigue con el resto.
+
+---
+
+## BLOQUE 1 — Bug crítico de integridad de data (PRIORIDAD MÁXIMA)
+
+### Problema detectado
+
+El reporte RPT-B1 "Precios por Barco" muestra los siguientes identificadores como si fueran nombres de barcos:
+
+- boat_WItvu3bNs1
+- boat_kpsniR3_In
+- boat_SMglDTGtFr
+- boat_NRnnvi3q_C
+
+Dos hipótesis:
+(a) Falta el JOIN con la tabla de barcos y se está mostrando el ID técnico en lugar del nombre comercial.
+(b) Esos IDs son seed data de testing que está contaminando producción.
+
+### Diagnóstico obligatorio
+
+Ejecuta estas queries y entrega los resultados COMPLETOS antes de interpretar o arreglar.
+
+-- Q1: Localizar tablas de barcos en todos los schemas
+SELECT table_schema, table_name, column_name, data_type 
+FROM information_schema.columns 
+WHERE (table_name ILIKE '%boat%' OR table_name ILIKE '%barco%' 
+       OR table_name ILIKE '%vessel%' OR table_name ILIKE '%fleet%')
+ORDER BY table_schema, table_name, ordinal_position;
+
+-- Q2: Contenido de la(s) tabla(s) encontrada(s). Ejecuta una vez por cada tabla relevante de Q1.
+SELECT * FROM <tabla_de_barcos> ORDER BY created_at DESC LIMIT 30;
+
+-- Q3: ¿Los IDs del reporte existen en la tabla de barcos?
+SELECT * FROM <tabla_de_barcos> 
+WHERE id::text IN ('boat_WItvu3bNs1', 'boat_kpsniR3_In', 
+                   'boat_SMglDTGtFr', 'boat_NRnnvi3q_C');
+
+-- Q4: Distribución de boat_id en bookings
+SELECT boat_id, COUNT(*) AS bookings_count, 
+       MIN(created_at) AS first_seen, MAX(created_at) AS last_seen,
+       MIN(total_amount) AS min_amount, MAX(total_amount) AS max_amount, 
+       AVG(total_amount) AS avg_amount
+FROM bookings 
+GROUP BY boat_id
+ORDER BY bookings_count DESC;
+
+-- Q5: Cobertura de boat_id en bookings
+SELECT 
+  COUNT(*) FILTER (WHERE boat_id IS NULL) AS sin_boat_id,
+  COUNT(*) FILTER (WHERE boat_id IS NOT NULL) AS con_boat_id,
+  COUNT(*) AS total,
+  ROUND(100.0 * COUNT(*) FILTER (WHERE boat_id IS NOT NULL) / NULLIF(COUNT(*),0), 2) AS pct_con_boat
+FROM bookings;
+
+-- Q6: Muestra de bookings reales recientes
+SELECT id, boat_id, total_amount, customer_name, status, 
+       payment_method, created_at
+FROM bookings 
+ORDER BY created_at DESC 
+LIMIT 20;
+
+**Q7 (búsqueda en código):** Localiza y pega el código exacto (SQL, query builder, endpoint backend, archivo + línea) que alimenta el reporte "Precios por Barco" / RPT-B1. Confirma si hace o no JOIN con la tabla de barcos y qué campo usa como label en la respuesta JSON.
+
+**Q8 (búsqueda en repositorio):** Reporta hallazgos de:
+- Archivos: seed.*, seeds/, fixtures/, mock-data, test-data, demo-data, sample-data
+- Scripts Node/Python que generen IDs con patrón boat_ + string aleatorio (nanoid, cuid, random, Math.random)
+- Migraciones SQL que hayan insertado barcos con IDs tipo boat_XXXX
+- Factory functions que creen bookings de prueba
+
+### Respuestas explícitas que necesito
+
+1. ¿Existe tabla de barcos con nombres comerciales? Nombre exacto de tabla, schema, y campo del nombre.
+2. ¿Los IDs boat_WItvu3bNs1 etc. son seed data o producción legítima? Justifica con evidencia del código o la data.
+3. ¿Cuántos barcos reales opera Nadaki según la tabla? Lista nombres completos.
+4. ¿El código detrás de RPT-B1 hace JOIN con la tabla de barcos? Pega el fragmento exacto.
+5. ¿Los montos observados ($328, $560, $766, $800, $1050, $1300) son rangos realistas de bookings de producción o parecen testing?
+
+**NO arregles nada aún.** Espera mi instrucción de corrección.
+
+---
+
+## CHECKPOINT 1 — DETENTE AQUÍ
+
+Entrega los resultados de Q1-Q8 + las 5 respuestas. Espera mi aprobación explícita antes de ejecutar los Bloques 2, 3, 4 y 5.
+
+---
+
+## BLOQUE 2 — Validación retroactiva de KPICard
+
+El spec original pedía pausar en la KPICard para validación visual. Se saltó. Revisa retroactivamente contra estos 5 criterios y responde SÍ/NO por cada uno, con evidencia (fragmento del CSS aplicado o inspección DOM):
+
+1. **Mono tabular:** ¿Los valores de KPI usan font-family: 'JetBrains Mono' con font-variant-numeric: tabular-nums?
+2. **Peso tipográfico:** ¿El valor principal tiene font-weight: 500 (no 600, no 700)?
+3. **Sparkline:** ¿Cada KPI card del Dashboard Ejecutivo (F1) contiene sparkline SVG de 30 puntos, color accent al 40% opacity, sin ejes?
+4. **Delta chip:** ¿El chip de variación (↑ 12.3%) tiene fondo al 12% opacity del color (success/danger), NO un chip sólido?
+5. **Hover:** ¿Al pasar el mouse sobre una KPI card cambia únicamente el border (border-subtle → border-default) sin shadow bump ni cambio de elevación brusco?
+
+Documenta fallas pero NO las arregles todavía.
+
+---
+
+## BLOQUE 3 — Entregables faltantes del prompt v2
+
+1. Screenshot del Dashboard Ejecutivo (F1) completo en dark mode con data real
+2. Screenshot del Dashboard Ejecutivo (F1) completo en light mode con data real
+3. Video 30s (Loom) o GIF 10s mostrando en este orden: apertura del dashboard → ⌘K con navegación por teclado → cambio de filtro de fechas con count-up de números → click en KPI card que abre drilldown → toggle de tema
+4. Tabla de completeness de los 27 reportes:
+
+| Código | Nombre | Estado | Score (0.00-1.00) | Razón |
+|--------|--------|--------|-------------------|-------|
+| RPT-XX | ... | Complete/Partial/Blocked | ... | bloqueado por D-XX / falta tabla Y / falta JOIN con dim_boat / etc. |
+
+---
+
+## BLOQUE 4 — Estado real de Fase 1 (pre-requisito para Fase 2)
+
+Confirma con evidencia en BD el estado de las 6 migraciones. Para cada una: estado (DONE / PARTIAL / PENDING), query de verificación ejecutada, y resultado numérico.
+
+-- D-01: booking_id en transactions
+SELECT column_name, data_type, is_nullable 
+FROM information_schema.columns 
+WHERE table_name = 'transactions' AND column_name = 'booking_id';
+
+SELECT 
+  COUNT(*) AS total,
+  COUNT(booking_id) AS con_booking_id,
+  ROUND(100.0 * COUNT(booking_id) / NULLIF(COUNT(*), 0), 2) AS pct_vinculadas
+FROM transactions;
+
+-- D-02: payment_method normalizado en bookings, ledger, deposits
+-- Si alguna tabla no existe, reporta "TABLA NO EXISTE" y sigue
+SELECT 'bookings' AS tabla, payment_method, COUNT(*) 
+FROM bookings GROUP BY payment_method
+UNION ALL
+SELECT 'ledger', payment_method, COUNT(*) FROM ledger GROUP BY payment_method
+UNION ALL
+SELECT 'deposits', payment_method, COUNT(*) FROM deposits GROUP BY payment_method
+ORDER BY tabla, payment_method;
+
+-- Catálogo oficial esperado: cash, card, transfer, online_platform, mixed, pending, unknown
+-- Reporta valores fuera del catálogo
+
+-- D-03: base_price y discount_amount en bookings
+SELECT 
+  COUNT(*) AS total,
+  COUNT(base_price) AS con_base_price,
+  COUNT(discount_amount) AS con_discount,
+  AVG(base_price) AS avg_base, AVG(discount_amount) AS avg_discount
+FROM bookings;
+
+-- D-04: total_amount NUMERIC(12,2) y formato
+SELECT column_name, data_type, numeric_precision, numeric_scale
+FROM information_schema.columns
+WHERE table_name = 'bookings' AND column_name = 'total_amount';
+
+SELECT 
+  MIN(total_amount), MAX(total_amount), AVG(total_amount),
+  COUNT(*) FILTER (WHERE total_amount > 10000) AS posibles_cents,
+  COUNT(*) FILTER (WHERE total_amount < 10000) AS posibles_dollars
+FROM bookings;
+
+-- D-05: payment_date en bookings
+SELECT 
+  COUNT(*) AS total,
+  COUNT(payment_date) AS con_payment_date,
+  COUNT(*) FILTER (WHERE payment_date IS NOT NULL AND service_date IS NOT NULL 
+                   AND payment_date != service_date) AS payment_diff_service
+FROM bookings;
+
+-- D-06: sold_by_user_id / sold_by_name
+SELECT 
+  COUNT(*) AS total,
+  COUNT(sold_by_user_id) AS con_user_id,
+  COUNT(sold_by_name) AS con_name
+FROM bookings;
+
+### Matriz de decisión resultante
+
+| Migración | Estado | % cobertura | Bloquea qué reportes |
+|-----------|--------|-------------|----------------------|
+| D-01 | ? | ? | ? |
+| D-02 | ? | ? | ? |
+| D-03 | ? | ? | ? |
+| D-04 | ? | ? | ? |
+| D-05 | ? | ? | ? |
+| D-06 | ? | ? | ? |
+
+---
+
+## BLOQUE 5 — Clasificación real de los 18 reportes pendientes
+
+Separa los reportes en tres categorías con justificación:
+
+**Categoría A — Desbloqueables solo con DDL analytics (vistas + fact tables)**
+Reportes cuya data base ya existe y solo necesitan la capa analítica.
+
+**Categoría B — Desbloqueables con DDL analytics + migración Fase 1 pendiente**
+Reportes que requieren alguna D-XX antes de que la capa analítica tenga sentido.
+
+**Categoría C — Desbloqueables con DDL analytics + captura de data nueva**
+Reportes que requieren data que el sistema aún no captura. Especifica qué campo/tabla falta.
+
+| RPT | Nombre | Categoría | Qué lo bloquea | Esfuerzo estimado |
+|-----|--------|-----------|----------------|-------------------|
+| A1 | Conciliación | B | D-01 al 60% | 0.5d |
+| C1 | Gastos por Barco | C | Falta tabla expenses estructurada | 3d captura + 1d vistas |
+| ... | ... | ... | ... | ... |
+
+---
+
+## RESUMEN EJECUTIVO FINAL
+
+Al cierre del sprint, entrega un resumen de máximo 10 líneas con:
+- Hallazgo principal del Bloque 1 (bug de data)
+- % real de completitud del NBIC
+- Top 3 prioridades antes de Fase 2
+- Bloqueos críticos que requieren decisión de negocio (no técnica)
+
+---
+
+## ORDEN DE EJECUCIÓN
+
+1. Ejecuta **Bloque 1** completo → entrega Q1-Q8 + 5 respuestas
+2. **CHECKPOINT 1 — PAUSA.** Espera mi instrucción sobre estrategia de corrección
+3. Al aprobar, ejecuta **Bloques 2, 3, 4 y 5** en secuencia y entrégalos en un solo mensaje consolidado
+4. Cierra con el **Resumen Ejecutivo Final**
+5. **CHECKPOINT 2 — PAUSA.** Con todo entregado, decidimos juntos el plan de Fase 2
+
+---
+
+## REGLAS DE ENTREGA
+
+- Resultados SQL en bloques de código formateados, no screenshots de terminal
+- Respuestas numéricas con contexto (total, porcentaje, rango)
+- Si una query falla, reporta el error exacto y continúa con el resto
+- Si una tabla no existe, reporta "TABLA NO EXISTE" y sigue
+- Hallazgos no solicitados (data corrupta, IDs duplicados, tablas fantasma) en sección separada al final bajo "HALLAZGOS NO SOLICITADOS"
+- Zero improvisación. Si no estás seguro, pregunta antes de asumir
+
+Empieza por el Bloque 1.
