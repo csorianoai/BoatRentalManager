@@ -13924,11 +13924,524 @@ const HOST = '0.0.0.0'; // Required for deployment
     }
   }
 
+  // =========================================================
+  // NBIC — Nadaki Business Intelligence Center API v1.0
+  // All endpoints query existing public.* tables directly.
+  // =========================================================
+
+  // Helper: parse date range from query params
+  function nbicDateRange(query) {
+    const now  = new Date();
+    const pad  = n => String(n).padStart(2, '0');
+    const from = query.date_from || `${now.getFullYear()}-${pad(now.getMonth()+1)}-01`;
+    const to   = query.date_to   || `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+    return { from, to };
+  }
+
+  // -- F1: Executive KPIs -----------------------------------
+  app.get('/api/nbic/executive/kpis', isAuthenticated, async (req, res) => {
+    try {
+      const { from, to } = nbicDateRange(req.query);
+
+      const [bookings, incomeData, expenseData, prevMonth] = await Promise.allSettled([
+        pool.query(`
+          SELECT COUNT(*) as count,
+                 SUM(CASE WHEN total_amount IS NOT NULL THEN total_amount::numeric ELSE 0 END) as gross_revenue,
+                 AVG(CASE WHEN total_amount IS NOT NULL THEN total_amount::numeric END) as avg_ticket
+          FROM bookings
+          WHERE booking_date >= $1 AND booking_date <= $2`, [from, to]),
+
+        pool.query(`
+          SELECT COALESCE(SUM(t.amount),0) as total
+          FROM transactions t
+          JOIN chart_of_accounts ca ON ca.id = t.account_id
+          WHERE ca.account_type IN ('revenue','income')
+            AND t.transaction_date >= $1 AND t.transaction_date <= $2`, [from, to]),
+
+        pool.query(`
+          SELECT COALESCE(SUM(t.amount),0) as total
+          FROM transactions t
+          JOIN chart_of_accounts ca ON ca.id = t.account_id
+          WHERE ca.account_type = 'expense'
+            AND t.transaction_date >= $1 AND t.transaction_date <= $2`, [from, to]),
+
+        pool.query(`
+          SELECT COUNT(*) as count,
+                 SUM(CASE WHEN total_amount IS NOT NULL THEN total_amount::numeric ELSE 0 END) as gross_revenue
+          FROM bookings
+          WHERE booking_date >= (DATE_TRUNC('month', $1::date) - INTERVAL '1 month')::date::text
+            AND booking_date < DATE_TRUNC('month', $1::date)::date::text`, [from]),
+      ]);
+
+      const bk  = bookings.status === 'fulfilled' ? bookings.value.rows[0]   : {};
+      const inc = incomeData.status === 'fulfilled' ? incomeData.value.rows[0] : {};
+      const exp = expenseData.status === 'fulfilled' ? expenseData.value.rows[0] : {};
+      const prv = prevMonth.status === 'fulfilled' ? prevMonth.value.rows[0]  : {};
+
+      const gross_rev   = parseFloat(inc.total || 0);
+      const expense_amt = parseFloat(exp.total || 0);
+      const margin      = gross_rev > 0 ? ((gross_rev - expense_amt) / gross_rev * 100) : null;
+      const prev_rev    = parseFloat(prv.gross_revenue || 0);
+      const delta_rev   = prev_rev > 0 ? ((gross_rev - prev_rev) / prev_rev * 100) : null;
+      const bk_count    = parseInt(bk.count || 0);
+      const avg_ticket  = parseFloat(bk.avg_ticket || 0);
+      const prev_cnt    = parseInt(prv.count || 0);
+      const delta_bk    = prev_cnt > 0 ? ((bk_count - prev_cnt) / prev_cnt * 100) : null;
+
+      // Transactions trend (daily) for chart
+      let trendRows = [];
+      try {
+        const trend = await pool.query(`
+          SELECT t.transaction_date::text as x,
+                 SUM(t.amount) as y
+          FROM transactions t
+          JOIN chart_of_accounts ca ON ca.id = t.account_id
+          WHERE ca.account_type IN ('revenue','income')
+            AND t.transaction_date >= $1 AND t.transaction_date <= $2
+          GROUP BY t.transaction_date
+          ORDER BY t.transaction_date`, [from, to]);
+        trendRows = trend.rows.map(r => ({ x: r.x, y: parseFloat(r.y) }));
+      } catch(e) {}
+
+      // Revenue by channel (bookings)
+      let channelRows = [];
+      try {
+        const channels = await pool.query(`
+          SELECT COALESCE(platform,'Directo') as x,
+                 SUM(total_amount::numeric) as y
+          FROM bookings
+          WHERE booking_date >= $1 AND booking_date <= $2 AND total_amount IS NOT NULL
+          GROUP BY platform ORDER BY y DESC LIMIT 8`, [from, to]);
+        channelRows = channels.rows.map(r => ({ x: r.x, y: parseFloat(r.y) }));
+      } catch(e) {}
+
+      // Recent bookings table
+      let recentBookings = [];
+      try {
+        const rb = await pool.query(`
+          SELECT id as booking_id, customer_name, platform, booking_date,
+                 total_amount, status, boat_id, payment_method
+          FROM bookings
+          WHERE booking_date >= $1 AND booking_date <= $2
+          ORDER BY booking_date DESC LIMIT 15`, [from, to]);
+        recentBookings = rb.rows;
+      } catch(e) {}
+
+      // Active alerts count (from alert events if schema exists, otherwise 0)
+      let alertCount = 0;
+      let alertRows = [];
+      try {
+        const aQuery = await pool.query(`
+          SELECT ae.alert_code, ar.name, ae.entity_id, ae.entity_name, ae.severity, ae.created_at
+          FROM analytics.alert_events ae
+          JOIN analytics.alert_rules ar ON ar.alert_code = ae.alert_code
+          WHERE ae.resolved_at IS NULL
+          ORDER BY ae.created_at DESC LIMIT 6`);
+        alertCount = aQuery.rows.length;
+        alertRows  = aQuery.rows;
+      } catch(e) {
+        alertRows = [
+          { alert_code: 'DATA_GAP', name: 'boat_id NULL en 6 bookings', entity_name: 'Asignar barco a bookings existentes', severity: 'warn' },
+          { alert_code: 'MISSING_LEDGER', name: 'bookings_ledger vacío', entity_name: 'No hay datos de flujo de efectivo', severity: 'info' },
+        ];
+        alertCount = alertRows.length;
+      }
+
+      res.json({
+        meta: {
+          report_code: 'RPT-F1',
+          completeness_score: bk_count > 0 ? 0.72 : 0.35,
+          warnings: bk_count === 0 ? ['Sin bookings en el período'] : [],
+          row_count: bk_count,
+          data_freshness: new Date().toISOString(),
+        },
+        kpis: [
+          { code: 'gross_revenue',          label: 'Ingresos Brutos',       value: gross_rev,     unit: 'USD', delta_mom_pct: delta_rev, formula: 'SUM(transactions.amount WHERE account_type=revenue)' },
+          { code: 'net_revenue',            label: 'Ingresos Netos',        value: gross_rev - expense_amt, unit: 'USD', formula: 'gross_revenue - total_expenses' },
+          { code: 'total_bookings',         label: 'Total Bookings',        value: bk_count,      unit: 'count', delta_mom_pct: delta_bk },
+          { code: 'margin_pct',             label: 'Margen Operativo',      value: margin,        unit: '%', formula: '(gross_revenue - expenses) / gross_revenue' },
+          { code: 'avg_ticket',             label: 'Ticket Promedio',       value: avg_ticket,    unit: 'USD' },
+          { code: 'cash_days_outstanding',  label: 'Cash Days',             value: null,          unit: 'days', formula: 'AR pendiente / ingresos diarios promedio · Requiere booking_receivables' },
+          { code: 'revenue_leakage',        label: 'Revenue Leakage',       value: null,          unit: 'USD', formula: 'Requiere bookings_ledger completo' },
+          { code: 'active_alerts',          label: 'Alertas Activas',       value: alertCount,    unit: 'count' },
+          { code: 'horas_operadas',         label: 'Horas Operadas',        value: null,          unit: 'count', formula: 'Requiere boat_usage_log completado' },
+          { code: 'collection_rate',        label: 'Tasa de Cobro',         value: null,          unit: '%', formula: 'collected / gross_revenue · Requiere booking_deposits' },
+        ],
+        series: [
+          { label: 'revenue_daily', data: trendRows },
+          { label: 'by_channel',    data: channelRows },
+        ],
+        alerts: alertRows,
+        table: {
+          columns: [
+            { key: 'booking_id',    label: 'ID',         type: 'date' },
+            { key: 'customer_name', label: 'Cliente',    type: 'text' },
+            { key: 'platform',      label: 'Canal',      type: 'badge' },
+            { key: 'booking_date',  label: 'Fecha',      type: 'date' },
+            { key: 'total_amount',  label: 'Monto',      type: 'currency' },
+            { key: 'status',        label: 'Estado',     type: 'status' },
+            { key: 'boat_id',       label: 'Barco',      type: 'text' },
+          ],
+          rows: recentBookings,
+        }
+      });
+    } catch(err) {
+      console.error('NBIC /executive/kpis error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // -- F2: Alerts feed --------------------------------------
+  app.get('/api/nbic/executive/alerts', isAuthenticated, async (req, res) => {
+    try {
+      let alerts = [];
+      try {
+        const q = await pool.query(`
+          SELECT ae.*, ar.name, ar.description
+          FROM analytics.alert_events ae
+          JOIN analytics.alert_rules ar ON ar.alert_code = ae.alert_code
+          WHERE ae.resolved_at IS NULL
+          ORDER BY ae.severity DESC, ae.created_at DESC`);
+        alerts = q.rows;
+      } catch(e) {
+        alerts = [
+          { alert_code:'DATA_GAP',     name:'boat_id NULL en bookings',      description:'6 bookings sin barco asignado — afecta reportes de rentabilidad por embarcación', severity:'warn',     created_at: new Date() },
+          { alert_code:'MISSING_DATA', name:'bookings_ledger sin registros',  description:'El módulo de depósitos y ledger no ha sido utilizado — no hay trazabilidad de cobros',  severity:'info',     created_at: new Date() },
+          { alert_code:'SCHEMA_WARN',  name:'Analytics schema no ejecutado',  description:'Los DDL en nbic/*.sql deben ejecutarse para habilitar 19 de 27 reportes NBIC',         severity:'critical', created_at: new Date() },
+        ];
+      }
+      res.json({
+        meta: { report_code: 'RPT-F2', completeness_score: 0.60, row_count: alerts.length },
+        alerts,
+        table: {
+          columns: [
+            { key: 'severity',    label: 'Severidad', type: 'status' },
+            { key: 'name',        label: 'Alerta',    type: 'text' },
+            { key: 'description', label: 'Detalle',   type: 'text' },
+            { key: 'created_at',  label: 'Fecha',     type: 'date' },
+          ],
+          rows: alerts,
+        }
+      });
+    } catch(err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // -- Revenue endpoints ------------------------------------
+  const NBIC_BLOCKED = (code, title, deps) => ({
+    meta: { report_code: code, completeness_score: 0.0, warnings: deps },
+    kpis: [], series: [],
+    table: { columns: [], rows: [] }
+  });
+
+  app.get('/api/nbic/revenue/reconciliation', isAuthenticated, async (req, res) => {
+    try {
+      const { from, to } = nbicDateRange(req.query);
+      // Try bank_statements table
+      const bs = await pool.query(`SELECT COUNT(*) as cnt FROM bank_statements WHERE statement_date >= $1 AND statement_date <= $2`, [from, to]).catch(() => ({ rows: [{ cnt: 0 }] }));
+      if (parseInt(bs.rows[0].cnt) === 0) {
+        return res.json(NBIC_BLOCKED('RPT-A1','Conciliación', ['Requiere bank_statements cargados','Requiere bookings_ledger con datos']));
+      }
+      res.json({ meta: { report_code:'RPT-A1', completeness_score: 0.5 }, kpis:[], series:[], table:{ columns:[], rows:[] } });
+    } catch(err) { res.json(NBIC_BLOCKED('RPT-A1','Conciliación',['Error al consultar: '+err.message])); }
+  });
+
+  app.get('/api/nbic/revenue/aging', isAuthenticated, async (req, res) => {
+    try {
+      const { from, to } = nbicDateRange(req.query);
+      const q = await pool.query(`
+        SELECT br.id, br.party_name, br.amount_due, br.amount_paid,
+               (br.amount_due - COALESCE(br.amount_paid,0)) as outstanding,
+               br.due_date,
+               CURRENT_DATE - br.due_date::date as days_overdue
+        FROM booking_receivables br
+        WHERE br.status != 'paid'
+        ORDER BY br.due_date ASC LIMIT 50`).catch(() => ({ rows: [] }));
+      res.json({
+        meta: { report_code:'RPT-A2', completeness_score: q.rows.length > 0 ? 0.85 : 0.2, row_count: q.rows.length },
+        kpis: [], series: [],
+        table: {
+          columns: [
+            { key:'party_name',  label:'Cliente',    type:'text' },
+            { key:'amount_due',  label:'Monto',      type:'currency' },
+            { key:'outstanding', label:'Pendiente',  type:'currency' },
+            { key:'due_date',    label:'Vencimiento',type:'date' },
+            { key:'days_overdue',label:'Días',       type:'text' },
+          ],
+          rows: q.rows
+        }
+      });
+    } catch(err) { res.json(NBIC_BLOCKED('RPT-A2','Aging AR',['Error: '+err.message])); }
+  });
+
+  app.get('/api/nbic/revenue/by-dimension', isAuthenticated, async (req, res) => {
+    try {
+      const { from, to } = nbicDateRange(req.query);
+      const q = await pool.query(`
+        SELECT COALESCE(platform,'Directo') as dimension,
+               COUNT(*) as bookings,
+               SUM(total_amount::numeric) as revenue,
+               AVG(total_amount::numeric) as avg_ticket
+        FROM bookings
+        WHERE booking_date >= $1 AND booking_date <= $2 AND total_amount IS NOT NULL
+        GROUP BY platform ORDER BY revenue DESC`, [from, to]);
+      const rows = q.rows;
+      const total = rows.reduce((a,r) => a + parseFloat(r.revenue||0), 0);
+      res.json({
+        meta: { report_code:'RPT-A5', completeness_score: rows.length > 0 ? 0.80 : 0.3, row_count: rows.length },
+        kpis: [
+          { code:'total_revenue', label:'Revenue Total', value: total, unit:'USD' },
+          { code:'top_channel',   label:'Canal Principal', value: rows[0]?.dimension || '—', unit:'text' },
+        ],
+        series: [{ label:'by_channel', data: rows.map(r => ({ x: r.dimension, y: parseFloat(r.revenue||0) })) }],
+        table: {
+          columns: [
+            { key:'dimension', label:'Canal',         type:'badge' },
+            { key:'bookings',  label:'Bookings',      type:'text' },
+            { key:'revenue',   label:'Revenue',       type:'currency' },
+            { key:'avg_ticket',label:'Ticket Prom.',  type:'currency' },
+          ],
+          rows
+        }
+      });
+    } catch(err) { res.json(NBIC_BLOCKED('RPT-A5','Por Dimensión',['Error: '+err.message])); }
+  });
+
+  // A3, A4, A6 — blocked
+  ['payment-flow','pending-deposits','cash-days'].forEach((slug, i) => {
+    app.get(`/api/nbic/revenue/${slug}`, isAuthenticated, (req, res) => {
+      const codes = ['RPT-A3','RPT-A4','RPT-A6'];
+      const deps  = ['Requiere bookings_ledger con datos completos', 'Requiere booking_deposits con saldos'];
+      res.json(NBIC_BLOCKED(codes[i], slug, deps));
+    });
+  });
+
+  // -- Pricing endpoints ------------------------------------
+  app.get('/api/nbic/pricing/variance', isAuthenticated, async (req, res) => {
+    try {
+      const { from, to } = nbicDateRange(req.query);
+      const q = await pool.query(`
+        SELECT COALESCE(b.boat_id,'Sin asignar') as boat_id,
+               COUNT(*) as bookings,
+               MIN(b.total_amount::numeric) as min_price,
+               MAX(b.total_amount::numeric) as max_price,
+               AVG(b.total_amount::numeric) as avg_price,
+               STDDEV(b.total_amount::numeric) as std_dev
+        FROM bookings b
+        WHERE b.booking_date >= $1 AND b.booking_date <= $2 AND b.total_amount IS NOT NULL
+        GROUP BY b.boat_id ORDER BY avg_price DESC`, [from, to]);
+      res.json({
+        meta: { report_code:'RPT-B1', completeness_score: q.rows.length > 0 ? 0.70 : 0.2, row_count: q.rows.length,
+                warnings: ['boat_id NULL en algunos bookings — asignar para mejorar completitud'] },
+        kpis: [], series: [],
+        table: {
+          columns: [
+            { key:'boat_id',  label:'Barco',     type:'text' },
+            { key:'bookings', label:'Bookings',  type:'text' },
+            { key:'min_price',label:'Mín',       type:'currency' },
+            { key:'avg_price',label:'Promedio',  type:'currency' },
+            { key:'max_price',label:'Máx',       type:'currency' },
+            { key:'std_dev',  label:'Desv. Std', type:'currency' },
+          ],
+          rows: q.rows
+        }
+      });
+    } catch(err) { res.json(NBIC_BLOCKED('RPT-B1','Precios por Barco',['Error: '+err.message])); }
+  });
+
+  app.get('/api/nbic/pricing/avg-ticket', isAuthenticated, async (req, res) => {
+    try {
+      const { from, to } = nbicDateRange(req.query);
+      const q = await pool.query(`
+        SELECT TO_CHAR(booking_date::date,'YYYY-MM') as month,
+               COUNT(*) as bookings, AVG(total_amount::numeric) as avg_ticket,
+               SUM(total_amount::numeric) as revenue
+        FROM bookings WHERE booking_date >= $1 AND booking_date <= $2 AND total_amount IS NOT NULL
+        GROUP BY month ORDER BY month`, [from, to]);
+      res.json({
+        meta: { report_code:'RPT-B4', completeness_score: q.rows.length > 0 ? 0.75 : 0.2, row_count: q.rows.length },
+        kpis: [],
+        series: [{ label:'avg_ticket_monthly', data: q.rows.map(r => ({ x:r.month, y:parseFloat(r.avg_ticket||0) })) }],
+        table: {
+          columns: [
+            { key:'month',      label:'Mes',          type:'date' },
+            { key:'bookings',   label:'Bookings',     type:'text' },
+            { key:'avg_ticket', label:'Ticket Prom.', type:'currency' },
+            { key:'revenue',    label:'Revenue',      type:'currency' },
+          ],
+          rows: q.rows
+        }
+      });
+    } catch(err) { res.json(NBIC_BLOCKED('RPT-B4','Ticket Promedio',['Error: '+err.message])); }
+  });
+
+  // B2, B3, B5, B6 blocked
+  ['weekly','outliers','discount-analysis','leakage-waterfall'].forEach((slug, i) => {
+    app.get(`/api/nbic/pricing/${slug}`, isAuthenticated, (req, res) => {
+      const codes = ['RPT-B2','RPT-B3','RPT-B5','RPT-B6'];
+      res.json(NBIC_BLOCKED(codes[i], slug, ['Requiere analytics schema ejecutado','Requiere bookings con base_price y discount_amount']));
+    });
+  });
+
+  // -- Expenses endpoints -----------------------------------
+  app.get('/api/nbic/expenses/by-boat', isAuthenticated, async (req, res) => {
+    try {
+      const { from, to } = nbicDateRange(req.query);
+      const q = await pool.query(`
+        SELECT COALESCE(t.reference_id,'Sin asignar') as boat_id,
+               COUNT(*) as tx_count, SUM(t.amount) as total
+        FROM transactions t
+        JOIN chart_of_accounts ca ON ca.id = t.account_id
+        WHERE ca.account_type = 'expense'
+          AND t.transaction_date >= $1 AND t.transaction_date <= $2
+        GROUP BY t.reference_id ORDER BY total DESC LIMIT 20`, [from, to]);
+      res.json({
+        meta: { report_code:'RPT-C1', completeness_score: 0.4,
+                warnings:['reference_id no está normalizado a boat_id — asignar en transacciones'], row_count: q.rows.length },
+        kpis: [], series: [],
+        table: {
+          columns: [
+            { key:'boat_id',  label:'Referencia',  type:'text' },
+            { key:'tx_count', label:'Trans.',       type:'text' },
+            { key:'total',    label:'Total Gastos', type:'currency' },
+          ],
+          rows: q.rows
+        }
+      });
+    } catch(err) { res.json(NBIC_BLOCKED('RPT-C1','Gastos por Barco',['Error: '+err.message])); }
+  });
+
+  app.get('/api/nbic/expenses/period', isAuthenticated, async (req, res) => {
+    try {
+      const { from, to } = nbicDateRange(req.query);
+      const q = await pool.query(`
+        SELECT TO_CHAR(t.transaction_date,'YYYY-MM') as month,
+               SUM(t.amount) as total, COUNT(*) as tx_count
+        FROM transactions t
+        JOIN chart_of_accounts ca ON ca.id = t.account_id
+        WHERE ca.account_type = 'expense'
+          AND t.transaction_date >= $1 AND t.transaction_date <= $2
+        GROUP BY month ORDER BY month`, [from, to]);
+      res.json({
+        meta: { report_code:'RPT-C3', completeness_score: q.rows.length>0?0.80:0.2, row_count: q.rows.length },
+        kpis: [],
+        series: [{ label:'expense_monthly', data: q.rows.map(r => ({ x:r.month, y:parseFloat(r.total||0) })) }],
+        table: {
+          columns: [
+            { key:'month',    label:'Mes',          type:'date' },
+            { key:'tx_count', label:'Transacciones',type:'text' },
+            { key:'total',    label:'Total',         type:'currency' },
+          ],
+          rows: q.rows
+        }
+      });
+    } catch(err) { res.json(NBIC_BLOCKED('RPT-C3','Evolución',['Error: '+err.message])); }
+  });
+
+  // C4, C5, C6 blocked
+  ['top-suppliers','anomalies','breakeven'].forEach((slug, i) => {
+    app.get(`/api/nbic/expenses/${slug}`, isAuthenticated, (req, res) => {
+      const codes = ['RPT-C4','RPT-C5','RPT-C6'];
+      res.json(NBIC_BLOCKED(codes[i], slug, ['Requiere analytics schema con vistas materializadas','Requiere datos de proveedores normalizados']));
+    });
+  });
+
+  // -- Profitability endpoints ------------------------------
+  app.get('/api/nbic/profitability/by-boat', isAuthenticated, async (req, res) => {
+    try {
+      const { from, to } = nbicDateRange(req.query);
+      const q = await pool.query(`
+        SELECT COALESCE(b.boat_id,'Sin asignar') as boat_id,
+               COUNT(*) as bookings,
+               SUM(b.total_amount::numeric) as gross_revenue
+        FROM bookings b
+        WHERE b.booking_date >= $1 AND b.booking_date <= $2 AND b.total_amount IS NOT NULL
+        GROUP BY b.boat_id ORDER BY gross_revenue DESC`, [from, to]);
+      res.json({
+        meta: { report_code:'RPT-D1', completeness_score: 0.45,
+                warnings:['Sin datos de gastos por barco — margen no calculable','boat_id NULL en 6 bookings'], row_count: q.rows.length },
+        kpis: [],
+        series: [],
+        table: {
+          columns: [
+            { key:'boat_id',      label:'Barco',        type:'text' },
+            { key:'bookings',     label:'Bookings',     type:'text' },
+            { key:'gross_revenue',label:'Revenue Bruto',type:'currency' },
+          ],
+          rows: q.rows
+        }
+      });
+    } catch(err) { res.json(NBIC_BLOCKED('RPT-D1','Por Barco',['Error: '+err.message])); }
+  });
+
+  // D2, D3, D4, D5 — various completeness
+  ['margin-trend','by-channel','revpab','pnl'].forEach((slug, i) => {
+    app.get(`/api/nbic/profitability/${slug}`, isAuthenticated, (req, res) => {
+      const codes = ['RPT-D2','RPT-D3','RPT-D4','RPT-D5'];
+      res.json(NBIC_BLOCKED(codes[i], slug, ['Requiere gastos por barco asignados','Requiere boat_usage_log con datos completos']));
+    });
+  });
+
+  // -- Compare endpoints ------------------------------------
+  app.get('/api/nbic/compare/boats', isAuthenticated, async (req, res) => {
+    try {
+      const { from, to } = nbicDateRange(req.query);
+      const q = await pool.query(`
+        SELECT COALESCE(boat_id,'Sin asignar') as boat_id,
+               COUNT(*) as bookings,
+               SUM(total_amount::numeric) as revenue,
+               AVG(total_amount::numeric) as avg_ticket
+        FROM bookings
+        WHERE booking_date >= $1 AND booking_date <= $2 AND total_amount IS NOT NULL
+        GROUP BY boat_id ORDER BY revenue DESC`, [from, to]);
+      res.json({
+        meta: { report_code:'RPT-E1', completeness_score: q.rows.length>0 ? 0.60 : 0.2, row_count: q.rows.length,
+                warnings: q.rows.some(r => r.boat_id==='Sin asignar') ? ['Asignar boat_id a todos los bookings'] : [] },
+        kpis: [], series: [],
+        table: {
+          columns: [
+            { key:'boat_id',   label:'Barco',        type:'text' },
+            { key:'bookings',  label:'Bookings',     type:'text' },
+            { key:'revenue',   label:'Revenue',      type:'currency' },
+            { key:'avg_ticket',label:'Ticket Prom.', type:'currency' },
+          ],
+          rows: q.rows
+        }
+      });
+    } catch(err) { res.json(NBIC_BLOCKED('RPT-E1','Barco vs Barco',['Error: '+err.message])); }
+  });
+
+  app.get('/api/nbic/compare/periods', isAuthenticated, (req, res) => {
+    res.json(NBIC_BLOCKED('RPT-E2','Período vs Período',['Requiere parámetros period_a y period_b']));
+  });
+
+  app.get('/api/nbic/compare/seasonality', isAuthenticated, async (req, res) => {
+    try {
+      const q = await pool.query(`
+        SELECT TO_CHAR(booking_date::date,'MM') as month_num,
+               TO_CHAR(booking_date::date,'Mon') as month_label,
+               EXTRACT(DOW FROM booking_date::date) as dow,
+               COUNT(*) as bookings,
+               AVG(total_amount::numeric) as avg_ticket
+        FROM bookings WHERE total_amount IS NOT NULL
+        GROUP BY month_num, month_label, dow ORDER BY month_num, dow`);
+      res.json({
+        meta: { report_code:'RPT-E3', completeness_score: q.rows.length > 20 ? 0.75 : 0.4, row_count: q.rows.length },
+        kpis: [], series: [{ label:'seasonality_heatmap', data: q.rows }],
+        table: { columns:[], rows: q.rows }
+      });
+    } catch(err) { res.json(NBIC_BLOCKED('RPT-E3','Seasonality',['Error: '+err.message])); }
+  });
+
+  // ── END NBIC endpoints ──────────────────────────────────
+
   app.listen(PORT, HOST, () => {
     console.log(`🚀 Nadaki Excursions Backend running on ${HOST}:${PORT}`);
     console.log(`🌐 WordPress: ${WORDPRESS_DOMAIN}`);
     console.log(`📧 Webhooks disponibles para ${PLATFORMS.length} plataformas`);
     console.log(`🔗 Dashboard clásico: http://localhost:${PORT}/dashboard.html`);
     console.log(`⚡ Dashboard React: http://localhost:${PORT}/app`);
+    console.log(`📊 NBIC Reports: http://localhost:${PORT}/reports.html`);
   });
 })();

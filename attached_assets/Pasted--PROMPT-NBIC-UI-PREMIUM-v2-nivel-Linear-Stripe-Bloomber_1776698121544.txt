@@ -1,0 +1,390 @@
+# PROMPT — NBIC UI PREMIUM v2 (nivel Linear + Stripe + Bloomberg Terminal)
+
+## Contexto
+
+La v1 funcional del Nadaki Business Intelligence Center ya está desplegada en /reports.html. Ahora elevamos el NBIC a nivel de producto SaaS premium — el estándar visual de Linear, Stripe Dashboard, Vercel, y Bloomberg Terminal. Este dashboard tiene que verse como algo por lo que alguien pagaría $200/mes en una suscripción B2B.
+
+No es un rediseño cosmético. Es una reconstrucción de la capa de presentación con sistema de diseño propio, tokens, componentes robustos y microinteracciones.
+
+## Paso 0 obligatorio — antes de escribir una línea de código
+
+Responde en 3 líneas:
+1. ¿El proyecto actual es React, Vue, Svelte, o HTML/JS vanilla? (esto define las librerías)
+2. ¿Qué librerías de charts y UI ya están instaladas? (no duplicar dependencias)
+3. ¿El build tolera agregar: Inter + JetBrains Mono (Google Fonts), Lucide Icons, Fuse.js, y según stack Framer Motion o Web Animations API?
+
+Espera mi confirmación antes de empezar.
+
+Regla crítica: NO romper la v1 funcional. Trabaja de forma incremental. Los endpoints y la lógica de data siguen igual. Cambia solo la capa de presentación.
+
+## Filosofía de diseño (no negociable)
+
+Principio rector: densidad de información alta + jerarquía tipográfica impecable + quietud visual. El operador debe poder escanear 30 KPIs en 2 segundos sin sentirse abrumado.
+
+Inspiración exacta:
+- Linear — navegación, command palette, micro-animaciones, paleta monocromática
+- Stripe Dashboard — tablas densas, KPI cards, data-ink ratio
+- Vercel/Planetscale — dark mode técnico, uso de mono para números
+- Bloomberg Terminal — densidad de información, color reservado solo para señal
+
+Lo que NO queremos:
+- Gradientes arcoíris, sombras exageradas, iconos decorativos
+- Temática playera/náutica (anclas, olas, barcos)
+- Emojis en UI, ilustraciones, empty states con dibujitos
+- Border-radius grandes (nada > 8px excepto modales)
+- Espaciado generoso tipo landing page — esto es un terminal operativo
+
+## Sistema de diseño NBIC (construir desde cero)
+
+### Design tokens
+
+Crear /assets/css/nbic-tokens.css con variables CSS:
+
+/* Paleta — Dark mode (default) */
+--nbic-bg-base: #0A0B0D;
+--nbic-bg-elevated: #111316;
+--nbic-bg-card: #16181C;
+--nbic-bg-hover: #1C1F24;
+--nbic-border-subtle: #22262D;
+--nbic-border-default: #2D323A;
+
+--nbic-text-primary: #E8EAED;
+--nbic-text-secondary: #9BA3AF;
+--nbic-text-tertiary: #6B7280;
+--nbic-text-disabled: #4B5563;
+
+/* Acentos — usar con extrema moderación */
+--nbic-accent: #3B82F6;
+--nbic-success: #10B981;
+--nbic-warning: #F59E0B;
+--nbic-danger: #EF4444;
+--nbic-info: #8B5CF6;
+
+/* Light mode */
+[data-theme="light"] {
+  --nbic-bg-base: #FAFAFA;
+  --nbic-bg-elevated: #FFFFFF;
+  --nbic-bg-card: #FFFFFF;
+  --nbic-bg-hover: #F5F5F7;
+  --nbic-border-subtle: #E5E7EB;
+  --nbic-border-default: #D1D5DB;
+  --nbic-text-primary: #09090B;
+  --nbic-text-secondary: #52525B;
+  --nbic-text-tertiary: #71717A;
+}
+
+/* Tipografía */
+--nbic-font-sans: 'Inter', -apple-system, system-ui, sans-serif;
+--nbic-font-display: 'Inter Display', 'Inter', sans-serif;
+--nbic-font-mono: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+
+/* Escala tipográfica */
+--nbic-text-xs: 11px;
+--nbic-text-sm: 13px;
+--nbic-text-base: 14px;
+--nbic-text-lg: 16px;
+--nbic-text-xl: 20px;
+--nbic-text-2xl: 28px;
+--nbic-text-3xl: 36px;
+
+/* Espaciado — múltiplos de 4 */
+--nbic-space-1: 4px;
+--nbic-space-2: 8px;
+--nbic-space-3: 12px;
+--nbic-space-4: 16px;
+--nbic-space-6: 24px;
+--nbic-space-8: 32px;
+--nbic-space-12: 48px;
+
+/* Radius — conservador */
+--nbic-radius-sm: 4px;
+--nbic-radius-md: 6px;
+--nbic-radius-lg: 8px;
+--nbic-radius-xl: 12px;
+
+/* Sombras — mínimas */
+--nbic-shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+--nbic-shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+--nbic-shadow-lg: 0 16px 32px rgba(0,0,0,0.12);
+--nbic-shadow-glow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+
+/* Transiciones */
+--nbic-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+--nbic-duration-fast: 120ms;
+--nbic-duration-base: 180ms;
+--nbic-duration-slow: 280ms;
+
+### Reglas tipográficas
+- Números siempre en mono (JetBrains Mono) con font-variant-numeric: tabular-nums
+- Labels en uppercase con letter-spacing 0.08em, 11px, color tertiary
+- KPI values en display font 28-36px, font-weight 500 (no bold)
+- Tablas en 13px con line-height 1.5
+
+## Layout principal
+
+Estructura rígida, inspirada en Linear:
+
+- Top bar: 48px · logo · breadcrumb · cmd+k · theme · user
+- Filter bar: 52px sticky · fechas · barcos · canales · export
+- Sidebar: 240px expandido / 56px colapsado
+- Content area: max-width 1600px, padding 24px
+
+### Top bar (48px)
+- Logo "Nadaki / BIC" a la izquierda (texto, font-weight 600)
+- Breadcrumb central sutil (Executive / Revenue / By Boat)
+- Botón ⌘K a la derecha abre command palette
+- Toggle de tema (sol/luna icono lineal, NO emoji)
+- Avatar de usuario con menú
+
+### Sidebar (240px / 56px)
+
+Secciones con separadores y labels uppercase:
+
+WORKSPACE
+  ⊙ Executive              ⌘1
+  ↗ Revenue                ⌘2
+  ≈ Pricing                ⌘3
+  ↙ Expenses               ⌘4
+  ◇ Profitability          ⌘5
+
+ANALYSIS
+  ⇄ Compare                ⌘6
+  ⚠ Alerts           [3]   ⌘7
+  ↓ Exports                ⌘8
+
+SETTINGS
+  ⚙ Preferences
+  ⌘ Keyboard shortcuts
+
+- Iconos 16px stroke 1.5px (Lucide)
+- Item activo: fondo bg-hover + borde izquierdo 2px accent
+- Hover: fondo bg-hover, transición 120ms
+- Badge rojo 18px cuando hay alertas críticas
+- Shortcut hint a la derecha en mono 11px tertiary
+
+### Filter bar (52px sticky)
+- Date range picker custom con presets (NO nativo HTML)
+- Chips multi-select para barcos (max 3 visibles, "+N more")
+- Dropdown de canal y método de pago
+- Botón "Export" outline a la derecha
+- Contador sutil: "Filtered · 247 bookings · $48,230"
+
+## Componentes premium obligatorios
+
+### 1. KPICard — componente estrella
+
+Estructura:
+- Label uppercase 11px + icon hint ⓘ
+- Valor en mono 28px + delta chip
+- Sparkline SVG 40px altura
+- Contexto secundario 11px
+
+Especificaciones:
+- Background bg-card, border border-subtle 1px, radius md
+- Hover: border border-default, cursor pointer (abre drilldown)
+- Sparkline SVG 30 puntos sin ejes, color accent 40% opacity
+- Delta chip: fondo success/danger 12% opacity, texto 11px mono
+- Tooltip al hover del ⓘ explica fórmula exacta del KPI
+- Loading: skeleton con shimmer sutil
+- Empty: "—" en tertiary, NUNCA "$0.00"
+
+### 2. DataTable
+- Filas de 40px (media) o 32px (alta), toggle
+- Header sticky bg-elevated, uppercase 11px tertiary
+- Números mono tabular-nums, alineados derecha
+- Fechas formato "Apr 20, 14:23" (nunca ISO)
+- Row hover: bg-hover sin cambio de borde
+- Click en row: abre drilldown modal
+- Columnas con sort (chevron sutil al hover)
+- Column resize por drag
+- SIN zebra striping
+- Separadores al 50% opacity del border-subtle
+- Status badges: píldora 20px, 10px padding, 11px text, fondo 12% opacity
+
+### 3. Command Palette (⌘K) — crítico
+
+Activar con Cmd+K / Ctrl+K. Modal con blur de fondo.
+
+Secciones: RECENTS, REPORTS, BOATS, ACTIONS
+
+- Fuzzy search con fuse.js
+- Navegación 100% teclado: arrows, enter, esc
+- Ancho fijo 640px, posición vertical 25% viewport (no centrado)
+- Animación: scale 0.96 → 1 + opacity 0 → 1, duration 180ms
+
+### 4. Drilldown Modal
+- Slide-in desde derecha, ancho 720px, altura 100vh
+- Backdrop blur 8px + opacity 60%
+- Cierra con Esc o click fuera
+- Header: título + close + acciones (export)
+- Breadcrumb: "Revenue > By Boat > Barco Principal > Bookings"
+
+### 5. Charts (minimalista)
+- Ejes con ticks sutiles color tertiary
+- Grid lines horizontales opacity 30%, NUNCA verticales
+- Tooltip fondo bg-elevated, border border-default, radius sm
+- Líneas 1.5px stroke, sin puntos a menos que <10 datos
+- Bars con gap 8%, radius top 2px
+- Leyenda top-right, 11px uppercase tertiary
+- Palette: accent, success, warning, danger, info (máx 5)
+- Entrada 600ms ease-out, stagger 40ms entre series
+
+### 6. Filter components
+- Date range picker custom con presets laterales (Hoy, Ayer, 7d, 30d, MTD, QTD, YTD, Custom), dual calendar
+- Multi-select chip con fuzzy search interno, checkbox por opción, Select all/Clear, max 3 chips visibles
+
+### 7. Empty states
+- Ícono lineal 24px tertiary centrado
+- "No data for selected filters" en secondary 14px
+- Sub "Try expanding your date range" en tertiary 12px
+- Botón outline "Clear filters"
+- NUNCA dibujos, ilustraciones o emojis
+
+### 8. Loading states
+- Skeletons con shimmer (gradient 1.5s linear infinite)
+- Match exacto de la forma del contenido final
+- JAMÁS spinners centrales
+
+### 9. Toast notifications
+- Posición bottom-right
+- Duration 4s default, 8s errores
+- 11px label uppercase + 14px mensaje
+- Sin iconos decorativos, solo accent bar 2px izquierda
+
+## Microinteracciones obligatorias
+1. Hover en clickeables: transición background 120ms
+2. KPI card hover: elevación sutil (border más claro, NO shadow bump)
+3. Number transitions al filtrar: count-up 400ms ease-out
+4. Chart refresh: fade + morph, NUNCA flash blanco
+5. Sidebar collapse: ancho anima 280ms ease
+6. Theme toggle: transición color 200ms en todo (no flash)
+7. Drilldown open: backdrop fade 200ms + panel slide 280ms
+8. Sort column: chevron rota 180deg 180ms + FLIP si posible
+
+## Estados de completeness
+
+Cada reporte muestra en esquina superior derecha:
+- Dot verde 6px + "Complete" si completeness >= 0.95
+- Dot ámbar + "Partial · 74%" si entre 0.5 y 0.95
+- Dot rojo + "Blocked" si < 0.5, con tooltip explicando bloqueo
+
+## Responsive
+- Desktop-first (terminal operativo, no mobile app)
+- 1440px+: layout óptimo
+- 1024-1440px: sidebar colapsado default
+- <1024px: mensaje "NBIC optimized for desktop" + botón "Continue anyway"
+- Sin esfuerzo mobile-perfect
+
+## Dashboard Ejecutivo (F1) — especificación exacta
+
+Grid de 12 columnas.
+
+Row 1 — Hero KPIs (4 tarjetas de 3 cols):
+- Revenue MTD (hero 36px value)
+- Collected MTD
+- Deposited MTD
+- Collection Rate (con gauge circular 48px al lado)
+
+Row 2 — Secondary KPIs (6 tarjetas de 2 cols):
+- Bookings count
+- Average ticket
+- Active boats
+- Cash days outstanding
+- Revenue leakage
+- Alerts count
+
+Row 3 — Chart principal (cols 1-8) + Side panel (cols 9-12):
+- Chart: Revenue trend últimos 90 días con target line overlay
+- Side panel: Top 5 barcos por contribution margin (mini table con bars)
+
+Row 4 — Breakdown grid:
+- Revenue by channel (donut)
+- Payment method split (stacked bar horizontal)
+- Weekly heatmap (7x12 seasonality)
+
+Row 5 — Anomaly feed:
+- 10 últimas alertas: severity, timestamp, descripción, acción
+
+Rows separadas por 16px. Cards arrastrables para reordenar (drag & drop). Estado en localStorage.
+
+## Stack técnico
+- Fuentes: Inter + JetBrains Mono (Google Fonts, self-host para performance)
+- Iconos: Lucide Icons (outline, stroke 1.5px)
+- Charts: Recharts si React, Chart.js con config custom si vanilla
+- Date picker: react-day-picker o vanilla custom
+- Command palette: kbar/cmdk si React, vanilla custom si no
+- Animations: Framer Motion si React, Web Animations API si vanilla
+- Fuzzy search: Fuse.js
+- Toast: Sonner o build custom
+
+## Accesibilidad
+- Contraste WCAG AA mínimo en ambos temas (verificar con herramienta)
+- Focus visible en todo interactivo (ring 2px accent + offset 2px)
+- Navegación completa con teclado
+- aria-labels en todo ícono sin texto
+- Respetar prefers-reduced-motion deshabilitando animaciones
+
+## Entregables de esta iteración
+
+1. /assets/css/nbic-tokens.css — sistema completo
+2. /assets/css/nbic-components.css — estilos componentes
+3. /assets/js/nbic-components/ — componentes JS reutilizables
+4. /reports.html rediseñado completo
+5. Command palette funcional (Cmd+K)
+6. Theme toggle persistente en localStorage
+7. Mínimo 3 microinteracciones polished: KPI hover, count-up al filtrar, drilldown slide-in
+8. Dashboard Ejecutivo (F1) con layout completo
+9. Screenshot en dark y light mode
+10. URL viva desplegada en producción
+11. Video 30s (Loom) o GIF 10s mostrando: entrar, abrir cmd+k, cambiar filtro, abrir drilldown, cambiar tema
+
+## Criterio de éxito
+
+Al terminar yo debo poder:
+- Mostrar el dashboard a un inversionista y que piense "esto es software serio"
+- Navegar 90% del NBIC sin mouse
+- Cambiar dark ↔ light y que ambos se vean igual de buenos
+- Abrir cualquier KPI y ver su drilldown en <1s
+- Filtrar por fecha y que los números animen sin flash blanco
+- Sentir que es el tier de Linear, Stripe Dashboard o Vercel
+
+Si la UI no alcanza ese nivel, NO está terminado. No entregues "funcionalmente completo pero visualmente mediocre".
+
+## Reglas de oro
+1. Data-ink ratio máximo. Cada pixel sirve.
+2. Color solo como señal. Monocromático con 3 acentos estratégicos > lleno de colores.
+3. Tipografía hace el 60% del trabajo. Inter + JetBrains Mono con escala disciplinada.
+4. Animaciones invisibles. Si se notan, están mal.
+5. Densidad > espaciado generoso. Esto es un terminal.
+6. Nunca spinner central. Skeletons siempre.
+7. Números en mono tabular. Siempre. Sin excepción.
+8. Light mode diseñado conscientemente, NO un dark invertido.
+9. Si dudas entre dos opciones visuales, elige la más sobria.
+10. Tokens como fuente única de verdad. NUNCA hardcodear colores o spacing.
+
+## Orden de ejecución con checkpoints
+
+1. nbic-tokens.css completo
+2. Importar Inter + JetBrains Mono
+3. Layout shell (top bar + sidebar + filter bar) sin contenido
+
+CHECKPOINT A: muestra screenshot del shell vacío. No sigas sin mi OK.
+
+4. Componente KPICard perfecto
+
+CHECKPOINT B: muestra screenshot de 4 KPICards en dark y light. Si no están a nivel Linear/Stripe, itera hasta que lo estén. No sigas sin mi OK.
+
+5. Dashboard F1 completo aplicando KPICard y layout
+6. Command palette
+7. Resto de componentes (DataTable, charts, drilldown, etc.)
+8. Microinteracciones finales
+
+CHECKPOINT C: muestra screenshot completo del Dashboard F1 en ambos temas antes de deploy.
+
+9. Deploy + screenshots finales + video/GIF
+
+## Regla final
+
+Si al llegar al checkpoint B la KPICard no está al nivel visual de Linear o Stripe, detente e itera solo esa card hasta que lo esté. Todo el resto del sistema visual se apoya en ese componente. Si la KPICard es mediocre, el dashboard entero será mediocre.
+
+Empieza respondiendo el Paso 0 y espera mi confirmación.

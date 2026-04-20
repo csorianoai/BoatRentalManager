@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NBIC — Nadaki Business Intelligence Center</title>
+  <meta name="description" content="Centro de Inteligencia de Negocio · Nadaki Excursions · 27 reportes analíticos">
+
+  <!-- NBIC Design System -->
+  <link rel="stylesheet" href="/assets/css/nbic-tokens.css">
+  <link rel="stylesheet" href="/assets/css/nbic-components.css">
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <!-- Fuse.js (fuzzy search for command palette) -->
+  <script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.min.js"></script>
+
+  <style>
+    body { margin: 0; overflow-x: hidden; }
+    html { scroll-behavior: smooth; }
+
+    /* Sidebar nav tooltip for collapsed state */
+    .collapsed .nbic-nav-item { position: relative; }
+    .collapsed .nbic-nav-item::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      left: calc(var(--nbic-sidebar-collapsed) + 4px);
+      top: 50%; transform: translateY(-50%);
+      background: var(--nbic-bg-elevated);
+      border: 1px solid var(--nbic-border-default);
+      color: var(--nbic-text-primary);
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: var(--nbic-r-md);
+      white-space: nowrap;
+      pointer-events: none;
+      opacity: 0;
+      z-index: 9999;
+      transition: opacity 120ms;
+      box-shadow: var(--nbic-shadow-md);
+    }
+    .collapsed .nbic-nav-item:hover::after { opacity: 1; }
+
+    /* Scrollable content area on desktop */
+    .nbic-content { overflow-y: visible; }
+  </style>
+</head>
+<body class="nbic-root">
+
+<!-- ── Desktop Warning ────────────────────────────────────── -->
+<div id="nbic-desktop-warning" class="nbic-desktop-warning" style="display:none">
+  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--nbic-text-tertiary)" stroke-width="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+  <p style="font-size:16px;color:var(--nbic-text-secondary);font-weight:500">NBIC optimizado para escritorio</p>
+  <p style="font-size:13px;color:var(--nbic-text-tertiary)">Recomendamos una pantalla de al menos 1024px para la mejor experiencia.</p>
+  <button class="nbic-btn nbic-btn--outline" onclick="document.getElementById('nbic-desktop-warning').style.display='none'">Continuar de todas formas</button>
+</div>
+
+<!-- ── Top Bar ────────────────────────────────────────────── -->
+<header class="nbic-topbar">
+  <div class="nbic-topbar__logo">
+    <button id="nbic-sidebar-toggle" class="nbic-topbar__icon-btn" aria-label="Toggle sidebar">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 12h18M3 6h18M3 18h12"/></svg>
+    </button>
+    Nadaki <span>/ BIC</span>
+  </div>
+
+  <nav class="nbic-topbar__breadcrumb" aria-label="breadcrumb">
+    <span id="nbic-breadcrumb">Executive <span class="sep">/</span> Dashboard Ejecutivo</span>
+  </nav>
+
+  <div class="nbic-topbar__actions">
+    <button id="nbic-cmd-trigger" class="nbic-topbar__btn" aria-label="Abrir paleta de comandos">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      Buscar
+      <kbd>⌘K</kbd>
+    </button>
+    <button id="nbic-theme-toggle" class="nbic-topbar__icon-btn" onclick="NBICTheme.toggle()" aria-label="Cambiar tema">
+      <!-- filled by JS -->
+    </button>
+    <a href="/dashboard.html" class="nbic-topbar__icon-btn" aria-label="Ir al dashboard principal">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+    </a>
+  </div>
+</header>
+
+<!-- ── Sidebar ────────────────────────────────────────────── -->
+<aside class="nbic-sidebar" id="nbic-sidebar" role="navigation" aria-label="Reportes NBIC">
+
+  <!-- WORKSPACE -->
+  <div class="nbic-sidebar__section">
+    <div class="nbic-sidebar__section-label">Workspace</div>
+
+    <a class="nbic-nav-item active" data-report="f1" data-tooltip="Executive Dashboard" href="#f1" role="menuitem">
+      <svg class="nbic-nav-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
+      <span class="nbic-nav-item__label">Executive</span>
+      <span class="nbic-nav-item__shortcut">⌘1</span>
+    </a>
+
+    <a class="nbic-nav-item" data-report="a1" data-tooltip="Revenue" href="#a1" role="menuitem">
+      <svg class="nbic-nav-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+      <span class="nbic-nav-item__label">Revenue</span>
+      <span class="nbic-nav-item__shortcut">⌘2</span>
+    </a>
+
+    <a class="nbic-nav-item" data-report="b1" data-tooltip="Pricing" href="#b1" role="menuitem">
+      <svg class="nbic-nav-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+      <span class="nbic-nav-item__label">Pricing</span>
+      <span class="nbic-nav-item__shortcut">⌘3</span>
+    </a>
+
+    <a class="nbic-nav-item" data-report="c2" data-tooltip="Gastos" href="#c2" role="menuitem">
+      <svg class="nbic-nav-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+      <span class="nbic-nav-item__label">Gastos</span>
+      <span class="nbic-nav-item__shortcut">⌘4</span>
+    </a>
+
+    <a class="nbic-nav-item" data-report="d1" data-tooltip="Rentabilidad" href="#d1" role="menuitem">
+      <svg class="nbic-nav-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+      <span class="nbic-nav-item__label">Rentabilidad</span>
+      <span class="nbic-nav-item__shortcut">⌘5</span>
+    </a>
+  </div>
+
+  <!-- ANALYSIS -->
+  <div class="nbic-sidebar__section">
+    <div class="nbic-sidebar__section-label">Analysis</div>
+
+    <a class="nbic-nav-item" data-report="e1" data-tooltip="Compare" href="#e1" role="menuitem">
+      <svg class="nbic-nav-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+      <span class="nbic-nav-item__label">Compare</span>
+      <span class="nbic-nav-item__shortcut">⌘6</span>
+    </a>
+
+    <a class="nbic-nav-item" data-report="f2" data-tooltip="Alertas" href="#f2" role="menuitem">
+      <svg class="nbic-nav-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+      <span class="nbic-nav-item__label">Alertas</span>
+      <span class="nbic-nav-item__shortcut">⌘7</span>
+      <span class="nbic-nav-badge" id="nbic-alert-badge" style="display:none">0</span>
+    </a>
+
+    <a class="nbic-nav-item" href="/accounting.html" data-tooltip="Exports" role="menuitem">
+      <svg class="nbic-nav-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      <span class="nbic-nav-item__label">Exports</span>
+      <span class="nbic-nav-item__shortcut">⌘8</span>
+    </a>
+  </div>
+
+  <!-- Sub-navigation: Revenue -->
+  <div class="nbic-sidebar__section">
+    <div class="nbic-sidebar__section-label">Revenue (A)</div>
+    <a class="nbic-nav-item" data-report="a1" href="#a1" data-tooltip="A1 Conciliación"><span class="nbic-nav-item__icon" style="font-family:var(--nbic-font-mono);font-size:10px;text-align:center;color:var(--nbic-text-tertiary)">A1</span><span class="nbic-nav-item__label">Conciliación</span></a>
+    <a class="nbic-nav-item" data-report="a2" href="#a2" data-tooltip="A2 Aging AR"><span class="nbic-nav-item__icon" style="font-family:var(--nbic-font-mono);font-size:10px;text-align:center;color:var(--nbic-text-tertiary)">A2</span><span class="nbic-nav-item__label">Aging AR</span></a>
+    <a class="nbic-nav-item" data-report="a5" href="#a5" data-tooltip="A5 Por Dimensión"><span class="nbic-nav-item__icon" style="font-family:var(--nbic-font-mono);font-size:10px;text-align:center;color:var(--nbic-text-tertiary)">A5</span><span class="nbic-nav-item__label">Por Dimensión</span></a>
+  </div>
+
+  <!-- Sub-navigation: Pricing -->
+  <div class="nbic-sidebar__section">
+    <div class="nbic-sidebar__section-label">Pricing (B)</div>
+    <a class="nbic-nav-item" data-report="b1" href="#b1" data-tooltip="B1 Por Barco"><span class="nbic-nav-item__icon" style="font-family:var(--nbic-font-mono);font-size:10px;text-align:center;color:var(--nbic-text-tertiary)">B1</span><span class="nbic-nav-item__label">Por Barco</span></a>
+    <a class="nbic-nav-item" data-report="b4" href="#b4" data-tooltip="B4 Ticket Promedio"><span class="nbic-nav-item__icon" style="font-family:var(--nbic-font-mono);font-size:10px;text-align:center;color:var(--nbic-text-tertiary)">B4</span><span class="nbic-nav-item__label">Ticket Promedio</span></a>
+    <a class="nbic-nav-item" data-report="b6" href="#b6" data-tooltip="B6 Revenue Leakage"><span class="nbic-nav-item__icon" style="font-family:var(--nbic-font-mono);font-size:10px;text-align:center;color:var(--nbic-text-tertiary)">B6</span><span class="nbic-nav-item__label">Revenue Leakage</span></a>
+  </div>
+
+  <!-- Sub-navigation: Expenses -->
+  <div class="nbic-sidebar__section">
+    <div class="nbic-sidebar__section-label">Gastos (C)</div>
+    <a class="nbic-nav-item" data-report="c1" href="#c1" data-tooltip="C1 Por Barco"><span class="nbic-nav-item__icon" style="font-family:var(--nbic-font-mono);font-size:10px;text-align:center;color:var(--nbic-text-tertiary)">C1</span><span class="nbic-nav-item__label">Por Barco</span></a>
+    <a class="nbic-nav-item" data-report="c2" href="#c2" data-tooltip="C2 Por Categoría"><span class="nbic-nav-item__icon" style="font-family:var(--nbic-font-mono);font-size:10px;text-align:center;color:var(--nbic-text-tertiary)">C2</span><span class="nbic-nav-item__label">Por Categoría</span></a>
+    <a class="nbic-nav-item" data-report="c5" href="#c5" data-tooltip="C5 Anomalías"><span class="nbic-nav-item__icon" style="font-family:var(--nbic-font-mono);font-size:10px;text-align:center;color:var(--nbic-text-tertiary)">C5</span><span class="nbic-nav-item__label">Anomalías</span></a>
+  </div>
+
+  <!-- Sub-navigation: Profitability -->
+  <div class="nbic-sidebar__section">
+    <div class="nbic-sidebar__section-label">Rentabilidad (D)</div>
+    <a class="nbic-nav-item" data-report="d1" href="#d1" data-tooltip="D1 Por Barco"><span class="nbic-nav-item__icon" style="font-family:var(--nbic-font-mono);font-size:10px;text-align:center;color:var(--nbic-text-tertiary)">D1</span><span class="nbic-nav-item__label">Por Barco</span></a>
+    <a class="nbic-nav-item" data-report="d5" href="#d5" data-tooltip="D5 P&L"><span class="nbic-nav-item__icon" style="font-family:var(--nbic-font-mono);font-size:10px;text-align:center;color:var(--nbic-text-tertiary)">D5</span><span class="nbic-nav-item__label">P&amp;L</span></a>
+  </div>
+
+</aside>
+
+<!-- ── Filter Bar ─────────────────────────────────────────── -->
+<div class="nbic-filterbar" id="nbic-filterbar" role="toolbar" aria-label="Filtros globales">
+
+  <!-- Date range -->
+  <div class="nbic-date-picker">
+    <button class="nbic-filter-chip" id="nbic-date-chip" aria-haspopup="listbox" aria-label="Rango de fechas">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      <span id="nbic-date-label">Este mes</span>
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+    </button>
+    <div class="nbic-dropdown" id="nbic-date-dropdown" style="display:none" role="listbox">
+      <div class="nbic-dropdown__item" data-preset="today">Hoy</div>
+      <div class="nbic-dropdown__item" data-preset="yesterday">Ayer</div>
+      <div class="nbic-dropdown__divider"></div>
+      <div class="nbic-dropdown__item" data-preset="last_7d">Últimos 7 días</div>
+      <div class="nbic-dropdown__item" data-preset="this_week">Esta semana</div>
+      <div class="nbic-dropdown__item" data-preset="last_week">Semana pasada</div>
+      <div class="nbic-dropdown__divider"></div>
+      <div class="nbic-dropdown__item" data-preset="last_30d">Últimos 30 días</div>
+      <div class="nbic-dropdown__item selected" data-preset="this_month">Este mes</div>
+      <div class="nbic-dropdown__item" data-preset="last_month">Mes pasado</div>
+      <div class="nbic-dropdown__divider"></div>
+      <div class="nbic-dropdown__item" data-preset="this_quarter">Este trimestre</div>
+      <div class="nbic-dropdown__item" data-preset="this_year">Este año</div>
+    </div>
+  </div>
+
+  <!-- Boats chip -->
+  <button class="nbic-filter-chip" id="nbic-boats-chip" aria-label="Filtrar por barco">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 17h18M5 17V9l7-5 7 5v8"/><path d="M9 17v-5h6v5"/></svg>
+    Todos los barcos
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+  </button>
+
+  <!-- Channel chip -->
+  <button class="nbic-filter-chip" id="nbic-channel-chip" aria-label="Filtrar por canal">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+    Todos los canales
+  </button>
+
+  <!-- Stats -->
+  <div class="nbic-filterbar__stats" id="nbic-filter-stats">
+    <strong id="nbic-stats-bookings">—</strong> bookings &middot; <strong id="nbic-stats-revenue">—</strong>
+  </div>
+
+  <!-- Export button -->
+  <button class="nbic-btn nbic-btn--outline nbic-btn--sm" onclick="NBICToast.show('Export CSV en construcción — disponible en Fase 2','default','EXPORT')" aria-label="Exportar CSV">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+    Export
+  </button>
+</div>
+
+<!-- ── Main Content ───────────────────────────────────────── -->
+<main class="nbic-content" id="nbic-main-content" role="main">
+  <div id="nbic-content-area">
+    <!-- Rendered by NBICReports.load() -->
+  </div>
+</main>
+
+<!-- ── Command Palette ────────────────────────────────────── -->
+<div class="nbic-cmd-backdrop" id="nbic-cmd-backdrop" role="dialog" aria-modal="true" aria-label="Paleta de comandos">
+  <div class="nbic-cmd-palette" role="search">
+    <div class="nbic-cmd-input-wrap">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      <input class="nbic-cmd-input" id="nbic-cmd-input" placeholder="Buscar reporte, acción o navegación..." autocomplete="off" spellcheck="false" aria-label="Buscar">
+    </div>
+    <div class="nbic-cmd-results" id="nbic-cmd-results" role="listbox">
+      <!-- Rendered by NBICCommandPalette -->
+    </div>
+    <div class="nbic-cmd-footer">
+      <span><kbd>↑↓</kbd> navegar</span>
+      <span><kbd>Enter</kbd> seleccionar</span>
+      <span><kbd>Esc</kbd> cerrar</span>
+      <span><kbd>⌘1–8</kbd> acceso rápido</span>
+    </div>
+  </div>
+</div>
+
+<!-- ── Drilldown Panel ────────────────────────────────────── -->
+<div class="nbic-drilldown-backdrop" id="nbic-drilldown-backdrop" role="dialog" aria-modal="true" aria-label="Detalle de dato"></div>
+<div class="nbic-drilldown-panel" id="nbic-drilldown-panel" style="display:none" role="complementary">
+  <div class="nbic-drilldown-panel__header">
+    <div>
+      <div class="nbic-drilldown-panel__title" id="nbic-drilldown-title">Detalle</div>
+      <div class="nbic-drilldown-panel__breadcrumb" id="nbic-drilldown-breadcrumb"></div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="nbic-btn nbic-btn--ghost nbic-btn--sm" onclick="NBICToast.show('Export CSV del detalle — disponible en Fase 2','default','EXPORT')">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        CSV
+      </button>
+      <button class="nbic-topbar__icon-btn" id="nbic-drilldown-close" aria-label="Cerrar panel">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="nbic-drilldown-panel__body" id="nbic-drilldown-body">
+    <!-- Rendered by NBICDrilldown -->
+  </div>
+</div>
+
+<!-- ── Toast Container ────────────────────────────────────── -->
+<div class="nbic-toast-container" id="nbic-toast-container" role="status" aria-live="polite"></div>
+
+<!-- ── Scripts ────────────────────────────────────────────── -->
+<script src="/assets/js/nbic/nbic-ui.js"></script>
+
+</body>
+</html>
