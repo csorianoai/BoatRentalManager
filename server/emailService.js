@@ -276,7 +276,7 @@ class EmailService {
           `INSERT INTO message_threads (
             id, platform, customer_name, customer_email, customer_phone,
             subject, status, unread_count, last_message_at, created_at, updated_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, 'open', 1, NOW(), NOW(), NOW())`,
+          ) VALUES ($1, $2, $3, $4, $5, $6, 'active', 1, NOW(), NOW(), NOW())`,
           [threadId, platform, customerName, customerEmail, customerPhone, mail.subject]
         );
       }
@@ -400,7 +400,7 @@ class EmailService {
         `INSERT INTO message_threads (
           id, platform, customer_name, customer_email, customer_phone,
           subject, status, unread_count, last_message_at, created_at, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, 'open', 1, NOW(), NOW(), NOW())
+        ) VALUES ($1, $2, $3, $4, $5, $6, 'active', 1, NOW(), NOW(), NOW())
         ON CONFLICT (id) DO UPDATE SET
           last_message_at = NOW(),
           unread_count = message_threads.unread_count + 1,
