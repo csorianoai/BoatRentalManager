@@ -1,0 +1,193 @@
+Entregaste inventario excelente. Ahora reorganiza el sistema completo según estas decisiones aprobadas.
+
+## DECISIONES APROBADAS (no discutibles)
+
+D1: /executive.html se ABSORBE en /reports.html#f1. Crear redirect permanente.
+D2: /sync.html se CREA como página nueva funcional (no se elimina del menú).
+D3: Dashboard único con 3 vistas conmutables (Operador/Financiera/Ejecutiva). Persistir selección en localStorage.
+D4: /captain.html se convierte en "Portal del Capitán" con URL compartible tipo /captain/{token}.
+D5: /accounting.html se mantiene monolítica. Solo se añaden links directos a sus tabs desde el menú principal.
+
+## ARQUITECTURA DE NAVEGACIÓN FINAL
+
+### Barra superior global (reemplazar todos los navbars actuales)
+
+Crear componente compartido /assets/js/components/global-nav.js que se inyecta en TODAS las páginas del sistema. Estructura:
+
+[Logo Nadaki] [Dashboard] [Operaciones ▼] [Flota ▼] [Finanzas ▼] [Comercial ▼] [⌘K Buscar] [Vista: Operador ▼] [Usuario ▼]
+
+Hover/click en cada categoría → dropdown con items de esa sección.
+
+### Estructura completa del menú
+
+**INICIO**
+- Dashboard (único, con 3 vistas conmutables)
+
+**OPERACIONES** (dropdown)
+- Fleet Operations Center → /fleet.html#foc
+- Calendario Semanal → /schedule.html
+- Mensajes → /messages.html
+- Tareas → /operations.html
+- Condiciones Marinas → /marine-conditions.html
+
+**FLOTA** (dropdown)
+- Gestión de Barcos → /fleet.html#barcos
+- Mantenimiento → /boat-maintenance.html
+- Combustible → /fuel-tracker.html
+- Tripulación → /crew.html
+- Activos → /assets.html
+
+**FINANZAS** (dropdown)
+- NBIC Analytics → /reports.html
+- Contabilidad → /accounting.html
+- Conciliación Bancaria → /accounting.html#reconciliation
+- Análisis Ingresos → /accounting.html#analisis-ingresos
+- Análisis Gastos → /accounting.html#analisis-gastos
+- Comisiones → /commissions.html
+- Gastos Recurrentes → /fleet.html#gastos-recurrentes
+- Depósitos → /accounting.html#depositos
+
+**COMERCIAL** (dropdown)
+- Precios → /pricing.html
+- Pricing Dinámico → /dynamic-pricing.html
+- Sincronización Plataformas → /sync.html (NUEVA)
+- Documentos → /documents.html
+
+**CONFIG** (icono engranaje a la derecha)
+- Preferencias
+- Integraciones
+- Portal del Capitán → /captain/{token}
+- Cerrar sesión
+
+## IMPLEMENTACIÓN EN FASES
+
+### FASE A — Navbar Global (2-3 días)
+
+1. Crear /assets/js/components/global-nav.js con la estructura completa
+2. Crear /assets/css/global-nav.css reutilizando tokens NBIC
+3. Dropdowns con animación suave, click-outside-to-close, keyboard accessible
+4. Búsqueda global ⌘K con fuzzy search sobre: reservas, barcos, capitanes, transacciones
+5. Switcher de Vista (Operador/Financiera/Ejecutiva) persistente en localStorage
+6. Indicador del usuario activo con menú (preferencias, logout)
+7. Badge de alertas críticas en el icono de notificaciones (global)
+8. Insertar el navbar en TODAS las 19 páginas existentes reemplazando sus navbars locales
+9. Borrar los headers individuales de cada página
+
+### FASE B — Dashboard Unificado con 3 Vistas (2 días)
+
+Modificar /dashboard.html para soportar 3 modos conmutables:
+
+**Vista Operador (default):**
+- KPI bar: Reservas hoy, Próxima salida, Mensajes sin leer, Alertas críticas
+- Fleet Ops Timeline embebido (widget reducido, 3 días visible)
+- Feed de últimos mensajes entrantes (5 más recientes)
+- Top 5 alertas operativas accionables
+
+**Vista Financiera:**
+- KPI bar: Revenue MTD, Collected MTD, AR pendiente, Gastos MTD
+- Chart: Revenue vs Gastos últimos 30 días
+- AR aging buckets visual
+- Próximos depósitos programados
+
+**Vista Ejecutiva:**
+- KPI bar: Revenue MoM delta, YoY delta, Margen consolidado, Ocupación promedio
+- Chart: Tendencia mensual 12 meses
+- Top 5 barcos por contribution margin
+- Acceso directo al Board Report
+
+Switcher arriba a la derecha del dashboard, NO en el navbar (porque es específico del dashboard). Persistir en localStorage como "dashboard-view-preference".
+
+### FASE C — Eliminación de /executive.html (1 hora)
+
+1. Identificar todos los enlaces a /executive.html en el código
+2. Reemplazarlos por /reports.html#f1
+3. Crear redirect 301 de /executive.html → /reports.html#f1 para URLs externas guardadas
+4. Archivar el archivo en /public/_archive/executive.html.bak por si hay rollback
+5. Eliminar del código activo
+
+### FASE D — Construcción de /sync.html (3-4 días)
+
+Nueva página con funcionalidad real de sincronización de plataformas. NO crear placeholder vacío. Alcance:
+
+Tabs internas:
+- Conexiones (Airbnb, GetMyBoat, BoatSetter, etc.) — estado de cada integración, última sync, próxima sync
+- Jobs — historial de syncs ejecutados con status, duración, conflictos
+- Conflictos — bookings con discrepancias entre plataforma y sistema interno
+- Configuración — frecuencia de sync por plataforma, reglas de mapping
+
+Si hay código de /api/sync/* que no tenía UI, este es el lugar donde se visualiza. Usar lo que ya existe del backend (9 endpoints según inventario).
+
+### FASE E — Portal del Capitán con URL compartible (1-2 días)
+
+1. Mover /captain.html a /captain/index.html
+2. Implementar rutas tipo /captain/{token} donde token es único por capitán
+3. Generar tokens en tabla captains (captain_access_token)
+4. URL para compartir con cada capitán por WhatsApp: gestion.nadakiexcursions.com/captain/abc123
+5. Vista móvil-first (los capitanes usan celular)
+6. Sin navbar global (experiencia aislada)
+7. Solo muestra: reservas asignadas al capitán ese día/semana, check-in/out, report de viaje
+8. Agregar al menú Config > Portal del Capitán con opción de copiar link por capitán
+
+### FASE F — Búsqueda global ⌘K (2 días)
+
+Implementar dentro del navbar global:
+- Activación con ⌘K / Ctrl+K desde cualquier página
+- Modal centered con input + resultados
+- Fuzzy search sobre:
+  - Bookings: por cliente, booking_id, referencia
+  - Barcos: por nombre
+  - Capitanes: por nombre
+  - Páginas: por título ("conciliación", "combustible", etc.)
+  - Acciones rápidas: "Nueva reserva", "Crear gasto", "Toggle dark mode"
+- Resultados categorizados
+- Navegación 100% teclado (flechas + Enter)
+- Reutilizar Fuse.js ya instalado
+
+### FASE G — Cleanup y consolidación (1 día)
+
+1. Revisar todas las 19 páginas y asegurar consistencia visual
+2. Actualizar replit.md con nueva arquitectura
+3. Agregar tests al runner self-check.js:
+   - N-01: navbar global presente en todas las páginas
+   - N-02: cada link del navbar carga la página correcta sin 404
+   - N-03: ⌘K funciona desde cualquier página
+   - N-04: dashboard persiste vista preferida
+   - N-05: /executive.html redirige a /reports.html#f1
+   - N-06: /sync.html existe y carga sin errores
+   - N-07: /captain/{token} carga correctamente con token válido
+
+## REGLAS NO NEGOCIABLES
+
+1. **Zero páginas rotas en producción.** Antes de cualquier cambio, validar que los 19 URLs actuales siguen funcionando.
+2. **Navbar global idéntico en todas las páginas.** Si algún componente del navbar no funciona en una página, hay que arreglar esa página, no quitar el componente.
+3. **Persistencia de estado.** Vista preferida del dashboard, menús expandidos, filtros activos — todo en localStorage.
+4. **Keyboard navigation en todo.** Menús accesibles con Tab. ⌘K desde cualquier página. Esc cierra modales.
+5. **Coherencia visual con NBIC.** Reutilizar tokens, fuentes, paleta.
+6. **Todas las páginas terminan con la versión BUILD_TS visible.** Ya está en footer del dashboard y fleet, replicar en todas.
+7. **No tocar la lógica de negocio de las páginas existentes.** Solo se reemplaza su navbar y se añaden redirects. El contenido interno de cada página se preserva.
+
+## ORDEN DE EJECUCIÓN Y CHECKPOINTS
+
+1. **CHECKPOINT 1 (Fase A):** Navbar global funcionando en las 19 páginas. Screenshot de 5 páginas distintas con el nuevo navbar. Correr self-check.js.
+2. **CHECKPOINT 2 (Fase B):** Dashboard unificado con switcher de 3 vistas. Screenshot de las 3 vistas.
+3. **CHECKPOINT 3 (Fase C):** executive.html eliminado con redirect. Verificar que no hay enlaces rotos.
+4. **CHECKPOINT 4 (Fase D):** sync.html funcional con data real.
+5. **CHECKPOINT 5 (Fase E):** Portal del capitán con URLs tokenizadas.
+6. **CHECKPOINT 6 (Fase F):** ⌘K global operativo.
+7. **CHECKPOINT 7 (Fase G):** Cleanup final + tests nuevos.
+
+Después de CADA checkpoint:
+1. Publish a producción
+2. Correr node validation/self-check.js --target=prod
+3. Entregar reporte
+4. Esperar aprobación antes de pasar al siguiente
+
+## PREGUNTA ANTES DE EMPEZAR
+
+Antes de arrancar Fase A, necesito confirmación de 2 cosas operativas:
+
+1. ¿Hay usuarios de Nadaki usando activamente el sistema AHORA MISMO que podrían verse impactados por cambios en producción? Si sí, ¿hay una ventana horaria preferida para despliegues (ej: 2 AM EST)?
+
+2. ¿Los 19 URLs actuales son conocidos/bookmarked por el equipo? Si alguien tiene bookmarks a /executive.html, /accounting.html#tab-especifico, etc., necesitamos preservar esas URLs vía redirects para no romper flujos existentes.
+
+Con esas 2 respuestas arranco Fase A (Navbar Global).
