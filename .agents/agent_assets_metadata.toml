@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "Tlva62VPuMxroL45ri6If"
+uri = "file://SYSTEM_INVENTORY.md"
+type = "text"
+title = "SYSTEM_INVENTORY.md — Auditoría completa del sistema"
