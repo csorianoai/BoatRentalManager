@@ -22,6 +22,20 @@ Developed with Express.js (Node.js), the backend provides RESTful APIs with cust
 
 PostgreSQL (Neon-backed via Replit) is the primary database, featuring a comprehensive schema across 36+ tables. Key tables include `bookings`, `captains`, `users`, `chat_conversations`, `platform_sync_status`, `commission_rules`, `captain_availability`, `boats`, `platform_pricing_policies`, a full suite of accounting tables, messaging tables, boat maintenance tables, and fleet management tables. New tables: `brokers` (agency/broker accounts), `customers` (direct client records), `bookings_ledger` (full booking record linking deposits + AR + parties), extended `booking_deposits` (booking_source, broker_id, customer_id, final_customer_*), extended `booking_receivables` (party_type, party_id, party_name, booking_id). **FASE 15 tables**: `boat_usage_log` (booking_id UNIQUE, boat_id, hours_reserved, hours_engine, status='pending'|'complete') auto-created on `POST /api/bookings`; `boat_fuel_log` (boat_id, log_date, gallons, cost_per_gallon, total_cost, odometer_hours, station). UUIDs/nanoid IDs are used for primary keys, and JSONB stores flexible data.
 
+**FASE 17 — Fleet Operations Center (Fase 1)**:
+- `fleet_config` table: canonical boat registry (boat_type PK, display_name, display_color, short_label, buffer_minutes DEFAULT 60, is_active)
+- `holds` table: temporary boat blocks (id, boat_type, start/end_datetime, reason, expires_at)
+- `maintenance_blocks` table: scheduled maintenance (id, boat_type, start/end_datetime, maintenance_type, severity, status, workshop, notes)
+- `operations_alerts` table: auto-detected + manual alerts (id, alert_type, severity, booking_id FK, message, detected_at, resolved_at)
+- `bookings.payment_status` TEXT CHECK (paid|partial|pending|refunded) added
+- `bookings.duration_source` TEXT CHECK (manual|default_backfill|calculated) added
+- `bookings.start_time_source` TEXT CHECK (manual|default_backfill|calculated) added
+- Backfill executed: all 6 dev bookings → duration_hours=4 (default_backfill), start_time='10:00' (default_backfill)
+- New endpoints: GET /api/fleet/timeline, GET /api/fleet/kpis, GET /api/fleet/today-strip, GET /api/fleet/alerts
+- Fleet Ops UI: `public/assets/js/operations/fleet-ops.js` replaces the old calendar tab in `/fleet.html`
+- Old calendar tab (renderCalendar/renderCalendarGrid) removed from fleet.js; replaced with FleetOpsCenter.init()
+- 6 fleet_config rows seeded with boat colors: CRANCHI=#3B82F6, SILVER LINNING=#F59E0B, SEA RAY NAUTI NABOURS 40=#EC4899, SEARAY 500=#10B981, SeaRay 31=#6B7280, SeaRay 36=#8B5CF6
+
 **FASE 16 — Trazabilidad y Normalización (reporting foundation)**:
 - `bookings.total_amount` migrated from INTEGER to NUMERIC(12,2) (confirmed: USD dollar values, not cents, range $850–$1,521)
 - `transactions.booking_id TEXT` (FK to bookings) and `transactions.ledger_id TEXT` (FK to bookings_ledger) added — enables direct booking→transaction traceability. Rule: one booking → many transactions (N:1).

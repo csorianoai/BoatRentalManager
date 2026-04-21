@@ -67,7 +67,7 @@ function initTabs() {
       document.getElementById(`${tabName}-tab`).classList.add('active');
 
       if (tabName === 'calendar') {
-        renderCalendar();
+        if (window.FleetOpsCenter) FleetOpsCenter.init();
       } else if (tabName === 'platforms') {
         loadPlatformBoatSelect();
       } else if (tabName === 'recurring-expenses') {
@@ -100,16 +100,7 @@ function setupEventListeners() {
   const logoutBtn = document.getElementById('logout-btn');
   if (logoutBtn) logoutBtn.addEventListener('click', logout);
 
-  // Calendar navigation
-  document.getElementById('prev-month-btn').addEventListener('click', () => {
-    currentMonth.setMonth(currentMonth.getMonth() - 1);
-    renderCalendar();
-  });
-  document.getElementById('next-month-btn').addEventListener('click', () => {
-    currentMonth.setMonth(currentMonth.getMonth() + 1);
-    renderCalendar();
-  });
-  document.getElementById('calendar-boat-filter').addEventListener('change', renderCalendar);
+  // Fleet Operations Center is initialized on tab click (see tab handler above)
 
   // Platform linking
   document.getElementById('platform-boat-select').addEventListener('change', loadPlatformIds);
@@ -427,86 +418,7 @@ async function saveBoat(e) {
   }
 }
 
-// Calendar Functions
-async function renderCalendar() {
-  const boatId = document.getElementById('calendar-boat-filter').value;
-  const monthElement = document.getElementById('calendar-month');
-  const calendarView = document.getElementById('calendar-view');
-
-  const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-  monthElement.textContent = `${monthNames[currentMonth.getMonth()]} ${currentMonth.getFullYear()}`;
-
-  try {
-    const year = currentMonth.getFullYear();
-    const month = currentMonth.getMonth() + 1;
-    const url = `/api/fleet/availability?year=${year}&month=${month}${boatId ? `&boatId=${boatId}` : ''}`;
-    
-    const response = await authFetch(url);
-    const availability = await response.json();
-
-    renderCalendarGrid(availability, boatId);
-  } catch (error) {
-    console.error('Error loading calendar:', error);
-    calendarView.innerHTML = '<p class="error">❌ Error al cargar el calendario</p>';
-  }
-}
-
-function renderCalendarGrid(availability, boatId) {
-  const calendarView = document.getElementById('calendar-view');
-  const firstDay = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
-  const lastDay = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
-  
-  const daysInMonth = lastDay.getDate();
-  const startingDayOfWeek = firstDay.getDay();
-
-  let html = '<div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; margin-top: 16px;">';
-  
-  // Day headers
-  const dayNames = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
-  dayNames.forEach(day => {
-    html += `<div style="font-weight: 700; text-align: center; padding: 8px; background: #f0f0f0; border-radius: 4px;">${day}</div>`;
-  });
-
-  // Empty cells before first day
-  for (let i = 0; i < startingDayOfWeek; i++) {
-    html += '<div></div>';
-  }
-
-  // Days of month
-  for (let day = 1; day <= daysInMonth; day++) {
-    const date = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    const dayAvailability = availability.filter(a => a.date === date);
-    
-    const isAvailable = dayAvailability.length === 0 || dayAvailability.every(a => a.isAvailable);
-    const bgColor = isAvailable ? '#d4edda' : '#f8d7da';
-    const textColor = isAvailable ? '#155724' : '#721c24';
-    
-    html += `
-      <div style="
-        background: ${bgColor};
-        border: 1px solid ${textColor}33;
-        border-radius: 6px;
-        padding: 12px;
-        min-height: 80px;
-        cursor: pointer;
-        transition: transform 0.2s;
-      " onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
-        <div style="font-weight: 700; color: ${textColor}; margin-bottom: 4px;">${day}</div>
-        <div style="font-size: 12px; color: ${textColor};">
-          ${isAvailable ? '✅ Disponible' : '🚫 Bloqueado'}
-        </div>
-        ${dayAvailability.length > 0 ? `
-          <div style="font-size: 11px; color: ${textColor}; margin-top: 4px;">
-            ${dayAvailability.map(a => a.blockReason || 'Bloqueado').join(', ')}
-          </div>
-        ` : ''}
-      </div>
-    `;
-  }
-
-  html += '</div>';
-  calendarView.innerHTML = html;
-}
+// Calendar tab replaced by Fleet Operations Center (fleet-ops.js)
 
 // Platform Linking Functions
 function loadPlatformBoatSelect() {

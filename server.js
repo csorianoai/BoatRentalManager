@@ -14592,6 +14592,331 @@ const HOST = '0.0.0.0'; // Required for deployment
 
   // ── END NBIC endpoints ──────────────────────────────────
 
+  // ══════════════════════════════════════════════════════════
+  // FLEET OPERATIONS CENTER — FASE 1 ENDPOINTS
+  // ══════════════════════════════════════════════════════════
+
+  // GET /api/fleet/timeline — bookings + holds + maintenance for a range
+  app.get('/api/fleet/timeline', async (req, res) => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const from = req.query.from || today;
+      const to   = req.query.to   || new Date(Date.now() + 6*86400000).toISOString().split('T')[0];
+
+      // Fleet config (all active boats)
+      const fleetQ = await pool.query(`
+        SELECT boat_type, display_name, display_color, short_label, buffer_minutes, is_active
+        FROM fleet_config
+        WHERE is_active = true
+        ORDER BY display_name
+      `);
+
+      // Bookings in range — include 1 day before/after for partial overlaps
+      const bookingsQ = await pool.query(`
+        SELECT b.id, b.customer_name, b.boat_type, b.booking_date,
+               b.start_time, b.start_time_source,
+               b.duration_hours, b.duration_source,
+               b.status, b.assigned_captain_name, b.stew_name,
+               b.total_amount, b.deposit_amount, b.balance_pending,
+               b.payment_status, b.payment_method, b.num_guests,
+               b.notes, b.internal_notes, b.platform, b.pickup_location
+        FROM bookings b
+        WHERE b.booking_date >= $1
+          AND b.booking_date <= $2
+          AND b.status != 'cancelled'
+        ORDER BY b.booking_date, b.start_time
+      `, [from, to]);
+
+      // Holds in range
+      let holdsRows = [];
+      try {
+        const holdsQ = await pool.query(`
+          SELECT id, boat_type, start_datetime, end_datetime, reason, expires_at
+          FROM holds
+          WHERE DATE(start_datetime) <= $2 AND DATE(end_datetime) >= $1
+        `, [from, to]);
+        holdsRows = holdsQ.rows;
+      } catch(e) { /* table may not exist yet */ }
+
+      // Maintenance blocks in range
+      let maintRows = [];
+      try {
+        const maintQ = await pool.query(`
+          SELECT id, boat_type, start_datetime, end_datetime,
+                 maintenance_type, severity, status, workshop, notes
+          FROM maintenance_blocks
+          WHERE DATE(start_datetime) <= $2 AND DATE(end_datetime) >= $1
+            AND status != 'completed'
+        `, [from, to]);
+        maintRows = maintQ.rows;
+      } catch(e) { /* table may not exist yet */ }
+
+      res.json({
+        range: { from, to },
+        fleet: fleetQ.rows,
+        bookings: bookingsQ.rows,
+        holds: holdsRows,
+        maintenance: maintRows
+      });
+    } catch (err) {
+      console.error('Fleet timeline error:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/fleet/kpis — aggregate KPIs for the visible range
+  app.get('/api/fleet/kpis', async (req, res) => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const from = req.query.from || today;
+      const to   = req.query.to   || new Date(Date.now() + 6*86400000).toISOString().split('T')[0];
+
+      // Days in range for utilization calc
+      const fromDate = new Date(from);
+      const toDate   = new Date(to);
+      const rangeDays = Math.max(1, Math.round((toDate - fromDate) / 86400000) + 1);
+
+      // Active boats count
+      const fleetCountQ = await pool.query(`SELECT COUNT(*) FROM fleet_config WHERE is_active = true`);
+      const boatCount = parseInt(fleetCountQ.rows[0].count) || 1;
+
+      // Booking KPIs
+      const kpiQ = await pool.query(`
+        SELECT
+          COUNT(*)                                            AS total_bookings,
+          COALESCE(SUM(total_amount::numeric), 0)           AS total_revenue,
+          COALESCE(SUM(CASE WHEN assigned_captain_name IS NULL OR assigned_captain_name = '' THEN 1 ELSE 0 END), 0) AS unassigned_captain,
+          COALESCE(SUM(CASE WHEN (payment_status IS NULL OR payment_status = 'pending') AND balance_pending > 0 THEN 1 ELSE 0 END), 0) AS payment_pending,
+          COALESCE(SUM(num_guests), 0)                       AS total_guests
+        FROM bookings
+        WHERE booking_date >= $1
+          AND booking_date <= $2
+          AND status != 'cancelled'
+      `, [from, to]);
+
+      const row = kpiQ.rows[0];
+      const totalBookings = parseInt(row.total_bookings) || 0;
+
+      // Utilization: booked boat-days / total available boat-days
+      const bookedBoatDaysQ = await pool.query(`
+        SELECT COUNT(DISTINCT boat_type || '|' || booking_date) AS booked_slots
+        FROM bookings
+        WHERE booking_date >= $1 AND booking_date <= $2 AND status != 'cancelled'
+      `, [from, to]);
+      const bookedSlots = parseInt(bookedBoatDaysQ.rows[0].booked_slots) || 0;
+      const totalSlots  = boatCount * rangeDays;
+      const utilizationPct = totalSlots > 0 ? Math.round((bookedSlots / totalSlots) * 100) : 0;
+
+      // Critical alerts (no captain < 24h from now)
+      const nowISO = new Date().toISOString().split('T')[0];
+      const tomorrowISO = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+      const critQ = await pool.query(`
+        SELECT COUNT(*) FROM bookings
+        WHERE booking_date >= $1 AND booking_date <= $2
+          AND status != 'cancelled'
+          AND (assigned_captain_name IS NULL OR assigned_captain_name = '')
+      `, [nowISO, tomorrowISO]);
+      const criticalAlerts = parseInt(critQ.rows[0].count) || 0;
+
+      // Maintenance blocks active in range
+      let inMaintenance = 0;
+      try {
+        const maintCountQ = await pool.query(`
+          SELECT COUNT(DISTINCT boat_type) FROM maintenance_blocks
+          WHERE DATE(start_datetime) <= $2 AND DATE(end_datetime) >= $1 AND status != 'completed'
+        `, [from, to]);
+        inMaintenance = parseInt(maintCountQ.rows[0].count) || 0;
+      } catch(e) {}
+
+      // Gap detection: days with no booking for any boat
+      const openGaps = Math.max(0, totalSlots - bookedSlots - (inMaintenance * rangeDays));
+
+      // Previous period for deltas
+      const prevFrom = new Date(fromDate - (toDate - fromDate) - 86400000).toISOString().split('T')[0];
+      const prevTo   = new Date(fromDate - 86400000).toISOString().split('T')[0];
+      const prevQ = await pool.query(`
+        SELECT COUNT(*) AS prev_bookings, COALESCE(SUM(total_amount::numeric),0) AS prev_revenue
+        FROM bookings WHERE booking_date >= $1 AND booking_date <= $2 AND status != 'cancelled'
+      `, [prevFrom, prevTo]);
+
+      res.json({
+        range: { from, to, days: rangeDays },
+        total_bookings: totalBookings,
+        total_revenue: parseFloat(row.total_revenue) || 0,
+        total_guests: parseInt(row.total_guests) || 0,
+        utilization_pct: utilizationPct,
+        open_gaps: Math.max(0, openGaps),
+        critical_alerts: criticalAlerts + parseInt(row.payment_pending),
+        in_maintenance: inMaintenance,
+        unassigned_captain: parseInt(row.unassigned_captain) || 0,
+        payment_pending: parseInt(row.payment_pending) || 0,
+        prev: {
+          total_bookings: parseInt(prevQ.rows[0].prev_bookings) || 0,
+          total_revenue: parseFloat(prevQ.rows[0].prev_revenue) || 0
+        }
+      });
+    } catch (err) {
+      console.error('Fleet KPIs error:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/fleet/today-strip — today's operational snapshot
+  app.get('/api/fleet/today-strip', async (req, res) => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const nowHour = new Date().getHours() + new Date().getMinutes() / 60;
+
+      const todayQ = await pool.query(`
+        SELECT id, customer_name, boat_type, start_time, duration_hours,
+               assigned_captain_name, stew_name, status, total_amount,
+               payment_status, balance_pending
+        FROM bookings
+        WHERE booking_date = $1 AND status != 'cancelled'
+        ORDER BY start_time
+      `, [today]);
+
+      const bookings = todayQ.rows;
+
+      // Find next departure (start_time > now)
+      let nextDeparture = null;
+      let minutesToNext = null;
+      for (const b of bookings) {
+        if (!b.start_time) continue;
+        const [h, m] = b.start_time.split(':').map(Number);
+        const bHour = h + m/60;
+        if (bHour > nowHour) {
+          const mins = Math.round((bHour - nowHour) * 60);
+          if (minutesToNext === null || mins < minutesToNext) {
+            minutesToNext = mins;
+            nextDeparture = { ...b, minutes_away: mins };
+          }
+        }
+      }
+
+      const unassignedCrew = bookings.filter(b => !b.assigned_captain_name || b.assigned_captain_name === '').length;
+      const paymentPending = bookings.filter(b => b.balance_pending > 0 && b.payment_status !== 'paid').length;
+
+      // Free windows per boat (boats with no booking today)
+      const fleetQ = await pool.query(`SELECT boat_type, display_name, display_color FROM fleet_config WHERE is_active = true`);
+      const bookedToday = new Set(bookings.map(b => b.boat_type));
+      const freeBoats = fleetQ.rows.filter(b => !bookedToday.has(b.boat_type));
+
+      res.json({
+        date: today,
+        total_today: bookings.length,
+        next_departure: nextDeparture,
+        unassigned_crew: unassignedCrew,
+        payment_pending: paymentPending,
+        free_boats: freeBoats,
+        bookings_today: bookings
+      });
+    } catch (err) {
+      console.error('Fleet today-strip error:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/fleet/alerts — auto-detected operations alerts
+  app.get('/api/fleet/alerts', async (req, res) => {
+    try {
+      const now = new Date();
+      const today = now.toISOString().split('T')[0];
+      const in24h = new Date(now.getTime() + 86400000).toISOString().split('T')[0];
+      const in72h = new Date(now.getTime() + 3*86400000).toISOString().split('T')[0];
+
+      const alerts = [];
+
+      // 1. No captain assigned
+      const noCaptainQ = await pool.query(`
+        SELECT id, customer_name, boat_type, booking_date, start_time
+        FROM bookings
+        WHERE status != 'cancelled'
+          AND booking_date >= $1
+          AND (assigned_captain_name IS NULL OR assigned_captain_name = '')
+        ORDER BY booking_date, start_time
+        LIMIT 20
+      `, [today]);
+
+      for (const b of noCaptainQ.rows) {
+        const severity = b.booking_date <= in24h ? 'critical' : 'warning';
+        alerts.push({
+          id: `alert_captain_${b.id}`,
+          type: 'no_captain',
+          severity,
+          booking_id: b.id,
+          booking_date: b.booking_date,
+          boat_type: b.boat_type,
+          customer_name: b.customer_name,
+          message: `Sin capitán asignado: ${b.customer_name} — ${b.boat_type} el ${b.booking_date}`,
+          action: 'Asignar capitán'
+        });
+      }
+
+      // 2. Payment pending
+      const payPendingQ = await pool.query(`
+        SELECT id, customer_name, boat_type, booking_date, balance_pending
+        FROM bookings
+        WHERE status != 'cancelled'
+          AND booking_date >= $1
+          AND balance_pending > 0
+          AND (payment_status IS NULL OR payment_status != 'paid')
+        ORDER BY booking_date
+        LIMIT 20
+      `, [today]);
+
+      for (const b of payPendingQ.rows) {
+        const severity = b.booking_date <= in24h ? 'critical' : (b.booking_date <= in72h ? 'warning' : 'info');
+        alerts.push({
+          id: `alert_pay_${b.id}`,
+          type: 'payment_pending',
+          severity,
+          booking_id: b.id,
+          booking_date: b.booking_date,
+          boat_type: b.boat_type,
+          customer_name: b.customer_name,
+          message: `Balance pendiente $${parseFloat(b.balance_pending).toFixed(0)}: ${b.customer_name} el ${b.booking_date}`,
+          action: 'Marcar pagado'
+        });
+      }
+
+      // 3. Overbooking: same boat + same date with 2+ bookings
+      const overlapQ = await pool.query(`
+        SELECT boat_type, booking_date, COUNT(*) as cnt,
+               STRING_AGG(customer_name, ', ') as customers
+        FROM bookings
+        WHERE status != 'cancelled' AND booking_date >= $1
+        GROUP BY boat_type, booking_date
+        HAVING COUNT(*) > 1
+      `, [today]);
+
+      for (const o of overlapQ.rows) {
+        alerts.push({
+          id: `alert_overlap_${o.boat_type}_${o.booking_date}`,
+          type: 'overbooking',
+          severity: 'critical',
+          booking_id: null,
+          booking_date: o.booking_date,
+          boat_type: o.boat_type,
+          customer_name: o.customers,
+          message: `Overbooking: ${o.boat_type} tiene ${o.cnt} reservas el ${o.booking_date}`,
+          action: 'Resolver conflicto'
+        });
+      }
+
+      // Sort: critical first, then by booking_date
+      const severityOrder = { critical: 0, warning: 1, info: 2 };
+      alerts.sort((a, b) => (severityOrder[a.severity] - severityOrder[b.severity]) || a.booking_date.localeCompare(b.booking_date));
+
+      res.json({ alerts, total: alerts.length, critical: alerts.filter(a => a.severity === 'critical').length });
+    } catch (err) {
+      console.error('Fleet alerts error:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ── END FLEET OPS endpoints ──────────────────────────────
+
   app.listen(PORT, HOST, () => {
     console.log(`🚀 Nadaki Excursions Backend running on ${HOST}:${PORT}`);
     console.log(`🌐 WordPress: ${WORDPRESS_DOMAIN}`);

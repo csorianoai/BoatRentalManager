@@ -1,0 +1,78 @@
+Decisiones confirmadas. Arranca Fase 1 inmediatamente. El calendario viejo se reemplaza por completo, no hay coexistencia.
+
+D1 — Ubicación: REEMPLAZO DIRECTO
+El calendar tab actual en /dashboard.html se elimina y se reemplaza por el nuevo Fleet Operations Center. No crear /operations.html separado. Integrar el nuevo calendario directamente donde hoy vive el viejo. Borrar código legacy del calendario anterior. No hay fallback. No hay redirect. Reemplazo limpio.
+
+D2 — Flota en timeline: LOS 6 BARCOS
+Mostrar los 6 barcos de ambas fuentes (tabla boats + boat_type distinctos en bookings). Barcos sin reservas en el rango visible se muestran como filas con "Disponible · Sin reservas en este rango" + link "Crear reserva". La exclusión solo ocurre si is_active = false en fleet_config. Al crear fleet_config, poblar con los 6 barcos identificados marcando is_active = true por default.
+
+D3 — Backfill duration_hours: SÍ CON TRACKING
+Ejecutar backfill con default 4h donde duration_hours sea NULL. Añadir columna duration_source TEXT con valores:
+- 'manual' para duraciones capturadas por el equipo
+- 'default_backfill' para las backfilleadas automáticamente
+- 'calculated' para las derivadas de start_time + end_time
+
+En el drawer del booking mostrar badge discreto "Duración estimada · Editar" cuando duration_source = 'default_backfill'.
+
+D4 — Backfill start_time: SÍ CON "10:00" Y TRACKING
+Ejecutar backfill con default "10:00" donde start_time sea NULL. Añadir columna start_time_source TEXT con los mismos 3 valores que D3. Badge "Hora estimada · Editar" en drawer cuando sea default.
+
+Antes de ejecutar el backfill, query de preview:
+SELECT COUNT(*) FILTER (WHERE duration_hours IS NULL) AS sin_duracion,
+       COUNT(*) FILTER (WHERE start_time IS NULL) AS sin_hora,
+       COUNT(*) AS total
+FROM bookings;
+
+Reporta impacto antes del UPDATE.
+
+D5 — Buffer default: 60 MINUTOS CONFIGURABLE POR BARCO
+Crear columna buffer_minutes INTEGER en fleet_config con default 60. El Timeline y las reglas de conflicto usan este valor desde fleet_config, nunca hardcoded. Configurable por barco en UI futura. La detección de "buffer too short" usa este valor dinámicamente.
+
+## ARRANQUE DE FASE 1 — ORDEN DE EJECUCIÓN
+
+PASO 1 — Migraciones SQL
+Archivos separados:
+- 01_alter_bookings.sql (captain_name, stew_name, start_time, duration_hours, payment_status, start_time_source, duration_source)
+- 02_create_fleet_config.sql (con 6 barcos iniciales + buffer_minutes default 60)
+- 03_create_holds.sql
+- 04_create_maintenance_blocks.sql
+- 05_create_operations_alerts.sql
+- 06_backfill_duration_and_time.sql
+
+Después de cada migración, query de verificación y reporte.
+
+PASO 2 — Backfill controlado
+Ejecutar 06_backfill con preview primero. Reportar:
+- Cuántos bookings actualizados con duration default
+- Cuántos con start_time default
+- Muestra de 10 bookings antes y después
+
+PASO 3 — Endpoints
+- GET /api/fleet/timeline?from=&to=&boats[]=
+- GET /api/fleet/kpis?from=&to=
+- GET /api/fleet/boat/:boat_type/summary
+
+PASO 4 — Componentes UI
+- Reemplazar el calendar tab actual en /dashboard.html con el nuevo Fleet Operations Center
+- Borrar código legacy del calendario viejo (archivos JS/CSS/HTML correspondientes)
+- <FleetTimeline> con los 6 barcos usando tokens NBIC
+- <BookingBlock> con compresión L/M/S
+- <BoatRail> con mini consola
+- KPI bar sticky reactiva
+
+PASO 5 — Deploy + validación
+- Deploy a producción (no staging, reemplazo directo)
+- Screenshot del Timeline con data real
+- Video 20s mostrando navegación temporal, hover en bloques, KPI bar reactiva
+- Lista de bookings backfilleados para revisión del equipo
+- Confirmación de que el calendar viejo fue eliminado del repo
+
+CHECKPOINT FASE 1: detente aquí. Espera aprobación para arrancar Fase 2.
+
+## REGLA CRÍTICA
+
+Si encuentras algo inesperado (data corrupta, FK huérfana, tabla duplicada, bug en el calendario viejo que afecte data) detente y reporta antes de continuar. Zero improvisación sobre data de producción.
+
+Antes de borrar el código del calendario viejo, haz un backup del commit actual (tag git o branch) para poder revertir si algo explota en producción.
+
+Empieza por el PASO 1.
