@@ -1,0 +1,145 @@
+Arrancamos Fase 3 — Iteración A: LIST VIEW
+
+Antes de escribir código, confirmo la secuencia aprobada:
+- Fase 3A: List View + atajos de teclado básicos (esta iteración)
+- Fase 3B: Month View (solo si el uso real lo justifica)
+- Fase 3C: Weekly Grid rediseñado (solo si el uso real lo justifica)
+
+Decisión de no construir Week ni Month de entrada: el Timeline ya cubre el 80% del uso operativo. Construir las 3 vistas sin validar uso real es desperdicio de esfuerzo. Arrancamos con List porque es la de mayor ROI inmediato (equipo contable, exports, bulk ops).
+
+## ALCANCE LIST VIEW (Fase 3A)
+
+### 1. Vista List como 4ta pestaña del Fleet Operations Center
+
+Tabs del sistema:
+- Timeline (default, ya existe)
+- Weekly (placeholder — "Próximamente")
+- Month (placeholder — "Próximamente")  
+- List (nueva, funcional)
+
+Al hacer click en List, carga la vista de tabla densa con todos los bookings del rango temporal activo (respetando filtros globales del Fleet Ops Center).
+
+### 2. Tabla densa estilo Airbnb Host Reservations
+
+Columnas en este orden (todas sortables):
+1. Checkbox (para bulk actions)
+2. Fecha servicio (booking_date formato "Apr 25, 2026")
+3. Hora (start_time)
+4. Duración (duration_hours con unidad "h")
+5. Booking ID (ref corta, con botón copiar ID)
+6. Cliente (customer_name con teléfono en hover)
+7. Barco (COALESCE boat_type con color dot del barco)
+8. Paquete/Tipo si existe
+9. Guests (count si existe, sino "—")
+10. Capitán (captain_name con badge ⚠ si falta)
+11. Stew (stew_name)
+12. Canal (platform con chip de color)
+13. Status (chip de color según payment_status/booking_status)
+14. Pagado (SUM transactions por booking si existe, sino "—")
+15. Total (total_amount mono tabular)
+16. Acciones (3-dot menu con: Ver drawer, Asignar capitán, Marcar pagado, Cancelar, Duplicar)
+
+### 3. Densidad configurable
+
+Toggle arriba de la tabla con 3 modos:
+- **Compact** (32px row) — para ver 30+ bookings en pantalla
+- **Medium** (40px row) — default
+- **Comfortable** (56px row) — para pantallas pequeñas
+
+Persistir preferencia en localStorage como "foc-list-density".
+
+### 4. Sort y filtros
+
+- Click en header de columna → sort asc/desc con chevron visual
+- Sort persistente durante la sesión
+- Filtros globales del Fleet Ops Center aplican a List (rango fechas, barcos, canales)
+- Filtro adicional específico de List: buscador de texto que busca en customer_name, booking_id, captain_name simultáneamente
+
+### 5. Bulk Actions
+
+Al seleccionar 1+ bookings via checkbox, aparece barra de acciones flotante en parte inferior:
+- "Asignar capitán a N reservas" → modal con picker de capitán
+- "Marcar N como pagadas" → modal confirmación
+- "Confirmar N reservas" → modal confirmación
+- "Exportar N como CSV" → descarga archivo
+- "Cancelar N reservas" → modal con razón obligatoria
+
+Regla: cada bulk action genera entries en el log de actividad de cada booking afectado.
+
+### 6. Exportación
+
+Dos botones arriba de la tabla:
+- **Export CSV** — descarga todos los bookings del filtro actual (no solo los seleccionados)
+- **Export PDF** — genera PDF con tabla + header con logo/fecha/rango
+
+Formato CSV debe incluir TODAS las columnas visibles + columnas adicionales útiles:
+- customer_phone
+- customer_email  
+- service_date
+- notes
+
+### 7. Atajos de teclado (base de Fase 3)
+
+Implementa estos shortcuts globales del Fleet Ops Center:
+- `T` — Timeline view
+- `L` — List view
+- `W` — placeholder (muestra "Próximamente")
+- `M` — placeholder (muestra "Próximamente")
+- `N` — Nueva reserva (modal)
+- `/` — Focus en búsqueda
+- `[` — Retroceder rango temporal
+- `]` — Avanzar rango temporal
+- `Esc` — Cierra drawer/modal abierto
+- `?` — Mostrar cheat sheet de todos los shortcuts
+
+Cheat sheet: overlay modal con fondo blur que muestra todos los atajos disponibles, accesible con `?` o desde menú de ayuda.
+
+### 8. Tests al runner (agregar a validation/self-check.js)
+
+Nuevos tests que debe pasar Fase 3A:
+
+**UI Fase 3A:**
+- U-11: Atajo L activa vista List
+- U-12: Atajo T vuelve a Timeline
+- U-13: Atajo / hace focus en search
+- U-14: Atajo [ retrocede rango temporal
+- U-15: Atajo ] avanza rango temporal
+- U-16: Atajo ? muestra cheat sheet de shortcuts
+- U-17: Click en header de columna hace sort visible (chevron cambia)
+- U-18: Checkbox de seleccionar activa barra de bulk actions
+- U-19: Export CSV genera archivo con headers correctos
+- U-20: Cambio de densidad (compact/medium/comfortable) aplica al DOM
+
+**Data List Fase 3A:**
+- D-07: List view muestra el mismo total de bookings que el KPI del Timeline para el mismo rango
+- D-08: Sort por total_amount descendiente coloca los bookings más caros primero
+- D-09: Filtro de búsqueda "CRANCHI" filtra correctamente a bookings de ese barco
+- D-10: Bulk action "marcar pagado" sobre 2 bookings actualiza payment_status en DB
+
+Total post-Fase 3A: 38 tests (28 actuales + 10 nuevos). Criterio de aprobación: 0 FAIL.
+
+## PROTOCOLO DE ENTREGA
+
+1. Construye según spec
+2. Deploy a producción (Publish)
+3. Ejecuta node validation/self-check.js --target=all
+4. Si 0 FAIL → entrega reporte + screenshot de List view funcionando en prod
+5. Si hay FAIL → corrige antes de pedir aprobación
+
+NO pidas aprobación sin haber corrido el runner contra producción post-deploy.
+
+## ANTES DE EMPEZAR — AUDITORÍA TÉCNICA RÁPIDA
+
+Aprovechando que estás en modo ingeniería, hacé también esta limpieza técnica de 30 minutos ANTES de arrancar List view:
+
+**Auditoría de initializeDatabase():**
+- Listar todas las tablas que crea cada fase del sistema (FASE 1 a FASE 17)
+- Confirmar que TODAS están en initializeDatabase()
+- Si falta alguna (como pasó con fleet_config), agregarla
+- Reportar cualquier tabla huérfana que no esté documentada en ninguna fase
+
+Esto evita que el próximo deploy en un ambiente nuevo falle por las mismas razones. Es el problema estructural que detectamos con fleet_config.
+
+Reporta hallazgos. Si todo está bien, lo confirmas y seguimos con List view. Si hay tablas faltantes, las agregas y luego seguimos.
+
+Empieza por la auditoría técnica, después List view.
