@@ -66,10 +66,12 @@
     nowLineInterval: null,
     activeBookingId: null,
     captains: [],
-    // Fase 3: view mode
-    viewMode: 'timeline',           // 'timeline' | 'list'
+    // Fase 3A: view mode + list view state
+    viewMode: 'timeline',           // 'timeline' | 'weekly' | 'monthly' | 'list'
     listSort: { col: 'booking_date', asc: true },
     listFilters: { boat: '', status: '', search: '' },
+    listDensity: localStorage.getItem('foc-list-density') || 'medium',
+    bulkSelected: new Set(),
   };
 
   /* ─── UTILS ──────────────────────────────────────────── */
@@ -521,7 +523,7 @@
       if (S.listFilters.status && b.status    !== S.listFilters.status) return false;
       if (S.listFilters.search) {
         const q = S.listFilters.search.toLowerCase();
-        const hay = `${b.customer_name||''} ${b.boat_type||''} ${b.assigned_captain_name||''} ${b.platform||''} ${b.customer_phone||''}`.toLowerCase();
+        const hay = `${b.customer_name||''} ${b.booking_id||''} ${b.id||''} ${b.boat_type||''} ${b.assigned_captain_name||''} ${b.platform||''} ${b.customer_phone||''}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
@@ -529,9 +531,9 @@
 
     // Sort
     const { col, asc } = S.listSort;
-    rows.sort((a, b) => {
-      let av = a[col], bv = b[col];
-      if (col === 'total_amount' || col === 'duration_hours') { av = parseFloat(av)||0; bv = parseFloat(bv)||0; }
+    rows.sort((a, bk) => {
+      let av = a[col], bv = bk[col];
+      if (['total_amount','duration_hours','num_guests'].includes(col)) { av = parseFloat(av)||0; bv = parseFloat(bv)||0; }
       if (av == null) av = '';
       if (bv == null) bv = '';
       if (av < bv) return asc ? -1 : 1;
@@ -539,63 +541,124 @@
       return 0;
     });
 
-    const cols = [
-      { key: 'booking_date',         label: 'Fecha',    cls: '' },
-      { key: 'boat_type',            label: 'Barco',    cls: '' },
-      { key: 'customer_name',        label: 'Cliente',  cls: 'foc-lt-primary' },
-      { key: 'start_time',           label: 'Hora',     cls: '' },
-      { key: 'duration_hours',       label: 'Dur.',     cls: '' },
-      { key: 'assigned_captain_name',label: 'Capitán',  cls: '' },
-      { key: 'platform',             label: 'Canal',    cls: '' },
-      { key: 'total_amount',         label: 'Total',    cls: 'foc-lt-money' },
-      { key: 'status',               label: 'Estado',   cls: '' },
+    const density  = S.listDensity; // compact | medium | comfortable
+    const rowH     = density === 'compact' ? '32px' : density === 'comfortable' ? '56px' : '40px';
+    const fontSize = density === 'compact' ? '12px' : '13px';
+    const cellPad  = density === 'compact' ? '4px 10px' : density === 'comfortable' ? '12px 12px' : '8px 12px';
+
+    const COLS = [
+      { key: 'booking_date',          label: 'Fecha',    sortable: true  },
+      { key: 'start_time',            label: 'Hora',     sortable: true  },
+      { key: 'duration_hours',        label: 'Dur.',     sortable: true  },
+      { key: 'id',                    label: 'ID',       sortable: false },
+      { key: 'customer_name',         label: 'Cliente',  sortable: true  },
+      { key: 'boat_type',             label: 'Barco',    sortable: true  },
+      { key: 'package_type',          label: 'Paquete',  sortable: true  },
+      { key: 'num_guests',            label: 'Pax',      sortable: true  },
+      { key: 'assigned_captain_name', label: 'Capitán',  sortable: true  },
+      { key: 'stew_name',             label: 'Stew',     sortable: true  },
+      { key: 'platform',              label: 'Canal',    sortable: true  },
+      { key: 'payment_status',        label: 'Estado',   sortable: true  },
+      { key: 'total_amount',          label: 'Total',    sortable: true  },
     ];
 
-    const thHtml = cols.map(c => {
-      const sorted = S.listSort.col === c.key;
-      const arrow  = sorted ? (S.listSort.asc ? '↑' : '↓') : '';
-      return `<th class="foc-lt ${sorted ? 'foc-lt-sort' : ''}" onclick="FleetOpsCenter.listSortBy('${c.key}')" data-testid="th-list-${c.key}">${escHtml(c.label)}${arrow ? `<span class="foc-sort-arrow">${arrow}</span>` : ''}</th>`;
-    }).join('');
+    const thHtml = [
+      `<th class="foc-lt foc-lt-cb"><input type="checkbox" id="foc-select-all" onchange="FleetOpsCenter.toggleSelectAll()" data-testid="checkbox-select-all" title="Seleccionar todos"></th>`,
+      ...COLS.map(c => {
+        const sorted = S.listSort.col === c.key;
+        const arrow  = sorted ? (S.listSort.asc ? ' ↑' : ' ↓') : '';
+        const cls    = `foc-lt${sorted?' foc-lt-sort':''}${c.sortable?' foc-lt-sortable':''}`;
+        const onclick = c.sortable ? `onclick="FleetOpsCenter.listSortBy('${c.key}')"` : '';
+        return `<th class="${cls}" ${onclick} data-testid="th-list-${c.key}">${escHtml(c.label)}${arrow ? `<span class="foc-sort-arrow">${arrow}</span>` : ''}</th>`;
+      }),
+      `<th class="foc-lt" style="width:40px"></th>`,
+    ].join('');
+
+    const PAYMENT_STATUS_LABEL = { paid:'Pagado', partial:'Parcial', pending:'Pendiente', refunded:'Reembolsado', unpaid:'Sin pagar' };
 
     const rowsHtml = rows.map(b => {
       const color   = boatColor(b.boat_type, fleet);
       const sColor  = statusColor(b.status || 'confirmed');
+      const psColor = (PAYMENT_STATUS_COLORS[b.payment_status] || {}).text || '#6B7280';
+      const psBg    = (PAYMENT_STATUS_COLORS[b.payment_status] || {}).bg   || '#6B728022';
+      const psLabel = PAYMENT_STATUS_LABEL[b.payment_status] || (b.payment_status||'—');
       const endStr  = calcEndTime(b.start_time, b.duration_hours);
       const noTime  = !b.start_time || b.start_time_source === 'default_backfill';
       const timeStr = noTime ? '' : `${b.start_time}–${endStr}`;
       const noCap   = !b.assigned_captain_name;
+      const isSelected = S.bulkSelected.has(b.id);
+      const shortId = (b.booking_id || b.id || '').slice(-8).toUpperCase();
 
       const cells = [
+        `<td class="foc-lt foc-lt-cb" onclick="event.stopPropagation()"><input type="checkbox" class="foc-row-cb" ${isSelected?'checked':''} onchange="FleetOpsCenter.toggleBulkSelect('${escHtml(b.id)}')" data-testid="checkbox-row-${b.id}"></td>`,
         `<td class="foc-lt">${formatDateLong(b.booking_date)}</td>`,
-        `<td class="foc-lt"><span class="foc-boat-dot" style="background:${color}"></span>${escHtml(b.boat_type||'—')}</td>`,
-        `<td class="foc-lt foc-lt-primary">${escHtml(b.customer_name||'—')}</td>`,
-        `<td class="foc-lt">${noTime ? '<span class="foc-lt-warn">Sin hora</span>' : escHtml(timeStr)}</td>`,
+        `<td class="foc-lt">${noTime ? '<span class="foc-lt-warn" data-testid="badge-no-time">Sin hora</span>' : escHtml(b.start_time)}</td>`,
         `<td class="foc-lt">${b.duration_hours||4}h</td>`,
-        `<td class="foc-lt">${noCap ? '<span class="foc-lt-warn">Sin capitán</span>' : escHtml(b.assigned_captain_name)}</td>`,
+        `<td class="foc-lt foc-lt-mono"><span title="${escHtml(b.id||'')}">…${shortId}</span></td>`,
+        `<td class="foc-lt foc-lt-primary" title="${escHtml(b.customer_phone||'')}">${escHtml(b.customer_name||'—')}${b.customer_phone?'<span class="foc-lt-phone"> '+escHtml(b.customer_phone)+'</span>':''}</td>`,
+        `<td class="foc-lt"><span class="foc-boat-dot" style="background:${color}"></span>${escHtml(b.boat_type||'—')}</td>`,
+        `<td class="foc-lt foc-lt-sec">${escHtml(b.package_type||'—')}</td>`,
+        `<td class="foc-lt foc-lt-sec">${b.num_guests||'—'}</td>`,
+        `<td class="foc-lt">${noCap ? '<span class="foc-lt-warn">⚠ Sin asignar</span>' : escHtml(b.assigned_captain_name)}</td>`,
+        `<td class="foc-lt foc-lt-sec">${escHtml(b.stew_name||'—')}</td>`,
         `<td class="foc-lt">${channelChip(b.platform)}</td>`,
+        `<td class="foc-lt"><span class="foc-status-pill" style="background:${psBg};color:${psColor}" data-testid="status-payment-${b.id}">${escHtml(psLabel)}</span></td>`,
         `<td class="foc-lt foc-lt-money">${fmtCurrency(b.total_amount)}</td>`,
-        `<td class="foc-lt"><span class="foc-status-pill" style="background:${sColor}18;color:${sColor}">${escHtml(b.status||'—')}</span></td>`,
+        `<td class="foc-lt foc-lt-actions" onclick="event.stopPropagation()">
+           <div class="foc-action-wrap">
+             <button class="foc-action-btn" onclick="FleetOpsCenter.toggleRowMenu('${escHtml(b.id)}')" data-testid="button-row-menu-${b.id}" title="Acciones">⋯</button>
+             <div class="foc-row-menu" id="foc-menu-${escHtml(b.id)}" style="display:none">
+               <button onclick="FleetOpsCenter.openDrawer('${escHtml(b.id)}');FleetOpsCenter.closeRowMenus()" data-testid="menu-view-${b.id}">Ver detalle</button>
+               <button onclick="FleetOpsCenter.openCaptainModal('${escHtml(b.id)}');FleetOpsCenter.closeRowMenus()" data-testid="menu-assign-captain-${b.id}">Asignar capitán</button>
+               <button onclick="FleetOpsCenter.markPaid('${escHtml(b.id)}');FleetOpsCenter.closeRowMenus()" data-testid="menu-mark-paid-${b.id}">Marcar pagado</button>
+               <button onclick="FleetOpsCenter.markConfirmed('${escHtml(b.id)}');FleetOpsCenter.closeRowMenus()" data-testid="menu-confirm-${b.id}">Confirmar</button>
+             </div>
+           </div>
+         </td>`,
       ].join('');
-      return `<tr class="foc-list-row" onclick="FleetOpsCenter.openDrawer('${escHtml(b.id)}')" data-testid="list-row-${b.id}">${cells}</tr>`;
+      return `<tr class="foc-list-row ${isSelected?'foc-row-selected':''}" onclick="FleetOpsCenter.openDrawer('${escHtml(b.id)}')" data-testid="list-row-${b.id}" style="height:${rowH};font-size:${fontSize}">${cells}</tr>`;
     }).join('');
 
     const emptyHtml = rows.length === 0
-      ? `<tr><td colspan="9" class="foc-lt-empty">Sin reservas que coincidan · <a href="#" onclick="FleetOpsCenter.listClear();return false">Limpiar filtros</a></td></tr>`
+      ? `<tr><td colspan="15" class="foc-lt-empty">Sin reservas que coincidan · <a href="#" onclick="FleetOpsCenter.listClear();return false">Limpiar filtros</a></td></tr>`
       : '';
 
     const boatOptHtml = boatKeys.map(k => `<option value="${escHtml(k)}" ${S.listFilters.boat===k?'selected':''}>${escHtml(k)}</option>`).join('');
-
-    const statusOpts = ['confirmed','pending','inquiry','crew-assigned','checked-in','in-progress','completed'].map(s =>
+    const statusOpts  = ['confirmed','pending','inquiry','crew-assigned','checked-in','in-progress','completed','cancelled'].map(s =>
       `<option value="${s}" ${S.listFilters.status===s?'selected':''}>${escHtml(s)}</option>`).join('');
 
     const totalAmt = rows.reduce((s, b) => s + (parseFloat(b.total_amount)||0), 0);
     const summary  = rows.length > 0 ? `${rows.length} reserva${rows.length!==1?'s':''} · ${fmtCurrency(totalAmt)}` : 'Sin resultados';
 
+    const bulkCount = S.bulkSelected.size;
+    const bulkBar   = bulkCount > 0 ? `
+      <div class="foc-bulk-bar" data-testid="section-bulk-bar">
+        <span class="foc-bulk-count">${bulkCount} seleccionada${bulkCount!==1?'s':''}</span>
+        <button class="foc-bulk-btn" onclick="FleetOpsCenter.bulkAction('assign_captain')" data-testid="button-bulk-captain">Asignar capitán</button>
+        <button class="foc-bulk-btn" onclick="FleetOpsCenter.bulkAction('mark_paid')" data-testid="button-bulk-paid">Marcar pagado</button>
+        <button class="foc-bulk-btn" onclick="FleetOpsCenter.bulkAction('confirm')" data-testid="button-bulk-confirm">Confirmar</button>
+        <button class="foc-bulk-btn foc-bulk-export" onclick="FleetOpsCenter.exportListCSV()" data-testid="button-bulk-export-csv">Exportar CSV</button>
+        <button class="foc-bulk-btn foc-bulk-cancel" onclick="FleetOpsCenter.bulkAction('cancel')" data-testid="button-bulk-cancel">Cancelar</button>
+        <button class="foc-bulk-clear" onclick="FleetOpsCenter.clearBulkSelection()" title="Deseleccionar todo">✕</button>
+      </div>` : '';
+
     container.innerHTML = `
       <div class="foc-list-wrap">
+        <div class="foc-list-toolbar" data-testid="section-list-toolbar">
+          <div class="foc-density-group" data-testid="section-density-toggle">
+            <span class="foc-density-label">Densidad:</span>
+            <button class="foc-density-btn ${density==='compact'?'foc-density-active':''}"  onclick="FleetOpsCenter.setListDensity('compact')"    data-testid="button-density-compact">Compacto</button>
+            <button class="foc-density-btn ${density==='medium'?'foc-density-active':''}"   onclick="FleetOpsCenter.setListDensity('medium')"     data-testid="button-density-medium">Medio</button>
+            <button class="foc-density-btn ${density==='comfortable'?'foc-density-active':''}" onclick="FleetOpsCenter.setListDensity('comfortable')" data-testid="button-density-comfortable">Cómodo</button>
+          </div>
+          <div class="foc-export-group">
+            <button class="foc-export-btn" onclick="FleetOpsCenter.exportListCSV()" data-testid="button-export-csv" title="Exportar CSV">CSV</button>
+            <button class="foc-export-btn" onclick="FleetOpsCenter.exportListPDF()" data-testid="button-export-pdf" title="Exportar PDF">PDF</button>
+          </div>
+        </div>
         <div class="foc-list-filters" id="foc-list-filters" data-testid="section-list-filters">
           <input id="foc-list-search" class="foc-list-input" type="search"
-            placeholder="Buscar cliente, barco, capitán, teléfono..."
+            placeholder="Buscar cliente, ID, barco, capitán..."
             value="${escHtml(S.listFilters.search)}"
             oninput="FleetOpsCenter.listFilter('search', this.value)"
             data-testid="input-list-search">
@@ -610,17 +673,24 @@
           <span class="foc-list-count" data-testid="text-list-count">${summary}</span>
         </div>
         <div class="foc-list-table-wrap">
-          <table class="foc-list-table" data-testid="table-list">
+          <table class="foc-list-table" data-testid="table-list" style="--cell-pad:${cellPad}">
             <thead><tr>${thHtml}</tr></thead>
             <tbody>${rowsHtml}${emptyHtml}</tbody>
           </table>
         </div>
+        ${bulkBar}
       </div>`;
+
+    // Restore scroll position on density change
+    const savedScroll = S._listScrollTop || 0;
+    const wrap = container.querySelector('.foc-list-table-wrap');
+    if (wrap && savedScroll) wrap.scrollTop = savedScroll;
+    if (wrap) wrap.addEventListener('scroll', () => { S._listScrollTop = wrap.scrollTop; }, { passive: true });
   }
 
   /* ─── VIEW MODE HELPERS ──────────────────────────────── */
   function updateViewModeUI() {
-    ['timeline','list'].forEach(mode => {
+    ['timeline','weekly','monthly','list'].forEach(mode => {
       const btn = el(`foc-view-${mode}`);
       if (btn) btn.classList.toggle('foc-view-active', S.viewMode === mode);
     });
@@ -629,11 +699,29 @@
   }
 
   function setViewMode(mode) {
+    if (['weekly','monthly'].includes(mode)) {
+      S.viewMode = mode;
+      updateViewModeUI();
+      renderComingSoon(mode === 'weekly' ? 'Semanal' : 'Mensual', mode === 'weekly' ? 'W' : 'M');
+      return;
+    }
     if (S.viewMode === mode) return;
     S.viewMode = mode;
     if (mode === 'list' && S.zoom < 30)  { S.zoom = 30; loadAll(); return; }
     if (mode === 'timeline' && S.zoom === 30) { S.zoom = 7; loadAll(); return; }
     if (S.data) render(); else loadAll();
+  }
+
+  function renderComingSoon(name, shortcut) {
+    const container = el('foc-timeline');
+    if (!container) return;
+    container.innerHTML = `
+      <div class="foc-coming-soon" data-testid="section-coming-soon">
+        <div class="foc-coming-icon">⬜</div>
+        <h3>Vista ${escHtml(name)}</h3>
+        <p>Esta vista estará disponible próximamente.</p>
+        <p class="foc-coming-hint">Atajo: <kbd>${escHtml(shortcut)}</kbd> · Usa <kbd>T</kbd> para volver al Timeline</p>
+      </div>`;
   }
 
   function listSortBy(col) {
@@ -650,6 +738,180 @@
   function listClear() {
     S.listFilters = { boat: '', status: '', search: '' };
     if (S.data) render();
+  }
+
+  /* ─── BULK SELECTION ─────────────────────────────────── */
+  function toggleBulkSelect(id) {
+    if (S.bulkSelected.has(id)) S.bulkSelected.delete(id);
+    else S.bulkSelected.add(id);
+    if (S.data) render();
+  }
+
+  function toggleSelectAll() {
+    const allIds = (S.data?.bookings || []).map(b => b.id);
+    const allSelected = allIds.every(id => S.bulkSelected.has(id));
+    if (allSelected) { S.bulkSelected.clear(); }
+    else { allIds.forEach(id => S.bulkSelected.add(id)); }
+    if (S.data) render();
+  }
+
+  function clearBulkSelection() {
+    S.bulkSelected.clear();
+    if (S.data) render();
+  }
+
+  function bulkAction(action) {
+    const ids = [...S.bulkSelected];
+    if (ids.length === 0) return;
+    const n = ids.length;
+    if (action === 'mark_paid') {
+      if (!confirm(`¿Marcar ${n} reserva${n!==1?'s':''} como pagada${n!==1?'s':''}?`)) return;
+      Promise.all(ids.map(id => fetch(`/api/bookings/${id}/payment-status`, {
+        method: 'PATCH', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ payment_status: 'paid' })
+      }))).then(() => { S.bulkSelected.clear(); loadAll(); showToast(`${n} reserva${n!==1?'s':''} marcada${n!==1?'s':''} como pagada${n!==1?'s':''}`); });
+    } else if (action === 'confirm') {
+      if (!confirm(`¿Confirmar ${n} reserva${n!==1?'s':''}?`)) return;
+      Promise.all(ids.map(id => fetch(`/api/bookings/${id}`, {
+        method: 'PATCH', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ status: 'confirmed' })
+      }))).then(() => { S.bulkSelected.clear(); loadAll(); showToast(`${n} reserva${n!==1?'s':''} confirmada${n!==1?'s':''}`); });
+    } else if (action === 'cancel') {
+      const reason = prompt(`Razón de cancelación para ${n} reserva${n!==1?'s':''}:`);
+      if (!reason) return;
+      Promise.all(ids.map(id => fetch(`/api/bookings/${id}`, {
+        method: 'PATCH', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ status: 'cancelled', cancellation_reason: reason })
+      }))).then(() => { S.bulkSelected.clear(); loadAll(); showToast(`${n} reserva${n!==1?'s':''} cancelada${n!==1?'s':''}`); });
+    } else if (action === 'assign_captain') {
+      showToast('Usa el menú individual de cada reserva para asignar capitán');
+    } else {
+      exportListCSV();
+    }
+  }
+
+  /* ─── DENSITY ────────────────────────────────────────── */
+  function setListDensity(density) {
+    S.listDensity = density;
+    localStorage.setItem('foc-list-density', density);
+    if (S.data && S.viewMode === 'list') render();
+  }
+
+  /* ─── ROW MENU ───────────────────────────────────────── */
+  function toggleRowMenu(id) {
+    closeRowMenus();
+    const menu = document.getElementById(`foc-menu-${id}`);
+    if (menu) { menu.style.display = menu.style.display === 'none' ? 'block' : 'none'; }
+  }
+
+  function closeRowMenus() {
+    document.querySelectorAll('.foc-row-menu').forEach(m => { m.style.display = 'none'; });
+  }
+
+  /* ─── EXPORT CSV ─────────────────────────────────────── */
+  function exportListCSV() {
+    if (!S.data) return;
+    const bookings = S.data.bookings || [];
+    const rows = S.bulkSelected.size > 0
+      ? bookings.filter(b => S.bulkSelected.has(b.id))
+      : bookings;
+    const headers = ['booking_id','customer_name','customer_phone','customer_email','booking_date','start_time','duration_hours','boat_type','package_type','num_guests','assigned_captain_name','stew_name','platform','status','payment_status','total_amount','notes','service_date'];
+    const csvRows = [headers.join(',')];
+    rows.forEach(b => {
+      const row = headers.map(h => {
+        const v = b[h] || '';
+        const s = String(v).replace(/"/g, '""');
+        return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s}"` : s;
+      });
+      csvRows.push(row.join(','));
+    });
+    const blob = new Blob(['\uFEFF' + csvRows.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = `nadaki-bookings-${toISO(new Date())}.csv`;
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+    showToast(`CSV exportado (${rows.length} reservas)`);
+  }
+
+  /* ─── EXPORT PDF ─────────────────────────────────────── */
+  function exportListPDF() {
+    if (!S.data) return;
+    const bookings = S.data.bookings || [];
+    const rows = S.bulkSelected.size > 0
+      ? bookings.filter(b => S.bulkSelected.has(b.id))
+      : bookings;
+    const from = toISO(S.rangeStart);
+    const to   = toISO(addDays(S.rangeStart, S.zoom - 1));
+    const totalAmt = rows.reduce((s, b) => s + (parseFloat(b.total_amount)||0), 0);
+    const rowsHtml = rows.map(b => `
+      <tr>
+        <td>${escHtml(formatDateLong(b.booking_date))}</td>
+        <td>${escHtml(b.customer_name||'—')}</td>
+        <td>${escHtml(b.boat_type||'—')}</td>
+        <td>${escHtml(b.assigned_captain_name||'—')}</td>
+        <td>${escHtml(b.platform||'—')}</td>
+        <td>${escHtml(b.status||'—')}</td>
+        <td style="text-align:right">${fmtCurrency(b.total_amount)}</td>
+      </tr>`).join('');
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Nadaki Bookings ${from} — ${to}</title>
+    <style>body{font-family:system-ui,sans-serif;font-size:12px;padding:20px}h1{font-size:16px;margin-bottom:4px}p{color:#666;margin:0 0 12px}
+    table{width:100%;border-collapse:collapse}th,td{padding:6px 8px;text-align:left;border-bottom:1px solid #eee}
+    th{background:#f9f9f9;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+    tfoot td{font-weight:700;border-top:2px solid #333}</style></head>
+    <body><h1>Nadaki Excursions — Reservas</h1><p>${from} → ${to} · ${rows.length} reservas · Total: ${fmtCurrency(totalAmt)}</p>
+    <table><thead><tr><th>Fecha</th><th>Cliente</th><th>Barco</th><th>Capitán</th><th>Canal</th><th>Estado</th><th>Total</th></tr></thead>
+    <tbody>${rowsHtml}</tbody>
+    <tfoot><tr><td colspan="6">Total</td><td style="text-align:right">${fmtCurrency(totalAmt)}</td></tr></tfoot>
+    </table></body></html>`;
+    const w = window.open('', '_blank');
+    if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 500); }
+    showToast(`PDF listo para imprimir (${rows.length} reservas)`);
+  }
+
+  /* ─── SHORTCUTS CHEAT SHEET ──────────────────────────── */
+  function showShortcutsModal() {
+    let modal = document.getElementById('foc-shortcuts-modal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'foc-shortcuts-modal';
+      modal.className = 'foc-shortcuts-modal';
+      modal.setAttribute('data-testid', 'modal-shortcuts');
+      modal.innerHTML = `
+        <div class="foc-shortcuts-overlay" onclick="FleetOpsCenter.closeShortcutsModal()"></div>
+        <div class="foc-shortcuts-box">
+          <div class="foc-shortcuts-header">
+            <h3>Atajos de teclado</h3>
+            <button onclick="FleetOpsCenter.closeShortcutsModal()" class="foc-shortcuts-close" data-testid="button-close-shortcuts">✕</button>
+          </div>
+          <div class="foc-shortcuts-grid">
+            <div class="foc-sc-group"><h4>Vistas</h4>
+              <div class="foc-sc-row"><kbd>T</kbd><span>Vista Timeline</span></div>
+              <div class="foc-sc-row"><kbd>L</kbd><span>Vista Lista</span></div>
+              <div class="foc-sc-row"><kbd>W</kbd><span>Vista Semanal (próx.)</span></div>
+              <div class="foc-sc-row"><kbd>M</kbd><span>Vista Mensual (próx.)</span></div>
+            </div>
+            <div class="foc-sc-group"><h4>Navegación</h4>
+              <div class="foc-sc-row"><kbd>←</kbd> <kbd>[</kbd><span>Rango anterior</span></div>
+              <div class="foc-sc-row"><kbd>→</kbd> <kbd>]</kbd><span>Rango siguiente</span></div>
+              <div class="foc-sc-row"><kbd>H</kbd><span>Ir a Hoy</span></div>
+            </div>
+            <div class="foc-sc-group"><h4>Acciones</h4>
+              <div class="foc-sc-row"><kbd>N</kbd><span>Nueva reserva</span></div>
+              <div class="foc-sc-row"><kbd>/</kbd><span>Buscar (Lista)</span></div>
+              <div class="foc-sc-row"><kbd>Esc</kbd><span>Cerrar drawer / modal</span></div>
+              <div class="foc-sc-row"><kbd>?</kbd><span>Esta ayuda</span></div>
+            </div>
+          </div>
+        </div>`;
+      document.body.appendChild(modal);
+    }
+    modal.style.display = 'flex';
+  }
+
+  function closeShortcutsModal() {
+    const modal = document.getElementById('foc-shortcuts-modal');
+    if (modal) modal.style.display = 'none';
   }
 
   /* ─── ALERTS PANEL ───────────────────────────────────── */
@@ -1137,18 +1399,31 @@
       const btn = el(`foc-zoom-${z}`);
       if (btn) btn.addEventListener('click', () => setZoom(parseInt(z)));
     });
-    // Keyboard shortcuts
+    // Keyboard shortcuts — Fase 3A
     document.addEventListener('keydown', e => {
       const tag = (e.target || document.activeElement)?.tagName || '';
       const inInput = ['INPUT','TEXTAREA','SELECT'].includes(tag);
-      if (e.key === 'Escape') { closeDrawer(); closeCaptainModal(); }
+      if (e.key === 'Escape') { closeDrawer(); closeCaptainModal(); closeShortcutsModal(); closeRowMenus(); }
       if (!inInput) {
         if (e.key === 't' || e.key === 'T') setViewMode('timeline');
         if (e.key === 'l' || e.key === 'L') setViewMode('list');
-        if (e.key === 'ArrowLeft')  { e.preventDefault(); shiftRange(-1); }
-        if (e.key === 'ArrowRight') { e.preventDefault(); shiftRange(1); }
+        if (e.key === 'w' || e.key === 'W') setViewMode('weekly');
+        if (e.key === 'm' || e.key === 'M') setViewMode('monthly');
         if (e.key === 'h' || e.key === 'H') goToday();
+        if (e.key === 'n' || e.key === 'N') { /* future: open new booking modal */ showToast('Nueva reserva: próximamente'); }
+        if (e.key === '?') { e.preventDefault(); showShortcutsModal(); }
+        if (e.key === 'ArrowLeft'  || e.key === '[') { e.preventDefault(); shiftRange(-1); }
+        if (e.key === 'ArrowRight' || e.key === ']') { e.preventDefault(); shiftRange(1); }
       }
+      if (e.key === '/' && S.viewMode === 'list') {
+        e.preventDefault();
+        const search = document.getElementById('foc-list-search');
+        if (search) { search.focus(); search.select(); }
+      }
+    });
+    // Close row menus on outside click
+    document.addEventListener('click', e => {
+      if (!e.target.closest('.foc-action-wrap')) closeRowMenus();
     });
   }
 
@@ -1159,8 +1434,12 @@
     markConfirmed, markCheckedIn, markPaid, cancelBooking, exportBooking,
     openCaptainModal, closeCaptainModal, assignCaptain, assignCaptainCustom,
     copyText, showToast, editField,
-    // Fase 3
+    // Fase 3A
     setViewMode, listSortBy, listFilter, listClear,
+    toggleBulkSelect, toggleSelectAll, clearBulkSelection, bulkAction,
+    setListDensity, toggleRowMenu, closeRowMenus,
+    exportListCSV, exportListPDF,
+    showShortcutsModal, closeShortcutsModal,
   };
 
 })();

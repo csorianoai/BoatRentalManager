@@ -776,7 +776,7 @@
         .foc-ctrl-divider { width:1px; height:24px; background:#E5E7EB; flex-shrink:0; }
 
         /* ── LIST VIEW ── */
-        .foc-list-wrap { display:flex; flex-direction:column; height:100%; overflow:hidden; }
+        .foc-list-wrap { display:flex; flex-direction:column; height:100%; overflow:hidden; position:relative; }
         .foc-list-filters { display:flex; align-items:center; gap:8px; padding:10px 16px; background:#F9FAFB; border-bottom:1px solid #E5E7EB; flex-shrink:0; flex-wrap:wrap; }
         .foc-list-input { border:1px solid #D1D5DB; border-radius:6px; padding:5px 10px; font-size:12px; min-width:220px; outline:none; }
         .foc-list-input:focus { border-color:#6B7280; }
@@ -800,6 +800,64 @@
         .foc-boat-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; vertical-align:middle; flex-shrink:0; }
         .foc-status-pill { font-size:11px; font-weight:500; padding:2px 8px; border-radius:20px; display:inline-block; }
         .foc-sort-arrow { margin-left:3px; font-size:10px; opacity:.7; }
+        .foc-lt-sortable { cursor:pointer; }
+        .foc-lt-cb { width:36px; padding:4px 8px; }
+        .foc-lt-mono { font-family:monospace; font-size:11px; color:#6B7280; }
+        .foc-lt-sec { color:#6B7280; }
+        .foc-lt-phone { display:none; font-size:11px; color:#9CA3AF; margin-left:4px; }
+        .foc-list-row:hover .foc-lt-phone { display:inline; }
+        .foc-row-selected td { background:#EFF6FF !important; }
+
+        /* ── LIST TOOLBAR ── */
+        .foc-list-toolbar { display:flex; align-items:center; gap:12px; padding:8px 16px; background:#fff; border-bottom:1px solid #E5E7EB; flex-shrink:0; flex-wrap:wrap; }
+        .foc-density-label { font-size:11px; color:#6B7280; font-weight:500; }
+        .foc-density-group { display:flex; align-items:center; gap:4px; }
+        .foc-density-btn { background:none; border:1px solid #E5E7EB; border-radius:5px; padding:3px 10px; font-size:11px; color:#6B7280; cursor:pointer; }
+        .foc-density-btn:hover { background:#F3F4F6; color:#111; }
+        .foc-density-active { background:#111827 !important; color:#fff !important; border-color:#111827 !important; }
+        .foc-export-group { margin-left:auto; display:flex; gap:6px; }
+        .foc-export-btn { background:none; border:1px solid #D1D5DB; border-radius:5px; padding:4px 12px; font-size:12px; font-weight:600; color:#374151; cursor:pointer; }
+        .foc-export-btn:hover { background:#F9FAFB; border-color:#9CA3AF; }
+
+        /* ── BULK BAR ── */
+        .foc-bulk-bar { position:absolute; bottom:20px; left:50%; transform:translateX(-50%); background:#1F2937; color:#fff; border-radius:10px; padding:10px 16px; display:flex; align-items:center; gap:8px; box-shadow:0 8px 32px rgba(0,0,0,.3); z-index:50; flex-wrap:wrap; }
+        .foc-bulk-count { font-size:13px; font-weight:600; white-space:nowrap; padding-right:8px; border-right:1px solid #374151; }
+        .foc-bulk-btn { background:#374151; border:none; border-radius:6px; padding:5px 12px; font-size:12px; color:#fff; cursor:pointer; }
+        .foc-bulk-btn:hover { background:#4B5563; }
+        .foc-bulk-cancel { background:#7F1D1D !important; }
+        .foc-bulk-cancel:hover { background:#991B1B !important; }
+        .foc-bulk-export { background:#1D4ED8 !important; }
+        .foc-bulk-export:hover { background:#1E40AF !important; }
+        .foc-bulk-clear { background:none; border:none; color:#9CA3AF; cursor:pointer; font-size:14px; padding:0 2px; }
+        .foc-bulk-clear:hover { color:#fff; }
+
+        /* ── ROW ACTION MENU ── */
+        .foc-lt-actions { width:40px; padding:4px 6px; }
+        .foc-action-wrap { position:relative; display:flex; justify-content:center; }
+        .foc-action-btn { background:none; border:none; font-size:18px; color:#9CA3AF; cursor:pointer; line-height:1; padding:0 4px; border-radius:4px; }
+        .foc-action-btn:hover { background:#F3F4F6; color:#374151; }
+        .foc-row-menu { position:absolute; right:0; top:100%; background:#fff; border:1px solid #E5E7EB; border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.12); z-index:100; min-width:160px; padding:4px 0; }
+        .foc-row-menu button { display:block; width:100%; padding:8px 14px; text-align:left; background:none; border:none; font-size:13px; color:#374151; cursor:pointer; }
+        .foc-row-menu button:hover { background:#F9FAFB; }
+
+        /* ── SHORTCUTS MODAL ── */
+        .foc-shortcuts-modal { position:fixed; inset:0; z-index:9999; display:flex; align-items:center; justify-content:center; }
+        .foc-shortcuts-overlay { position:absolute; inset:0; background:rgba(0,0,0,.45); backdrop-filter:blur(4px); }
+        .foc-shortcuts-box { position:relative; background:#fff; border-radius:12px; padding:24px; width:500px; max-width:90vw; box-shadow:0 24px 64px rgba(0,0,0,.2); }
+        .foc-shortcuts-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; }
+        .foc-shortcuts-header h3 { font-size:15px; font-weight:700; color:#111827; }
+        .foc-shortcuts-close { background:none; border:none; font-size:18px; color:#9CA3AF; cursor:pointer; }
+        .foc-shortcuts-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:20px; }
+        .foc-sc-group h4 { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:#9CA3AF; margin-bottom:10px; }
+        .foc-sc-row { display:flex; align-items:center; gap:8px; padding:3px 0; font-size:13px; color:#374151; }
+        .foc-sc-row kbd { background:#F3F4F6; border:1px solid #D1D5DB; border-radius:4px; padding:2px 6px; font-size:11px; font-family:monospace; color:#374151; min-width:24px; text-align:center; }
+
+        /* ── COMING SOON ── */
+        .foc-coming-soon { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; gap:8px; color:#9CA3AF; padding:60px 20px; text-align:center; }
+        .foc-coming-soon h3 { font-size:18px; font-weight:600; color:#374151; }
+        .foc-coming-soon p { font-size:14px; }
+        .foc-coming-hint { margin-top:8px; font-size:12px; }
+        .foc-coming-hint kbd { background:#F3F4F6; border:1px solid #D1D5DB; border-radius:4px; padding:2px 8px; font-size:12px; font-family:monospace; }
         .foc-drawer-body { flex:1; overflow-y:auto; padding:0 20px 20px; }
         .foc-drawer-section { margin-top:20px; }
         .foc-drawer-section-title { font-size:11px; font-weight:700; color:#9CA3AF; text-transform:uppercase; letter-spacing:.08em; margin-bottom:10px; padding-bottom:6px; border-bottom:1px solid #F3F4F6; }
@@ -1152,7 +1210,9 @@
                 <div id="foc-controls">
                     <div class="foc-view-group">
                         <button id="foc-view-timeline" class="foc-view-btn foc-view-active" onclick="FleetOpsCenter.setViewMode('timeline')" data-testid="button-foc-view-timeline" title="Vista Timeline (T)">Timeline</button>
-                        <button id="foc-view-list"     class="foc-view-btn" onclick="FleetOpsCenter.setViewMode('list')" data-testid="button-foc-view-list" title="Vista Lista (L)">Lista</button>
+                        <button id="foc-view-weekly"   class="foc-view-btn" onclick="FleetOpsCenter.setViewMode('weekly')"   data-testid="button-foc-view-weekly"   title="Vista Semanal (W)">Semanal</button>
+                        <button id="foc-view-monthly"  class="foc-view-btn" onclick="FleetOpsCenter.setViewMode('monthly')"  data-testid="button-foc-view-monthly"  title="Vista Mensual (M)">Mensual</button>
+                        <button id="foc-view-list"     class="foc-view-btn" onclick="FleetOpsCenter.setViewMode('list')"     data-testid="button-foc-view-list"     title="Vista Lista (L)">Lista</button>
                     </div>
                     <div class="foc-ctrl-divider"></div>
                     <button id="foc-prev" class="foc-nav-btn" data-testid="button-foc-prev">‹</button>

@@ -410,6 +410,17 @@ async function initializeDatabase() {
       ON sync_jobs(status, created_at)
     `);
     
+    // FASE 7B: BOAT PHOTOS
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS boat_photos (
+        id SERIAL PRIMARY KEY,
+        boat_id TEXT NOT NULL REFERENCES boats(id) ON DELETE CASCADE,
+        url TEXT NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_boat_photos_boat ON boat_photos(boat_id)`);
+    console.log('✅ FASE 7B table created (boat_photos)');
     console.log('✅ FASE 7 tables created (boats, pricing, availability, sync_jobs)');
     
     // FASE 7 (Extended): Create dynamic pricing & market intelligence tables
@@ -1066,6 +1077,29 @@ async function initializeDatabase() {
     `);
     
     console.log('✅ FASE 10 tables created (boat maintenance & expense tracking)');
+
+    // FASE 10B: SCHEDULED EXPENSES (recurring/future expense automation)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS scheduled_expenses (
+        id TEXT PRIMARY KEY,
+        boat_id TEXT REFERENCES boats(id) ON DELETE CASCADE,
+        category TEXT NOT NULL,
+        amount NUMERIC(12,2) NOT NULL,
+        scheduled_date DATE NOT NULL,
+        description TEXT,
+        recurrence_type TEXT NOT NULL DEFAULT 'once',
+        recurrence_interval INTEGER NOT NULL DEFAULT 1,
+        auto_convert INTEGER NOT NULL DEFAULT 1,
+        notes TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        last_generated_date DATE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_sched_exp_boat ON scheduled_expenses(boat_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_sched_exp_date ON scheduled_expenses(scheduled_date)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_sched_exp_status ON scheduled_expenses(status)`);
+    console.log('✅ FASE 10B table created (scheduled_expenses)');
 
     // FASE 12: OPERATIONS MODULE TABLES
     await pool.query(`

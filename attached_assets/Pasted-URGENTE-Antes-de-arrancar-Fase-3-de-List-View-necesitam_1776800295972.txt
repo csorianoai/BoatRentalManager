@@ -1,0 +1,111 @@
+URGENTE: Antes de arrancar Fase 3 de List View, necesitamos hacer una auditoría completa de arquitectura de información del sistema.
+
+El problema detectado: el usuario ha identificado que el sistema tiene features construidos que no son fácilmente accesibles desde el Dashboard principal, y probablemente hay páginas enteras que ni él sabe que existen. El Fleet Operations Center está enterrado en Flotilla > tab interno. El NBIC (/reports.html) no está enlazado desde el menú principal. El Dashboard Ejecutivo superior (ingresos $16,979, balance neto, etc.) compite con el Centro de Control de abajo.
+
+Antes de reorganizar, necesitamos saber QUÉ existe. Ejecuta esta auditoría y entrega el inventario completo.
+
+## ENTREGABLE ÚNICO DE ESTA ITERACIÓN
+
+Un documento SYSTEM_INVENTORY.md con estas 5 secciones:
+
+### SECCIÓN 1 — Páginas HTML existentes
+
+Lista TODAS las páginas HTML del proyecto en public/:
+- Ruta completa (ej: /fleet.html)
+- Propósito funcional en 1 línea
+- ¿Está enlazada desde algún menú del sistema? Si sí, desde dónde. Si no, marcar "HUÉRFANA".
+- Última fecha de modificación
+- Tamaño en KB
+
+### SECCIÓN 2 — Endpoints API existentes
+
+Lista TODOS los endpoints en server.js agrupados por prefijo:
+- /api/dashboard-data
+- /api/fleet/*
+- /api/nbic/*
+- /api/pricing/*
+- /api/marine/*
+- /api/bookings/*
+- /api/transactions/*
+- (y cualquier otro)
+
+Por cada grupo: cantidad de endpoints y propósito general.
+
+### SECCIÓN 3 — Tabs y secciones internas
+
+Dentro de cada página HTML, lista las tabs/secciones que tiene:
+Ejemplo:
+- /dashboard.html:
+  * Tab: Resumen Ejecutivo
+  * Tab: Centro de Control (Operación / Finanzas / Análisis / otras)
+  * (etc)
+- /fleet.html (o donde esté Flotilla):
+  * Tab: Gestión de Barcos
+  * Tab: Fleet Operations Center
+  * Tab: Vinculación de Plataformas
+  * Tab: Consulta Rápida
+  * Tab: Gastos Recurrentes
+
+### SECCIÓN 4 — Features construidos vs accesibles
+
+Matriz de 2 columnas:
+| Feature construido | ¿Es accesible desde Dashboard con ≤2 clicks? |
+|--------------------|-----------------------------------------------|
+| Fleet Operations Center | NO (Dashboard → Flotilla → tab Fleet Ops = 3 clicks, tab oculto) |
+| NBIC Reports | ? (verificar si está enlazado) |
+| Análisis Competitivo | ? |
+| Módulo Marine Conditions | ? |
+| ML Analytics / Price Optimization | ? |
+| (todo lo demás que exista) |
+
+### SECCIÓN 5 — Recomendación de reorganización
+
+Propuesta de nueva arquitectura de información con 3 principios:
+1. **Acceso en ≤2 clicks** desde Dashboard a cualquier feature importante
+2. **Agrupación por rol de usuario**: ¿qué necesita el operador? ¿qué necesita el contable? ¿qué necesita el dueño?
+3. **Un solo Dashboard principal**, no dos compitiendo
+
+Estructura propuesta tentativa (ajustar según hallazgos):
+
+OPERACIONES (uso diario operador):
+- Fleet Operations Center (el calendario/timeline)
+- Gestión de Barcos (flotilla)
+- Mantenimiento
+- Mensajes
+
+COMERCIAL (ventas/marketing):
+- Precios
+- Sincronización de plataformas
+- Análisis Competitivo (si existe)
+
+FINANZAS (contabilidad):
+- NBIC Dashboard Ejecutivo (/reports.html)
+- Conciliación Bancaria
+- Análisis de Ingresos
+- Análisis de Gastos
+- Contabilidad
+
+CONFIGURACIÓN:
+- Gastos Recurrentes
+- Usuarios
+- Integraciones
+
+Si en tu auditoría encuentras categorías que no tenía contempladas, propón las tuyas.
+
+## REGLAS
+
+- NO modifiques código en esta iteración. Solo inventario y propuesta.
+- Si encuentras páginas HUÉRFANAS, NO las borres. Solo identifícalas. Yo decidiré qué se queda y qué se va.
+- Si encuentras endpoints API que no son usados por ninguna página, márcalos como "POSIBLEMENTE OBSOLETO" pero no los elimines.
+- El objetivo es darme visibilidad total del sistema, no hacer cambios.
+
+## CHECKPOINT
+
+Al terminar, entrega SYSTEM_INVENTORY.md como un único archivo. Yo lo reviso y juntos decidimos:
+a) Qué páginas se mantienen, cuáles se consolidan, cuáles se archivan
+b) Cómo se reorganiza el menú principal
+c) Qué páginas huérfanas conectar y cuáles retirar
+
+SOLO después de eso procedemos con la reorganización y con List View de Fase 3.
+
+Empieza por la auditoría. Tiempo estimado: 30-45 minutos.

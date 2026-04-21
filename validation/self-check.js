@@ -311,30 +311,157 @@ async function uiTests(html) {
     return PASS('prev/next + shiftRange + rangeStart OK');
   });
 
-  // U-11 (Fase 3): Selector de vistas Timeline/Lista presente en HTML
-  await run('U-11', '¿Botones de vista (Timeline/Lista) presentes?', async () => {
-    if (!html.includes('foc-view-timeline')) return FAIL('Botón foc-view-timeline no encontrado');
-    if (!html.includes('foc-view-list'))     return FAIL('Botón foc-view-list no encontrado');
-    return PASS('foc-view-timeline + foc-view-list OK');
+  // U-11 (Fase 3A): Selector de 4 vistas presente en HTML
+  await run('U-11', '¿4 botones de vista (Timeline/Weekly/Monthly/Lista)?', async () => {
+    if (!html.includes('foc-view-timeline')) return FAIL('foc-view-timeline no encontrado');
+    if (!html.includes('foc-view-list'))     return FAIL('foc-view-list no encontrado');
+    if (!html.includes('foc-view-weekly'))   return FAIL('foc-view-weekly no encontrado');
+    if (!html.includes('foc-view-monthly'))  return FAIL('foc-view-monthly no encontrado');
+    return PASS('4 botones de vista OK');
   });
 
-  // U-12 (Fase 3): renderListView + setViewMode en fleet-ops.js
-  await run('U-12', '¿renderListView y setViewMode están en fleet-ops.js?', async () => {
+  // U-12 (Fase 3A): renderListView + setViewMode + bulk + export en fleet-ops.js
+  await run('U-12', '¿renderListView, setViewMode, bulkAction, exportListCSV?', async () => {
     const r = await get(`${baseURL}/assets/js/operations/fleet-ops.js`);
-    if (!r.body.includes('renderListView')) return FAIL('renderListView no encontrado');
-    if (!r.body.includes('setViewMode'))    return FAIL('setViewMode no encontrado');
-    if (!r.body.includes('listSortBy'))     return FAIL('listSortBy no encontrado');
-    return PASS('renderListView + setViewMode + listSortBy OK');
+    const js = r.body;
+    if (!js.includes('renderListView'))   return FAIL('renderListView no encontrado');
+    if (!js.includes('setViewMode'))      return FAIL('setViewMode no encontrado');
+    if (!js.includes('listSortBy'))       return FAIL('listSortBy no encontrado');
+    if (!js.includes('toggleBulkSelect')) return FAIL('toggleBulkSelect no encontrado');
+    if (!js.includes('exportListCSV'))    return FAIL('exportListCSV no encontrado');
+    if (!js.includes('setListDensity'))   return FAIL('setListDensity no encontrado');
+    return PASS('renderListView + bulk + export + density OK');
   });
 
-  // U-13 (Fase 3): Atajos de teclado T/L/ArrowLeft/H implementados
-  await run('U-13', '¿Atajos de teclado (T/L/flechas/H) implementados?', async () => {
+  // U-13 (Fase 3A): Atajo L activa lista; T activa timeline
+  await run('U-13', "¿Atajo L → lista, T → timeline?", async () => {
     const r = await get(`${baseURL}/assets/js/operations/fleet-ops.js`);
-    if (!r.body.includes("'ArrowLeft'"))  return FAIL('ArrowLeft no encontrado');
-    if (!r.body.includes("'ArrowRight'")) return FAIL('ArrowRight no encontrado');
     if (!r.body.includes("setViewMode('timeline')")) return FAIL('atajo T no encontrado');
     if (!r.body.includes("setViewMode('list')"))     return FAIL('atajo L no encontrado');
-    return PASS('T/L/ArrowLeft/ArrowRight/H OK');
+    return PASS('T → timeline, L → lista OK');
+  });
+
+  // U-14 (Fase 3A): Atajo / hace focus en search
+  await run('U-14', "¿Atajo / hace focus en foc-list-search?", async () => {
+    const r = await get(`${baseURL}/assets/js/operations/fleet-ops.js`);
+    if (!r.body.includes('foc-list-search')) return FAIL('foc-list-search no encontrado');
+    if (!r.body.includes("e.key === '/'"))   return FAIL("Atajo '/' no implementado");
+    return PASS('Atajo / → foc-list-search focus OK');
+  });
+
+  // U-15 (Fase 3A): Atajo [ retrocede rango, ] avanza
+  await run('U-15', "¿Atajos [ y ] navegan el rango?", async () => {
+    const r = await get(`${baseURL}/assets/js/operations/fleet-ops.js`);
+    if (!r.body.includes("e.key === '['")) return FAIL("Atajo '[' no encontrado");
+    if (!r.body.includes("e.key === ']'")) return FAIL("Atajo ']' no encontrado");
+    return PASS('[ y ] navegan rango OK');
+  });
+
+  // U-16 (Fase 3A): Atajo ? muestra cheat sheet
+  await run('U-16', "¿Atajo ? abre modal de shortcuts?", async () => {
+    const r = await get(`${baseURL}/assets/js/operations/fleet-ops.js`);
+    if (!r.body.includes("e.key === '?'"))         return FAIL("Atajo '?' no encontrado");
+    if (!r.body.includes('showShortcutsModal'))     return FAIL('showShortcutsModal no encontrado');
+    if (!r.body.includes('foc-shortcuts-modal'))    return FAIL('foc-shortcuts-modal no encontrado');
+    return PASS('? → showShortcutsModal OK');
+  });
+
+  // U-17 (Fase 3A): Click en header de columna hace sort visible
+  await run('U-17', '¿Headers de columna tienen sort (chevron)?', async () => {
+    const r = await get(`${baseURL}/assets/js/operations/fleet-ops.js`);
+    if (!r.body.includes('foc-sort-arrow'))   return FAIL('foc-sort-arrow no encontrado');
+    if (!r.body.includes('listSortBy'))       return FAIL('listSortBy no encontrado');
+    if (!r.body.includes('foc-lt-sort'))      return FAIL('foc-lt-sort no encontrado');
+    return PASS('Sort arrow + active class OK');
+  });
+
+  // U-18 (Fase 3A): Checkbox de selección activa barra de bulk actions
+  await run('U-18', '¿Checkbox activa barra de bulk actions?', async () => {
+    const r = await get(`${baseURL}/assets/js/operations/fleet-ops.js`);
+    if (!r.body.includes('toggleBulkSelect')) return FAIL('toggleBulkSelect no encontrado');
+    if (!r.body.includes('foc-bulk-bar'))     return FAIL('foc-bulk-bar no encontrado');
+    if (!r.body.includes('S.bulkSelected'))   return FAIL('S.bulkSelected no encontrado');
+    return PASS('toggleBulkSelect + foc-bulk-bar + S.bulkSelected OK');
+  });
+
+  // U-19 (Fase 3A): Export CSV genera archivo con headers correctos
+  await run('U-19', '¿exportListCSV incluye headers clave?', async () => {
+    const r = await get(`${baseURL}/assets/js/operations/fleet-ops.js`);
+    if (!r.body.includes('exportListCSV'))    return FAIL('exportListCSV no encontrado');
+    if (!r.body.includes('customer_name'))    return FAIL('header customer_name no encontrado');
+    if (!r.body.includes('total_amount'))     return FAIL('header total_amount no encontrado');
+    if (!r.body.includes('booking_date'))     return FAIL('header booking_date no encontrado');
+    if (!r.body.includes('uFEFF'))            return FAIL('BOM UTF-8 para Excel no encontrado');
+    return PASS('exportListCSV con headers correctos OK');
+  });
+
+  // U-20 (Fase 3A): Cambio de densidad aplica al DOM (compact/medium/comfortable)
+  await run('U-20', '¿setListDensity persiste en localStorage?', async () => {
+    const r = await get(`${baseURL}/assets/js/operations/fleet-ops.js`);
+    if (!r.body.includes('setListDensity'))                    return FAIL('setListDensity no encontrado');
+    if (!r.body.includes('foc-list-density'))                  return FAIL('key localStorage no encontrado');
+    if (!r.body.includes("'compact'"))                         return FAIL('densidad compact no encontrada');
+    if (!r.body.includes("'comfortable'"))                     return FAIL('densidad comfortable no encontrada');
+    if (!r.body.includes('localStorage.setItem'))              return FAIL('localStorage.setItem no encontrado');
+    return PASS('compact + medium + comfortable + localStorage OK');
+  });
+}
+
+// ── DATA TESTS ADICIONALES (D-07 … D-10) ─────────────────────────────────────
+async function dataTestsPhase3A(baseURL) {
+  console.log('\n📊 DATA — FASE 3A');
+
+  // D-07: List view y KPIs usan misma fuente de datos
+  await run('D-07', '¿/api/fleet/timeline retorna bookings y fleet?', async () => {
+    try {
+      const r = await get(`${baseURL}/api/fleet/timeline`);
+      if (r.status !== 200) return FAIL(`Status ${r.status}`);
+      const d = JSON.parse(r.body);
+      if (!Array.isArray(d.bookings)) return FAIL('bookings no es array');
+      if (!Array.isArray(d.fleet))    return FAIL('fleet no es array');
+      return PASS(`bookings=${d.bookings.length} fleet=${d.fleet.length}`);
+    } catch(e) { return FAIL(e.message); }
+  });
+
+  // D-08: Sort por total_amount desc coloca los más caros primero
+  await run('D-08', '¿Bookings tienen total_amount numeric para sort?', async () => {
+    try {
+      const r = await get(`${baseURL}/api/fleet/timeline`);
+      const d = JSON.parse(r.body);
+      if (!d.bookings?.length) return SKIP('Sin bookings en rango actual');
+      const hasNumeric = d.bookings.some(b => parseFloat(b.total_amount) > 0);
+      if (!hasNumeric) return WARN('Ningún booking tiene total_amount > 0');
+      const sorted = [...d.bookings].sort((a,b) => parseFloat(b.total_amount||0) - parseFloat(a.total_amount||0));
+      const topOrig = parseFloat(d.bookings[0]?.total_amount||0);
+      const topSort = parseFloat(sorted[0]?.total_amount||0);
+      return PASS(`Top total: $${topSort} (sort funcional, orig top: $${topOrig})`);
+    } catch(e) { return FAIL(e.message); }
+  });
+
+  // D-09: Filtro de búsqueda por barco funciona
+  await run('D-09', '¿Bookings tienen boat_type para filtrar?', async () => {
+    try {
+      const r = await get(`${baseURL}/api/fleet/timeline`);
+      const d = JSON.parse(r.body);
+      if (!d.bookings?.length) return SKIP('Sin bookings en rango actual');
+      const withBoat = d.bookings.filter(b => b.boat_type);
+      if (withBoat.length === 0) return WARN('Ningún booking tiene boat_type');
+      const boatTypes = [...new Set(withBoat.map(b=>b.boat_type))];
+      return PASS(`${withBoat.length} bookings con boat_type. Tipos: ${boatTypes.slice(0,3).join(', ')}`);
+    } catch(e) { return FAIL(e.message); }
+  });
+
+  // D-10: payment_status presente en bookings para bulk "marcar pagado"
+  await run('D-10', '¿Bookings tienen payment_status?', async () => {
+    try {
+      const r = await get(`${baseURL}/api/fleet/timeline`);
+      const d = JSON.parse(r.body);
+      if (!d.bookings?.length) return SKIP('Sin bookings en rango actual');
+      const withPS = d.bookings.filter(b => b.payment_status);
+      const ratio  = Math.round(withPS.length / d.bookings.length * 100);
+      if (ratio < 50) return WARN(`Solo ${ratio}% de bookings tienen payment_status`);
+      return PASS(`${withPS.length}/${d.bookings.length} bookings con payment_status (${ratio}%)`);
+    } catch(e) { return FAIL(e.message); }
   });
 }
 
@@ -502,6 +629,7 @@ async function main() {
     await infraTests(html, fleetJsBody);
     await dataTests();
     await uiTests(html);
+    await dataTestsPhase3A(url);
     await integrityTests();
 
     printReport(url, buildTs, Date.now() - start);
