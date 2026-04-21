@@ -1,0 +1,97 @@
+Tengo un problema grave: la Fase 2 reportada como completa NO está visible en producción. El usuario probó 20 puntos de validación y 14 fallaron.
+
+## EVIDENCIA DEL USUARIO
+
+Screenshot muestra que al hacer click en una reserva del Fleet Operations Center:
+- Se abre el modal VIEJO de "Gestión de Reservas" con botones Editar/Cancelar
+- NO se abre el Drawer lateral de 480px derecha de Fase 2
+- "Asignar capitán" solo aparece desde el modal viejo con botón "Editar"
+- No hay Today Command Strip visible
+- No hay panel de Operations Alerts visible
+- No hay chips de color para canal ni payment status
+- No hay botón copiar Booking ID
+- No hay log de actividad
+- Las 20 verificaciones dan este resultado:
+  * Drawer: solo punto 1 pasa (click abre algo), pero es el modal viejo
+  * Alertas: todos los puntos 11-15 fallan (no se ven alertas en ningún lado)
+  * Today Strip: todos los puntos 16-20 fallan (no identificable)
+
+El código de Fase 2 que reportaste como escrito (fleet-ops.js drawer, motor de alertas, today-strip endpoint) NO está funcionando para el usuario.
+
+## DIAGNÓSTICO FORENSE OBLIGATORIO
+
+Ejecuta estas verificaciones antes de tocar nada:
+
+### Verificación 1 — ¿Los archivos están desplegados?
+
+Confirma en el servidor de producción:
+- ¿Existe el archivo public/assets/js/operations/fleet-ops.js?
+- ¿Qué tamaño tiene? ¿Cuándo fue modificado por última vez?
+- ¿Está siendo cargado por /dashboard.html? Pega el tag <script> que lo importa.
+- ¿Hay errores 404 en la Network tab al cargar esos archivos?
+
+### Verificación 2 — ¿El código de Fase 2 está realmente en el archivo?
+
+Ejecuta grep sobre public/assets/js/operations/fleet-ops.js buscando:
+- "drawer" — ¿cuántas ocurrencias?
+- "operations_alerts" o "alerts-panel" — ¿existe?
+- "today-strip" o "todayStrip" — ¿existe?
+- "copyBookingId" — ¿existe?
+- "activity-log" o "activityLog" — ¿existe?
+
+Reporta cuántas ocurrencias de cada uno.
+
+### Verificación 3 — ¿El handler del click en bloque está apuntando al drawer nuevo?
+
+Busca en fleet-ops.js:
+- ¿Qué función se ejecuta cuando se hace click en un BookingBlock del Timeline?
+- ¿Esa función llama al drawer nuevo o al modal viejo?
+- Pega el código exacto del handler de click.
+
+### Verificación 4 — ¿Los endpoints de Fase 2 responden?
+
+Desde la consola del navegador en producción, ejecuta:
+
+fetch('/api/fleet/alerts').then(r => r.json()).then(console.log)
+fetch('/api/fleet/today-strip').then(r => r.json()).then(console.log)
+
+¿Qué devuelven? ¿Error 404? ¿JSON válido con data?
+
+### Verificación 5 — ¿Hay conflicto entre código viejo y nuevo?
+
+Busca en el repo:
+- ¿Existe el modal viejo de "Editar reserva" todavía en el código?
+- ¿Qué función lo abre? ¿Dónde se registra el event listener?
+- ¿Ese listener está sobrescribiendo el listener del drawer nuevo?
+
+### Verificación 6 — Inspección en vivo
+
+En el Fleet Ops tab de producción, con DevTools abierto:
+1. Click en un bloque de booking del Timeline
+2. ¿Qué elemento se abre en el DOM? Pega el outerHTML del elemento que aparece
+3. ¿Es un <div class="foc-drawer"> o es el modal viejo <div class="modal-edit-booking">?
+
+### Verificación 7 — Deployment status
+
+¿El último deploy incluye los cambios de Fase 2? Verifica:
+- Último commit pusheado vs último commit desplegado
+- Si hay discrepancia, el deploy no actualizó producción
+
+## REPORTE QUE NECESITO
+
+Con los resultados de las 7 verificaciones, responde:
+
+A) ¿El código de Fase 2 está en el archivo pero no se ejecuta? (problema de wiring)
+B) ¿El código de Fase 2 no está en el archivo? (problema de commit/deploy)
+C) ¿El código está pero otro código viejo lo está sobrescribiendo? (problema de event listener conflict)
+D) ¿Otra causa? ¿Cuál?
+
+## CHECKPOINT
+
+NO intentes arreglar nada hasta que:
+1. Yo vea el resultado de las 7 verificaciones
+2. Decidamos juntos si el fix es: rebuildear Fase 2, reconectar wiring, eliminar código viejo, o forzar redeploy
+
+Si intentas arreglar sin diagnosticar, podemos terminar con dos drawers funcionando al mismo tiempo o peor.
+
+Empieza por Verificación 1.
