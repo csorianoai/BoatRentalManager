@@ -9,6 +9,7 @@
     <link rel="manifest" href="/manifest.json">
     <link rel="apple-touch-icon" href="/icon-192.svg">
     <title>Nadaki Excursions - Tripulación</title>
+    <link rel="stylesheet" href="/assets/css/global-nav.css">
     <link rel="stylesheet" href="commissions.css">
     <style>
         /* ── Layout ── */
@@ -309,13 +310,10 @@
         }
     </style>
 </head>
-<body>
+<body data-page="crew">
     <!-- Page Header -->
     <div class="page-header">
         <div>
-            <div style="margin-bottom:4px;">
-                <a href="/dashboard.html" class="back-link" data-testid="link-back-dashboard">&#8592; Dashboard</a>
-            </div>
             <h1>&#128101; Directorio de Tripulación</h1>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
@@ -898,5 +896,6 @@
         navigator.serviceWorker.register('/sw.js').catch(() => {});
     }
     </script>
+    <script src="/assets/js/components/global-nav.js"></script>
 </body>
 </html>

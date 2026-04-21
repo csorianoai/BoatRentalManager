@@ -10,6 +10,7 @@
     <link rel="manifest" href="/manifest.json">
     <link rel="apple-touch-icon" href="/icon-192.svg">
     <title>Nadaki Excursions - Centro de Mensajes</title>
+    <link rel="stylesheet" href="/assets/css/global-nav.css">
     <link rel="stylesheet" href="commissions.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
@@ -590,20 +591,8 @@
         }
     </style>
 </head>
-<body>
+<body data-page="messages">
     <div class="dashboard">
-        <header class="header">
-            <div class="header-content">
-                <div class="logo">🌊 Nadaki Excursions - Centro de Mensajes</div>
-                <nav class="nav-links">
-                    <a href="dashboard.html" class="nav-link" data-testid="link-dashboard">📊 Dashboard</a>
-                    <a href="accounting.html" class="nav-link" data-testid="link-accounting">💰 Contabilidad</a>
-                    <a href="commissions.html" class="nav-link" data-testid="link-commissions">💳 Comisiones</a>
-                    <a href="messages.html" class="nav-link active" data-testid="link-messages">💬 Mensajes</a>
-                </nav>
-            </div>
-        </header>
-
         <main class="main-content">
             <div class="tabs">
                 <button class="tab active" data-tab="inbox" data-testid="tab-inbox">📥 Inbox</button>
@@ -916,5 +905,6 @@
             navigator.serviceWorker.register('/sw.js').catch(err => console.error('SW failed:', err));
         }
     </script>
+    <script src="/assets/js/components/global-nav.js"></script>
 </body>
 </html>

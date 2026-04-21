@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#0066cc">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <title>Calendario de Reservas - Nadaki Excursions</title>
+  <link rel="stylesheet" href="/assets/css/global-nav.css">
   <link rel="stylesheet" href="schedule.css">
   <style>
     /* ── Page Header ── */
@@ -254,16 +255,13 @@
     }
   </style>
 </head>
-<body>
+<body data-page="schedule">
   <!-- Page Header -->
   <div class="page-header">
     <div>
       <h1>&#128197; Calendario de Reservas</h1>
     </div>
     <div class="header-nav">
-      <a href="/dashboard.html" class="btn-header" data-testid="link-dashboard">&#8592; Dashboard</a>
-      <a href="/crew.html" class="btn-header" data-testid="link-crew">&#128101; Tripulación</a>
-      <a href="/commissions.html" class="btn-header" data-testid="link-commissions">&#128176; Comisiones</a>
       <button class="btn-header btn-header-primary" id="btn-nueva-reserva" onclick="openBookingModal()" data-testid="button-nueva-reserva">+ Nueva Reserva</button>
     </div>
   </div>
@@ -609,5 +607,6 @@
 
   <script src="/i18n.js"></script>
   <script src="schedule.js"></script>
+  <script src="/assets/js/components/global-nav.js"></script>
 </body>
 </html>

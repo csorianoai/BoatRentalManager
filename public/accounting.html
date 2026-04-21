@@ -10,7 +10,15 @@
     <link rel="manifest" href="/manifest.json">
     <link rel="apple-touch-icon" href="/icon-192.svg">
     <title>Nadaki Excursions - Contabilidad</title>
+    <link rel="stylesheet" href="/assets/css/global-nav.css">
     <link rel="stylesheet" href="commissions.css">
+    <style>
+        /* Global nav pilot — ocultar branding/nav-links del header local (JS refs intactas en DOM) */
+        .dashboard-header .logo-section { display: none; }
+        .dashboard-header a[href="dashboard.html"],
+        .dashboard-header a[href="commissions.html"],
+        .dashboard-header a[href="/api/logout"] { display: none; }
+    </style>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         .tabs {
@@ -220,7 +228,7 @@
         }
     </style>
 </head>
-<body class="light-mode">
+<body class="light-mode" data-page="accounting">
     <!-- Header -->
     <header class="dashboard-header">
         <div class="header-content">
@@ -3905,5 +3913,6 @@
         </div>
       </div>
     </div>
+    <script src="/assets/js/components/global-nav.js"></script>
 </body>
 </html>
