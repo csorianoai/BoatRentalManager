@@ -1,0 +1,65 @@
+Excelente trabajo con el cache-busting automático. Está bien implementado y resuelve el problema estructural.
+
+Sobre las 3 tareas de fotos que marcaste como completadas: no era el alcance del prompt pero si el código ya estaba ahí, está bien haberlas cerrado. Mantén el foco en la misión actual.
+
+Antes de aprobar Fase 3 o cerrar Fase 2, falta el paso de validación final que quedó pendiente.
+
+## PASO A — Redeploy a producción
+
+Ejecuta el redeploy ahora. Sin redeploy, el cache-busting no se activa para el usuario.
+
+Confirma: build timestamp nuevo, URL de producción actualizada, ausencia de errores en el log de deploy.
+
+## PASO B — Validación en modo incógnito
+
+Yo (o tú mismo) voy a abrir gestion.nadakiexcursions.com/fleet.html en ventana de incógnito. El objetivo es verificar que los 14 puntos que fallaron antes ahora funcionen.
+
+Pero antes de que yo valide, valida tú primero. Abre el Fleet Ops Center en modo incógnito y confirma uno por uno:
+
+### Bloque A — Drawer (tomar screenshot de cada uno)
+1. ¿Al hacer click en un bloque de reserva se abre el drawer lateral de 480px derecha?
+2. ¿El drawer tiene 4 secciones visibles (Resumen, Operaciones, Financiero, Actividad)?
+3. ¿Hay 8 botones de acción en grid 2x4 al final del drawer?
+4. ¿Aparecen customer_phone y customer_email si existen en data?
+5. ¿El chip de canal tiene color distintivo (azul Manual, verde Airbnb, etc.)?
+6. ¿El chip de payment_status tiene color (verde Paid, ámbar Partial, rojo Pending)?
+7. ¿Hay un botón "Copiar ID" que funciona con feedback visual ✓?
+8. ¿Aparecen los badges "Hora estimada · Editar" / "Duración estimada · Editar" en los bookings backfilleados?
+9. ¿El log de actividad muestra al menos "Creado en [timestamp]"?
+10. ¿Se cierra el drawer con Esc?
+
+### Bloque B — Alertas
+11. ¿El panel de Operations Alerts está visible (sidebar o tab dedicado)?
+12. ¿Muestra la alerta no_captain que tu endpoint reporta (total:1)?
+13. ¿El badge de contador muestra 1 en sidebar?
+14. ¿Click en la alerta lleva al booking correspondiente?
+15. ¿Asignar capitán auto-resuelve la alerta?
+
+### Bloque C — Today Strip
+16. ¿El Today Command Strip está visible arriba del Timeline?
+17. ¿Muestra el contenido correcto para hoy 21 de abril? (today_strip dice total_today:0, debe mostrar "Sin salidas programadas para hoy")
+
+## REPORTE QUE NECESITO
+
+Por cada uno de los 17 puntos:
+- ✅ Funciona
+- ⚠️ Funciona con detalle menor (especificar)
+- ❌ No funciona (especificar qué ve el usuario en su lugar)
+
+Acompaña con screenshots en incógnito de:
+1. Fleet Ops Center completo (vista inicial)
+2. Drawer abierto sobre un booking real
+3. Panel de Operations Alerts
+4. Today Command Strip
+
+## CHECKPOINT
+
+Con los 17 resultados + 4 screenshots, yo valido y decidimos:
+
+- Si 15+ funcionan: aprobamos Fase 2 oficialmente y arrancamos Fase 3
+- Si 10-14 funcionan: fix rápido de los que fallan (estimado 1-2h)
+- Si menos de 10: detenemos y diagnosticamos por qué el redeploy + cache-busting no resolvió
+
+No asumas que todo funciona porque el código está bien escrito. Valida con los ojos antes de pedir luz verde.
+
+Empieza por el redeploy.
