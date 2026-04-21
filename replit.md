@@ -6,6 +6,31 @@ This project is a multi-platform boat rental management system for Nadaki Excurs
 
 Preferred communication style: Simple, everyday language.
 
+# Fleet Operations Center (Fase activa)
+
+Módulo en `/fleet.html`, pestaña "Fleet Operations Center". Código en `public/assets/js/operations/fleet-ops.js`.
+
+**Fases completadas:**
+- Fase 1: Infraestructura y Timeline base
+- Fase 2: Detail Drawer, Alert Engine, Today Strip, Action Handlers. fleet_config se puebla automáticamente desde la tabla boats en initializeDatabase().
+- Fase 3 (actual): Vista Lista con filtros/sort, selector de vistas Timeline|Lista, atajos de teclado T/L/flechas/H
+
+**Atajos de teclado:**
+- `T` = Vista Timeline, `L` = Vista Lista
+- `←/→` = Navegar rango, `H` = Ir a Hoy, `Esc` = Cerrar drawer
+
+# Protocolo de Auto-Validación (obligatorio antes de deploy)
+
+```bash
+node validation/self-check.js --target=dev    # desarrollo
+node validation/self-check.js --target=prod   # producción
+node validation/self-check.js --target=all    # comparación
+```
+
+Regla: 0 FAIL y ≤2 WARN → avanzar. Ver `validation/VALIDATION.md`.
+
+Tests activos: 29 tests (I-01..I-08, D-01..D-06, U-01..U-13, C-01..C-04)
+
 # System Architecture
 
 ## Frontend Architecture

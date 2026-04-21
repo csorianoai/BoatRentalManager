@@ -1,6 +1,6 @@
 /**
- * NADAKI FLEET OPERATIONS CENTER — FASE 2
- * Detail Drawer · Alert Engine · Today Strip · Action Handlers
+ * NADAKI FLEET OPERATIONS CENTER — FASE 3
+ * List View · View Mode Selector · Filters · Sort · Keyboard Shortcuts
  */
 (function () {
   'use strict';
@@ -66,6 +66,10 @@
     nowLineInterval: null,
     activeBookingId: null,
     captains: [],
+    // Fase 3: view mode
+    viewMode: 'timeline',           // 'timeline' | 'list'
+    listSort: { col: 'booking_date', asc: true },
+    listFilters: { boat: '', status: '', search: '' },
   };
 
   /* ─── UTILS ──────────────────────────────────────────── */
@@ -242,7 +246,12 @@
     renderTodayStrip();
     renderKPIBar();
     renderNavBar();
-    renderTimeline();
+    updateViewModeUI();
+    if (S.viewMode === 'list') {
+      renderListView();
+    } else {
+      renderTimeline();
+    }
     renderAlertsPanel();
     updateNowLine();
   }
@@ -490,6 +499,157 @@
       content = `<div class="foc-blk-header"><span class="foc-blk-short">${initials(b.customer_name)}</span>${badgeHtml}</div>`;
     }
     return `<div class="foc-booking-block" style="top:${topPx}px;height:${hPx}px;border-left-color:${boatColorHex};background:${sColor}18" data-id="${b.id}" data-testid="booking-block-${b.id}" title="${escHtml(b.customer_name)} · ${timeStr} · ${b.boat_type}" onclick="FleetOpsCenter.openDrawer('${b.id}')">${content}</div>`;
+  }
+
+  /* ─── LIST VIEW ─────────────────────────────────────── */
+  function renderListView() {
+    const container = el('foc-timeline');
+    if (!container || !S.data) return;
+
+    const { fleet, bookings } = S.data;
+    const allBookings = bookings || [];
+
+    // Build full set from fleet_config for boat selector
+    const boatKeys = [...new Set([
+      ...(fleet || []).map(f => f.boat_type),
+      ...allBookings.map(b => b.boat_type),
+    ])].sort();
+
+    // Apply filters
+    let rows = allBookings.filter(b => {
+      if (S.listFilters.boat   && b.boat_type !== S.listFilters.boat)   return false;
+      if (S.listFilters.status && b.status    !== S.listFilters.status) return false;
+      if (S.listFilters.search) {
+        const q = S.listFilters.search.toLowerCase();
+        const hay = `${b.customer_name||''} ${b.boat_type||''} ${b.assigned_captain_name||''} ${b.platform||''} ${b.customer_phone||''}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+
+    // Sort
+    const { col, asc } = S.listSort;
+    rows.sort((a, b) => {
+      let av = a[col], bv = b[col];
+      if (col === 'total_amount' || col === 'duration_hours') { av = parseFloat(av)||0; bv = parseFloat(bv)||0; }
+      if (av == null) av = '';
+      if (bv == null) bv = '';
+      if (av < bv) return asc ? -1 : 1;
+      if (av > bv) return asc ? 1 : -1;
+      return 0;
+    });
+
+    const cols = [
+      { key: 'booking_date',         label: 'Fecha',    cls: '' },
+      { key: 'boat_type',            label: 'Barco',    cls: '' },
+      { key: 'customer_name',        label: 'Cliente',  cls: 'foc-lt-primary' },
+      { key: 'start_time',           label: 'Hora',     cls: '' },
+      { key: 'duration_hours',       label: 'Dur.',     cls: '' },
+      { key: 'assigned_captain_name',label: 'Capitán',  cls: '' },
+      { key: 'platform',             label: 'Canal',    cls: '' },
+      { key: 'total_amount',         label: 'Total',    cls: 'foc-lt-money' },
+      { key: 'status',               label: 'Estado',   cls: '' },
+    ];
+
+    const thHtml = cols.map(c => {
+      const sorted = S.listSort.col === c.key;
+      const arrow  = sorted ? (S.listSort.asc ? '↑' : '↓') : '';
+      return `<th class="foc-lt ${sorted ? 'foc-lt-sort' : ''}" onclick="FleetOpsCenter.listSortBy('${c.key}')" data-testid="th-list-${c.key}">${escHtml(c.label)}${arrow ? `<span class="foc-sort-arrow">${arrow}</span>` : ''}</th>`;
+    }).join('');
+
+    const rowsHtml = rows.map(b => {
+      const color   = boatColor(b.boat_type, fleet);
+      const sColor  = statusColor(b.status || 'confirmed');
+      const endStr  = calcEndTime(b.start_time, b.duration_hours);
+      const noTime  = !b.start_time || b.start_time_source === 'default_backfill';
+      const timeStr = noTime ? '' : `${b.start_time}–${endStr}`;
+      const noCap   = !b.assigned_captain_name;
+
+      const cells = [
+        `<td class="foc-lt">${formatDateLong(b.booking_date)}</td>`,
+        `<td class="foc-lt"><span class="foc-boat-dot" style="background:${color}"></span>${escHtml(b.boat_type||'—')}</td>`,
+        `<td class="foc-lt foc-lt-primary">${escHtml(b.customer_name||'—')}</td>`,
+        `<td class="foc-lt">${noTime ? '<span class="foc-lt-warn">Sin hora</span>' : escHtml(timeStr)}</td>`,
+        `<td class="foc-lt">${b.duration_hours||4}h</td>`,
+        `<td class="foc-lt">${noCap ? '<span class="foc-lt-warn">Sin capitán</span>' : escHtml(b.assigned_captain_name)}</td>`,
+        `<td class="foc-lt">${channelChip(b.platform)}</td>`,
+        `<td class="foc-lt foc-lt-money">${fmtCurrency(b.total_amount)}</td>`,
+        `<td class="foc-lt"><span class="foc-status-pill" style="background:${sColor}18;color:${sColor}">${escHtml(b.status||'—')}</span></td>`,
+      ].join('');
+      return `<tr class="foc-list-row" onclick="FleetOpsCenter.openDrawer('${escHtml(b.id)}')" data-testid="list-row-${b.id}">${cells}</tr>`;
+    }).join('');
+
+    const emptyHtml = rows.length === 0
+      ? `<tr><td colspan="9" class="foc-lt-empty">Sin reservas que coincidan · <a href="#" onclick="FleetOpsCenter.listClear();return false">Limpiar filtros</a></td></tr>`
+      : '';
+
+    const boatOptHtml = boatKeys.map(k => `<option value="${escHtml(k)}" ${S.listFilters.boat===k?'selected':''}>${escHtml(k)}</option>`).join('');
+
+    const statusOpts = ['confirmed','pending','inquiry','crew-assigned','checked-in','in-progress','completed'].map(s =>
+      `<option value="${s}" ${S.listFilters.status===s?'selected':''}>${escHtml(s)}</option>`).join('');
+
+    const totalAmt = rows.reduce((s, b) => s + (parseFloat(b.total_amount)||0), 0);
+    const summary  = rows.length > 0 ? `${rows.length} reserva${rows.length!==1?'s':''} · ${fmtCurrency(totalAmt)}` : 'Sin resultados';
+
+    container.innerHTML = `
+      <div class="foc-list-wrap">
+        <div class="foc-list-filters" id="foc-list-filters" data-testid="section-list-filters">
+          <input id="foc-list-search" class="foc-list-input" type="search"
+            placeholder="Buscar cliente, barco, capitán, teléfono..."
+            value="${escHtml(S.listFilters.search)}"
+            oninput="FleetOpsCenter.listFilter('search', this.value)"
+            data-testid="input-list-search">
+          <select class="foc-list-select" onchange="FleetOpsCenter.listFilter('boat', this.value)" data-testid="select-list-boat">
+            <option value="">Todos los barcos</option>
+            ${boatOptHtml}
+          </select>
+          <select class="foc-list-select" onchange="FleetOpsCenter.listFilter('status', this.value)" data-testid="select-list-status">
+            <option value="">Todos los estados</option>
+            ${statusOpts}
+          </select>
+          <span class="foc-list-count" data-testid="text-list-count">${summary}</span>
+        </div>
+        <div class="foc-list-table-wrap">
+          <table class="foc-list-table" data-testid="table-list">
+            <thead><tr>${thHtml}</tr></thead>
+            <tbody>${rowsHtml}${emptyHtml}</tbody>
+          </table>
+        </div>
+      </div>`;
+  }
+
+  /* ─── VIEW MODE HELPERS ──────────────────────────────── */
+  function updateViewModeUI() {
+    ['timeline','list'].forEach(mode => {
+      const btn = el(`foc-view-${mode}`);
+      if (btn) btn.classList.toggle('foc-view-active', S.viewMode === mode);
+    });
+    const zg = el('foc-zoom-group');
+    if (zg) zg.style.visibility = S.viewMode === 'list' ? 'hidden' : 'visible';
+  }
+
+  function setViewMode(mode) {
+    if (S.viewMode === mode) return;
+    S.viewMode = mode;
+    if (mode === 'list' && S.zoom < 30)  { S.zoom = 30; loadAll(); return; }
+    if (mode === 'timeline' && S.zoom === 30) { S.zoom = 7; loadAll(); return; }
+    if (S.data) render(); else loadAll();
+  }
+
+  function listSortBy(col) {
+    if (S.listSort.col === col) S.listSort.asc = !S.listSort.asc;
+    else { S.listSort.col = col; S.listSort.asc = true; }
+    if (S.data) render();
+  }
+
+  function listFilter(key, value) {
+    S.listFilters[key] = value;
+    if (S.data) render();
+  }
+
+  function listClear() {
+    S.listFilters = { boat: '', status: '', search: '' };
+    if (S.data) render();
   }
 
   /* ─── ALERTS PANEL ───────────────────────────────────── */
@@ -977,9 +1137,18 @@
       const btn = el(`foc-zoom-${z}`);
       if (btn) btn.addEventListener('click', () => setZoom(parseInt(z)));
     });
-    // ESC key closes drawer
+    // Keyboard shortcuts
     document.addEventListener('keydown', e => {
+      const tag = (e.target || document.activeElement)?.tagName || '';
+      const inInput = ['INPUT','TEXTAREA','SELECT'].includes(tag);
       if (e.key === 'Escape') { closeDrawer(); closeCaptainModal(); }
+      if (!inInput) {
+        if (e.key === 't' || e.key === 'T') setViewMode('timeline');
+        if (e.key === 'l' || e.key === 'L') setViewMode('list');
+        if (e.key === 'ArrowLeft')  { e.preventDefault(); shiftRange(-1); }
+        if (e.key === 'ArrowRight') { e.preventDefault(); shiftRange(1); }
+        if (e.key === 'h' || e.key === 'H') goToday();
+      }
     });
   }
 
@@ -990,6 +1159,8 @@
     markConfirmed, markCheckedIn, markPaid, cancelBooking, exportBooking,
     openCaptainModal, closeCaptainModal, assignCaptain, assignCaptainCustom,
     copyText, showToast, editField,
+    // Fase 3
+    setViewMode, listSortBy, listFilter, listClear,
   };
 
 })();

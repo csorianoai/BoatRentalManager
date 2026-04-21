@@ -305,11 +305,36 @@ async function uiTests(html) {
     const hasNext = html.includes('id="foc-next"') || html.includes('foc-next');
     if (!hasPrev || !hasNext) return FAIL(`prev=${hasPrev}, next=${hasNext}`);
     const r = await get(`${baseURL}/assets/js/operations/fleet-ops.js`);
-    // Navigation uses shiftRange() and rangeStart state
     if (!r.body.includes('shiftRange') || !r.body.includes('rangeStart')) {
       return WARN('Lógica de navegación (shiftRange/rangeStart) no encontrada en JS');
     }
     return PASS('prev/next + shiftRange + rangeStart OK');
+  });
+
+  // U-11 (Fase 3): Selector de vistas Timeline/Lista presente en HTML
+  await run('U-11', '¿Botones de vista (Timeline/Lista) presentes?', async () => {
+    if (!html.includes('foc-view-timeline')) return FAIL('Botón foc-view-timeline no encontrado');
+    if (!html.includes('foc-view-list'))     return FAIL('Botón foc-view-list no encontrado');
+    return PASS('foc-view-timeline + foc-view-list OK');
+  });
+
+  // U-12 (Fase 3): renderListView + setViewMode en fleet-ops.js
+  await run('U-12', '¿renderListView y setViewMode están en fleet-ops.js?', async () => {
+    const r = await get(`${baseURL}/assets/js/operations/fleet-ops.js`);
+    if (!r.body.includes('renderListView')) return FAIL('renderListView no encontrado');
+    if (!r.body.includes('setViewMode'))    return FAIL('setViewMode no encontrado');
+    if (!r.body.includes('listSortBy'))     return FAIL('listSortBy no encontrado');
+    return PASS('renderListView + setViewMode + listSortBy OK');
+  });
+
+  // U-13 (Fase 3): Atajos de teclado T/L/ArrowLeft/H implementados
+  await run('U-13', '¿Atajos de teclado (T/L/flechas/H) implementados?', async () => {
+    const r = await get(`${baseURL}/assets/js/operations/fleet-ops.js`);
+    if (!r.body.includes("'ArrowLeft'"))  return FAIL('ArrowLeft no encontrado');
+    if (!r.body.includes("'ArrowRight'")) return FAIL('ArrowRight no encontrado');
+    if (!r.body.includes("setViewMode('timeline')")) return FAIL('atajo T no encontrado');
+    if (!r.body.includes("setViewMode('list')"))     return FAIL('atajo L no encontrado');
+    return PASS('T/L/ArrowLeft/ArrowRight/H OK');
   });
 }
 
