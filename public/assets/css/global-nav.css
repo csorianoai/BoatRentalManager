@@ -1,0 +1,476 @@
+/* ============================================================
+   Global Navigation — Nadaki Excursions Portal
+   v1.0 | 2026-04-21
+   Tokens coherentes con NBIC design system
+   ============================================================ */
+
+/* ── Variables ── */
+:root {
+  --gnav-h: 52px;
+  --gnav-bg: #0D1117;
+  --gnav-border: rgba(255,255,255,0.07);
+  --gnav-text: rgba(255,255,255,0.70);
+  --gnav-text-hover: rgba(255,255,255,0.95);
+  --gnav-text-active: #ffffff;
+  --gnav-accent: #3B82F6;
+  --gnav-accent-dim: rgba(59,130,246,0.15);
+  --gnav-hover-bg: rgba(255,255,255,0.06);
+  --gnav-active-bg: rgba(59,130,246,0.12);
+  --gnav-dd-bg: #161B22;
+  --gnav-dd-border: rgba(255,255,255,0.09);
+  --gnav-dd-item-hover: rgba(255,255,255,0.05);
+  --gnav-dd-section: rgba(255,255,255,0.25);
+  --gnav-font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --gnav-z: 9000;
+  --gnav-shadow: 0 8px 32px rgba(0,0,0,0.40);
+  --gnav-dur: 140ms;
+  --gnav-ease: cubic-bezier(0.2,0.8,0.2,1);
+}
+
+/* ── Body offset ── */
+body {
+  padding-top: var(--gnav-h) !important;
+}
+
+/* ── Nav root ── */
+#global-nav {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: var(--gnav-h);
+  background: var(--gnav-bg);
+  border-bottom: 1px solid var(--gnav-border);
+  display: flex;
+  align-items: center;
+  padding: 0 12px 0 16px;
+  gap: 2px;
+  z-index: var(--gnav-z);
+  font-family: var(--gnav-font);
+  box-shadow: 0 1px 0 var(--gnav-border), 0 4px 16px rgba(0,0,0,0.18);
+  -webkit-font-smoothing: antialiased;
+  box-sizing: border-box;
+}
+
+/* ── Logo ── */
+.gnav-logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  color: var(--gnav-text-active);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+  padding: 0 10px 0 2px;
+  margin-right: 6px;
+  flex-shrink: 0;
+  transition: opacity var(--gnav-dur);
+}
+.gnav-logo:hover { opacity: 0.85; }
+.gnav-logo__icon {
+  width: 26px; height: 26px;
+  background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
+  border-radius: 7px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.gnav-logo__icon svg { display: block; }
+.gnav-logo__text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+.gnav-logo__name { font-size: 13px; font-weight: 700; color: #fff; }
+.gnav-logo__sub  { font-size: 9px; font-weight: 500; color: rgba(255,255,255,0.45); letter-spacing: 0.05em; text-transform: uppercase; }
+
+/* ── Divider ── */
+.gnav-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--gnav-border);
+  margin: 0 8px;
+  flex-shrink: 0;
+}
+
+/* ── Nav items (top-level) ── */
+.gnav-items {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  flex: 1;
+}
+
+.gnav-item {
+  position: relative;
+}
+
+.gnav-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 34px;
+  padding: 0 10px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  color: var(--gnav-text);
+  font-family: var(--gnav-font);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background var(--gnav-dur), color var(--gnav-dur);
+  white-space: nowrap;
+  letter-spacing: -0.1px;
+}
+.gnav-btn:hover {
+  background: var(--gnav-hover-bg);
+  color: var(--gnav-text-hover);
+}
+.gnav-btn.gnav-btn--active {
+  background: var(--gnav-active-bg);
+  color: var(--gnav-accent);
+}
+.gnav-btn.gnav-btn--open {
+  background: var(--gnav-hover-bg);
+  color: var(--gnav-text-hover);
+}
+
+/* Caret icon */
+.gnav-caret {
+  width: 12px; height: 12px;
+  opacity: 0.5;
+  transition: transform var(--gnav-dur) var(--gnav-ease);
+  flex-shrink: 0;
+}
+.gnav-btn--open .gnav-caret {
+  transform: rotate(180deg);
+  opacity: 0.8;
+}
+
+/* ── Right zone ── */
+.gnav-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* ── ⌘K button ── */
+.gnav-search-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 6px;
+  color: rgba(255,255,255,0.45);
+  font-family: var(--gnav-font);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background var(--gnav-dur), border-color var(--gnav-dur), color var(--gnav-dur);
+  white-space: nowrap;
+}
+.gnav-search-btn:hover {
+  background: rgba(255,255,255,0.09);
+  border-color: rgba(255,255,255,0.18);
+  color: rgba(255,255,255,0.70);
+}
+.gnav-search-btn kbd {
+  font-size: 10px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 4px;
+  padding: 1px 4px;
+  font-family: var(--gnav-font);
+  color: rgba(255,255,255,0.35);
+  letter-spacing: 0;
+}
+
+/* ── Icon buttons (alerts, etc.) ── */
+.gnav-icon-btn {
+  position: relative;
+  width: 34px; height: 34px;
+  display: flex; align-items: center; justify-content: center;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  color: var(--gnav-text);
+  cursor: pointer;
+  transition: background var(--gnav-dur), color var(--gnav-dur);
+}
+.gnav-icon-btn:hover {
+  background: var(--gnav-hover-bg);
+  color: var(--gnav-text-hover);
+}
+.gnav-icon-btn svg { display: block; }
+
+/* Alert badge */
+.gnav-badge {
+  position: absolute;
+  top: 5px; right: 4px;
+  min-width: 16px; height: 16px;
+  background: #EF4444;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0 3px;
+  border: 2px solid var(--gnav-bg);
+  line-height: 1;
+  pointer-events: none;
+}
+
+/* ── User button ── */
+.gnav-user-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 8px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  color: var(--gnav-text);
+  font-family: var(--gnav-font);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background var(--gnav-dur);
+}
+.gnav-user-btn:hover { background: var(--gnav-hover-bg); color: var(--gnav-text-hover); }
+.gnav-avatar {
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #3B82F6, #8B5CF6);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 700; color: #fff;
+  flex-shrink: 0;
+}
+
+/* ── Dropdown panel ── */
+.gnav-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  min-width: 200px;
+  background: var(--gnav-dd-bg);
+  border: 1px solid var(--gnav-dd-border);
+  border-radius: 10px;
+  box-shadow: var(--gnav-shadow);
+  padding: 6px;
+  z-index: calc(var(--gnav-z) + 10);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-4px) scale(0.98);
+  transform-origin: top left;
+  transition:
+    opacity var(--gnav-dur) var(--gnav-ease),
+    visibility var(--gnav-dur),
+    transform var(--gnav-dur) var(--gnav-ease);
+  pointer-events: none;
+}
+.gnav-dropdown--right {
+  left: auto;
+  right: 0;
+  transform-origin: top right;
+}
+.gnav-item--open > .gnav-dropdown {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+/* Dropdown section label */
+.gnav-dd-section {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.30);
+  padding: 10px 8px 4px;
+  pointer-events: none;
+  user-select: none;
+}
+.gnav-dd-section:first-child { padding-top: 4px; }
+
+/* Dropdown separator */
+.gnav-dd-sep {
+  height: 1px;
+  background: var(--gnav-dd-border);
+  margin: 5px 0;
+}
+
+/* Dropdown item */
+.gnav-dd-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 8px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: rgba(255,255,255,0.72);
+  font-family: var(--gnav-font);
+  font-size: 13px;
+  font-weight: 400;
+  cursor: pointer;
+  text-decoration: none;
+  text-align: left;
+  transition: background var(--gnav-dur), color var(--gnav-dur);
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+.gnav-dd-item:hover {
+  background: var(--gnav-dd-item-hover);
+  color: rgba(255,255,255,0.95);
+}
+.gnav-dd-item--active {
+  color: var(--gnav-accent) !important;
+  background: var(--gnav-accent-dim) !important;
+}
+.gnav-dd-item--danger { color: rgba(239,68,68,0.80); }
+.gnav-dd-item--danger:hover { background: rgba(239,68,68,0.08); color: #EF4444; }
+
+/* Icon wrapper inside dropdown items */
+.gnav-dd-icon {
+  width: 16px; height: 16px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  opacity: 0.60;
+}
+.gnav-dd-item:hover .gnav-dd-icon,
+.gnav-dd-item--active .gnav-dd-icon { opacity: 1; }
+
+/* ── ⌘K Command Palette Modal ── */
+.gnav-cmdpal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  backdrop-filter: blur(4px);
+  z-index: calc(var(--gnav-z) + 100);
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 80px;
+}
+.gnav-cmdpal-overlay.gnav-cmdpal--open {
+  display: flex;
+}
+.gnav-cmdpal {
+  width: 100%;
+  max-width: 540px;
+  background: var(--gnav-dd-bg);
+  border: 1px solid var(--gnav-dd-border);
+  border-radius: 12px;
+  box-shadow: var(--gnav-shadow);
+  overflow: hidden;
+  animation: gnav-scale-in 120ms var(--gnav-ease) both;
+}
+@keyframes gnav-scale-in {
+  from { opacity:0; transform: scale(0.96) translateY(-6px); }
+  to   { opacity:1; transform: scale(1) translateY(0); }
+}
+.gnav-cmdpal-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--gnav-dd-border);
+}
+.gnav-cmdpal-input-wrap svg { opacity: 0.45; flex-shrink: 0; }
+.gnav-cmdpal-input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  font-family: var(--gnav-font);
+  font-size: 15px;
+  color: rgba(255,255,255,0.90);
+}
+.gnav-cmdpal-input::placeholder { color: rgba(255,255,255,0.25); }
+.gnav-cmdpal-hint {
+  font-size: 11px;
+  color: rgba(255,255,255,0.25);
+  padding: 8px 16px;
+}
+.gnav-cmdpal-results {
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 6px;
+}
+.gnav-cmdpal-results:empty + .gnav-cmdpal-hint { display: none; }
+.gnav-cmdpal-section {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.28);
+  padding: 10px 8px 4px;
+}
+.gnav-cmdpal-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background var(--gnav-dur);
+  color: rgba(255,255,255,0.80);
+  font-size: 13px;
+}
+.gnav-cmdpal-item:hover,
+.gnav-cmdpal-item.gnav-cmdpal-item--focused {
+  background: rgba(255,255,255,0.06);
+  color: #fff;
+}
+.gnav-cmdpal-item__icon {
+  width: 30px; height: 30px;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.05);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  font-size: 14px;
+}
+.gnav-cmdpal-item__label { font-weight: 500; flex: 1; }
+.gnav-cmdpal-item__cat {
+  font-size: 11px;
+  color: rgba(255,255,255,0.28);
+}
+.gnav-cmdpal-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  border-top: 1px solid var(--gnav-dd-border);
+  color: rgba(255,255,255,0.25);
+  font-size: 11px;
+}
+.gnav-cmdpal-footer kbd {
+  font-family: var(--gnav-font);
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 10px;
+  color: rgba(255,255,255,0.35);
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .gnav-logo__sub { display: none; }
+  .gnav-items .gnav-item:not(.gnav-item--dashboard) { display: none; }
+  .gnav-search-btn span { display: none; }
+  .gnav-divider { display: none; }
+  #global-nav { padding: 0 8px; }
+}
+
+/* ── Focus visible ── */
+#global-nav *:focus-visible {
+  outline: 2px solid var(--gnav-accent);
+  outline-offset: 2px;
+}
