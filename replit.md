@@ -6,6 +6,50 @@ This project is a multi-platform boat rental management system for Nadaki Excurs
 
 Preferred communication style: Simple, everyday language.
 
+# Navbar Global — Reorganización del Portal (En progreso)
+
+Sistema de navegación unificada para todas las páginas HTML del portal.
+Archivos globales: `public/assets/css/global-nav.css`, `public/assets/js/components/global-nav.js`.
+Patrón de inyección: `<link>` en `<head>`, `data-page="X"` en `<body>`, `<script>` antes de `</body>`.
+
+## Estado por Batch
+
+### Piloto — fleet.html — COMPLETED
+Patrón validado. Navbar dark #0D1117, 52px fixed, 4 dropdowns (Operaciones/Flota/Finanzas/Comercial), ⌘K command palette, alert badge dinámico, hash-based tab activation. Commit: `069ded3`.
+
+### Batch A — completed_with_exception
+Páginas migradas: `dashboard.html`, `schedule.html`, `messages.html`, `crew.html`, `accounting.html`.
+Validación Playwright: status `success` en las 5 páginas. Cero regresiones. Commit: `28d2828`.
+
+**Notas técnicas por página:**
+- `dashboard.html`: `.logo-section` y logout ocultos vía CSS (inline); `refreshBtn`, `globalSearchWrap` permanecen en DOM para no romper referencias duras en `dashboard.js` (línea 59 sin null check).
+- `accounting.html`: `.logo-section`, nav-links y logout ocultos vía CSS; `themeToggle` y `refreshBtn` permanecen visibles (referencias duras en `accounting.js` líneas 74-75 y 83 sin null check).
+- `schedule.html`: removidos solo los 3 nav-links de `header-nav`; `btn-nueva-reserva` conservado (referencia dura en `schedule.js` línea 668).
+- `crew.html`: removido solo el back-link; `header-captain-count` y `header-stew-count` conservados (referencias duras en inline JS líneas 873-874).
+- `messages.html`: header completo removido (sin referencias JS a elementos del header).
+
+**EXCEPCIÓN — `reports.html` — NO MIGRADO**
+
+Motivo: Colisión de sistemas de navegación. `reports.html` implementa el sistema NBIC completo con su propia infraestructura de navegación.
+
+Componentes en conflicto:
+- `<header class="nbic-topbar">`: barra superior propia con logo, toggle de sidebar, breadcrumb dinámico
+- `#nbic-cmd-trigger`: paleta de comandos ⌘K propia (Fuse.js) — colisiona con el ⌘K del global-nav
+- `#nbic-sidebar-toggle`: sidebar lateral con 27 reportes categorizados — el global-nav no tiene equivalente
+- `#nbic-theme-toggle`: toggle de tema NBIC (dark/light) — independiente del sistema de temas del global-nav
+- `.nbic-topbar__breadcrumb`: breadcrumb dinámico por reporte activo — sin equivalente en global-nav
+
+Riesgos de integración si se forzara:
+1. Dos barras de navegación superpuestas (+52px de desplazamiento visual)
+2. Dos instancias de ⌘K con handlers distintos — conflicto de eventos de teclado
+3. El sidebar NBIC quedaría empujado por el padding-top del global-nav, rompiendo su layout fixed
+4. El breadcrumb de NBIC quedaría duplicado o sin contexto visual correcto
+
+Decisión: `reports.html` requiere una fase dedicada de integración NBIC ↔ global-nav. No modificar sin nueva autorización.
+
+### Batch B — PENDIENTE (requiere autorización)
+### Batch C — PENDIENTE (requiere autorización)
+
 # Fleet Operations Center (Fase activa)
 
 Módulo en `/fleet.html`, pestaña "Fleet Operations Center". Código en `public/assets/js/operations/fleet-ops.js`.
