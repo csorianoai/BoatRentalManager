@@ -1,0 +1,184 @@
+Antes de arrancar Fase 3, implementa un sistema de auto-validación que ejecutes en cada entrega futura. No voy a aprobar por "dice el agente que está completo" nunca más. Cada fase completada pasa por un protocolo automatizado que tú mismo ejecutas y reportas.
+
+## MISIÓN INMEDIATA
+
+Cerrar Fase 2 con el protocolo nuevo + dejar el protocolo listo para usarse en Fase 3, Fase 4, Fase 5 y cualquier iteración futura.
+
+## PARTE 1 — CONFIRMACIONES OPERATIVAS DE FASE 2
+
+### 1.1 Publish a producción
+
+Confirma si el Publish del build BUILD_TS=1776793393220 ya se ejecutó. Si no:
+- No intentes publicarlo por tu cuenta. El Publish lo hace el humano desde la UI de Replit.
+- Indícame exactamente qué botón apretar y en qué pantalla.
+- Espera confirmación de que el publish ocurrió.
+
+Después del publish verifica:
+- Fetch a gestion.nadakiexcursions.com y revisar que el response HTML tenga los tags con ?v=1776793393220 o el BUILD_TS actual
+- Si aún tiene otro BUILD_TS o ninguno, el publish no se aplicó
+
+### 1.2 Tests contra producción (no dev)
+
+Los tests Playwright que corriste fueron contra dev. Ahora ejecuta la misma suite apuntando a gestion.nadakiexcursions.com/fleet.html.
+
+Reporta:
+- URL testeada
+- BUILD_TS detectado en la página
+- Cantidad de barcos renderizados (debe ser 6)
+- Cantidad de bookings visibles en rango default (debe ser >=15 en producción)
+- Resultado de cada bloque A/B/C del protocolo de 17 puntos
+
+Si dev tiene 4 barcos y producción tiene 6, necesitamos entender por qué dev está desincronizada. Reporta hallazgos.
+
+## PARTE 2 — SISTEMA DE AUTO-VALIDACIÓN PERMANENTE
+
+Construye este sistema como parte de la entrega. No es opcional, es deuda técnica que hay que pagar ahora.
+
+### 2.1 Crear archivo: validation/self-check.js
+
+Un runner de tests que ejecutes después de cada iteración, apuntable contra dev o producción. Debe auto-responder las siguientes preguntas críticas sin intervención humana:
+
+### 2.2 Suite de validación — Fleet Ops Center
+
+Implementa cada una como test de Playwright independiente. Cada test retorna PASS / FAIL / WARN con detalle.
+
+**Infraestructura (8 tests):**
+
+- I-01: ¿El HTML de producción tiene BUILD_TS del último deploy?
+- I-02: ¿El archivo fleet-ops.js se carga sin error 404?
+- I-03: ¿El archivo fleet-ops.js tiene más de 40KB de tamaño? (proxy de "no es el archivo viejo")
+- I-04: ¿Los endpoints /api/fleet/{timeline,kpis,alerts,today-strip} responden 200 en <500ms?
+- I-05: ¿El response de /api/fleet/timeline tiene estructura JSON esperada? (campos meta, data, errors)
+- I-06: ¿La página no muestra errores en console al cargar? (capturar errors de window)
+- I-07: ¿No hay referencias huérfanas a funciones viejas (renderCalendar, renderCalendarGrid)?
+- I-08: ¿El CSS del drawer (foc-drawer) está cargado correctamente?
+
+**Data integrity (6 tests):**
+
+- D-01: ¿El KPI de bookings coincide con COUNT(*) directo a bookings en el mismo rango?
+- D-02: ¿El KPI de revenue coincide con SUM(total_amount) directo?
+- D-03: ¿Los barcos renderizados coinciden con los que tienen bookings + los is_active=true de fleet_config?
+- D-04: ¿Los nombres de barco son comerciales (CRANCHI, SEARAY 500) y NO son IDs técnicos (boat_XXXX)?
+- D-05: ¿La utilización calculada está en rango razonable (0-100%) y no es 0% falso?
+- D-06: ¿El Today Strip refleja lo que devuelve COUNT(*) de bookings WHERE booking_date = CURRENT_DATE?
+
+**UI behavior (10 tests):**
+
+- U-01: Click en un bloque de booking → se abre elemento con clase foc-drawer-open
+- U-02: Drawer tiene 4 secciones detectables por texto o ID
+- U-03: Drawer tiene 8 botones de acción
+- U-04: Drawer muestra chip de canal con color (tiene style inline o clase de color)
+- U-05: Drawer muestra chip de payment_status con color
+- U-06: Botón "Copiar ID" existe y tiene handler
+- U-07: Esc cierra el drawer (la clase foc-drawer-open desaparece)
+- U-08: Panel de alertas visible en la página (#foc-alerts-panel existe y tiene altura >0)
+- U-09: Today Command Strip visible en la página (#foc-today-strip existe y tiene altura >0)
+- U-10: Navegación temporal (flechas anterior/siguiente) cambia el rango sin reload de página
+
+**Integrity check (4 tests):**
+
+- C-01: Número de bookings en dev vs prod. Si hay discrepancia >50%, WARN.
+- C-02: Número de barcos en dev vs prod. Si hay discrepancia, WARN.
+- C-03: Al ejecutar tests en prod, confirmar que el BUILD_TS renderizado es el último.
+- C-04: Ejecutar grep en el repo de funciones obsoletas que deberían estar eliminadas.
+
+### 2.3 Suite de validación — NBIC (Business Intelligence Center)
+
+Misma estructura, adaptada para /reports.html:
+
+- I-01 a I-04: infra del NBIC
+- D-01 a D-05: KPIs del Dashboard Ejecutivo F1 vs Centro de Operaciones (fuente de verdad)
+- U-01 a U-06: drawer, filtros, command palette, theme toggle, sidebar
+- C-01 a C-03: integridad
+
+### 2.4 Reporte ejecutivo del runner
+
+Cada vez que ejecutes self-check.js, produce un reporte con este formato exacto:
+===========================================
+FLEET OPS SELF-CHECK REPORT
+Target: gestion.nadakiexcursions.com/fleet.html
+Timestamp: 2026-04-21 14:00:00
+BUILD_TS on page: 1776793393220
+INFRA         : 8/8   PASS
+DATA          : 6/6   PASS
+UI            : 9/10  PASS (1 WARN)
+INTEGRITY     : 4/4   PASS
+OVERALL: 27/28 PASS · 1 WARN · 0 FAIL
+Warnings:
+
+U-10: Navegación temporal recarga la página (debería ser SPA-style)
+
+Next recommended action:
+
+Warn no bloqueante → puede avanzar a Fase 3
+O corregir antes si prioridad UX
+
+===========================================
+
+### 2.5 Comando de ejecución
+
+El runner debe correrse con un comando simple desde terminal del agente:
+node validation/self-check.js --target=prod
+node validation/self-check.js --target=dev
+node validation/self-check.js --target=all
+
+## PARTE 3 — INTEGRACIÓN AL WORKFLOW
+
+Desde ahora en adelante, antes de decir "Fase X completa" o "pide aprobación", tú debes:
+
+1. Ejecutar node validation/self-check.js --target=prod
+2. Pegar el reporte completo en tu respuesta
+3. Solo si el reporte es 0 FAIL y <=2 WARN, pides aprobación
+4. Si hay FAIL, NO pides aprobación. Resuelve primero.
+
+Esto reemplaza el protocolo manual de 17 puntos que yo hacía. Ahora tú mismo los validas automáticamente cada vez.
+
+## PARTE 4 — ADAPTACIÓN A FASE 3 FUTURA
+
+Cuando arranques Fase 3 (Weekly Grid + Month + List + keyboard shortcuts), ANTES de empezar código agrega los tests correspondientes a self-check.js:
+
+Tests Fase 3 a agregar:
+- U-11: Atajo T activa vista Timeline
+- U-12: Atajo W activa vista Weekly
+- U-13: Atajo M activa vista Month
+- U-14: Atajo L activa vista List
+- U-15: Atajo Esc en drawer cierra drawer (ya existe)
+- U-16: Atajo / hace focus en búsqueda
+- U-17: Atajo [ retrocede rango temporal
+- U-18: Atajo ] avanza rango temporal
+- U-19: Week view muestra horas en slots de 30min
+- U-20: Month view muestra revenue diario en cada celda
+- U-21: List view permite sort por cualquier columna
+- U-22: List view soporta bulk actions sobre seleccionados
+
+Al finalizar Fase 3, el runner debe reportar 49/49 PASS para aprobar.
+
+## ENTREGABLES DE ESTA ITERACIÓN
+
+1. Confirmación del publish a producción (o instrucciones para el humano)
+2. Resultado de tests contra producción (no dev)
+3. Archivo validation/self-check.js implementado con todas las suites
+4. Primer reporte ejecutivo del runner apuntando a producción
+5. Documentación breve en VALIDATION.md explicando cómo ejecutar el runner
+
+## CHECKPOINT
+
+No arranques Fase 3 hasta que:
+- Publish a producción confirmado
+- Runner implementado y corriendo
+- Reporte ejecutivo muestre 0 FAIL contra producción
+- Yo dé luz verde explícita
+
+Si el runner detecta FAILs en producción, antes de arrancar Fase 3 hay que corregirlos. Producción limpia es requisito para avanzar.
+
+## REGLA DE ORO
+
+A partir de ahora: Claude (yo) NO valida manualmente. El runner valida. El humano (César) solo aprueba la aparición del reporte. Si el reporte miente o falla silenciosamente, es bug del runner y hay que arreglarlo.
+
+El agente es responsable de que el runner sea honesto. Falsos positivos destruyen la utilidad del sistema. Si un test dice PASS cuando debería decir FAIL, eso es peor que no tener el test.
+
+Empieza por: 
+1) confirmar publish 
+2) implementar runner 
+3) correr contra prod 
+4) entregar reporte

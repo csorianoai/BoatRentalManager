@@ -1884,6 +1884,78 @@ async function initializeDatabase() {
     console.log('✅ FASE 16: Trazabilidad y normalización aplicada (D-01 a D-06 + F3)');
     // ── END FASE 16 ──────────────────────────────────────────────────────
 
+    // ── FASE 17: Fleet Operations Center tables ───────────────────────────
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS fleet_config (
+        boat_type      TEXT PRIMARY KEY,
+        display_name   TEXT NOT NULL,
+        display_color  TEXT NOT NULL DEFAULT '#6B7280',
+        short_label    TEXT,
+        buffer_minutes INTEGER NOT NULL DEFAULT 60,
+        is_active      BOOLEAN NOT NULL DEFAULT true
+      )
+    `).catch(() => {});
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS holds (
+        id            TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        boat_type     TEXT NOT NULL,
+        start_datetime TIMESTAMPTZ NOT NULL,
+        end_datetime   TIMESTAMPTZ NOT NULL,
+        reason        TEXT,
+        expires_at    TIMESTAMPTZ,
+        created_at    TIMESTAMPTZ DEFAULT NOW()
+      )
+    `).catch(() => {});
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS maintenance_blocks (
+        id               TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        boat_type        TEXT NOT NULL,
+        start_datetime   TIMESTAMPTZ NOT NULL,
+        end_datetime     TIMESTAMPTZ NOT NULL,
+        maintenance_type TEXT,
+        severity         TEXT DEFAULT 'info',
+        status           TEXT DEFAULT 'scheduled',
+        workshop         TEXT,
+        notes            TEXT,
+        created_at       TIMESTAMPTZ DEFAULT NOW()
+      )
+    `).catch(() => {});
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS operations_alerts (
+        id          TEXT PRIMARY KEY,
+        alert_type  TEXT NOT NULL,
+        severity    TEXT NOT NULL DEFAULT 'warning',
+        booking_id  TEXT REFERENCES bookings(id),
+        message     TEXT NOT NULL,
+        detected_at TIMESTAMPTZ DEFAULT NOW(),
+        resolved_at TIMESTAMPTZ,
+        resolved_by TEXT
+      )
+    `).catch(() => {});
+
+    await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS payment_status TEXT CHECK (payment_status IN ('paid','partial','pending','refunded'))`).catch(() => {});
+    await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS duration_source TEXT CHECK (duration_source IN ('manual','default_backfill','calculated'))`).catch(() => {});
+    await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS start_time_source TEXT CHECK (start_time_source IN ('manual','default_backfill','calculated'))`).catch(() => {});
+
+    // Seed fleet_config canonical boat registry (idempotent)
+    await pool.query(`
+      INSERT INTO fleet_config (boat_type, display_name, display_color, short_label, buffer_minutes) VALUES
+        ('CRANCHI',                        'Cranchi 51 Luxury',              '#3B82F6', 'CRANCHI',    60),
+        ('SILVER LINNING',                 'Silver Linning',                 '#F59E0B', 'SLN',        60),
+        ('SEA RAY NAUTI NABOURS 40',       'Sea Ray Nauti Nabours 40',       '#EC4899', 'NTN40',      60),
+        ('SEARAY 500',                     'SEARAY 500',                     '#10B981', 'SR500',      60),
+        ('SeaRay 31',                      'SeaRay 31',                      '#6B7280', 'SR31',       60),
+        ('SeaRay 36',                      'SeaRay 36',                      '#8B5CF6', 'SR36',       60)
+      ON CONFLICT (boat_type) DO NOTHING
+    `).catch(() => {});
+
+    const fcCount = await pool.query(`SELECT COUNT(*) FROM fleet_config WHERE is_active = true`).catch(() => ({ rows: [{ count: 0 }] }));
+    console.log(`✅ FASE 17: Fleet Ops tables ready — ${fcCount.rows[0].count} active boats in fleet_config`);
+    // ── END FASE 17 ──────────────────────────────────────────────────────
+
     console.log('✅ Database schema initialized successfully (all 10 phases + authentication)');
     
     // Insert default message templates if they don't exist
