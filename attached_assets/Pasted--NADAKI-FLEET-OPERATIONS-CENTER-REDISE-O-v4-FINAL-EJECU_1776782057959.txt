@@ -1,0 +1,496 @@
+# NADAKI FLEET OPERATIONS CENTER — REDISEÑO v4 (FINAL EJECUTABLE)
+
+## Contexto y misión
+
+El calendario actual de /dashboard.html (grid semanal horizontal con bloques verdes) es funcional pero operativamente pobre. No responde las preguntas que un operador de flota se hace al abrir el sistema.
+
+Reconstrucción completa hacia lo que internamente llamaremos Nadaki Fleet Operations Center — un Operations Command Surface que permita responder en menos de 10 segundos:
+
+1. ¿Qué barcos están ocupados AHORA?
+2. ¿Qué salidas vienen HOY?
+3. ¿Qué huecos vendibles existen esta semana?
+4. ¿Qué reservas están en RIESGO (pago pendiente, tripulación faltante, conflicto)?
+5. ¿Qué barco está subutilizado?
+6. ¿Quién es capitán/stew de cada salida?
+7. ¿Cuánto se factura por día/semana/barco?
+8. ¿Hay conflictos de tripulación o overbooking?
+
+No es un rediseño visual. Es la transformación de "booking calendar" a "fleet operations calendar".
+
+## FILOSOFÍA Y PILARES
+
+El sistema descansa en 5 pilares:
+1. Visualización de flota — ver toda la flota en un solo vistazo
+2. Operación diaria — coordinar tripulación, horarios, logística
+3. Alertas accionables — detectar riesgos antes de que escalen
+4. Rentabilidad integrada — revenue y utilización visibles en cada vista
+5. Detección de gaps y conflictos — huecos monetizables y solapamientos
+
+## MODELO MENTAL — 4 CAPAS DE INFORMACIÓN
+
+- Capa A Planificación: reservas, holds, maintenance, buffers, disponibilidad
+- Capa B Operación: capitán, stew, check-in, boarding, departure, retorno
+- Capa C Rentabilidad: revenue por salida, revenue del rango, ocupación, huecos vendibles
+- Capa D Riesgo: conflictos, overbookings, tripulación faltante, pagos pendientes, maintenance cercano
+
+## TIPOS DE BLOQUES — NO TODO ES RESERVA
+
+El sistema debe modelar 5 tipos de bloques:
+1. Booking — reserva real (bloque sólido)
+2. Hold — bloqueo temporal pendiente de pago (borde dashed)
+3. Maintenance — reparación, inspección, limpieza (patrón sutil + icono wrench)
+4. Internal Block — uso interno, traslado, fotos (tono neutral + icono shield)
+5. Buffer — tiempo protegido antes/después de salida (bloque fino translúcido)
+
+Cada tipo tiene comportamiento visual y operativo distinto. Un hueco "libre" no siempre es vendible.
+
+## CHECKPOINT DE DECISIÓN INICIAL (OBLIGATORIO ANTES DE CÓDIGO)
+
+Responde estas 8 preguntas antes de escribir una línea:
+
+1. ¿El calendario vive en /dashboard.html o hay que crear ruta separada (ej: /fleet.html)?
+2. ¿Cuántos barcos activos hay en la tabla boats? Lista nombres exactos y columna de identificación.
+3. ¿La data de capitán y stew vive en bookings directamente (campos captain_name, stew_name) o en tabla separada (crew_assignments)?
+4. ¿Existe tabla de holds, maintenance, blackout_dates o similar? Si no, hay que crearlas como parte del sprint.
+5. ¿Existe tabla o campo para buffers entre reservas? Si no, ¿cuál es la política default (30 min, 1h, 2h)?
+6. ¿Hay conflictos de overbooking históricos en data? Query: SELECT boat_type, booking_date, COUNT(*) FROM bookings GROUP BY boat_type, booking_date HAVING COUNT(*) > 1
+7. ¿Existen categorías de paquete/tipo de tour en data, o todas las reservas son genéricas?
+8. ¿La columna boat_type tiene valores consistentes? (SELECT DISTINCT boat_type FROM bookings)
+
+Con esas 8 respuestas adaptamos el plan. Si faltan tablas (holds, maintenance, crew), el sprint incluye migraciones para crearlas.
+
+## LAS 4 VISTAS DEL SISTEMA
+
+### VISTA 1 — FLEET TIMELINE (default)
+
+La vista maestra. Propósito: control semanal de toda la flota.
+
+Estructura:
+- Eje Y: cada barco una fila
+- Eje X: tiempo horizontal
+- Zoom: 3d / 7d (default) / 14d / 30d
+- Sticky left rail (140px) con info del barco
+- Sticky top con KPIs del rango
+
+Sub-modos del Timeline (conmutador secundario):
+- Bookings (default) — reservas + holds + maintenance
+- Operations — añade capitán, stew, buffers, pickup/boarding/departure
+- Revenue — chips de revenue por bloque + intensidad por barco
+- Utilization — resalta % ocupación por barco + gaps vendibles
+
+### VISTA 2 — WEEKLY GRID
+
+Plan táctico diario de UN barco.
+- Selector de barco arriba
+- Horas 07:00-22:00, slots de 30 min
+- Bloques verticales con altura proporcional a duración
+- Línea horizontal de "ahora" en tiempo real
+- Filtros: por capitán, por estado, toggle show buffers, toggle show maintenance
+
+### VISTA 3 — MONTH
+
+Vista ejecutiva y de planeación.
+Cada celda de día muestra:
+- Número del día grande
+- Revenue del día (mono, destacado)
+- Hasta 3 bookings como píldoras (color del barco)
+- "+N más" clickeable
+- Mini dots por barco activo
+- Icono alert si hay incidencia
+Hover/click abre popover con resumen del día.
+
+### VISTA 4 — LIST
+
+Vista operacional-administrativa.
+- Tabla densa con sort por cualquier columna
+- Filtros guardables (saved views)
+- Bulk actions: assign captain, confirm, cancel, export, move
+- Densidad toggle (32/40/56px row)
+- Export CSV/PDF
+
+## SISTEMA VISUAL — TOKENS
+
+Extender nbic-tokens.css con:
+
+/* Colores por barco — SOLO para identidad (borde, chip, dot) */
+--boat-cranchi: #3B82F6;
+--boat-searay-500: #10B981;
+--boat-silver-linning: #F59E0B;
+--boat-viking-princess: #8B5CF6;
+--boat-sea-ray-nauti-nabours-40: #EC4899;
+--boat-default: #6B7280;
+
+/* Estados de reserva — para fondo del bloque (12-15% opacity) */
+--status-inquiry: #71717A;
+--status-hold: #F59E0B;
+--status-pending-payment: #F97316;
+--status-confirmed: #10B981;
+--status-crew-assigned: #06B6D4;
+--status-checked-in: #3B82F6;
+--status-in-progress: #8B5CF6;
+--status-completed: #71717A;
+--status-cancelled: #6B7280;
+--status-no-show: #EF4444;
+
+/* Alertas — solo para riesgo real */
+--alert-normal: transparent;
+--alert-warning: #F59E0B;
+--alert-critical: #EF4444;
+
+## REGLA MAESTRA DE COLOR
+
+Cada bloque de reserva combina 3 señales sin colisionar:
+1. Identidad de barco → borde izquierdo de 3px en --boat-*
+2. Estado de la reserva → fondo del bloque al 15% opacity en --status-*
+3. Alerta operativa → badge en esquina superior derecha con color --alert-*, solo si hay warning/critical
+
+De un vistazo ves: QUÉ barco (borde), EN QUÉ estado (fondo), SI hay riesgo (badge).
+
+## TIPOS DE BLOQUE — SEÑALES COMPLEMENTARIAS
+
+- Booking: bloque sólido
+- Hold: border-style dashed
+- Maintenance: overlay de patrón diagonal sutil + icono wrench 12px
+- Internal Block: tono gris neutral + icono shield 12px
+- Buffer: altura reducida (20px) + opacity 50% + sin texto
+
+## BLOQUE DE RESERVA — COMPRESIÓN POR ANCHURA
+
+El texto nunca rompe el layout. Sistema de compresión:
+
+Tamaño L (ancho > 180px):
+[coco • CRANCHI]                    [!]
+Coco Kaminski
+12:00–16:00 · Juan P. · $1,210
+
+Tamaño M (ancho 100-180px):
+[coco]                              [!]
+Coco Kaminski · 12:00
+Confirmed
+
+Tamaño S (ancho < 100px):
+[CK]                                [!]
+Con tooltip completo al hover.
+
+El agente mide el ancho renderizado y decide qué versión mostrar.
+
+## LEFT RAIL POR BARCO — MINI CONSOLA
+
+Cada fila de barco muestra:
+● CRANCHI            ← dot color barco
+72% utilized
+$6,800 this week
+Next: Today 4:00 PM
+Status: Ready
+
+Estados del barco:
+- Ready (verde): sin reservas ahora, disponible
+- Booked (azul): reserva en curso
+- Turnaround (ámbar): entre reservas, en buffer
+- Maintenance (rojo): bloqueo técnico activo
+- Out (gris): fuera de servicio
+
+Click en la rail → abre detalle del barco con toda su data.
+
+## KPI BAR DEL RANGO VISIBLE (sticky top)
+
+Encima del timeline, siempre visible:
+Bookings | Revenue | Utilization | Open Gaps | Critical | In Maintenance
+  18     | $24,300 |    71%      |    6      |    2     |      1
+
+Reactivos a filtros y rango. Mono tabular. Delta vs período anterior en chip al 12% opacity.
+
+## DETAIL DRAWER DERECHO
+
+Click en cualquier bloque → slide-in desde derecha, 480px wide, 100vh.
+
+Secciones:
+
+Booking Summary:
+- Booking ID / referencia corta
+- Cliente + contacto
+- Source / canal
+- Paquete o tipo
+- Guests count
+- Payment status (chip)
+- Waivers/docs (checklist)
+- Notas
+
+Operations:
+- Captain assigned (warning badge si falta)
+- Stew assigned
+- Pickup location
+- Boarding time
+- Departure ETA
+- Return ETA
+- Turnaround post
+
+Financial:
+- Total
+- Deposit received
+- Balance due
+- Commissions (por canal si aplica)
+- Upsells
+
+Actions (footer):
+- Edit / Assign captain / Mark confirmed / Mark checked-in / Duplicate / Move (con preview) / Cancel (con razón) / Export-print
+
+## OPERATIONS ALERTS PANEL
+
+Panel plegable con feed de alertas rankeadas:
+
+1. No captain assigned (critical si <24h)
+2. No stew assigned (warning)
+3. Payment pending (critical si <24h, warning si <72h)
+4. Overlap detected (critical)
+5. Double-assigned crew (critical)
+6. Buffer too short (warning <30min, critical <15min)
+7. Maintenance conflict (critical)
+8. Missing waiver/docs (warning si <12h)
+9. Back-to-back risky turnaround (warning)
+10. Weather review pending (info)
+
+Cada alerta:
+- Click → resalta bloque + abre drawer
+- Action inline: "Asignar capitán" / "Marcar pagado" / "Resolver"
+- Severity dot (ámbar/rojo)
+- Timestamp relativo
+
+## OPEN GAP DETECTION (diferenciador premium)
+
+Sistema detecta automáticamente huecos monetizables:
+- Gaps de 2h+ entre bookings del mismo barco
+- Gaps compatibles con sunset (3-5 PM)
+- Same-day sellable windows
+- Días completos sin reserva
+
+Visualización:
+- Overlay punteado sobre el hueco en Timeline
+- Chip "4h gap" en el centro
+- Click → acciones: Offer sunset package / Offer short charter / Mark not sellable / Reserve for maintenance / Share on channels
+
+## CONTROL STRIP "TODAY"
+
+Banda operacional superior, siempre visible:
+⏰ Next departure in 42m · 🧑 2 unassigned crew · 💳 1 payment pending · 🛥 Cranchi free from 6-9 PM · 🔧 Viking Princess in maintenance
+
+Actualización cada 60s.
+
+## INTERACCIONES CRÍTICAS
+
+Timeline:
+- Click: abrir drawer
+- Double click: inline quick edit (hora + capitán)
+- Drag: mover reserva (con preview de impacto)
+- Resize (borde derecho): ajustar duración
+- Right click: menú de acciones rápidas
+- Shift + click: multi-select
+- Drag sobre otra reserva: detectar conflicto, modal warning
+
+Reglas inviolables:
+- Ningún cambio silencioso. Siempre preview antes de guardar.
+- Mostrar impacto: Crew conflict / Payment implications / Maintenance conflict / Lost revenue risk / Cliente notification required
+
+## KEYBOARD SHORTCUTS
+
+T Timeline · W Weekly · M Month · L List · N new booking · / focus search · [ prev range · ] next range · 1-4 zoom presets · Esc close drawer · G focus Today · A Alerts panel · ⌘F find customer · ⌘S save view
+
+## RESPONSIVE
+
+- Desktop (1440+): Timeline full, todas las features
+- Tablet (768-1440): Timeline simplified, menos metadata
+- Mobile (<768): auto-switch a "Today Agenda" — lista vertical con acciones primarias. No Timeline en mobile.
+
+## ARQUITECTURA DE DATOS
+
+Si tablas no existen, crear como parte del sprint:
+
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS captain_name TEXT;
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS stew_name TEXT;
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS start_time TEXT;
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS duration_hours NUMERIC(4,2);
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS payment_status TEXT 
+  CHECK (payment_status IN ('paid','partial','pending','refunded'));
+
+CREATE TABLE IF NOT EXISTS holds (
+  id TEXT PRIMARY KEY,
+  boat_type TEXT NOT NULL,
+  start_datetime TIMESTAMPTZ NOT NULL,
+  end_datetime TIMESTAMPTZ NOT NULL,
+  reason TEXT,
+  expires_at TIMESTAMPTZ,
+  created_by TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS maintenance_blocks (
+  id TEXT PRIMARY KEY,
+  boat_type TEXT NOT NULL,
+  start_datetime TIMESTAMPTZ NOT NULL,
+  end_datetime TIMESTAMPTZ NOT NULL,
+  maintenance_type TEXT,
+  severity TEXT CHECK (severity IN ('soft','hard')),
+  workshop TEXT,
+  status TEXT CHECK (status IN ('planned','in-progress','waiting-parts','completed','delayed')),
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS fleet_config (
+  boat_type TEXT PRIMARY KEY,
+  display_color TEXT,
+  short_label TEXT,
+  is_active BOOLEAN DEFAULT true
+);
+
+CREATE TABLE IF NOT EXISTS operations_alerts (
+  id TEXT PRIMARY KEY,
+  alert_type TEXT NOT NULL,
+  severity TEXT CHECK (severity IN ('info','warning','critical')),
+  booking_id TEXT REFERENCES bookings(id),
+  message TEXT,
+  detected_at TIMESTAMPTZ DEFAULT NOW(),
+  resolved_at TIMESTAMPTZ,
+  resolved_by TEXT
+);
+
+## ENDPOINTS REQUERIDOS
+
+GET  /api/fleet/timeline?from=&to=&boats[]=&mode=
+GET  /api/fleet/week?date=&boat=
+GET  /api/fleet/month?year=&month=
+GET  /api/fleet/list?filters=
+GET  /api/fleet/boat/:id/summary
+GET  /api/fleet/kpis?from=&to=
+GET  /api/fleet/alerts?severity=&status=
+GET  /api/fleet/gaps?from=&to=&min_hours=
+GET  /api/fleet/today-strip
+POST /api/bookings
+PUT  /api/bookings/:id
+POST /api/bookings/:id/preview-move
+DELETE /api/bookings/:id
+POST /api/holds
+POST /api/maintenance
+PUT  /api/maintenance/:id/status
+POST /api/alerts/:id/resolve
+POST /api/fleet/saved-views
+GET  /api/fleet/saved-views
+
+## PLAN DE IMPLEMENTACIÓN POR FASES
+
+### FASE 1 — Foundation (3-4 días)
+- Migraciones de tablas (holds, maintenance_blocks, operations_alerts, campos en bookings)
+- Backfill conservador: duration_hours desde total_hours si existe, default 4h si no
+- Endpoint /api/fleet/timeline + /api/fleet/kpis
+- Componente FleetTimeline funcional con datos reales
+- Componente BookingBlock con compresión L/M/S
+- Componente BoatRail con mini consola
+- KPI bar sticky
+- Deploy a staging
+
+CHECKPOINT 1: Timeline funcional con data real. Screenshot antes de seguir.
+
+### FASE 2 — Drawer + Alerts (2-3 días)
+- DetailDrawer completo con 4 secciones
+- Endpoint /api/fleet/alerts + motor de detección
+- Panel de Operations Alerts
+- Today Command Strip
+
+CHECKPOINT 2: Drawer funcional + al menos 5 tipos de alertas detectándose.
+
+### FASE 3 — Vistas restantes (2-3 días)
+- Weekly Grid rediseñado
+- Month view
+- List view con bulk actions
+- Vista switcher + keyboard shortcuts
+
+CHECKPOINT 3: Las 4 vistas funcionando + navegación entre ellas.
+
+### FASE 4 — Interacción avanzada (3-4 días)
+- Drag & drop con preview de impacto
+- Resize de bloques
+- Modal de nueva reserva con pre-llenado
+- Búsqueda global ⌘K
+- Gap detection visual + acciones
+
+CHECKPOINT 4: Operación completa con shortcuts.
+
+### FASE 5 — Polish premium (2-3 días)
+- Sub-modos del Timeline (Bookings/Operations/Revenue/Utilization)
+- Saved views
+- Responsive tablet/mobile
+- Performance: virtualización, memoización, prefetch
+- Microinteracciones finales
+- Export PDF
+
+CHECKPOINT 5: Sistema production-ready.
+
+## CRITERIOS DE ACEPTACIÓN
+
+Fase 1:
+- Timeline muestra los 5 barcos reales
+- Bloques muestran cliente + hora + capitán si hay espacio
+- KPI bar reactiva a cambios de rango
+- Línea "now" se actualiza
+- Colores de barco consistentes en borde izquierdo
+
+Fase 2:
+- Drawer abre en <200ms
+- Alertas detectadas: overlap, no captain, payment pending, maintenance conflict, crew double-assigned
+- Today Strip actualiza cada 60s
+
+Fase 3:
+- Cambio entre vistas sin flash blanco
+- Keyboard shortcuts funcionan
+- Month view con revenue diario visible
+
+Fase 4:
+- Drag & drop nunca ejecuta cambio silencioso
+- Preview muestra impacto
+- Gap detection destaca huecos ≥2h
+
+Fase 5:
+- Timeline renderiza sin lag con 3 meses de data
+- Saved views persisten en backend
+- Mobile muestra "Today Agenda" coherente
+
+## REGLAS DE ORO (no negociables)
+
+1. Ninguna feature antes de que la Fase 1 esté sólida. El Timeline es el corazón.
+2. Color tiene significado, no decoración. Barco=identidad, Estado=fondo, Alerta=badge.
+3. Densidad sobre espaciado. Operaciones, no marketing.
+4. Nunca ocultar información crítica en hover.
+5. Conflictos gritan visualmente. Overbooking y solapamientos no se pasan por alto.
+6. Cero cambios silenciosos. Drag & drop siempre con preview + confirmación.
+7. Compresión de texto automática. Bloque nunca rompe layout.
+8. Performance desde día 1. Virtualización, memoización, prefetch.
+9. Consistencia con NBIC. Tokens, fuentes, componentes reutilizados.
+10. Todo dato operativo es clickeable y lleva al detalle.
+
+## REFERENCIAS ESTÉTICAS
+
+Absorbe principios, no copies:
+- Resource Guru — timeline por recurso
+- Float.com — densidad visual de planning
+- Notion Calendar — tipografía y animaciones
+- Airbnb Host Calendar — disponibilidad multi-unidad
+- Linear Cycles — indicadores de carga
+- Cron/Google Calendar Pro — drag & drop fluido
+- Resy / OpenTable Host — operations layer de alertas
+
+## ENTREGABLES DE ESTA ITERACIÓN
+
+Solo Fase 1. No avances a Fase 2 sin aprobación explícita.
+
+1. Respuestas a las 8 preguntas del Checkpoint Inicial
+2. Diff de migraciones SQL propuestas
+3. Estructura de archivos/componentes planeada
+4. Deploy a staging con Timeline funcional
+5. Screenshot del Timeline con data real de producción
+6. Video 20s mostrando: navegación temporal, hover en bloques, KPI bar reactiva
+
+Al entregar, DETENTE. Espera aprobación antes de Fase 2.
+
+## CHECKPOINT INICIAL — EMPIEZA AQUÍ
+
+No toques código. Responde las 8 preguntas del Checkpoint de Decisión Inicial con evidencia (queries SQL + resultados). Con esas respuestas ajustamos el plan y arrancamos Fase 1.
