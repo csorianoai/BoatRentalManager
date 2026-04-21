@@ -1940,17 +1940,37 @@ async function initializeDatabase() {
     await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS duration_source TEXT CHECK (duration_source IN ('manual','default_backfill','calculated'))`).catch(() => {});
     await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS start_time_source TEXT CHECK (start_time_source IN ('manual','default_backfill','calculated'))`).catch(() => {});
 
-    // Seed fleet_config canonical boat registry (idempotent)
-    await pool.query(`
-      INSERT INTO fleet_config (boat_type, display_name, display_color, short_label, buffer_minutes) VALUES
-        ('CRANCHI',                        'Cranchi 51 Luxury',              '#3B82F6', 'CRANCHI',    60),
-        ('SILVER LINNING',                 'Silver Linning',                 '#F59E0B', 'SLN',        60),
-        ('SEA RAY NAUTI NABOURS 40',       'Sea Ray Nauti Nabours 40',       '#EC4899', 'NTN40',      60),
-        ('SEARAY 500',                     'SEARAY 500',                     '#10B981', 'SR500',      60),
-        ('SeaRay 31',                      'SeaRay 31',                      '#6B7280', 'SR31',       60),
-        ('SeaRay 36',                      'SeaRay 36',                      '#8B5CF6', 'SR36',       60)
-      ON CONFLICT (boat_type) DO NOTHING
-    `).catch(() => {});
+    // Seed fleet_config from boats table — idempotent, uses real boat names
+    {
+      const BOAT_COLORS = ['#3B82F6','#F59E0B','#EC4899','#10B981','#8B5CF6','#EF4444','#06B6D4','#84CC16','#F97316','#A855F7'];
+      const existingBoats = await pool.query(`SELECT name, boat_type FROM boats WHERE status IN ('active','maintenance') ORDER BY created_at`).catch(() => ({ rows: [] }));
+      if (existingBoats.rows.length > 0) {
+        for (let i = 0; i < existingBoats.rows.length; i++) {
+          const b = existingBoats.rows[i];
+          const boatKey = b.name.trim();
+          const color   = BOAT_COLORS[i % BOAT_COLORS.length];
+          const words   = boatKey.split(/\s+/);
+          const label   = words.length >= 2 ? (words[0].substring(0,2) + words[words.length-1].substring(0,2)).toUpperCase() : boatKey.substring(0,4).toUpperCase();
+          await pool.query(`
+            INSERT INTO fleet_config (boat_type, display_name, display_color, short_label, buffer_minutes, is_active)
+            VALUES ($1, $2, $3, $4, 60, true)
+            ON CONFLICT (boat_type) DO NOTHING
+          `, [boatKey, boatKey, color, label]).catch(() => {});
+        }
+      } else {
+        // Fallback hardcoded seed if boats table is also empty
+        await pool.query(`
+          INSERT INTO fleet_config (boat_type, display_name, display_color, short_label, buffer_minutes) VALUES
+            ('CRANCHI',              'CRANCHI',              '#3B82F6', 'CR',   60),
+            ('VIKING PRINCESS',      'VIKING PRINCESS',      '#F59E0B', 'VKP',  60),
+            ('SEA RAY NAUTI NABOURS 40', 'SEA RAY NAUTI NABOURS 40', '#EC4899', 'NTN', 60),
+            ('SEARAY 500',           'SEARAY 500',           '#10B981', 'SR5',  60),
+            ('SeaRay 31',            'SeaRay 31',            '#6B7280', 'SR3',  60),
+            ('SeaRay 36',            'SeaRay 36',            '#8B5CF6', 'SR36', 60)
+          ON CONFLICT (boat_type) DO NOTHING
+        `).catch(() => {});
+      }
+    }
 
     const fcCount = await pool.query(`SELECT COUNT(*) FROM fleet_config WHERE is_active = true`).catch(() => ({ rows: [{ count: 0 }] }));
     console.log(`✅ FASE 17: Fleet Ops tables ready — ${fcCount.rows[0].count} active boats in fleet_config`);
