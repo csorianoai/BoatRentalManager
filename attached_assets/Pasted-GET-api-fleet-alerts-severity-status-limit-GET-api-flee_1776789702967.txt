@@ -1,0 +1,60 @@
+GET  /api/fleet/alerts?severity=&status=&limit=
+GET  /api/fleet/today-strip
+POST /api/alerts/:id/resolve
+POST /api/bookings/:id/assign-captain
+POST /api/bookings/:id/mark-paid
+POST /api/bookings/:id/mark-confirmed
+
+Todos respetan el formato JSON estándar del NBIC (meta, data, errors).
+
+### 6. Tests de validación
+
+Antes de cerrar Fase 2, ejecuta estas verificaciones:
+
+V2.1 — Drawer performance: abrir drawer sobre 5 bookings distintos, medir tiempo click→render. Reportar las 5 mediciones.
+
+V2.2 — Alertas accuracy: el motor debe detectar AL MENOS:
+- Todos los bookings sin captain_name como "No captain assigned"
+- Todos los bookings con payment_status IN ('pending','partial') como "Payment pending"
+
+Ejecuta estas queries y confirma que los conteos coinciden con las alertas visibles en el panel:
+
+SELECT COUNT(*) FROM bookings 
+WHERE captain_name IS NULL AND status != 'cancelled' 
+  AND booking_date >= CURRENT_DATE;
+
+SELECT COUNT(*) FROM bookings 
+WHERE payment_status IN ('pending','partial') 
+  AND status != 'cancelled'
+  AND booking_date >= CURRENT_DATE;
+
+V2.3 — Today Strip: verifica contra query manual:
+- Próxima salida: MIN(booking_date + start_time) WHERE booking_date = CURRENT_DATE AND start_time > NOW_TIME
+- Capitanes faltantes: COUNT bookings de hoy sin captain_name
+- Primer hueco del día: calcular desde bookings ordenados por start_time
+
+V2.4 — No false positives: 
+- Alertas de "overlap" solo deben dispararse cuando realmente hay solapamiento temporal (no cuando hay back-to-back sin buffer)
+- Alertas de "crew double-assigned" solo si mismo captain_name en horarios que se solapan
+
+## REGLAS
+
+- Mantén tokens NBIC para todos los componentes nuevos (nbic-tokens.css)
+- No toques endpoints de Fase 1 ya validados (/api/fleet/timeline, /api/fleet/kpis)
+- Si encuentras data inconsistente (ej: bookings con start_time después de end_time) reporta sin corregir
+- Alertas se persisten en operations_alerts, no solo en memoria
+- Si el job de alertas (5min cron) no se puede implementar en el entorno actual, usa alternativa: endpoint /api/fleet/alerts que recalcula on-demand. Documenta la decisión
+
+## CHECKPOINT FASE 2
+
+Al terminar:
+1. Screenshot del drawer abierto sobre un booking real
+2. Screenshot del panel de alertas con feed poblado
+3. Screenshot del Today Command Strip
+4. Resultado de V2.1, V2.2, V2.3, V2.4
+5. Deploy a producción
+6. Video 30s mostrando: click en booking → drawer se abre → navega entre secciones → click en alerta del sidebar → drawer correspondiente → close
+
+No avances a Fase 3 sin aprobación explícita.
+
+Empieza por el Detail Drawer. Es la pieza más visible y el resto se construye alrededor.

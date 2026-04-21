@@ -1,0 +1,97 @@
+Fase 1 aprobada. Excelente trabajo con I-01, I-02 y la limpieza de dependencias.
+
+Arranca Fase 2 inmediatamente con este alcance:
+
+## ENTREGABLES FASE 2
+
+### 1. Detail Drawer completo (480px, slide-in derecha)
+
+Click en cualquier bloque del Timeline abre el drawer con estas 4 secciones + footer de acciones. Todas las secciones deben mostrar data real desde bookings + tablas relacionadas.
+
+Sección 1 — Booking Summary:
+- Booking ID (ref corta) + copy button
+- Customer name + teléfono con link "tel:" 
+- Email con link "mailto:" si existe
+- Source/canal (chip con color de canal: Manual, Airbnb, BoatSetter, GetMyBoat)
+- Paquete o tipo de tour si existe campo
+- Guests count si existe
+- Payment status (chip: Paid/Partial/Pending/Refunded)
+- Waivers/docs (checklist visual con íconos check/x)
+- Notas libres
+
+Sección 2 — Operations:
+- Captain assigned (badge rojo "Sin asignar" si NULL)
+- Stew assigned (badge ámbar "Sin asignar" si NULL)
+- Start time + duration → calcula end time auto
+- Pickup location si existe (GeoPoint o texto)
+- Badge "Hora estimada · Editar" si start_time_source = default_backfill
+- Badge "Duración estimada · Editar" si duration_source = default_backfill
+
+Sección 3 — Financial:
+- Total (mono tabular destacado)
+- Deposit received (si existe campo)
+- Balance due (calculado: total - deposit)
+- Commissions por canal si aplica
+- Upsells si existen
+
+Sección 4 — Activity log (nueva, no estaba en v4):
+- Timeline de cambios del booking: creado, confirmado, capitán asignado, etc.
+- Tabla audit_log si existe, o inferido desde created_at/updated_at
+
+Footer de acciones:
+- [Edit] [Assign captain] [Mark confirmed] [Mark checked-in] [Duplicate] [Move] [Cancel] [Export]
+
+Regla UX: drawer abre en <200ms sin fetch adicional (data pre-cargada). Scroll interno si contenido supera altura.
+
+### 2. Motor de detección de alertas + tabla operations_alerts
+
+Crear job que corre cada 5 minutos y popula operations_alerts. Detectar mínimo estos 5 tipos:
+
+1. No captain assigned (critical si booking_date - now < 24h, warning si <72h)
+2. Payment pending (critical si booking_date - now < 24h y payment_status != paid)
+3. Overlap detected (critical: dos bookings del mismo barco con solapamiento temporal)
+4. Crew double-assigned (critical: mismo captain_name en 2 bookings al mismo tiempo)
+5. Maintenance conflict (critical: booking confirmado dentro de ventana de maintenance_block)
+
+Para cada alerta:
+- Insertar en operations_alerts con severity, booking_id, message, detected_at
+- Si la alerta ya existe y sigue vigente, actualizar detected_at
+- Si la alerta se resolvió (ej: se asignó capitán), marcar resolved_at
+
+### 3. Operations Alerts Panel
+
+Ubicación: panel plegable en sidebar izquierdo O tab dedicado con badge de contador.
+
+Visualización:
+- Feed cronológico ordenado por severity DESC, detected_at DESC
+- Cada alerta: icono severity + título + detalle + "hace X tiempo" + botón acción inline
+- Crítica: dot rojo + fondo al 8% danger
+- Warning: dot ámbar + fondo al 8% warning  
+- Info: dot gris + sin fondo
+
+Acciones inline por tipo de alerta:
+- No captain: botón "Asignar capitán" → abre drawer del booking con focus en campo captain
+- Payment pending: botón "Marcar pagado" → modal de confirmación
+- Overlap: botón "Resolver conflicto" → abre drawer con vista de ambos bookings
+- Crew double-assigned: botón "Reasignar" → modal con captain picker
+- Maintenance conflict: botón "Ver opciones" → sugiere reschedule
+
+Contador en sidebar: "[3 críticas]" en rojo, "[2 avisos]" en ámbar. Click en contador filtra por severity.
+
+### 4. Today Command Strip
+
+Banda horizontal superior, siempre visible cuando el rango incluye hoy.
+
+Data a mostrar (calcular en nuevo endpoint /api/fleet/today-strip):
+
+⏰ Next departure in Xm (próxima salida de hoy)
+👤 N unassigned crew (bookings de hoy sin capitán)
+💳 N payment pending (bookings de hoy con pago pendiente)
+🛥 [Barco] free from HH-HH (primer hueco disponible del día ≥2h)
+🔧 [Barco] in maintenance (si aplica)
+
+Refresh cada 60 segundos.
+
+Si no hay salidas hoy: "Sin salidas programadas para hoy · [Crear reserva]"
+
+### 5. Endpoints nuevos

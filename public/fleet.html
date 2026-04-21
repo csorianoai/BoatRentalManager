@@ -786,6 +786,69 @@
         .foc-action-copy { background:#F3F4F6; color:#374151; }
         .foc-action-copy:hover { background:#E5E7EB; }
 
+        /* ── FASE 2: Channel + Payment chips ──────────── */
+        .foc-chan-chip { font-size:11px; font-weight:600; padding:2px 8px; border-radius:10px; white-space:nowrap; }
+        .foc-pay-chip  { font-size:11px; font-weight:600; padding:2px 8px; border-radius:10px; white-space:nowrap; }
+
+        /* ── FASE 2: Crew chips ───────────────────────── */
+        .foc-crew-chip { font-size:12px; font-weight:600; background:#EFF6FF; color:#1D4ED8; padding:3px 10px; border-radius:12px; }
+        .foc-crew-stew { background:#F0FDF4; color:#065F46; }
+        .foc-missing-chip { font-size:11px; font-weight:700; padding:3px 10px; border-radius:12px; }
+        .foc-missing-red  { background:#FEF2F2; color:#991B1B; }
+        .foc-missing-amber { background:#FFFBEB; color:#92400E; }
+
+        /* ── FASE 2: Copy button ──────────────────────── */
+        .foc-copy-btn { background:none; border:1px solid #E5E7EB; border-radius:5px; padding:1px 6px; font-size:13px; cursor:pointer; color:#6B7280; margin-left:6px; line-height:1.4; flex-shrink:0; }
+        .foc-copy-btn:hover { background:#F3F4F6; color:#111827; }
+
+        /* ── FASE 2: Links ────────────────────────────── */
+        .foc-dr-link { color:#2563EB; text-decoration:none; font-size:13px; font-weight:500; }
+        .foc-dr-link:hover { text-decoration:underline; }
+        .foc-dr-ok { color:#059669; font-weight:600; }
+
+        /* ── FASE 2: Estimate badge with edit button ──── */
+        .foc-est-badge { font-size:10px; font-weight:500; color:#92400E; background:#FEF3C7; border-radius:4px; padding:2px 6px; margin-left:6px; display:inline-flex; align-items:center; gap:4px; }
+        .foc-est-edit { background:none; border:none; font-size:10px; color:#1D4ED8; cursor:pointer; font-weight:600; padding:0; text-decoration:underline; }
+
+        /* ── FASE 2: Footer grid (2×4 buttons) ───────── */
+        .foc-footer-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; padding:14px 20px; border-top:1px solid #E5E7EB; }
+        .foc-btn-primary  { background:#111827; color:#fff; }
+        .foc-btn-primary:hover { background:#1F2937; }
+        .foc-btn-captain  { background:#1D4ED8; color:#fff; }
+        .foc-btn-captain:hover { background:#1E40AF; }
+        .foc-btn-confirm  { background:#059669; color:#fff; }
+        .foc-btn-confirm:hover { background:#047857; }
+        .foc-btn-checkin  { background:#0891B2; color:#fff; }
+        .foc-btn-checkin:hover { background:#0E7490; }
+        .foc-btn-secondary { background:#F3F4F6; color:#374151; }
+        .foc-btn-secondary:hover { background:#E5E7EB; }
+        .foc-btn-cancel   { background:#FEF2F2; color:#991B1B; border:1px solid #FECACA; }
+        .foc-btn-cancel:hover { background:#FEE2E2; }
+
+        /* ── FASE 2: Activity log ─────────────────────── */
+        .foc-activity-log { display:flex; flex-direction:column; gap:8px; }
+        .foc-activity-item { display:flex; align-items:flex-start; gap:8px; padding:6px 0; border-bottom:1px solid #F9FAFB; }
+        .foc-activity-icon { font-size:14px; flex-shrink:0; margin-top:1px; }
+        .foc-activity-body { flex:1; min-width:0; }
+        .foc-activity-label { font-size:12px; font-weight:500; color:#374151; display:block; }
+        .foc-activity-detail { font-size:11px; color:#059669; font-weight:600; }
+        .foc-activity-time { font-size:11px; color:#9CA3AF; white-space:nowrap; flex-shrink:0; }
+        .foc-activity-empty { font-size:12px; color:#9CA3AF; padding:8px 0; }
+
+        /* ── FASE 2: Captain modal ────────────────────── */
+        .foc-modal-overlay { position:absolute; inset:0; background:rgba(0,0,0,.5); }
+        .foc-modal-panel { position:relative; background:#fff; border-radius:12px; width:400px; max-width:90vw; max-height:80vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,.3); z-index:1; }
+        .foc-modal-header { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid #E5E7EB; }
+        .foc-modal-title { font-size:15px; font-weight:700; color:#111827; }
+        .foc-modal-body { padding:16px 20px; }
+        .foc-cap-opt { display:flex; align-items:center; width:100%; text-align:left; padding:10px 14px; border:1px solid #E5E7EB; border-radius:8px; background:#fff; font-size:13px; font-weight:500; color:#111827; cursor:pointer; margin-bottom:6px; gap:8px; }
+        .foc-cap-opt:hover { background:#EFF6FF; border-color:#BFDBFE; }
+
+        /* ── FASE 2: Drawer row override (allow copy btn) */
+        .foc-drawer-row { display:flex; align-items:center; gap:8px; padding:5px 0; flex-wrap:wrap; }
+        .foc-dr-label { font-size:11px; font-weight:600; color:#9CA3AF; text-transform:uppercase; letter-spacing:.06em; min-width:88px; flex-shrink:0; }
+        .foc-dr-val { font-size:13px; color:#374151; flex:1; min-width:0; display:flex; align-items:center; flex-wrap:wrap; gap:4px; }
+
         /* ===== PLATFORM MATRIX ===== */
         .platform-matrix {
             background: #FFFFFF;

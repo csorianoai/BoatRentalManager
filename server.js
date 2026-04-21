@@ -14619,7 +14619,12 @@ const HOST = '0.0.0.0'; // Required for deployment
                b.status, b.assigned_captain_name, b.stew_name,
                b.total_amount, b.deposit_amount, b.balance_pending,
                b.payment_status, b.payment_method, b.num_guests,
-               b.notes, b.internal_notes, b.platform, b.pickup_location
+               b.notes, b.internal_notes, b.platform, b.pickup_location,
+               b.customer_phone, b.customer_email,
+               b.created_at, b.updated_at,
+               b.sold_by_name, b.payment_date,
+               b.broker_name, b.discount_amount, b.discount_pct,
+               b.base_price
         FROM bookings b
         WHERE b.booking_date >= $1
           AND b.booking_date <= $2
@@ -14898,6 +14903,32 @@ const HOST = '0.0.0.0'; // Required for deployment
       const bookedToday = new Set(bookings.map(b => b.boat_type));
       const freeBoats = fleetQ.rows.filter(b => !bookedToday.has(b.boat_type));
 
+      // First available gap ≥2h across all boats today (within 07:00-22:00)
+      const OP_S = 7, OP_E = 22, MIN_GAP = 2;
+      let firstGap = null;
+      for (const boat of fleetQ.rows) {
+        const bkings = bookings
+          .filter(b => b.boat_type === boat.boat_type)
+          .map(b => {
+            const parts = (b.start_time || '10:00').split(':');
+            const sh = parseInt(parts[0]) + (parseInt(parts[1]||0)/60);
+            return { sh, eh: Math.min(OP_E, sh + (b.duration_hours||4)) };
+          })
+          .sort((a,b) => a.sh - b.sh);
+        const checkPoints = [OP_S, ...bkings.map(b => b.eh)];
+        const blockStarts = [...bkings.map(b => b.sh), OP_E];
+        for (let i = 0; i < checkPoints.length; i++) {
+          const gs = Math.max(OP_S, checkPoints[i]);
+          const ge = Math.min(OP_E, blockStarts[i]);
+          if (ge - gs >= MIN_GAP && gs >= nowHour - 0.5) {
+            const ghStr = n => `${String(Math.floor(n)).padStart(2,'0')}:${String(Math.round((n%1)*60)).padStart(2,'0')}`;
+            if (!firstGap || gs < firstGap.gap_start_h) {
+              firstGap = { boat_type: boat.boat_type, display_name: boat.display_name || boat.boat_type, gap_start_h: gs, gap_end_h: ge, duration_h: ge - gs, label: `${ghStr(gs)}–${ghStr(ge)}` };
+            }
+          }
+        }
+      }
+
       res.json({
         date: today,
         total_today: bookings.length,
@@ -14905,6 +14936,7 @@ const HOST = '0.0.0.0'; // Required for deployment
         unassigned_crew: unassignedCrew,
         payment_pending: paymentPending,
         free_boats: freeBoats,
+        first_gap: firstGap,
         bookings_today: bookings
       });
     } catch (err) {
@@ -14913,102 +14945,226 @@ const HOST = '0.0.0.0'; // Required for deployment
     }
   });
 
-  // GET /api/fleet/alerts — auto-detected operations alerts
+  // ── FLEET OPS: Alert Detection Helpers ───────────────────
+  function _fleetParseDT(timeStr) {
+    if (!timeStr) return 10;
+    const [h, m] = String(timeStr).split(':').map(Number);
+    return h + (isNaN(m) ? 0 : m) / 60;
+  }
+  function _alertAction(type) {
+    const map = { no_captain:'Asignar capitán', payment_pending:'Marcar pagado', overlap:'Resolver conflicto', crew_double:'Reasignar', maintenance_conflict:'Ver opciones' };
+    return map[type] || null;
+  }
+
+  // GET /api/fleet/alerts — full 5-type detection + DB persistence
   app.get('/api/fleet/alerts', async (req, res) => {
     try {
-      const now = new Date();
+      const now  = new Date();
       const today = now.toISOString().split('T')[0];
-      const in24h = new Date(now.getTime() + 86400000).toISOString().split('T')[0];
+      const in24h = new Date(now.getTime() +    86400000).toISOString().split('T')[0];
       const in72h = new Date(now.getTime() + 3*86400000).toISOString().split('T')[0];
+      const limit = Math.min(100, parseInt(req.query.limit) || 50);
 
-      const alerts = [];
+      const detected = [];
 
-      // 1. No captain assigned
-      const noCaptainQ = await pool.query(`
+      // ── Type 1: No captain assigned ─────────────────────
+      const ncQ = await pool.query(`
         SELECT id, customer_name, boat_type, booking_date, start_time
         FROM bookings
-        WHERE status != 'cancelled'
+        WHERE status NOT IN ('cancelled','completed')
           AND booking_date >= $1
           AND (assigned_captain_name IS NULL OR assigned_captain_name = '')
-        ORDER BY booking_date, start_time
-        LIMIT 20
+        ORDER BY booking_date, start_time LIMIT 30
       `, [today]);
-
-      for (const b of noCaptainQ.rows) {
-        const severity = b.booking_date <= in24h ? 'critical' : 'warning';
-        alerts.push({
-          id: `alert_captain_${b.id}`,
-          type: 'no_captain',
-          severity,
-          booking_id: b.id,
-          booking_date: b.booking_date,
-          boat_type: b.boat_type,
-          customer_name: b.customer_name,
-          message: `Sin capitán asignado: ${b.customer_name} — ${b.boat_type} el ${b.booking_date}`,
-          action: 'Asignar capitán'
-        });
+      for (const b of ncQ.rows) {
+        const sev = b.booking_date <= in24h ? 'critical' : b.booking_date <= in72h ? 'warning' : 'info';
+        detected.push({ fp:`nc_${b.id}`, type:'no_captain', severity:sev, booking_id:b.id, booking_date:b.booking_date, boat_type:b.boat_type, customer_name:b.customer_name, message:`Sin capitán: ${b.customer_name} — ${b.boat_type} el ${b.booking_date}` });
       }
 
-      // 2. Payment pending
-      const payPendingQ = await pool.query(`
+      // ── Type 2: Payment pending ──────────────────────────
+      const ppQ = await pool.query(`
         SELECT id, customer_name, boat_type, booking_date, balance_pending
         FROM bookings
-        WHERE status != 'cancelled'
+        WHERE status NOT IN ('cancelled','completed')
           AND booking_date >= $1
-          AND balance_pending > 0
-          AND (payment_status IS NULL OR payment_status != 'paid')
-        ORDER BY booking_date
+          AND COALESCE(balance_pending,0) > 0
+          AND (payment_status IS NULL OR payment_status NOT IN ('paid','refunded'))
+        ORDER BY booking_date LIMIT 30
+      `, [today]);
+      for (const b of ppQ.rows) {
+        const sev = b.booking_date <= in24h ? 'critical' : b.booking_date <= in72h ? 'warning' : 'info';
+        detected.push({ fp:`pp_${b.id}`, type:'payment_pending', severity:sev, booking_id:b.id, booking_date:b.booking_date, boat_type:b.boat_type, customer_name:b.customer_name, message:`Pago pendiente $${parseFloat(b.balance_pending).toFixed(0)}: ${b.customer_name} el ${b.booking_date}` });
+      }
+
+      // ── Type 3: True temporal overlap (same boat, same day) ─
+      const ovQ = await pool.query(`
+        SELECT a.id as id_a, b.id as id_b,
+               a.customer_name as na, b.customer_name as nb,
+               a.booking_date as bdate, a.boat_type as btype,
+               a.start_time as sta, COALESCE(a.duration_hours,4) as dura,
+               b.start_time as stb, COALESCE(b.duration_hours,4) as durb
+        FROM bookings a JOIN bookings b
+          ON a.boat_type = b.boat_type AND a.booking_date = b.booking_date AND a.id < b.id
+        WHERE a.status NOT IN ('cancelled') AND b.status NOT IN ('cancelled')
+          AND a.booking_date >= $1 AND a.start_time IS NOT NULL AND b.start_time IS NOT NULL
+        LIMIT 50
+      `, [today]);
+      for (const r of ovQ.rows) {
+        const sa = _fleetParseDT(r.sta), ea = sa + r.dura;
+        const sb = _fleetParseDT(r.stb), eb = sb + r.durb;
+        if (sa < eb && sb < ea) { // real overlap, not just back-to-back
+          detected.push({ fp:`ov_${r.id_a}_${r.id_b}`, type:'overlap', severity:'critical', booking_id:r.id_a, booking_date:r.bdate, boat_type:r.btype, customer_name:r.na, message:`Solapamiento en ${r.btype}: ${r.na} (${r.sta}) y ${r.nb} (${r.stb}) el ${r.bdate}` });
+        }
+      }
+
+      // ── Type 4: Crew double-assigned (same captain, overlapping times) ─
+      const cdQ = await pool.query(`
+        SELECT a.id as id_a, b.id as id_b,
+               a.assigned_captain_name as cap,
+               a.booking_date as bdate, a.boat_type as btype,
+               a.start_time as sta, COALESCE(a.duration_hours,4) as dura,
+               b.start_time as stb, COALESCE(b.duration_hours,4) as durb,
+               a.customer_name as na, b.customer_name as nb
+        FROM bookings a JOIN bookings b
+          ON LOWER(TRIM(a.assigned_captain_name)) = LOWER(TRIM(b.assigned_captain_name))
+          AND a.booking_date = b.booking_date AND a.id < b.id
+        WHERE a.assigned_captain_name IS NOT NULL AND a.assigned_captain_name != ''
+          AND a.status NOT IN ('cancelled') AND b.status NOT IN ('cancelled')
+          AND a.booking_date >= $1 AND a.start_time IS NOT NULL AND b.start_time IS NOT NULL
         LIMIT 20
       `, [today]);
-
-      for (const b of payPendingQ.rows) {
-        const severity = b.booking_date <= in24h ? 'critical' : (b.booking_date <= in72h ? 'warning' : 'info');
-        alerts.push({
-          id: `alert_pay_${b.id}`,
-          type: 'payment_pending',
-          severity,
-          booking_id: b.id,
-          booking_date: b.booking_date,
-          boat_type: b.boat_type,
-          customer_name: b.customer_name,
-          message: `Balance pendiente $${parseFloat(b.balance_pending).toFixed(0)}: ${b.customer_name} el ${b.booking_date}`,
-          action: 'Marcar pagado'
-        });
+      for (const r of cdQ.rows) {
+        const sa = _fleetParseDT(r.sta), ea = sa + r.dura;
+        const sb = _fleetParseDT(r.stb), eb = sb + r.durb;
+        if (sa < eb && sb < ea) {
+          detected.push({ fp:`cd_${r.id_a}_${r.id_b}`, type:'crew_double', severity:'critical', booking_id:r.id_a, booking_date:r.bdate, boat_type:r.btype, customer_name:r.cap, message:`Capitán ${r.cap} asignado doble: ${r.na} y ${r.nb} el ${r.bdate}` });
+        }
       }
 
-      // 3. Overbooking: same boat + same date with 2+ bookings
-      const overlapQ = await pool.query(`
-        SELECT boat_type, booking_date, COUNT(*) as cnt,
-               STRING_AGG(customer_name, ', ') as customers
-        FROM bookings
-        WHERE status != 'cancelled' AND booking_date >= $1
-        GROUP BY boat_type, booking_date
-        HAVING COUNT(*) > 1
-      `, [today]);
-
-      for (const o of overlapQ.rows) {
-        alerts.push({
-          id: `alert_overlap_${o.boat_type}_${o.booking_date}`,
-          type: 'overbooking',
-          severity: 'critical',
-          booking_id: null,
-          booking_date: o.booking_date,
-          boat_type: o.boat_type,
-          customer_name: o.customers,
-          message: `Overbooking: ${o.boat_type} tiene ${o.cnt} reservas el ${o.booking_date}`,
-          action: 'Resolver conflicto'
-        });
+      // ── Type 5: Maintenance conflict ────────────────────
+      let mcRows = [];
+      try {
+        const mcQ = await pool.query(`
+          SELECT b.id, b.customer_name, b.booking_date, b.boat_type
+          FROM bookings b
+          JOIN maintenance_blocks m ON b.boat_type = m.boat_type
+            AND b.booking_date::date BETWEEN DATE(m.start_datetime) AND DATE(m.end_datetime)
+            AND m.status != 'completed'
+          WHERE b.status NOT IN ('cancelled') AND b.booking_date >= $1
+          LIMIT 20
+        `, [today]);
+        mcRows = mcQ.rows;
+      } catch(e) {}
+      for (const b of mcRows) {
+        detected.push({ fp:`mc_${b.id}`, type:'maintenance_conflict', severity:'critical', booking_id:b.id, booking_date:b.booking_date, boat_type:b.boat_type, customer_name:b.customer_name, message:`Conflicto mantenimiento: ${b.customer_name} en ${b.boat_type} el ${b.booking_date}` });
       }
 
-      // Sort: critical first, then by booking_date
-      const severityOrder = { critical: 0, warning: 1, info: 2 };
-      alerts.sort((a, b) => (severityOrder[a.severity] - severityOrder[b.severity]) || a.booking_date.localeCompare(b.booking_date));
+      // ── Persist to operations_alerts (upsert by fingerprint) ─
+      for (const a of detected) {
+        try {
+          const ex = await pool.query(`SELECT id FROM operations_alerts WHERE id=$1 AND resolved_at IS NULL`, [a.fp]);
+          if (ex.rows.length === 0) {
+            await pool.query(`INSERT INTO operations_alerts(id,alert_type,severity,booking_id,message,detected_at) VALUES($1,$2,$3,$4,$5,NOW()) ON CONFLICT (id) DO UPDATE SET detected_at=NOW(), severity=$3`, [a.fp, a.type, a.severity, a.booking_id, a.message]);
+          } else {
+            await pool.query(`UPDATE operations_alerts SET detected_at=NOW(), severity=$1 WHERE id=$2`, [a.severity, a.fp]);
+          }
+        } catch(e) {}
+      }
 
-      res.json({ alerts, total: alerts.length, critical: alerts.filter(a => a.severity === 'critical').length });
+      // ── Auto-resolve alerts no longer detected ───────────
+      const fps = detected.map(a => a.fp);
+      if (fps.length > 0) {
+        try {
+          await pool.query(`UPDATE operations_alerts SET resolved_at=NOW() WHERE resolved_at IS NULL AND id NOT IN (${fps.map((_,i)=>`$${i+1}`).join(',')})`, fps);
+        } catch(e) {}
+      } else {
+        try { await pool.query(`UPDATE operations_alerts SET resolved_at=NOW() WHERE resolved_at IS NULL`); } catch(e) {}
+      }
+
+      // ── Build response ───────────────────────────────────
+      const sevOrder = { critical:0, warning:1, info:2 };
+      const sorted = detected
+        .sort((a,b) => (sevOrder[a.severity] - sevOrder[b.severity]) || (a.booking_date||'').localeCompare(b.booking_date||''))
+        .slice(0, limit)
+        .map(a => ({ id:a.fp, type:a.type, severity:a.severity, booking_id:a.booking_id, booking_date:a.booking_date, boat_type:a.boat_type, customer_name:a.customer_name, message:a.message, action:_alertAction(a.type) }));
+
+      res.json({ alerts: sorted, total: detected.length, critical: detected.filter(a=>a.severity==='critical').length });
     } catch (err) {
       console.error('Fleet alerts error:', err.message);
       res.status(500).json({ error: err.message });
     }
+  });
+
+  // POST /api/alerts/:id/resolve — mark alert resolved
+  app.post('/api/alerts/:id/resolve', async (req, res) => {
+    try {
+      const { id } = req.params;
+      await pool.query(`UPDATE operations_alerts SET resolved_at=NOW(), resolved_by=$1 WHERE id=$2`, [req.user?.id || 'manual', id]);
+      res.json({ ok: true, id });
+    } catch(err) { res.status(500).json({ error: err.message }); }
+  });
+
+  // POST /api/bookings/:id/assign-captain
+  app.post('/api/bookings/:id/assign-captain', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { captain_name, captain_phone } = req.body;
+      if (!captain_name) return res.status(400).json({ error: 'captain_name required' });
+      const upd = await pool.query(
+        `UPDATE bookings SET assigned_captain_name=$1, assigned_captain_phone=$2, updated_at=NOW() WHERE id=$3 RETURNING id, assigned_captain_name`,
+        [captain_name.trim(), captain_phone || null, id]
+      );
+      if (upd.rows.length === 0) return res.status(404).json({ error: 'Booking not found' });
+      res.json({ ok: true, booking_id: id, captain_name: upd.rows[0].assigned_captain_name });
+    } catch(err) { res.status(500).json({ error: err.message }); }
+  });
+
+  // POST /api/bookings/:id/mark-paid
+  app.post('/api/bookings/:id/mark-paid', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { payment_method } = req.body;
+      const upd = await pool.query(
+        `UPDATE bookings SET payment_status='paid', balance_pending=0, payment_method=COALESCE($1,payment_method), payment_date=CURRENT_DATE, updated_at=NOW() WHERE id=$2 RETURNING id, payment_status`,
+        [payment_method || null, id]
+      );
+      if (upd.rows.length === 0) return res.status(404).json({ error: 'Booking not found' });
+      res.json({ ok: true, booking_id: id, payment_status: 'paid' });
+    } catch(err) { res.status(500).json({ error: err.message }); }
+  });
+
+  // POST /api/bookings/:id/mark-confirmed
+  app.post('/api/bookings/:id/mark-confirmed', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const upd = await pool.query(
+        `UPDATE bookings SET status='confirmed', updated_at=NOW() WHERE id=$1 RETURNING id, status`,
+        [id]
+      );
+      if (upd.rows.length === 0) return res.status(404).json({ error: 'Booking not found' });
+      res.json({ ok: true, booking_id: id, status: 'confirmed' });
+    } catch(err) { res.status(500).json({ error: err.message }); }
+  });
+
+  // POST /api/bookings/:id/mark-checked-in
+  app.post('/api/bookings/:id/mark-checked-in', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const upd = await pool.query(
+        `UPDATE bookings SET status='checked-in', updated_at=NOW() WHERE id=$1 RETURNING id, status`,
+        [id]
+      );
+      if (upd.rows.length === 0) return res.status(404).json({ error: 'Booking not found' });
+      res.json({ ok: true, booking_id: id, status: 'checked-in' });
+    } catch(err) { res.status(500).json({ error: err.message }); }
+  });
+
+  // GET /api/fleet/captains — list available captains
+  app.get('/api/fleet/captains', async (req, res) => {
+    try {
+      const q = await pool.query(`SELECT id, name, phone, email, status FROM captains WHERE status != 'inactive' ORDER BY name`);
+      res.json({ captains: q.rows });
+    } catch(err) { res.status(500).json({ error: err.message }); }
   });
 
   // ── END FLEET OPS endpoints ──────────────────────────────
