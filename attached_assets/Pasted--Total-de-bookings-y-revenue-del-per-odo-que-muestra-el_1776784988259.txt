@@ -1,0 +1,102 @@
+-- Total de bookings y revenue del período que muestra el Fleet Ops
+SELECT
+COUNT(*) AS bookings,
+SUM(total_amount) AS revenue,
+AVG(total_amount) AS avg_ticket
+FROM bookings
+WHERE booking_date >= '2026-04-14'
+AND booking_date <= '2026-04-20'
+AND status != 'cancelled';-- Distribución por barco en ese período
+SELECT
+COALESCE(boat_type, boat_id, 'Sin asignar') AS barco,
+COUNT(*) AS bookings,
+SUM(total_amount) AS revenue
+FROM bookings
+WHERE booking_date >= '2026-04-14'
+AND booking_date <= '2026-04-20'
+AND status != 'cancelled'
+GROUP BY barco
+ORDER BY revenue DESC;
+
+El Fleet Ops Center debe mostrar EXACTAMENTE estos números en su KPI bar cuando el rango visible es 14-20 abril.
+
+## VERIFICACIÓN 2 — Today Strip accuracy
+
+Hoy es 20 de abril 2026. Verifica:
+
+```sql-- Bookings programados para hoy
+SELECT id, boat_type, customer_name, start_time, duration_hours,
+captain_name, payment_status, status
+FROM bookings
+WHERE booking_date = '2026-04-20'
+AND status != 'cancelled'
+ORDER BY start_time;
+
+Si esta query devuelve bookings, el Today Strip debe decir "X salidas hoy" NO "Sin salidas". Si hay discrepancia, hay un bug en el endpoint /api/fleet/today-strip.
+
+## VERIFICACIÓN 3 — Cálculo de Utilización
+
+Explícame la fórmula exacta que usa /api/fleet/kpis para calcular el 12% de utilización. Específicamente:
+
+- ¿Qué denominador usa? (horas operativas × barcos × días, o 24h × barcos × días, u otra)
+- ¿Qué numerador? (suma de duration_hours × bookings confirmados)
+- ¿Incluye los barcos sin reservas en el denominador?
+- ¿Excluye bookings cancelados del numerador?
+
+Pega el código o query exacto.
+
+## VERIFICACIÓN 4 — Open Gaps accuracy
+
+El sistema reporta 42 huecos. Verifica:
+
+- ¿Cuál es el threshold mínimo de hueco que se cuenta? (2h, 4h, 1h)
+- ¿Se están contando huecos entre bookings o también espacios al inicio/final del día?
+- ¿Se están excluyendo horas no operativas (nocturnas)?
+
+Muestra los 5 huecos más grandes detectados con: barco, fecha, hora inicio, hora fin, duración en horas.
+
+## VERIFICACIÓN 5 — Alertas operativas
+
+Las 3 alertas críticas + 2 avisos, pégame el detalle completo:
+
+- Tipo de alerta
+- Booking afectado (ID, cliente, fecha)
+- Razón de la alerta
+- Severity
+
+Quiero confirmar que son alertas reales y no falsos positivos.
+
+## VERIFICACIÓN 6 — Backfill impact
+
+```sqlSELECT
+COUNT() FILTER (WHERE duration_source = 'default_backfill') AS duration_backfilled,
+COUNT() FILTER (WHERE start_time_source = 'default_backfill') AS time_backfilled,
+COUNT(*) AS total_bookings
+FROM bookings;
+
+¿Qué % de los bookings tiene duración/hora estimada vs real?
+
+## VERIFICACIÓN 7 — Performance
+
+Abre el tab del Fleet Operations Center y mide:
+- Tiempo desde click hasta que se ve el Timeline renderizado (debería ser <1.5s)
+- Tiempo de respuesta del endpoint /api/fleet/timeline (debería ser <500ms)
+- Tiempo de apertura del Detail Drawer al hacer click en un bloque (debería ser <200ms)
+
+Reporta las 3 métricas.
+
+## VERIFICACIÓN 8 — Responsive y accesibilidad rápida
+
+- ¿El layout funciona en pantalla de 1440px sin scroll horizontal?
+- ¿En 1024px qué pasa?
+- ¿Los atajos de teclado están documentados en alguna parte visible?
+
+## ENTREGABLES
+
+1. Resultados de las 8 verificaciones en un solo mensaje
+2. Screenshot del Fleet Operations Center tal como se ve ahora en producción
+3. Screenshot del Detail Drawer abierto sobre un booking real
+4. Screenshot del Today Strip actual
+5. Lista de issues encontrados durante las verificaciones (si los hay)
+
+No empieces Fase 2 hasta que yo apruebe explícitamente basado en estos resultados. Si alguna verificación falla, detente y repórtame para decidir si corregir en Fase 1 o diferir a Fase 2.
