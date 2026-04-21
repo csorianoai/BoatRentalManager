@@ -14697,18 +14697,120 @@ const HOST = '0.0.0.0'; // Required for deployment
       const row = kpiQ.rows[0];
       const totalBookings = parseInt(row.total_bookings) || 0;
 
-      // Utilization: booked boat-days / total available boat-days
-      const bookedBoatDaysQ = await pool.query(`
-        SELECT COUNT(DISTINCT boat_type || '|' || booking_date) AS booked_slots
+      // I-02 FIX: Utilization = SUM(duration_hours) / (15h × boats × days − maintenance hours)
+      const OP_HOURS_PER_DAY = 15; // 07:00–22:00
+      const bookedHoursQ = await pool.query(`
+        SELECT COALESCE(SUM(COALESCE(duration_hours, 4)), 0) AS booked_hours
         FROM bookings
         WHERE booking_date >= $1 AND booking_date <= $2 AND status != 'cancelled'
       `, [from, to]);
-      const bookedSlots = parseInt(bookedBoatDaysQ.rows[0].booked_slots) || 0;
-      const totalSlots  = boatCount * rangeDays;
-      const utilizationPct = totalSlots > 0 ? Math.round((bookedSlots / totalSlots) * 100) : 0;
+      const bookedHours = parseFloat(bookedHoursQ.rows[0].booked_hours) || 0;
 
-      // Critical alerts (no captain < 24h from now)
-      const nowISO = new Date().toISOString().split('T')[0];
+      // Maintenance deduction: actual hour overlap of active maintenance blocks with range
+      let maintenanceHours = 0;
+      let inMaintenance = 0;
+      try {
+        const maintQ = await pool.query(`
+          SELECT boat_type,
+            GREATEST(0,
+              EXTRACT(EPOCH FROM (
+                LEAST(end_datetime, $2::date + interval '1 day') -
+                GREATEST(start_datetime, $1::date)
+              )) / 3600.0
+            ) AS overlap_hours
+          FROM maintenance_blocks
+          WHERE start_datetime < $2::date + interval '1 day'
+            AND end_datetime > $1::date
+            AND status != 'completed'
+        `, [from, to]);
+        maintenanceHours = maintQ.rows.reduce((s, r) => s + parseFloat(r.overlap_hours || 0), 0);
+        inMaintenance = new Set(maintQ.rows.map(r => r.boat_type)).size;
+      } catch(e) {}
+
+      const totalOpHours   = OP_HOURS_PER_DAY * boatCount * rangeDays;
+      const netAvailHours  = Math.max(1, totalOpHours - maintenanceHours);
+      const utilizationPct = Math.min(100, Math.round((bookedHours / netAvailHours) * 100));
+
+      // I-01 FIX: Intraday gap detection — gaps >= 2h within 07:00–22:00
+      const OP_START    = 7;   // 07:00 decimal
+      const OP_END      = 22;  // 22:00 decimal
+      const MIN_GAP_HRS = 2;
+
+      const bookingsForGapsQ = await pool.query(`
+        SELECT booking_date::text AS bdate, boat_type,
+          start_time,
+          COALESCE(duration_hours, 4) AS duration_hours
+        FROM bookings
+        WHERE booking_date >= $1 AND booking_date <= $2
+          AND status != 'cancelled'
+          AND boat_type IS NOT NULL
+        ORDER BY boat_type, booking_date, start_time
+      `, [from, to]);
+
+      // Group slots by boat + date
+      const byBoatDay = {};
+      for (const r of bookingsForGapsQ.rows) {
+        const key = `${r.boat_type}|${r.bdate}`;
+        if (!byBoatDay[key]) byBoatDay[key] = [];
+        const parts = (r.start_time || '10:00').split(':');
+        const startH = parseInt(parts[0] || 10) + (parseInt(parts[1] || 0) / 60);
+        const endH   = Math.min(OP_END, startH + parseFloat(r.duration_hours));
+        byBoatDay[key].push({ startH, endH });
+      }
+
+      // Build range day list
+      const rangeDaysArr = [];
+      for (let d = new Date(from + 'T12:00:00Z'); ; d.setUTCDate(d.getUTCDate() + 1)) {
+        const ds = d.toISOString().split('T')[0];
+        rangeDaysArr.push(ds);
+        if (ds >= to) break;
+        if (rangeDaysArr.length > 400) break; // safety
+      }
+
+      // Fetch active boats
+      const activeBoatsQ = await pool.query(`SELECT boat_type FROM fleet_config WHERE is_active = true`);
+      const activeBoats = activeBoatsQ.rows.map(r => r.boat_type);
+
+      let totalGaps = 0;
+      const allGaps = [];
+
+      const pushGap = (boat, date, gapStart, gapEnd) => {
+        const dur = gapEnd - gapStart;
+        if (dur >= MIN_GAP_HRS) {
+          totalGaps++;
+          allGaps.push({ boat, date, gapStart, gapEnd, duration: parseFloat(dur.toFixed(2)) });
+        }
+      };
+
+      for (const boat of activeBoats) {
+        for (const date of rangeDaysArr) {
+          const key = `${boat}|${date}`;
+          const slots = (byBoatDay[key] || []).slice().sort((a, b) => a.startH - b.startH);
+
+          if (slots.length === 0) {
+            // Entire operational day is free
+            pushGap(boat, date, OP_START, OP_END);
+          } else {
+            // Gap before first booking
+            pushGap(boat, date, OP_START, Math.max(OP_START, slots[0].startH));
+            // Gaps between consecutive bookings
+            for (let i = 0; i < slots.length - 1; i++) {
+              const gS = Math.max(OP_START, slots[i].endH);
+              const gE = Math.min(OP_END,   slots[i + 1].startH);
+              if (gE > gS) pushGap(boat, date, gS, gE);
+            }
+            // Gap after last booking
+            pushGap(boat, date, Math.min(OP_END, slots[slots.length - 1].endH), OP_END);
+          }
+        }
+      }
+
+      allGaps.sort((a, b) => b.duration - a.duration);
+      const top5Gaps = allGaps.slice(0, 5);
+      const openGaps = totalGaps;
+
+      // Critical alerts (no captain within next 24h)
+      const nowISO      = new Date().toISOString().split('T')[0];
       const tomorrowISO = new Date(Date.now() + 86400000).toISOString().split('T')[0];
       const critQ = await pool.query(`
         SELECT COUNT(*) FROM bookings
@@ -14717,19 +14819,6 @@ const HOST = '0.0.0.0'; // Required for deployment
           AND (assigned_captain_name IS NULL OR assigned_captain_name = '')
       `, [nowISO, tomorrowISO]);
       const criticalAlerts = parseInt(critQ.rows[0].count) || 0;
-
-      // Maintenance blocks active in range
-      let inMaintenance = 0;
-      try {
-        const maintCountQ = await pool.query(`
-          SELECT COUNT(DISTINCT boat_type) FROM maintenance_blocks
-          WHERE DATE(start_datetime) <= $2 AND DATE(end_datetime) >= $1 AND status != 'completed'
-        `, [from, to]);
-        inMaintenance = parseInt(maintCountQ.rows[0].count) || 0;
-      } catch(e) {}
-
-      // Gap detection: days with no booking for any boat
-      const openGaps = Math.max(0, totalSlots - bookedSlots - (inMaintenance * rangeDays));
 
       // Previous period for deltas
       const prevFrom = new Date(fromDate - (toDate - fromDate) - 86400000).toISOString().split('T')[0];
@@ -14745,7 +14834,14 @@ const HOST = '0.0.0.0'; // Required for deployment
         total_revenue: parseFloat(row.total_revenue) || 0,
         total_guests: parseInt(row.total_guests) || 0,
         utilization_pct: utilizationPct,
-        open_gaps: Math.max(0, openGaps),
+        utilization_detail: {
+          booked_hours: parseFloat(bookedHours.toFixed(2)),
+          total_op_hours: parseFloat(totalOpHours.toFixed(2)),
+          maintenance_hours: parseFloat(maintenanceHours.toFixed(2)),
+          net_available_hours: parseFloat(netAvailHours.toFixed(2))
+        },
+        open_gaps: openGaps,
+        top5_gaps: top5Gaps,
         critical_alerts: criticalAlerts + parseInt(row.payment_pending),
         in_maintenance: inMaintenance,
         unassigned_captain: parseInt(row.unassigned_captain) || 0,

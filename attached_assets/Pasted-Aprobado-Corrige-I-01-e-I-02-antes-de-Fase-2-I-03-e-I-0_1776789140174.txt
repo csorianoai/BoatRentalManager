@@ -1,0 +1,83 @@
+Aprobado. Corrige I-01 e I-02 antes de Fase 2. I-03 e I-04 quedan como están según plan.
+
+## I-01 — Open Gaps: intraday 2h+
+
+Fórmula correcta:
+
+Para cada barco y cada día del rango visible:
+1. Tomar todos los bookings confirmados ordenados por start_time
+2. Calcular gaps entre bookings consecutivos:
+   - Inicio del día operativo (07:00) hasta primer booking
+   - Entre booking N y booking N+1
+   - Último booking hasta fin del día operativo (22:00)
+3. Contar solo gaps de duración >= 2 horas
+4. Excluir gaps que caigan fuera de horas operativas (07:00-22:00)
+
+Categorización del gap para futura UI:
+- 2-4h: "Short charter window"
+- 4-6h: "Half-day window"  
+- 6h+: "Full-day window"
+
+Horas operativas default: 07:00 a 22:00 (15 horas). Si en el futuro se hace configurable por barco, mover a fleet_config.day_start / day_end.
+
+Entregable: muestra los 5 gaps más grandes detectados con la nueva fórmula y confirma cuántos gaps totales reporta ahora el KPI (debería ser significativamente menor a 42).
+
+## I-02 — Utilización: horas operativas
+
+Fórmula correcta:
+
+utilization_pct = (SUM horas reservadas confirmadas del rango) / (horas operativas × barcos activos × días del rango) × 100
+
+Donde:
+- Horas reservadas = SUM(duration_hours) de bookings con status IN ('confirmed','completed','in_progress','checked_in')
+- Horas operativas = 15 (07:00-22:00)
+- Barcos activos = COUNT fleet_config WHERE is_active = true
+- Días del rango = según filtro visible
+
+Excluir del numerador:
+- Bookings cancelados
+- Holds
+- Maintenance blocks
+- Buffers
+
+Consideración: si un barco está 100% en maintenance todo el rango, se debe:
+a) Excluirlo del denominador (barcos activos = 5 en vez de 6), O
+b) Contar sus horas de maintenance como no disponibles
+
+Usa opción (b): el denominador siempre son los 6 barcos, pero el sistema resta horas de maintenance del total de horas disponibles. Así se ve claro el impacto de tener un barco fuera de servicio.
+
+Entregable: muestra el cálculo paso a paso para el rango actual (14-20 abril 2026) con:
+- Horas reservadas totales
+- Horas operativas teóricas
+- Horas de maintenance
+- Horas operativas reales (teóricas - maintenance)
+- Utilización resultante
+
+El número debe tener más sentido operativo que el 12% actual.
+
+## Verificaciones post-fix
+
+1. Open Gaps: número con fórmula nueva vs número con fórmula vieja (42). Diff reportado.
+2. Utilización: número con fórmula nueva vs 12% actual. Diff reportado.
+3. Screenshot del KPI bar post-fix.
+4. Confirmación de que el código corregido está en el endpoint /api/fleet/kpis y no duplicado en otro lugar.
+
+## Pregunta adicional sobre dependencias ocultas
+
+Antes de Fase 2 confirma:
+
+¿Alguna otra parte del sistema (reservas/nuevas, edición de bookings, exports, notificaciones WhatsApp, reports en NBIC) llamaba a renderCalendar() o renderCalendarGrid() del código viejo que eliminaste?
+
+Ejecuta búsqueda global: grep -rn "renderCalendar\|renderCalendarGrid\|calendar-container" en todo el repo y reporta hallazgos.
+
+Si hay referencias huérfanas, repórtalas antes de avanzar a Fase 2.
+
+## Después de I-01 + I-02 + verificación de dependencias
+
+Checkpoint final de Fase 1. Entrégame:
+1. Resultados de I-01 e I-02 con cifras antes/después
+2. Screenshot actualizado del dashboard con KPIs corregidos
+3. Resultado del grep de dependencias
+4. Lista definitiva de issues que quedan diferidos a Fase 2-3 (con justificación)
+
+Entonces apruebo Fase 2.
