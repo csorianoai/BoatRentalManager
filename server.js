@@ -1,5 +1,16 @@
 const path = require('path');
+const fs = require('fs');
 const express = require('express');
+
+// ── Build identity (cache-busting) ────────────────────────────────────────────
+const BUILD_TS  = Date.now();
+const BUILD_DATE = new Date(BUILD_TS).toLocaleString('es', {
+  timeZone: 'America/Puerto_Rico',
+  year: 'numeric', month: 'short', day: 'numeric',
+  hour: '2-digit', minute: '2-digit'
+});
+console.log(`📦 Build: ${BUILD_DATE} (v=${BUILD_TS})`);
+// ─────────────────────────────────────────────────────────────────────────────
 const twilio = require('twilio');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const axios = require('axios');
@@ -2083,6 +2094,38 @@ setInterval(() => {
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// ── Cache-busting: assets con ?v= se cachean 1 año; HTML nunca ───────────────
+app.use((req, res, next) => {
+  if (req.query.v) {
+    // Versioned asset: cacheable forever (the URL changes when content changes)
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  }
+  next();
+});
+
+// ── HTML middleware: inyecta ?v=BUILD_TS en todos los assets y reemplaza {{BUILD_TS}} ──
+const _PUBLIC_DIR = path.join(__dirname, 'public');
+app.get(/\.html$/, (req, res, next) => {
+  const filePath = path.join(_PUBLIC_DIR, req.path);
+  if (!fs.existsSync(filePath)) return next();
+  try {
+    let html = fs.readFileSync(filePath, 'utf8');
+    // Version all local JS and CSS URLs (src="..." or href="..." ending in .js/.css)
+    html = html.replace(/((?:src|href)=")((?!https?:\/\/|\/\/)([^"?#]+\.(?:js|css)))(")/g,
+      (_, pre, url, _rel, post) => `${pre}${url}?v=${BUILD_TS}${post}`
+    );
+    // Replace build timestamp placeholder
+    html = html.replace(/\{\{BUILD_TS\}\}/g, BUILD_DATE);
+    html = html.replace(/\{\{BUILD_TS_NUM\}\}/g, String(BUILD_TS));
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.send(html);
+  } catch (e) {
+    next();
+  }
+});
 
 // Servir archivos estáticos del dashboard
 app.use(express.static('public'));

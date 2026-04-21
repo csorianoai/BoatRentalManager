@@ -1,0 +1,84 @@
+Aprobado el diagnóstico y los 2 pasos, pero con una mejora: no usar ?v=2 hardcoded, usar un sistema automático de cache-busting para que este bug no se repita nunca más.
+
+## PASO 1 — Cache-busting automático para TODOS los assets
+
+No solo fleet-ops.js. Implementa cache-busting para todos los archivos JS y CSS del sistema.
+
+Opciones (elige la más simple para el stack actual):
+
+### Opción A — Timestamp de build (más simple)
+En el servidor, en el momento de responder HTML, inyectar un timestamp o hash:
+
+<script src="/assets/js/operations/fleet-ops.js?v={BUILD_TIMESTAMP}"></script>
+
+Donde BUILD_TIMESTAMP se genera al iniciar el servidor o en cada deploy. Todos los archivos JS/CSS comparten el mismo query param.
+
+### Opción B — Hash de contenido (más robusto)
+Para cada archivo JS/CSS, calcular un hash MD5 del contenido al iniciar el servidor. Inyectar ese hash como query param:
+
+<script src="/assets/js/operations/fleet-ops.js?h=a3f8b2"></script>
+
+Cambia automáticamente solo cuando el archivo cambia. Más eficiente porque preserva cache de archivos que no cambiaron.
+
+### Opción C — ETags + Cache-Control headers (más profesional)
+Configurar el servidor para que envíe:
+- ETag basado en hash del archivo
+- Cache-Control: no-cache, must-revalidate para HTML
+- Cache-Control: public, max-age=31536000, immutable para archivos con query param
+
+Elige la opción A si el stack es simple (Node/Express plain), B si hay build process, C si quieres la solución enterprise.
+
+Decisión sugerida: Opción A por ser más simple. Solo 15 min de implementación. Reporta qué opción elegiste y por qué.
+
+## PASO 2 — Aplicar cache-busting a TODOS los assets, no solo fleet-ops.js
+
+Busca todos los <script src="/assets/..."> y <link rel="stylesheet" href="/assets/..."> en:
+- fleet.html
+- dashboard.html  
+- reports.html (NBIC)
+- cualquier otra página HTML del sistema
+
+A todos les aplicas el mismo cache-busting. Esto evita que el mismo bug aparezca en el NBIC o en cualquier otra página futura.
+
+## PASO 3 — Redeploy y validación
+
+1. Aplicar cambios
+2. Redeploy a producción
+3. En una ventana de incógnito (para asegurar cache limpio), abrir gestion.nadakiexcursions.com/fleet.html
+4. Verificar que el Fleet Ops Center muestra:
+   - Today Command Strip visible
+   - Panel de Operations Alerts con la alerta "no_captain" que tu endpoint reporta
+   - Al hacer click en un bloque: drawer lateral de 480px con 4 secciones y 8 botones
+   - Chip de canal con color (Manual, GetMyBoat, etc.)
+   - Chip de payment_status con color
+   - Botón copiar Booking ID
+   - Log de actividad con timestamp de creación
+
+5. Screenshot del drawer abierto en modo incógnito
+6. Screenshot del Today Strip visible
+7. Screenshot del panel de Alerts visible
+
+## PASO 4 — Documentar para el usuario
+
+Después del fix, añadir a la página una nota discreta (o en el footer del dashboard):
+"Sistema actualizado · Última versión: {BUILD_TIMESTAMP}"
+
+Así el usuario sabe siempre qué versión está viendo y si hay duda puede forzar refresh con Ctrl+F5.
+
+## PREGUNTA ADICIONAL
+
+¿El usuario debería forzar Ctrl+F5 una vez después del redeploy, o el cache-busting automático lo resuelve sin acción del usuario?
+
+Respuesta correcta: con Opción A o B el usuario NO tiene que hacer nada. El navegador ve el nuevo query param y baja la nueva versión automáticamente. Esto es crítico para el equipo operativo que no sabe hacer Ctrl+F5.
+
+## CHECKPOINT
+
+Al terminar:
+1. Reporta qué opción de cache-busting elegiste (A/B/C) y por qué
+2. Lista de archivos HTML modificados
+3. Screenshots post-redeploy en ventana incógnito
+4. Confirmación de que los 20 puntos del protocolo de validación ahora funcionan
+
+Yo voy a validar con mis propios ojos después, abriendo producción en incógnito.
+
+Empieza.
