@@ -701,6 +701,7 @@ window.NadakiCalendar = (function () {
   let _initiated         = false;
   let _dayDate           = null;       // active date for DayView
   let _origRenderWeek    = null;       // reference to legacy renderWeekView
+  let _filterBalance     = false;      // Fase 4B: "saldo pendiente" filter toggle
 
   // ── Constants ─────────────────────────────────────────────────
   const H_START = 7, H_END = 20;
@@ -929,20 +930,25 @@ window.NadakiCalendar = (function () {
     const cn1  = esc((b.customer_name||'?').split(' ')[0]);
     const total= parseFloat(b.total_amount||0);
     const dep  = parseFloat(b.deposit_amount||0);
+    const bal  = parseFloat(b.balance_pending||0);
     const pct  = total>0 ? Math.min(100,(dep/total)*100) : 0;
     const pCol = pct>=100 ? '#16a34a' : (pct>0 ? '#ca8a04' : '#dc2626');
     const tip  = esc(`${b.customer_name||'?'} | ${b.boat_type||'—'} | ${cap||'sin cap.'} | ${st} | ${tlbl}`);
     const click= `onclick="event.stopPropagation();openEditBooking('${esc(b.id)}')"`;
     const tid  = `data-testid="card-booking-${esc(b.id)}"`;
+    // Fase 4B: balance due flag
+    const hasDue = bal > 0 && b.payment_status !== 'paid';
+    const dueAttr= hasDue ? ' data-due="1"' : '';
+    const dueBadge= hasDue ? `<span class="cal2-badge-due" data-testid="badge-due-${esc(b.id)}">DEBE ${fmtMoney(bal)}</span>` : '';
     if (compact) {
-      return `<div class="cal2-bc-compact" style="background:${col.bg};border-color:${col.bd};color:${col.tx};" title="${tip}" ${click} ${tid}>
+      return `<div class="cal2-bc-compact" style="background:${col.bg};border-color:${col.bd};color:${col.tx};" title="${tip}" ${click} ${tid}${dueAttr}>
         <span class="cal2-bc-dot" style="background:${col.dot}"></span>
         <span class="cal2-bc-cname">${cn1}</span>
         <span class="cal2-bc-csep">·</span>
         <span class="cal2-bc-cboat">${boat.split(' ').slice(0,2).join(' ')}</span>
       </div>`;
     }
-    return `<div class="cal2-bc" style="background:${col.bg};border-left:3px solid ${col.bd};color:${col.tx};" title="${tip}" ${click} ${tid}>
+    return `<div class="cal2-bc" style="background:${col.bg};border-left:3px solid ${col.bd};color:${col.tx};" title="${tip}" ${click} ${tid}${dueAttr}>
       <div class="cal2-bc-header">
         <span class="cal2-bc-name">${cn}</span>
         <span class="cal2-bc-time">${tlbl}</span>
@@ -952,6 +958,7 @@ window.NadakiCalendar = (function () {
       <div class="cal2-bc-footer">
         ${plat ? `<span class="cal2-badge">${plat}</span>` : ''}
         ${b.is_manual ? `<span class="cal2-badge cal2-badge-manual">Manual</span>` : ''}
+        ${dueBadge}
       </div>
       <div class="cal2-bc-paybar"><div class="cal2-bc-payfill" style="width:${pct.toFixed(0)}%;background:${pCol}"></div></div>
     </div>`;
@@ -1238,6 +1245,8 @@ window.NadakiCalendar = (function () {
     // Fase 3A: KPI CONFLICTOS card toggles ConflictPanel
     document.querySelector('[data-testid="kpi-conflicts"]')
       ?.addEventListener('click', toggleConflicts);
+    // Fase 4B: balance filter toggle
+    $('cal2-btn-filter-bal')?.addEventListener('click', toggleBalanceFilter);
   }
 
   // ── Wire ViewSwitcher ──────────────────────────────────────────
@@ -1394,6 +1403,15 @@ window.NadakiCalendar = (function () {
     // Show/hide paid button based on current state
     const paidBtn = document.getElementById('cal2-qops-paid');
     if (paidBtn) paidBtn.style.display = (bk?.payment_status === 'paid' || bk?.balance_pending == 0) ? 'none' : '';
+    // Fase 4B: balance display
+    const balEl = document.getElementById('cal2-qops-balance');
+    if (balEl && bk) {
+      const bal = parseFloat(bk.balance_pending||0);
+      const isPaid = bk.payment_status === 'paid' || bal === 0;
+      balEl.style.display = '';
+      balEl.textContent = isPaid ? 'PAGADO' : `Saldo: ${fmtMoney(bal)}`;
+      balEl.className    = isPaid ? 'paid' : '';
+    }
   }
 
   function _initQuickOps() {
@@ -1417,6 +1435,7 @@ window.NadakiCalendar = (function () {
               data-testid="btn-qops-assign-cap" onclick="NadakiCalendar._qopsCaptain()">
         Asignar
       </button>
+      <span id="cal2-qops-balance" style="display:none;" data-testid="badge-qops-balance"></span>
       <span id="cal2-qops-msg"></span>
     `;
     mh.insertAdjacentElement('afterend', bar);
@@ -1428,6 +1447,15 @@ window.NadakiCalendar = (function () {
       const isEdit = isOpen && !!currentBookingId;
       if (isOpen && isEdit) _qopsRefresh(true);
     }).observe(modal, { attributes: true, attributeFilter: ['class'] });
+  }
+
+  // Fase 4B: toggle balance filter
+  function toggleBalanceFilter() {
+    _filterBalance = !_filterBalance;
+    const btn  = document.getElementById('cal2-btn-filter-bal');
+    const grid = document.getElementById('cal2-grid-container');
+    if (btn)  btn.classList.toggle('active', _filterBalance);
+    if (grid) grid.classList.toggle('cal2-filter-bal-active', _filterBalance);
   }
 
   function openBooking(id) { if(id) openEditBooking(id); else openBookingModal(); }
@@ -1494,6 +1522,6 @@ window.NadakiCalendar = (function () {
     init, switchView, setDayView, refresh, renderKPIStrip, openBooking,
     createBlock, updateBooking, resolveConflict, restoreLegacy,
     renderWeekView2, renderDayView, renderTimelineView, renderMonthView,
-    toggleConflicts, closeDrawer, _qopsPaid, _qopsCaptain,
+    toggleConflicts, closeDrawer, _qopsPaid, _qopsCaptain, toggleBalanceFilter,
   };
 }());

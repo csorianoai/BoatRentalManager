@@ -904,6 +904,38 @@
     #cal2-qops-msg.visible { opacity: 1; }
     #cal2-qops-msg.ok  { background: #dcfce7; color: #166534; }
     #cal2-qops-msg.err { background: #fee2e2; color: #991b1b; }
+
+    /* ── Fase 4B: Balance badge + filter ───────────────────────── */
+    .cal2-badge-due {
+      display: inline-block; font-size: 10px; font-weight: 800;
+      background: #fef2f2; color: #b91c1c; border: 1px solid #fca5a5;
+      border-radius: 4px; padding: 1px 5px; letter-spacing: 0.03em;
+      line-height: 1.5; white-space: nowrap;
+    }
+    /* Drawer balance line in QuickOps bar */
+    #cal2-qops-balance {
+      font-size: 11px; font-weight: 700; color: #b91c1c;
+      background: #fef2f2; border: 1px solid #fca5a5;
+      border-radius: 6px; padding: 3px 9px; white-space: nowrap;
+    }
+    #cal2-qops-balance.paid { color: #15803d; background: #f0fdf4; border-color: #86efac; }
+    #cal2-qops-balance[style*="display:none"] { display: none !important; }
+    /* Toggle button */
+    .cal2-btn-filter-bal {
+      padding: 5px 12px; border-radius: 7px; border: 1px solid #e2e8f0;
+      background: #fff; color: #475569; font-size: 12px; font-weight: 600;
+      cursor: pointer; transition: all 0.15s; white-space: nowrap;
+    }
+    .cal2-btn-filter-bal:hover { border-color: #b91c1c; color: #b91c1c; }
+    .cal2-btn-filter-bal.active {
+      background: #b91c1c; color: #fff; border-color: #b91c1c;
+    }
+    /* Filter dim: when active, fade cards without pending balance */
+    #cal2-grid-container.cal2-filter-bal-active .cal2-bc:not([data-due="1"]),
+    #cal2-grid-container.cal2-filter-bal-active .cal2-bc-compact:not([data-due="1"]) {
+      opacity: 0.18;
+      pointer-events: none;
+    }
   </style>
 </head>
 <body data-page="schedule">
@@ -941,6 +973,10 @@
         <select class="cal2-filter-select" id="cal2-boat-filter" data-testid="select-cal2-boat">
           <option value="">Todos los barcos</option>
         </select>
+        <button class="cal2-btn-filter-bal" id="cal2-btn-filter-bal"
+                data-testid="button-filter-balance" title="Mostrar solo reservas con saldo pendiente">
+          Saldo pendiente
+        </button>
         <button class="cal2-btn-outline-dark" id="cal2-btn-add-block" data-testid="button-cal2-add-block">&#128683; Bloquear</button>
         <button class="cal2-btn-primary" id="cal2-btn-nueva-reserva" data-testid="button-cal2-nueva-reserva">+ Nueva Reserva</button>
       </div>
