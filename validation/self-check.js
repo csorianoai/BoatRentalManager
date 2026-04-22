@@ -537,6 +537,7 @@ async function navbarTests(url) {
     'accounting.html', 'boat-maintenance.html', 'operations.html', 'commissions.html',
     'pricing.html', 'dynamic-pricing.html', 'documents.html',
     'marine-conditions.html', 'fuel-tracker.html', 'assets.html',
+    'sync.html', // Fase 7
   ];
   // Pages that MUST NOT have global-nav (permanent exceptions)
   const EXCEPTIONS_NO_NAV = ['captain.html', 'login.html', 'reports.html'];
@@ -580,7 +581,7 @@ async function navbarTests(url) {
       if (r.status !== 200) fails.push(`${page}:${r.status}`);
     }
     if (fails.length) return FAIL(fails.join(', '));
-    return PASS(`${MIGRATED.length}/15 OK`);
+    return PASS(`${MIGRATED.length}/${MIGRATED.length} OK`);
   });
 
   // N-06: Páginas migradas contienen ref a global-nav.css
@@ -591,7 +592,7 @@ async function navbarTests(url) {
       if (!r.body.includes('global-nav.css')) fails.push(page);
     }
     if (fails.length) return FAIL(`Sin global-nav.css: ${fails.join(', ')}`);
-    return PASS(`${MIGRATED.length}/15 con CSS`);
+    return PASS(`${MIGRATED.length}/${MIGRATED.length} con CSS`);
   });
 
   // N-07: Páginas migradas contienen ref a global-nav.js
@@ -602,7 +603,7 @@ async function navbarTests(url) {
       if (!r.body.includes('global-nav.js')) fails.push(page);
     }
     if (fails.length) return FAIL(`Sin global-nav.js: ${fails.join(', ')}`);
-    return PASS(`${MIGRATED.length}/15 con JS`);
+    return PASS(`${MIGRATED.length}/${MIGRATED.length} con JS`);
   });
 
   // N-08: Excepciones NO contienen global-nav.js (respetan excepción)

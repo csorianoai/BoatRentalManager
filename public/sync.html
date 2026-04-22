@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sincronización de Plataformas — Nadaki Excursions</title>
+  <meta name="description" content="Estado en tiempo real de sincronización con las 13 plataformas de reservas de Nadaki Excursions.">
+  <link rel="stylesheet" href="/assets/css/global-nav.css">
+  <link rel="stylesheet" href="/sync.css">
+</head>
+<body>
+
+  <main class="sync-main">
+
+    <!-- Page Header -->
+    <div class="sync-page-header">
+      <div class="sync-page-header__left">
+        <h1>Sincronización de Plataformas</h1>
+        <p>Estado en tiempo real de las 13 plataformas de reservas</p>
+      </div>
+      <div class="sync-page-header__actions">
+        <span id="sync-status-label" class="sync-status-label" data-testid="sync-status-label" aria-live="polite" style="display:none"></span>
+        <button id="btn-sync-all"     class="btn btn-primary"   data-testid="btn-sync-all">Sincronizar Todo</button>
+        <button id="btn-retry-failed" class="btn btn-secondary" data-testid="btn-retry-failed">Reintentar Fallidos</button>
+        <button id="btn-refresh"      class="btn btn-ghost"     data-testid="btn-refresh">Actualizar</button>
+      </div>
+    </div>
+
+    <!-- Simulation notice -->
+    <div class="sim-banner">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/>
+        <line x1="12" y1="16" x2="12.01" y2="16"/>
+      </svg>
+      <span>
+        Las sincronizaciones usan el motor interno de Nadaki. Las integraciones directas con APIs de terceros (Airbnb, GetMyBoat, etc.) están en fase de activación progresiva. Los datos de estado y jobs reflejan el sistema real.
+      </span>
+    </div>
+
+    <!-- KPI Stats -->
+    <div class="sync-stats" id="sync-stats">
+      <div class="stat-card"><div class="spinner-wrap" style="padding:12px"><div class="spinner"></div></div></div>
+      <div class="stat-card"><div class="spinner-wrap" style="padding:12px"><div class="spinner"></div></div></div>
+      <div class="stat-card"><div class="spinner-wrap" style="padding:12px"><div class="spinner"></div></div></div>
+      <div class="stat-card"><div class="spinner-wrap" style="padding:12px"><div class="spinner"></div></div></div>
+    </div>
+
+    <!-- Platform Grid -->
+    <div class="sync-section">
+      <div class="sync-section__header">
+        <h2>Estado por Plataforma</h2>
+        <span class="section-meta" id="last-updated-lbl"></span>
+      </div>
+      <div class="platform-grid" id="platform-grid">
+        <div class="spinner-wrap" style="grid-column:1/-1">
+          <div class="spinner"></div> Cargando plataformas...
+        </div>
+      </div>
+    </div>
+
+    <!-- Conflicts -->
+    <div class="sync-section">
+      <div class="sync-section__header">
+        <h2>Conflictos Detectados <span id="conflicts-badge"></span></h2>
+      </div>
+      <div id="conflicts-list">
+        <div class="spinner-wrap"><div class="spinner"></div> Analizando...</div>
+      </div>
+    </div>
+
+    <!-- Jobs Queue -->
+    <div class="sync-section">
+      <div class="sync-section__header">
+        <h2>Cola de Sincronización</h2>
+        <button id="btn-process-queue" class="btn btn-sm btn-secondary" data-testid="btn-process-queue">
+          Procesar Cola
+        </button>
+      </div>
+      <div id="jobs-stats"></div>
+      <div id="jobs-table">
+        <div class="spinner-wrap"><div class="spinner"></div> Cargando jobs...</div>
+      </div>
+    </div>
+
+  </main>
+
+  <script src="/assets/js/components/global-nav.js"></script>
+  <script src="/sync.js"></script>
+</body>
+</html>
