@@ -1,0 +1,137 @@
+Implementa Fase 1 contable usando como base el patch pack de Claude y tomando solo la mejora de `resolvePayerType` del output de ChatGPT.
+
+No construyas un sistema nuevo.
+No uses SQL crudo si ya existe un servicio equivalente.
+No dupliques tablas ni endpoints.
+No toques UI todavía.
+
+## OBJETIVO
+
+Conectar `POST /api/bookings` al sistema contable existente para que, al crear una reserva, se haga automáticamente:
+
+1. creación de receivable en el módulo existente
+2. creación de ledger entry en el módulo existente
+3. cálculo de `payer_type`
+4. cálculo de `amount_due`
+
+## FUENTE DE VERDAD
+
+Usa como arquitectura principal el output de Claude:
+
+* helper/hook contable
+* llamada desde POST /api/bookings
+* feature flags
+* transacción
+* soft-fail controlado
+
+Toma del output de ChatGPT solo la lógica robusta para resolver `payer_type`.
+
+## REGLAS
+
+1. Reutiliza servicios existentes de contabilidad
+
+   * createBookingReceivable o equivalente real
+   * createLedgerEntry o equivalente real
+
+2. NO escribas directo a tablas con SQL si ya existe un servicio reutilizable
+
+3. NO crees tablas nuevas
+
+4. NO crees endpoints nuevos
+
+5. NO toques accounting.html ni frontend
+
+6. Todo debe ser reversible y con flag
+
+## PRIMER PASO OBLIGATORIO
+
+Antes de editar, localiza con precisión:
+
+* el handler real de `POST /api/bookings`
+* el servicio real de receivables
+* el servicio real de ledger
+* los nombres reales de campos usados por booking:
+
+  * booking id
+  * customer_id
+  * broker_id
+  * total_amount
+  * deposit_amount
+  * currency
+
+Si los nombres/rutas difieren de los outputs externos, ajusta imports y nombres, pero NO cambies la lógica.
+
+## IMPLEMENTACIÓN ESPERADA
+
+### A. Crear helper contable aditivo
+
+Ruta sugerida:
+
+* `server/lib/accounting/bookingAccountingHook.ts`
+  o equivalente real del proyecto
+
+Debe:
+
+* derivar `payer_type`
+* derivar `payer_id`
+* calcular `amount_due = total_amount - deposit_amount`
+* llamar a servicio de receivable existente
+* llamar a servicio de ledger existente
+
+### B. Hook en `POST /api/bookings`
+
+Dentro de la misma transacción del booking:
+
+* crear booking
+* ejecutar hook contable si flag activo
+* soft-fail configurable
+* logging estructurado
+
+### C. Flags
+
+Agregar si no existen:
+
+* `ACCOUNTING_HOOK_ENABLED=true`
+* `ACCOUNTING_HOOK_SOFT_FAIL=false`
+
+## LÓGICA DE PAYER_TYPE A USAR
+
+Usa esta lógica:
+
+* si `payer_type` explícito existe y es válido: úsalo
+* si hay `broker_id` y hay montos tanto de broker como cliente: `split`
+* si hay `broker_id`: `broker`
+* si no hay `broker_id`: `client`
+
+No inventes otras reglas.
+
+## ENTREGABLE
+
+Respuesta compacta, máximo 8 bullets:
+
+1. archivos tocados
+2. rutas reales encontradas
+3. qué servicio real reutilizaste para receivable
+4. qué servicio real reutilizaste para ledger
+5. qué assumptions tuviste que ajustar
+6. resultado de pruebas:
+
+   * booking client
+   * booking broker
+   * soft-fail
+7. runner / consola
+8. veredicto:
+
+   * PASS
+   * o BLOCKED con causa exacta
+
+## PROHIBIDO
+
+* construir sistema contable nuevo
+* usar SQL directo si hay servicio existente
+* tocar frontend
+* tocar fases posteriores
+* seguir a pagos o depósitos
+* improvisar arquitectura nueva
+
+Empieza ahora.

@@ -3016,7 +3016,9 @@ app.get('/api/bookings', isAuthenticated, async (req, res) => {
 
 // Create manual booking
 app.post('/api/bookings', isAuthenticated, async (req, res) => {
+  const pg = await pool.connect();
   try {
+    await pg.query('BEGIN');
     const { nanoid } = await import('nanoid');
     const {
       booking_date, start_time, duration_hours,
@@ -3028,13 +3030,14 @@ app.post('/api/bookings', isAuthenticated, async (req, res) => {
     } = req.body;
 
     if (!booking_date || !start_time || !duration_hours || !total_amount) {
+      await pg.query('ROLLBACK');
       return res.status(400).json({ error: 'Campos obligatorios: fecha, hora, horas, precio' });
     }
-    if (!customer_name) return res.status(400).json({ error: 'El nombre del cliente es obligatorio' });
-    if (!boat_type && !boat_id) return res.status(400).json({ error: 'El barco es obligatorio' });
+    if (!customer_name) { await pg.query('ROLLBACK'); return res.status(400).json({ error: 'El nombre del cliente es obligatorio' }); }
+    if (!boat_type && !boat_id) { await pg.query('ROLLBACK'); return res.status(400).json({ error: 'El barco es obligatorio' }); }
 
     const id = 'book_' + nanoid(10);
-    const result = await pool.query(`
+    const result = await pg.query(`
       INSERT INTO bookings (
         id, platform, customer_name, customer_phone, customer_email,
         boat_type, boat_id, booking_date, start_time, duration_hours,
@@ -3057,12 +3060,12 @@ app.post('/api/bookings', isAuthenticated, async (req, res) => {
     );
     const newBooking = result.rows[0];
 
-    // Auto-create usage_log entry
+    // Auto-create usage_log entry (soft-fail, outside main tx flow)
     try {
       const usageId = 'ulog_' + nanoid(10);
       const boatName = boat_type || boat_id || 'Sin asignar';
       const reservedHrs = parseFloat(duration_hours) || 0;
-      await pool.query(
+      await pg.query(
         `INSERT INTO boat_usage_log (id, booking_id, boat_id, boat_name, booking_date, hours_reserved, status)
          VALUES ($1, $2, $3, $4, $5, $6, 'pending')
          ON CONFLICT (booking_id) DO NOTHING`,
@@ -3072,10 +3075,31 @@ app.post('/api/bookings', isAuthenticated, async (req, res) => {
       console.error('⚠️ Auto usage_log creation failed (non-critical):', usageErr.message);
     }
 
+    // ── Accounting hook (Fase 1) ───────────────────────────────────────
+    const hookEnabled  = process.env.ACCOUNTING_HOOK_ENABLED  !== 'false';
+    const hookSoftFail = process.env.ACCOUNTING_HOOK_SOFT_FAIL === 'true';
+    if (hookEnabled) {
+      try {
+        const { runBookingAccountingHook } = require('./server/bookingAccountingHook');
+        await runBookingAccountingHook(pg, newBooking);
+      } catch (hookErr) {
+        console.error('[AccountingHook] Error:', hookErr.message);
+        if (!hookSoftFail) {
+          await pg.query('ROLLBACK');
+          return res.status(500).json({ error: `Accounting hook failed: ${hookErr.message}` });
+        }
+        console.warn('[AccountingHook] soft-fail ON — booking committed without accounting records');
+      }
+    }
+
+    await pg.query('COMMIT');
     res.status(201).json(newBooking);
   } catch (err) {
+    await pg.query('ROLLBACK');
     console.error('Error creating booking:', err);
     res.status(500).json({ error: err.message });
+  } finally {
+    pg.release();
   }
 });
 
