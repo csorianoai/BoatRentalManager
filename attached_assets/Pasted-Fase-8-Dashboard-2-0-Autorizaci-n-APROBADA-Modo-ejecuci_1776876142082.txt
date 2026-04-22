@@ -1,0 +1,106 @@
+Fase 8 — Dashboard 2.0
+Autorización: APROBADA
+
+Modo: ejecución controlada nivel crítico
+
+Regla principal:
+NO se rompe absolutamente ninguna funcionalidad existente.
+
+---
+
+REGLAS INQUEBRANTABLES
+
+1. IDs
+
+* NO eliminar ningún ID existente
+* NO renombrar IDs
+* NO fusionar IDs duplicados
+* todos los IDs deben existir en el DOM final
+
+2. Estructura
+
+* mantener jerarquía compatible (no solo presencia de IDs)
+* evitar mover elementos críticos fuera de su contexto lógico si tienen listeners
+
+3. JavaScript
+
+* dashboard.js NO se refactoriza (salvo cambios explícitamente autorizados)
+* no reescribir lógica existente
+
+4. Sync
+
+* NO reducir funcionalidad del panel de sync
+* mantener #syncStatusGrid, #conflictsSection y botones funcionales
+
+5. Export
+
+* preservar clases usadas por exportToPDF y exportToExcel
+* validar que export sigue funcionando
+
+6. Charts
+
+* mantener canvas IDs y height inline
+* no alterar inicialización de Chart.js
+
+7. CSS
+
+* usar prefijo db2- exclusivamente
+* no eliminar clases existentes usadas por JS
+
+---
+
+ORDEN DE IMPLEMENTACIÓN (OBLIGATORIO)
+
+Paso 1:
+Crear nueva estructura HTML (sin borrar la antigua)
+
+Paso 2:
+Mover bloques uno por uno (KPIs → upcoming → charts → etc.)
+
+Paso 3:
+Eliminar .module-hub (único bloque permitido eliminar temprano)
+
+Paso 4:
+Implementar HeroSection
+
+Paso 5:
+Implementar ViewSwitcher
+
+Paso 6:
+Cleanup final (styles inline, date-fns si aplica)
+
+---
+
+VALIDACIÓN OBLIGATORIA
+
+Antes de entregar:
+
+* 42/42 IDs presentes
+* KPIs renderizan
+* charts visibles
+* tabla carga datos
+* filtros funcionan
+* sync panel funcional
+* AI chat abre
+* export no falla
+* consola sin errores nuevos
+
+---
+
+PROHIBIDO
+
+* cambiar backend
+* tocar reports.html
+* crear nuevas páginas
+* simplificar lógica existente
+* optimizar antes de estabilizar
+
+---
+
+ENTREGA
+
+* lista de cambios exactos
+* comparación antes/después
+* validación runtime
+* riesgos si quedan
+* estado: PASS / BLOCKED

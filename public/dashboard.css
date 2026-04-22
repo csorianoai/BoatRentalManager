@@ -1583,3 +1583,175 @@ body {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-tertiary); }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   DB2 — Dashboard 2.0 styles (prefijo db2- exclusivo)
+   Sólo adiciones, no borra nada existente
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Hero Section ──────────────────────────────────────────────────────── */
+.db2-hero {
+    position: sticky;
+    top: 48px; /* debajo del global-nav (48px altura nav) */
+    z-index: 900;
+    background: var(--bg-header);
+    border-bottom: 1px solid var(--border);
+    box-shadow: 0 1px 8px rgba(0,0,0,.12);
+}
+.db2-hero-inner {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 10px 24px;
+    max-width: 1600px;
+    margin: 0 auto;
+    flex-wrap: wrap;
+}
+.db2-hero-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+}
+.db2-hero-brand-text { display: flex; flex-direction: column; }
+.db2-hero-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0;
+    line-height: 1.2;
+    white-space: nowrap;
+}
+.db2-hero-period {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    margin: 0;
+    white-space: nowrap;
+}
+.db2-hero-divider {
+    width: 1px;
+    height: 28px;
+    background: var(--border);
+    flex-shrink: 0;
+    display: none;
+}
+@media (min-width: 900px) { .db2-hero-divider { display: block; } }
+
+.db2-hero-filters {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+    flex-wrap: wrap;
+}
+.db2-hero-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+}
+
+/* ── KPI Grid 2.0 ──────────────────────────────────────────────────────── */
+.db2-kpi-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.db2-kpi-row {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(4, 1fr);
+}
+.db2-kpi-row--secondary .kpi-card {
+    padding: 14px 18px;
+    min-height: unset;
+}
+.db2-kpi-row--secondary .kpi-value {
+    font-size: 22px !important;
+}
+.db2-kpi-row--secondary .kpi-icon-bg {
+    display: none;
+}
+@media (max-width: 1100px) {
+    .db2-kpi-row { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 600px) {
+    .db2-kpi-row { grid-template-columns: 1fr; }
+}
+
+/* ── Performance Section ───────────────────────────────────────────────── */
+.db2-performance-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+.db2-perf-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+.db2-section-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+/* ── View Switcher ─────────────────────────────────────────────────────── */
+.db2-view-switcher {
+    display: flex;
+    align-items: center;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 3px;
+    gap: 2px;
+}
+.db2-view-btn {
+    padding: 6px 16px;
+    font-size: 12px;
+    font-weight: 600;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: background .15s, color .15s;
+    white-space: nowrap;
+}
+.db2-view-btn:hover { background: var(--bg-card-hover); color: var(--text-primary); }
+.db2-view-btn.db2-active {
+    background: var(--accent, #3B82F6);
+    color: #fff;
+}
+.dark-mode .db2-view-btn.db2-active { background: #2563EB; }
+
+/* ── Panels ────────────────────────────────────────────────────────────── */
+.db2-panel { width: 100%; }
+.db2-panel[hidden] { display: none !important; }
+
+/* ── Upcoming carousel ─────────────────────────────────────────────────── */
+.db2-upcoming-wrap .upcoming-list {
+    overflow-x: auto;
+    display: flex;
+    flex-direction: column;
+}
+
+/* ── Main layout adjustments ───────────────────────────────────────────── */
+.db2-main {
+    padding-top: 20px !important;
+    max-width: 1600px;
+    margin: 0 auto;
+}
+
+/* ── Responsive ────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+    .db2-hero-inner { padding: 8px 16px; }
+    .db2-hero-brand { display: none; }
+    .db2-hero-filters { flex: 1; }
+}
