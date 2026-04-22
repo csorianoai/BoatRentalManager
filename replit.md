@@ -1,132 +1,41 @@
 # Overview
 
-This project is a multi-platform boat rental management system for Nadaki Excursions, designed to automate booking, payment, customer communication, captain scheduling, dynamic pricing, and accounting across 13 booking platforms. Its primary goal is to streamline operations, enhance customer experience via an AI assistant, and provide robust financial oversight. The system includes modules for task management, structured document storage, captain and stew payment management, and extended booking deposit functionalities, all accessible via gestion.nadakiexcursions.com.
+This project is a multi-platform boat rental management system for Nadaki Excursions. Its core purpose is to automate and streamline booking, payment, customer communication, captain scheduling, dynamic pricing, and accounting across 13 booking platforms. Key objectives include enhancing customer experience through an AI assistant, providing robust financial oversight, and consolidating operational workflows. The system integrates modules for task management, structured document storage, captain and stew payment management, and extended booking deposit functionalities, all accessible via gestion.nadakiexcursions.com.
 
 # User Preferences
 
 Preferred communication style: Simple, everyday language.
 
-# Navbar Global — Reorganización del Portal (En progreso)
-
-Sistema de navegación unificada para todas las páginas HTML del portal.
-Archivos globales: `public/assets/css/global-nav.css`, `public/assets/js/components/global-nav.js`.
-Patrón de inyección: `<link>` en `<head>`, `data-page="X"` en `<body>`, `<script>` antes de `</body>`.
-
-## Estado por Batch
-
-### Piloto — fleet.html — COMPLETED
-Patrón validado. Navbar dark #0D1117, 52px fixed, 4 dropdowns (Operaciones/Flota/Finanzas/Comercial), ⌘K command palette, alert badge dinámico, hash-based tab activation. Commit: `069ded3`.
-
-### Batch A — completed_with_exception
-Páginas migradas: `dashboard.html`, `schedule.html`, `messages.html`, `crew.html`, `accounting.html`.
-Validación Playwright: status `success` en las 5 páginas. Cero regresiones. Commit: `28d2828`.
-
-**Notas técnicas por página:**
-- `dashboard.html`: `.logo-section` y logout ocultos vía CSS (inline); `refreshBtn`, `globalSearchWrap` permanecen en DOM para no romper referencias duras en `dashboard.js` (línea 59 sin null check).
-- `accounting.html`: `.logo-section`, nav-links y logout ocultos vía CSS; `themeToggle` y `refreshBtn` permanecen visibles (referencias duras en `accounting.js` líneas 74-75 y 83 sin null check).
-- `schedule.html`: removidos solo los 3 nav-links de `header-nav`; `btn-nueva-reserva` conservado (referencia dura en `schedule.js` línea 668).
-- `crew.html`: removido solo el back-link; `header-captain-count` y `header-stew-count` conservados (referencias duras en inline JS líneas 873-874).
-- `messages.html`: header completo removido (sin referencias JS a elementos del header).
-
-**EXCEPCIÓN — `reports.html` — NO MIGRADO**
-
-Motivo: Colisión de sistemas de navegación. `reports.html` implementa el sistema NBIC completo con su propia infraestructura de navegación.
-
-Componentes en conflicto:
-- `<header class="nbic-topbar">`: barra superior propia con logo, toggle de sidebar, breadcrumb dinámico
-- `#nbic-cmd-trigger`: paleta de comandos ⌘K propia (Fuse.js) — colisiona con el ⌘K del global-nav
-- `#nbic-sidebar-toggle`: sidebar lateral con 27 reportes categorizados — el global-nav no tiene equivalente
-- `#nbic-theme-toggle`: toggle de tema NBIC (dark/light) — independiente del sistema de temas del global-nav
-- `.nbic-topbar__breadcrumb`: breadcrumb dinámico por reporte activo — sin equivalente en global-nav
-
-Riesgos de integración si se forzara:
-1. Dos barras de navegación superpuestas (+52px de desplazamiento visual)
-2. Dos instancias de ⌘K con handlers distintos — conflicto de eventos de teclado
-3. El sidebar NBIC quedaría empujado por el padding-top del global-nav, rompiendo su layout fixed
-4. El breadcrumb de NBIC quedaría duplicado o sin contexto visual correcto
-
-Decisión: `reports.html` requiere una fase dedicada de integración NBIC ↔ global-nav. No modificar sin nueva autorización.
-
-### Batch B — completed
-Páginas migradas: `boat-maintenance.html`, `operations.html`, `executive.html`, `commissions.html`, `pricing.html`, `dynamic-pricing.html`, `documents.html`.
-Estrategias: SAFE REMOVAL (boat-maintenance, dynamic-pricing), PARTIAL REMOVAL (operations, assets), CSS HIDE (executive→#last-updated, commissions→#themeToggle, pricing→#logout-btn), SAFE REMOVAL + CSS adjust (documents→sidebar top:68px→52px).
-
-### Batch C — completed_with_exceptions
-Páginas migradas: `marine-conditions.html`, `fuel-tracker.html`, `assets.html`.
-
-**Estrategias aplicadas:**
-- `marine-conditions.html`: CSS HIDE en `.nav-buttons` — `id="refreshBtn"` preservado en DOM (addEventListener en marine-conditions.js línea 12).
-- `fuel-tracker.html`: PARTIAL CSS HIDE — `nav-back` y `nav-title` ocultos; `nav-actions` con 3 botones funcionales visibles. 5 IDs preservados: `btn-quick-fuel`, `btn-backfill`, `btn-dark-mode`, `icon-dark`, `icon-light` (todos en fuel-tracker.js).
-- `assets.html`: PARTIAL REMOVAL — navbar eliminado, botón `+ Registrar Activo` conservado en barra mínima superior.
-
-**EXCEPCIONES — 3 páginas NO migradas:**
-
-**`captain.html` — EXCEPCIÓN PERMANENTE**
-Motivo: Mobile PWA con 3 pantallas JS-managed (loginScreen / mainScreen / tripDetailScreen). captain.js tiene 15+ refs duras a elementos del DOM (logoutBtn, backToMain, captainName, loginScreen, mainScreen, tripDetailScreen, loginForm, captainId, refreshAssignments, refreshHistory, assignmentsTab, historyTab, assignmentsList, historyList, gpsStatus). El global-nav (desktop, 52px fixed) rompe el layout móvil y la claridad operativa del capitán. No modificar sin nueva fase dedicada.
-
-**`login.html` — EXCEPCIÓN PERMANENTE**
-Motivo: Página pre-autenticación. Layout full-page centrado (`body { display:flex; align-items:center; justify-content:center }`). No existen destinos de navegación válidos antes de auth. Añadir navbar global no tiene sentido funcional y rompe el diseño.
-
-**`sync.html` — ARCHIVO INEXISTENTE**
-Motivo: El archivo `/public/sync.html` no existe en el repositorio. No se puede migrar. Si se crea en el futuro, requiere nueva autorización para migrar.
-
-# Fleet Operations Center (Fase activa)
-
-Módulo en `/fleet.html`, pestaña "Fleet Operations Center". Código en `public/assets/js/operations/fleet-ops.js`.
-
-**Fases completadas:**
-- Fase 1: Infraestructura y Timeline base
-- Fase 2: Detail Drawer, Alert Engine, Today Strip, Action Handlers. fleet_config se puebla automáticamente desde la tabla boats en initializeDatabase().
-- Fase 3A: List View completo — 4 tabs (Timeline|Semanal|Mensual|Lista), 13 columnas, checkboxes bulk, barra de acciones flotante, densidad (Compact/Medium/Cómodo), Export CSV/PDF, cheat sheet de atajos `?`, 10 nuevos tests.
-
-**Atajos de teclado:**
-- `T` = Vista Timeline, `L` = Vista Lista, `W` = Semanal (próx.), `M` = Mensual (próx.)
-- `←/→` o `[/]` = Navegar rango, `H` = Hoy, `/` = Focus búsqueda (en Lista)
-- `N` = Nueva reserva (próx.), `?` = Cheat sheet, `Esc` = Cerrar
-
-# Protocolo de Auto-Validación (obligatorio antes de deploy)
-
-```bash
-node validation/self-check.js --target=dev    # desarrollo
-node validation/self-check.js --target=prod   # producción
-node validation/self-check.js --target=all    # comparación
-```
-
-Regla: 0 FAIL y ≤2 WARN → avanzar. Ver `validation/VALIDATION.md`.
-
-Tests activos: 42 tests (I-01..I-08, D-01..D-10, U-01..U-20, C-01..C-04)
-
-**Tablas huérfanas corregidas (Fase 3A auditoría):** `boat_photos` (FASE 7B) y `scheduled_expenses` (FASE 10B) ahora se crean en initializeDatabase().
-
 # System Architecture
 
 ## Frontend Architecture
 
-The system features a dual-layer frontend. A modern React, TypeScript, and Tailwind CSS v3 dashboard (`/app`) coexists with original Vanilla JavaScript pages (`public/`). The React app provides a modern control center with KPI cards, financial analysis panels, and trend charts using Recharts. The original Vanilla JS frontend offers a business intelligence dashboard with real-time metrics, a futuristic design system, and Chart.js for data visualization. Key modules include calendar, commissions, pricing, accounting, messages, boat maintenance, marine conditions, fleet management, and an Executive Dashboard. An AI chat widget provides real-time customer interaction. The accounting dashboard supports transaction management, bank reconciliation, categorization, and intelligent classification. Financial analysis modules for income and expenses include date presets, KPI cards, category breakdowns, and 6-month trend charts. The messaging center offers a unified inbox, intelligent templates, and AI-powered suggestions. All user-generated content is rendered securely to prevent XSS attacks. The boat maintenance system provides a 7-tab interface for tracking expenses, maintenance, work orders, parts inventory, and analytics. The marine conditions module displays real-time NOAA data. The fleet management system offers a 5-tab interface for boat inventory, availability, platform ID linking, and quick search.
+The system employs a dual-layer frontend: a modern React, TypeScript, and Tailwind CSS v3 dashboard (`/app`) for advanced analytics and a business intelligence dashboard built with Vanilla JavaScript, featuring real-time metrics and Chart.js for data visualization. Both interfaces provide a comprehensive control center. Core modules include calendar, commissions, pricing, accounting, messages, boat maintenance, marine conditions, fleet management, and an Executive Dashboard. An AI chat widget enables real-time customer interaction. UI/UX emphasizes a futuristic design system, secure content rendering against XSS, and clear data presentation with KPI cards, financial analysis panels, and trend charts.
 
 ## Backend Architecture
 
-Developed with Express.js (Node.js), the backend provides RESTful APIs with custom IP-based rate limiting and strict input validation. It integrates with OpenAI for AI services, Stripe for payments, and Twilio for WhatsApp notifications. The system processes webhooks from 13 booking platforms. Administrative and data management endpoints are protected by Replit Auth with OpenID Connect, while customer-facing AI chat and platform webhooks are publicly accessible. Robust error handling is implemented for all accounting operations. The messaging center includes 11 RESTful endpoints for inbox management, message ingestion, and AI-powered suggestions. The boat maintenance system offers 19 RESTful endpoints for managing expenses, schedules, mechanics, maintenance, work orders, and parts inventory, with automatic accounting synchronization. The marine conditions module provides 5 RESTful endpoints with caching and hourly safety alerts. The fleet management system offers 7 RESTful endpoints for boat CRUD, platform ID linking, availability queries, and smart search. An email synchronization system connects to sales@nadakiexcursions.com via IMAP for automatic email ingestion and message thread creation. The booking deposits system includes 5 new endpoints for managing brokers, customers, booking ledgers, and atomically processing booking deposits and their application.
+The backend is built with Express.js (Node.js), providing RESTful APIs with custom IP-based rate limiting and strict input validation. It integrates with OpenAI for AI services, Stripe for payment processing, and Twilio for WhatsApp notifications. The system processes webhooks from 13 booking platforms. Administrative and data management endpoints are secured using Replit Auth with OpenID Connect, while customer-facing AI chat and platform webhooks are publicly accessible. The backend ensures robust error handling for all operations, including 11 RESTful endpoints for messaging, 19 for boat maintenance, and 7 for fleet management. An email synchronization system ingests emails via IMAP.
 
 ## Data Storage
 
-PostgreSQL (Neon-backed via Replit) is the primary database, featuring a comprehensive schema across 36+ tables. Key tables include `bookings`, `captains`, `users`, `chat_conversations`, `platform_sync_status`, `commission_rules`, `captain_availability`, `boats`, `platform_pricing_policies`, accounting tables, messaging tables, boat maintenance tables, and fleet management tables. New tables include `brokers`, `customers`, `bookings_ledger`, and extended `booking_deposits` and `booking_receivables` for enhanced booking and financial traceability. Tables for fleet operations like `fleet_config`, `holds`, `maintenance_blocks`, and `operations_alerts` support advanced fleet management. UUIDs/nanoid IDs are used for primary keys, and JSONB stores flexible data. Key fields like `bookings.total_amount` have been migrated to `NUMERIC(12,2)` for precision, and `transactions` now include `booking_id` and `ledger_id` for direct booking-to-transaction traceability.
+PostgreSQL (Neon-backed via Replit) serves as the primary database, featuring a comprehensive schema across over 36 tables. Key entities include `bookings`, `captains`, `users`, `chat_conversations`, `platform_sync_status`, `commission_rules`, `captain_availability`, `boats`, `platform_pricing_policies`, accounting, messaging, boat maintenance, and fleet management related tables. New tables such as `brokers`, `customers`, `bookings_ledger`, and extensions to `booking_deposits` and `booking_receivables` enhance financial traceability. UUIDs/nanoid IDs are used for primary keys, and JSONB stores flexible data. Numeric precision is maintained for financial fields, and direct booking-to-transaction traceability is implemented.
 
 ## Authentication & Authorization
 
-Replit Auth with OpenID Connect (OIDC) is implemented using `passport.js` and `connect-pg-simple` for PostgreSQL-backed session storage. Sessions have a 7-day TTL and use httpOnly and secure cookies. An `isAuthenticated` middleware protects administrative and data management endpoints. The captain app uses dual authentication: Replit Auth for access control and Captain ID selection for in-app role identification.
+Replit Auth with OpenID Connect (OIDC) is implemented using `passport.js` and `connect-pg-simple` for PostgreSQL-backed session storage. Sessions have a 7-day TTL and utilize httpOnly and secure cookies. An `isAuthenticated` middleware protects administrative and data management endpoints. The captain application uses a dual authentication model: Replit Auth for access control combined with Captain ID selection for in-app role identification.
 
 ## System Design Patterns
 
-Key patterns include Chart.js lifecycle management, a robust accounting transaction system, a priority-based auto-categorization engine, an alert system for financial monitoring, a smart matching algorithm for bank reconciliation, a data merging strategy for marine conditions for accurate safety assessments, and a security-first rendering approach using DOM APIs to prevent XSS attacks. An email content cleaning system uses `html-to-text` and regex to remove tracking URLs and other unwanted elements, preserving content integrity. Error handling focuses on non-blocking failures, detailed logging, and graceful degradation.
+The system incorporates various design patterns including robust accounting transaction management, a priority-based auto-categorization engine, an alert system for financial monitoring, a smart matching algorithm for bank reconciliation, and a data merging strategy for marine conditions. Security is paramount with DOM API-based rendering to prevent XSS attacks. An email content cleaning system uses `html-to-text` and regex for integrity. Error handling focuses on non-blocking failures, detailed logging, and graceful degradation.
 
 # External Dependencies
 
 ## Third-Party Libraries
 
--   **React Dashboard**: React 18, Vite 5, TypeScript, Tailwind CSS, `@tanstack/react-query`, `recharts`, `lucide-react`.
--   **Vite Integration**: `vite.config.ts`, `tailwind.config.js`, `postcss.config.js`.
--   **Classic UI & Styling**: Chart.js, D3.js ecosystem.
+-   **Frontend Frameworks**: React 18, Vite 5, TypeScript, Tailwind CSS.
+-   **Data Management**: `@tanstack/react-query`.
+-   **Charting & Visualization**: `recharts`, Chart.js, D3.js ecosystem.
+-   **Icons**: `lucide-react`.
 -   **File Processing**: `csv-parse`, `ofx-js`.
 
 ## External Services & Integrations
@@ -136,6 +45,6 @@ Key patterns include Chart.js lifecycle management, a robust accounting transact
 -   **Messaging**: Twilio for WhatsApp.
 -   **Database**: PostgreSQL (Neon via Replit).
 -   **Booking Platforms**: Airbnb, GetMyBoat, BoatSetter, Viator, Expedia, TripAdvisor, Groupon, Booking.com, FareHarbor, Bokun, Rezdy, Peek, Xola.
--   **Email Synchronization**: Gmail (nadakiportal@gmail.com) via IMAP.
--   **WordPress Integration**: Webhook endpoints for bookings from `nadakiexcursions.com`.
+-   **Email Synchronization**: Gmail (sales@nadakiexcursions.com) via IMAP.
+-   **CMS Integration**: WordPress webhooks from `nadakiexcursions.com`.
 -   **Marine Data**: NOAA Weather API, NOAA Tides & Currents API, NOAA NDBC Buoy 41009.

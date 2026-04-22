@@ -527,6 +527,115 @@ async function integrityTests() {
 }
 
 // ── REPORT ───────────────────────────────────────────────────────────────────
+// ── NAVBAR & ROUTING TESTS (N-01 … N-10) ─────────────────────────────────────
+async function navbarTests(url) {
+  console.log('\n🧭 NAVBAR & ROUTING (Fase 5+6 hardening)');
+
+  // Pages that MUST have global-nav (migrated: Pilot + Batch A,B,C)
+  const MIGRATED = [
+    'fleet.html', 'dashboard.html', 'schedule.html', 'messages.html', 'crew.html',
+    'accounting.html', 'boat-maintenance.html', 'operations.html', 'commissions.html',
+    'pricing.html', 'dynamic-pricing.html', 'documents.html',
+    'marine-conditions.html', 'fuel-tracker.html', 'assets.html',
+  ];
+  // Pages that MUST NOT have global-nav (permanent exceptions)
+  const EXCEPTIONS_NO_NAV = ['captain.html', 'login.html', 'reports.html'];
+
+  // N-01: /executive.html devuelve 301 (redirect activo)
+  await run('N-01', '¿/executive.html devuelve 301 (redirect Fase 4)?', async () => {
+    const r = await get(`${url}/executive.html`);
+    if (r.status !== 301) return FAIL(`Esperado 301, obtenido ${r.status}`);
+    return PASS(`HTTP ${r.status}`);
+  });
+
+  // N-02: Location header apunta a /reports.html#f1
+  await run('N-02', '¿Redirect /executive.html → /reports.html#f1?', async () => {
+    const r = await get(`${url}/executive.html`);
+    const loc = r.headers['location'] || '';
+    if (!loc.includes('/reports.html#f1')) return FAIL(`Location: ${loc || '(vacío)'}`);
+    return PASS(`Location: ${loc}`);
+  });
+
+  // N-03: global-nav.css accesible sin 404
+  await run('N-03', '¿global-nav.css responde 200?', async () => {
+    const r = await get(`${url}/assets/css/global-nav.css`);
+    if (r.status !== 200) return FAIL(`HTTP ${r.status}`);
+    const kb = (r.body.length / 1024).toFixed(1);
+    return PASS(`${kb}KB`);
+  });
+
+  // N-04: global-nav.js accesible sin 404
+  await run('N-04', '¿global-nav.js responde 200?', async () => {
+    const r = await get(`${url}/assets/js/components/global-nav.js`);
+    if (r.status !== 200) return FAIL(`HTTP ${r.status}`);
+    const kb = (r.body.length / 1024).toFixed(1);
+    return PASS(`${kb}KB`);
+  });
+
+  // N-05: Todas las páginas migradas devuelven 200
+  await run('N-05', '¿Las 15 páginas migradas devuelven 200?', async () => {
+    const fails = [];
+    for (const page of MIGRATED) {
+      const r = await get(`${url}/${page}`).catch(() => ({ status: 0 }));
+      if (r.status !== 200) fails.push(`${page}:${r.status}`);
+    }
+    if (fails.length) return FAIL(fails.join(', '));
+    return PASS(`${MIGRATED.length}/15 OK`);
+  });
+
+  // N-06: Páginas migradas contienen ref a global-nav.css
+  await run('N-06', '¿Páginas migradas incluyen global-nav.css?', async () => {
+    const fails = [];
+    for (const page of MIGRATED) {
+      const r = await get(`${url}/${page}`).catch(() => ({ status: 0, body: '' }));
+      if (!r.body.includes('global-nav.css')) fails.push(page);
+    }
+    if (fails.length) return FAIL(`Sin global-nav.css: ${fails.join(', ')}`);
+    return PASS(`${MIGRATED.length}/15 con CSS`);
+  });
+
+  // N-07: Páginas migradas contienen ref a global-nav.js
+  await run('N-07', '¿Páginas migradas incluyen global-nav.js?', async () => {
+    const fails = [];
+    for (const page of MIGRATED) {
+      const r = await get(`${url}/${page}`).catch(() => ({ status: 0, body: '' }));
+      if (!r.body.includes('global-nav.js')) fails.push(page);
+    }
+    if (fails.length) return FAIL(`Sin global-nav.js: ${fails.join(', ')}`);
+    return PASS(`${MIGRATED.length}/15 con JS`);
+  });
+
+  // N-08: Excepciones NO contienen global-nav.js (respetan excepción)
+  await run('N-08', '¿Excepciones (captain/login/reports) sin global-nav.js?', async () => {
+    const violations = [];
+    for (const page of EXCEPTIONS_NO_NAV) {
+      const r = await get(`${url}/${page}`).catch(() => ({ status: 0, body: '' }));
+      if (r.body.includes('global-nav.js')) violations.push(page);
+    }
+    if (violations.length) return FAIL(`Con global-nav.js (no debería): ${violations.join(', ')}`);
+    return PASS(`${EXCEPTIONS_NO_NAV.length}/3 excepciones limpias`);
+  });
+
+  // N-09: dashboard.html no enlaza directamente a /executive.html
+  await run('N-09', '¿dashboard.html no enlaza a /executive.html?', async () => {
+    const r = await get(`${url}/dashboard.html`);
+    const matches = (r.body.match(/href="\/executive\.html"/g) || []);
+    if (matches.length > 0) return FAIL(`${matches.length} enlaces directos a /executive.html`);
+    return PASS('Sin enlaces directos a /executive.html');
+  });
+
+  // N-10: Excepciones y páginas migradas devuelven 200 (sin 404 ni 500)
+  await run('N-10', '¿Excepciones (captain/login/reports) devuelven 200?', async () => {
+    const fails = [];
+    for (const page of EXCEPTIONS_NO_NAV) {
+      const r = await get(`${url}/${page}`).catch(() => ({ status: 0 }));
+      if (r.status !== 200) fails.push(`${page}:${r.status}`);
+    }
+    if (fails.length) return FAIL(fails.join(', '));
+    return PASS(`${EXCEPTIONS_NO_NAV.length}/3 excepciones OK`);
+  });
+}
+
 function printReport(targetUrl, buildTs, durationMs) {
   const total = results.PASS + results.FAIL + results.WARN + results.SKIP;
   const warns = results.tests.filter(t => t.result === 'WARN');
@@ -536,6 +645,7 @@ function printReport(targetUrl, buildTs, durationMs) {
   const dataR   = results.tests.filter(t => t.id.startsWith('D-'));
   const uiR     = results.tests.filter(t => t.id.startsWith('U-'));
   const intR    = results.tests.filter(t => t.id.startsWith('C-'));
+  const navR    = results.tests.filter(t => t.id.startsWith('N-'));
 
   function blockScore(tests, label) {
     const p = tests.filter(t => t.result === 'PASS').length;
@@ -573,6 +683,7 @@ function printReport(targetUrl, buildTs, durationMs) {
   console.log(blockScore(dataR,  'DATA'));
   console.log(blockScore(uiR,    'UI'));
   console.log(blockScore(intR,   'INTEGRITY'));
+  console.log(blockScore(navR,   'NAVBAR/ROUTING'));
   console.log('-------------------------------------------');
   const runnable = total - results.SKIP;
   console.log(`OVERALL: ${results.PASS + results.WARN}/${runnable} PASS · ${results.WARN} WARN · ${results.FAIL} FAIL · ${results.SKIP} SKIP`);
@@ -631,6 +742,7 @@ async function main() {
     await uiTests(html);
     await dataTestsPhase3A(url);
     await integrityTests();
+    await navbarTests(url);
 
     printReport(url, buildTs, Date.now() - start);
   }
