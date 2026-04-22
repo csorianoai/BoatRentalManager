@@ -36,7 +36,7 @@
     {
       id: 'finanzas',
       label: 'Finanzas',
-      pages: ['/reports.html', '/accounting.html', '/commissions.html', '/executive.html'],
+      pages: ['/reports.html', '/accounting.html', '/commissions.html'],
       items: [
         { label: 'NBIC Analytics',        href: '/reports.html',                        icon: '📊', testid: 'nav-nbic' },
         { label: 'Contabilidad',          href: '/accounting.html',                     icon: '🏦', testid: 'nav-accounting' },

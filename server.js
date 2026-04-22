@@ -2230,6 +2230,11 @@ app.use((req, res, next) => {
   next();
 });
 
+// ── Redirect: /executive.html → /reports.html#f1 (Fase 4 consolidación de rutas) ──
+app.get('/executive.html', (req, res) => {
+  res.redirect(301, '/reports.html#f1');
+});
+
 // ── HTML middleware: inyecta ?v=BUILD_TS en todos los assets y reemplaza {{BUILD_TS}} ──
 const _PUBLIC_DIR = path.join(__dirname, 'public');
 app.get(/\.html$/, (req, res, next) => {

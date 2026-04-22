@@ -1385,7 +1385,7 @@ const SEARCH_MODULES = [
     { label: 'Operaciones', url: '/operations.html', icon: '📋', tags: ['operaciones', 'reservas', 'bookings'] },
     { label: 'Documentos', url: '/documents.html', icon: '🗂️', tags: ['documentos', 'archivos', 'facturas'] },
     { label: 'Activos', url: '/assets.html', icon: '📦', tags: ['activos', 'inventario', 'equipo'] },
-    { label: 'Dashboard Ejecutivo', url: '/executive.html', icon: '📊', tags: ['ejecutivo', 'kpis', 'resumen'] },
+    { label: 'Dashboard Ejecutivo', url: '/reports.html#f1', icon: '📊', tags: ['ejecutivo', 'kpis', 'resumen'] },
     { label: 'Capitanes', url: '/crew.html?tab=captains', icon: '👨‍✈️', tags: ['capitanes', 'capitan', 'tripulacion'] },
     { label: 'Stew', url: '/crew.html?tab=stews', icon: '🧑‍✈️', tags: ['stew', 'azafatas', 'tripulacion'] },
     { label: 'Tripulación / Crew', url: '/crew.html', icon: '👥', tags: ['tripulacion', 'crew', 'equipo', 'personal'] },
