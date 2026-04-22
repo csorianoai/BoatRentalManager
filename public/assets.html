@@ -105,21 +105,13 @@
       td,th{padding:10px 10px}
     }
   </style>
+  <link rel="stylesheet" href="/assets/css/global-nav.css?v=1776871035121">
 </head>
 <body>
 
-<nav class="navbar">
-  <div class="nav-container">
-    <div class="nav-brand">
-      <a href="/dashboard.html" class="btn btn-secondary btn-sm" data-testid="link-back-dashboard">← Dashboard</a>
-      <h1>Activos / Inventario</h1>
-      <span>Equipos y bienes de la empresa</span>
-    </div>
-    <div class="nav-actions">
-      <button class="btn btn-primary" onclick="openCreateModal()" data-testid="button-new-asset">+ Registrar Activo</button>
-    </div>
-  </div>
-</nav>
+<div style="display:flex;justify-content:flex-end;padding:10px 20px 0;">
+  <button class="btn btn-primary" onclick="openCreateModal()" data-testid="button-new-asset">+ Registrar Activo</button>
+</div>
 
 <div class="page">
 
@@ -336,5 +328,6 @@
 </div>
 
 <script src="assets.js"></script>
+<script src="/assets/js/components/global-nav.js?v=1776871035121"></script>
 </body>
 </html>

@@ -47,8 +47,28 @@ Riesgos de integración si se forzara:
 
 Decisión: `reports.html` requiere una fase dedicada de integración NBIC ↔ global-nav. No modificar sin nueva autorización.
 
-### Batch B — PENDIENTE (requiere autorización)
-### Batch C — PENDIENTE (requiere autorización)
+### Batch B — completed
+Páginas migradas: `boat-maintenance.html`, `operations.html`, `executive.html`, `commissions.html`, `pricing.html`, `dynamic-pricing.html`, `documents.html`.
+Estrategias: SAFE REMOVAL (boat-maintenance, dynamic-pricing), PARTIAL REMOVAL (operations, assets), CSS HIDE (executive→#last-updated, commissions→#themeToggle, pricing→#logout-btn), SAFE REMOVAL + CSS adjust (documents→sidebar top:68px→52px).
+
+### Batch C — completed_with_exceptions
+Páginas migradas: `marine-conditions.html`, `fuel-tracker.html`, `assets.html`.
+
+**Estrategias aplicadas:**
+- `marine-conditions.html`: CSS HIDE en `.nav-buttons` — `id="refreshBtn"` preservado en DOM (addEventListener en marine-conditions.js línea 12).
+- `fuel-tracker.html`: PARTIAL CSS HIDE — `nav-back` y `nav-title` ocultos; `nav-actions` con 3 botones funcionales visibles. 5 IDs preservados: `btn-quick-fuel`, `btn-backfill`, `btn-dark-mode`, `icon-dark`, `icon-light` (todos en fuel-tracker.js).
+- `assets.html`: PARTIAL REMOVAL — navbar eliminado, botón `+ Registrar Activo` conservado en barra mínima superior.
+
+**EXCEPCIONES — 3 páginas NO migradas:**
+
+**`captain.html` — EXCEPCIÓN PERMANENTE**
+Motivo: Mobile PWA con 3 pantallas JS-managed (loginScreen / mainScreen / tripDetailScreen). captain.js tiene 15+ refs duras a elementos del DOM (logoutBtn, backToMain, captainName, loginScreen, mainScreen, tripDetailScreen, loginForm, captainId, refreshAssignments, refreshHistory, assignmentsTab, historyTab, assignmentsList, historyList, gpsStatus). El global-nav (desktop, 52px fixed) rompe el layout móvil y la claridad operativa del capitán. No modificar sin nueva fase dedicada.
+
+**`login.html` — EXCEPCIÓN PERMANENTE**
+Motivo: Página pre-autenticación. Layout full-page centrado (`body { display:flex; align-items:center; justify-content:center }`). No existen destinos de navegación válidos antes de auth. Añadir navbar global no tiene sentido funcional y rompe el diseño.
+
+**`sync.html` — ARCHIVO INEXISTENTE**
+Motivo: El archivo `/public/sync.html` no existe en el repositorio. No se puede migrar. Si se crea en el futuro, requiere nueva autorización para migrar.
 
 # Fleet Operations Center (Fase activa)
 

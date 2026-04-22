@@ -8,17 +8,18 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <link rel="stylesheet" href="fuel-tracker.css">
+  <link rel="stylesheet" href="/assets/css/global-nav.css?v=1776871035121">
 </head>
 <body>
 
   <!-- ── TOP NAVIGATION ───────────────────────────────────────────── -->
   <nav class="top-nav">
     <div class="nav-inner">
-      <a href="/dashboard.html" class="nav-back">
+      <a href="/dashboard.html" class="nav-back" style="display:none!important">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
         Dashboard
       </a>
-      <div class="nav-title">
+      <div class="nav-title" style="display:none!important">
         <svg class="nav-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 22V8l9-6 9 6v14H3z"/><path d="M10 22V12h4v10"/></svg>
         <span>Combustible &amp; Motor</span>
       </div>
@@ -630,5 +631,6 @@
   <div id="toast" class="toast" style="display:none" role="status" aria-live="polite"></div>
 
   <script src="fuel-tracker.js"></script>
+  <script src="/assets/js/components/global-nav.js?v=1776871035121"></script>
 </body>
 </html>
