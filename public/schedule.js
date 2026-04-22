@@ -690,327 +690,508 @@ function setupEventListeners() {
 
 // ═══════════════════════════════════════════════════════════════════
 // NADAKI CALENDAR 2.0 — Namespace Global
-// Fase 1: Shell v2 (CalendarToolbar + KPIStrip + ViewSwitcher)
-// Fase 2+: Grid Engine, BookingDrawer, ConflictPanel, PaymentOps
+// Fase 2: Grid Engine — BookingCard · Week · Day · Timeline · Month
 // Rollback: NadakiCalendar.restoreLegacy() desde consola
 // ═══════════════════════════════════════════════════════════════════
 window.NadakiCalendar = (function () {
   'use strict';
 
   // ── Internal state ────────────────────────────────────────────
-  let _view      = 'week';
-  let _initiated = false;
+  let _view              = 'week';
+  let _initiated         = false;
+  let _dayDate           = null;       // active date for DayView
+  let _origRenderWeek    = null;       // reference to legacy renderWeekView
 
-  // ── Conflict detection (client-side, Fase 1) ──────────────────
+  // ── Constants ─────────────────────────────────────────────────
+  const H_START = 7, H_END = 20;
+  const HOURS   = Array.from({ length: H_END - H_START }, (_, i) => H_START + i);
+  const SLOT_H  = 54; // px per hour slot
+  const STATUS_COL = {
+    confirmed:   { bg:'#dcfce7', bd:'#16a34a', tx:'#15803d', dot:'#16a34a' },
+    pending:     { bg:'#fef9c3', bd:'#ca8a04', tx:'#92400e', dot:'#ca8a04' },
+    in_progress: { bg:'#dbeafe', bd:'#1d4ed8', tx:'#1e40af', dot:'#1d4ed8' },
+    completed:   { bg:'#f3f4f6', bd:'#9ca3af', tx:'#4b5563', dot:'#9ca3af' },
+    cancelled:   { bg:'#fee2e2', bd:'#ef4444', tx:'#b91c1c', dot:'#ef4444' },
+  };
+
+  // ── Helpers ────────────────────────────────────────────────────
+  function _hm(t) {
+    const [h, m] = (t || '07:00').split(':').map(Number);
+    return { h: h || 0, m: m || 0 };
+  }
+  function _getDays() {
+    const df = document.getElementById('date-from')?.value;
+    const dt = document.getElementById('date-to')?.value;
+    if (!df || !dt) return [];
+    const out = [], cur = new Date(df + 'T12:00:00'), end = new Date(dt + 'T12:00:00');
+    while (cur <= end) { out.push(new Date(cur)); cur.setDate(cur.getDate() + 1); }
+    return out;
+  }
+  function _activeDay() {
+    if (_dayDate) return _dayDate;
+    const today = fmtDate(new Date());
+    const days  = _getDays();
+    return days.find(d => fmtDate(d) === today) ? today
+      : (document.getElementById('date-from')?.value || today);
+  }
+
+  // ── Conflict detection ──────────────────────────────────────
   function _detectConflicts(bks) {
-    let count = 0;
+    let n = 0;
     for (let i = 0; i < bks.length; i++) {
       for (let j = i + 1; j < bks.length; j++) {
         const a = bks[i], b = bks[j];
         if (a.booking_date !== b.booking_date) continue;
-        const sameBoat = (a.boat_id && a.boat_id === b.boat_id) ||
-                         (!a.boat_id && !b.boat_id && a.boat_type && a.boat_type === b.boat_type);
-        const sameCap  = a.assigned_captain_id &&
-                         a.assigned_captain_id === b.assigned_captain_id;
-        if (!sameBoat && !sameCap) continue;
-        const aS = parseInt((a.start_time || '0').split(':')[0]);
-        const bS = parseInt((b.start_time || '0').split(':')[0]);
-        const aE = aS + (a.duration_hours || 4);
-        const bE = bS + (b.duration_hours || 4);
-        if (aS < bE && bS < aE) count++;
+        const sB = (a.boat_id && a.boat_id === b.boat_id) ||
+                   (!a.boat_id && !b.boat_id && a.boat_type && a.boat_type === b.boat_type);
+        const sC = !!(a.assigned_captain_id && a.assigned_captain_id === b.assigned_captain_id);
+        if (!sB && !sC) continue;
+        const {h:aH,m:aM} = _hm(a.start_time), {h:bH,m:bM} = _hm(b.start_time);
+        const aS = aH*60+aM, bS = bH*60+bM;
+        const aE = aS+(a.duration_hours||4)*60, bE = bS+(b.duration_hours||4)*60;
+        if (aS < bE && bS < aE) n++;
       }
     }
-    return count;
+    return n;
   }
 
-  // ── KPI computation ───────────────────────────────────────────
+  // ── KPI Strip ─────────────────────────────────────────────────
   function renderKPIStrip() {
-    const today       = fmtDate(new Date());
-    const todayBks    = bookings.filter(b => b.booking_date === today);
-    const periodBks   = bookings;
-
-    const todayRev    = todayBks.reduce((s, b) => s + parseFloat(b.total_amount   || 0), 0);
-    const pendingBal  = periodBks.reduce((s, b) => s + parseFloat(b.balance_pending || 0), 0);
-
-    const boatsBusy   = new Set(
-      todayBks.map(b => b.boat_id || b.boat_type).filter(Boolean)
-    ).size;
-    const totalBoats  = boats.length || '?';
-
-    const blocks      = availability.filter(a => a.is_available === 0).length;
-    const conflicts   = _detectConflicts(periodBks);
-
-    const dfrom = document.getElementById('date-from')?.value || '';
-    const dto   = document.getElementById('date-to')?.value   || '';
-    const periodLabel = dfrom && dto
-      ? dfrom.slice(5) + ' → ' + dto.slice(5)
-      : 'semana actual';
-
-    const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-
+    const today     = fmtDate(new Date());
+    const todayBks  = bookings.filter(b => b.booking_date === today);
+    const allBks    = bookings;
+    const todayRev  = todayBks.reduce((s,b) => s+parseFloat(b.total_amount||0), 0);
+    const pendBal   = allBks.reduce((s,b) => s+parseFloat(b.balance_pending||0), 0);
+    const busy      = new Set(todayBks.map(b => b.boat_id||b.boat_type).filter(Boolean)).size;
+    const blks      = availability.filter(a => a.is_available===0).length;
+    const confl     = _detectConflicts(allBks);
+    const df        = document.getElementById('date-from')?.value||'';
+    const dt        = document.getElementById('date-to')?.value||'';
+    const pLabel    = df&&dt ? df.slice(5)+' → '+dt.slice(5) : 'semana actual';
+    const set = (id,v) => { const el=document.getElementById(id); if(el) el.textContent=v; };
     set('cal2-kpi-today-bookings',  todayBks.length);
-    set('cal2-kpi-today-sub',       `${periodBks.length} en el período`);
+    set('cal2-kpi-today-sub',       `${allBks.length} en el período`);
     set('cal2-kpi-today-revenue',   fmtMoney(todayRev));
     set('cal2-kpi-revenue-sub',     todayBks.length ? `${todayBks.length} reservas` : 'ninguna hoy');
-    set('cal2-kpi-balance',         pendingBal > 0 ? fmtMoney(pendingBal) : '$0');
-    set('cal2-kpi-period-bookings', periodBks.length);
-    set('cal2-kpi-period-sub',      periodLabel);
-    set('cal2-kpi-boats-busy',      `${boatsBusy}/${totalBoats}`);
-    set('cal2-kpi-conflicts',       conflicts > 0 ? conflicts : '0');
-    set('cal2-kpi-blocks',          blocks);
-
-    // Period label inside grid
-    set('cal2-period-label', periodLabel ? '📅 ' + periodLabel : '');
+    set('cal2-kpi-balance',         pendBal>0 ? fmtMoney(pendBal) : '$0');
+    set('cal2-kpi-period-bookings', allBks.length);
+    set('cal2-kpi-period-sub',      pLabel);
+    set('cal2-kpi-boats-busy',      `${busy}/${boats.length||'?'}`);
+    set('cal2-kpi-conflicts',       confl);
+    set('cal2-kpi-blocks',          blks);
   }
 
-  // ── Populate filter selects ───────────────────────────────────
+  // ── BookingCard ────────────────────────────────────────────────
+  function _card(b, compact) {
+    const st   = b.status||'confirmed';
+    const col  = STATUS_COL[st]||STATUS_COL.confirmed;
+    const {h:sH,m:sM} = _hm(b.start_time);
+    const dur  = b.duration_hours||4;
+    const tlbl = `${String(sH).padStart(2,'0')}:${String(sM).padStart(2,'0')} – ${String(sH+dur).padStart(2,'0')}:${String(sM).padStart(2,'0')}`;
+    const boat = esc(b.boat_type||b.boat_id||'—');
+    const cap  = b.assigned_captain_name ? esc(b.assigned_captain_name) : '';
+    const plat = b.platform ? esc(b.platform) : '';
+    const cn   = esc(b.customer_name||'?');
+    const cn1  = esc((b.customer_name||'?').split(' ')[0]);
+    const total= parseFloat(b.total_amount||0);
+    const dep  = parseFloat(b.deposit_amount||0);
+    const pct  = total>0 ? Math.min(100,(dep/total)*100) : 0;
+    const pCol = pct>=100 ? '#16a34a' : (pct>0 ? '#ca8a04' : '#dc2626');
+    const tip  = esc(`${b.customer_name||'?'} | ${b.boat_type||'—'} | ${cap||'sin cap.'} | ${st} | ${tlbl}`);
+    const click= `onclick="event.stopPropagation();openEditBooking('${esc(b.id)}')"`;
+    const tid  = `data-testid="card-booking-${esc(b.id)}"`;
+    if (compact) {
+      return `<div class="cal2-bc-compact" style="background:${col.bg};border-color:${col.bd};color:${col.tx};" title="${tip}" ${click} ${tid}>
+        <span class="cal2-bc-dot" style="background:${col.dot}"></span>
+        <span class="cal2-bc-cname">${cn1}</span>
+        <span class="cal2-bc-csep">·</span>
+        <span class="cal2-bc-cboat">${boat.split(' ').slice(0,2).join(' ')}</span>
+      </div>`;
+    }
+    return `<div class="cal2-bc" style="background:${col.bg};border-left:3px solid ${col.bd};color:${col.tx};" title="${tip}" ${click} ${tid}>
+      <div class="cal2-bc-header">
+        <span class="cal2-bc-name">${cn}</span>
+        <span class="cal2-bc-time">${tlbl}</span>
+      </div>
+      <div class="cal2-bc-boat">${boat}</div>
+      ${cap ? `<div class="cal2-bc-cap">&#9875; ${cap}</div>` : ''}
+      <div class="cal2-bc-footer">
+        ${plat ? `<span class="cal2-badge">${plat}</span>` : ''}
+        ${b.is_manual ? `<span class="cal2-badge cal2-badge-manual">Manual</span>` : ''}
+      </div>
+      <div class="cal2-bc-paybar"><div class="cal2-bc-payfill" style="width:${pct.toFixed(0)}%;background:${pCol}"></div></div>
+    </div>`;
+  }
+
+  // ══ WEEK VIEW 2 ═══════════════════════════════════════════════
+  function renderWeekView2() {
+    const cont = document.getElementById('cal2-grid-week');
+    if (!cont) return;
+    const days  = _getDays().slice(0, 7);
+    if (!days.length) return;
+    const today = fmtDate(new Date());
+
+    let html = `<div class="cal2-wv">
+      <div class="cal2-wv-head">
+        <div class="cal2-wv-gutter"></div>
+        ${days.map(d => {
+          const ds=fmtDate(d), isT=ds===today, isW=[0,6].includes(d.getDay());
+          const dow=d.toLocaleDateString('es-ES',{weekday:'short'}).toUpperCase();
+          return `<div class="cal2-wv-dh ${isT?'cal2-istoday':''} ${isW?'cal2-isweekend':''}"
+            data-date="${ds}" data-testid="col-header-${ds}"
+            onclick="openBookingModal('${ds}','10:00')">
+            <span class="cal2-wv-dow">${dow}</span>
+            <span class="cal2-wv-dn ${isT?'cal2-today-pill':''}">${d.getDate()}</span>
+          </div>`;
+        }).join('')}
+      </div>
+      <div class="cal2-wv-scroll">
+        <div class="cal2-wv-body">
+          <div class="cal2-wv-gutter-col">
+            ${HOURS.map(h=>`<div class="cal2-wv-ts" style="height:${SLOT_H}px">${String(h).padStart(2,'0')}:00</div>`).join('')}
+          </div>
+          ${days.map(d => {
+            const ds=fmtDate(d), isT=ds===today, isW=[0,6].includes(d.getDay());
+            const dBks  = bookings.filter(b => b.booking_date===ds);
+            const dBlks = availability.filter(a => a.date===ds && a.is_available===0);
+            return `<div class="cal2-wv-col ${isT?'cal2-istoday':''} ${isW?'cal2-isweekend':''}"
+              style="height:${HOURS.length*SLOT_H}px" data-date="${ds}" data-testid="day-col-${ds}">
+              ${HOURS.map(h=>`<div class="cal2-wv-hr"
+                style="top:${(h-H_START)*SLOT_H}px;height:${SLOT_H}px"
+                onclick="if(event.target===this) openBookingModal('${ds}','${String(h).padStart(2,'0')}:00')"
+                data-testid="slot-${ds}-${h}"></div>`).join('')}
+              ${dBlks.map(a=>`<div class="cal2-avail-block"
+                style="top:0;height:${HOURS.length*SLOT_H}px"
+                title="${esc(a.reason||'Bloqueado')}">&#128683; ${esc(a.reason||'Bloqueado')}</div>`).join('')}
+              ${dBks.map(b => {
+                const {h:sH,m:sM}=_hm(b.start_time);
+                const top=Math.max(0,((sH-H_START)+sM/60)*SLOT_H);
+                const ht =Math.max(28,(b.duration_hours||4)*SLOT_H-4);
+                return `<div class="cal2-wv-ev"
+                  style="top:${top}px;height:${ht}px"
+                  data-id="${b.id}" data-testid="event-${b.id}">
+                  ${_card(b,false)}
+                </div>`;
+              }).join('')}
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+    </div>`;
+    cont.innerHTML = html;
+    cont.style.overflow = '';
+  }
+
+  // ══ DAY VIEW ══════════════════════════════════════════════════
+  function renderDayView() {
+    const cont = document.getElementById('cal2-grid-week');
+    if (!cont) return;
+    const ds    = _activeDay();
+    const d     = new Date(ds+'T12:00:00');
+    const today = fmtDate(new Date());
+    const isT   = ds===today;
+    const dow   = d.toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+    const dayBks  = bookings.filter(b => b.booking_date===ds);
+    const dayBlks = availability.filter(a => a.date===ds && a.is_available===0);
+
+    // Columns: one per distinct boat in fleet; fall back to bookings set
+    const boatMap = new Map();
+    boats.forEach(b => boatMap.set(b.id||b.name, b.name));
+    dayBks.forEach(b => {
+      const k = b.boat_id||b.boat_type||'sin-barco';
+      if (!boatMap.has(k)) boatMap.set(k, b.boat_type||b.boat_id||'Sin barco');
+    });
+    if (!boatMap.size) boatMap.set('general','Reservas del día');
+    const cols = [...boatMap.entries()];
+
+    let html = `<div class="cal2-dv">
+      <div class="cal2-dv-daybar">
+        <span class="cal2-dv-dtitle ${isT?'cal2-today-text':''}">${dow.charAt(0).toUpperCase()+dow.slice(1)}</span>
+        <span class="cal2-dv-badge">${dayBks.length} reserva${dayBks.length!==1?'s':''}</span>
+      </div>
+      <div class="cal2-dv-scroll">
+        <div class="cal2-dv-inner">
+          <div class="cal2-dv-gutter">
+            <div class="cal2-dv-gh"></div>
+            ${HOURS.map(h=>`<div class="cal2-dv-ts" style="height:${SLOT_H}px">${String(h).padStart(2,'0')}:00</div>`).join('')}
+          </div>
+          ${cols.map(([k,label]) => {
+            const colBks = dayBks.filter(b => (b.boat_id||b.boat_type||'sin-barco')===k || k==='general');
+            return `<div class="cal2-dv-boat-col">
+              <div class="cal2-dv-bh">${esc(label)}</div>
+              <div class="cal2-dv-body"
+                style="height:${HOURS.length*SLOT_H}px"
+                data-testid="dv-col-${k}"
+                onclick="if(event.target===this||event.target.classList.contains('cal2-dv-body')) openBookingModal('${ds}','10:00')">
+                ${HOURS.map(h=>`<div class="cal2-wv-hr"
+                  style="top:${(h-H_START)*SLOT_H}px;height:${SLOT_H}px"
+                  onclick="if(event.target===this) openBookingModal('${ds}','${String(h).padStart(2,'0')}:00')"
+                  data-testid="dvslot-${ds}-${h}"></div>`).join('')}
+                ${dayBlks.map(a=>`<div class="cal2-avail-block"
+                  style="top:0;height:${HOURS.length*SLOT_H}px"
+                  title="${esc(a.reason||'Bloqueado')}">&#128683; ${esc(a.reason||'Bloqueado')}</div>`).join('')}
+                ${colBks.map(b => {
+                  const {h:sH,m:sM}=_hm(b.start_time);
+                  const top=Math.max(0,((sH-H_START)+sM/60)*SLOT_H);
+                  const ht =Math.max(36,(b.duration_hours||4)*SLOT_H-4);
+                  return `<div class="cal2-wv-ev"
+                    style="top:${top}px;height:${ht}px"
+                    data-testid="event-${b.id}">
+                    ${_card(b,false)}
+                  </div>`;
+                }).join('')}
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+    </div>`;
+    cont.innerHTML = html;
+    cont.style.overflow = '';
+  }
+
+  // ══ TIMELINE VIEW ════════════════════════════════════════════
+  function renderTimelineView() {
+    const cont = document.getElementById('cal2-grid-week');
+    if (!cont) return;
+    const days  = _getDays();
+    const today = fmtDate(new Date());
+    const DAY_W = 110;
+
+    const boatMap = new Map();
+    boats.forEach(b => boatMap.set(b.id||b.name, b.name));
+    bookings.forEach(b => {
+      const k = b.boat_id||b.boat_type||'sin-barco';
+      if (!boatMap.has(k)) boatMap.set(k, b.boat_type||b.boat_id||'Sin barco');
+    });
+    if (!boatMap.size) boatMap.set('todas','Todas las reservas');
+    const rows = [...boatMap.entries()];
+    const minW = 140+days.length*DAY_W;
+
+    let html = `<div class="cal2-tl" style="overflow-x:auto">
+      <div class="cal2-tl-head" style="min-width:${minW}px">
+        <div class="cal2-tl-lcol">Embarcación</div>
+        ${days.map(d => {
+          const ds=fmtDate(d), isT=ds===today, isW=[0,6].includes(d.getDay());
+          const dow=d.toLocaleDateString('es-ES',{weekday:'short'}).toUpperCase();
+          return `<div class="cal2-tl-dh ${isT?'cal2-tl-today-h':''} ${isW?'cal2-tl-wend-h':''}"
+            style="min-width:${DAY_W}px;width:${DAY_W}px" data-testid="tl-header-${ds}">
+            <span>${dow}</span>
+            <span class="cal2-tl-dn ${isT?'cal2-today-pill':''}">${d.getDate()}</span>
+          </div>`;
+        }).join('')}
+      </div>
+      ${rows.map(([k,name]) => {
+        const rowBks = bookings.filter(b => (b.boat_id||b.boat_type||'sin-barco')===k || k==='todas');
+        return `<div class="cal2-tl-row" style="min-width:${minW}px" data-testid="tl-row-${k}">
+          <div class="cal2-tl-lcol cal2-tl-bl">${esc(name)}</div>
+          ${days.map(d => {
+            const ds=fmtDate(d), isT=ds===today, isW=[0,6].includes(d.getDay());
+            const dayBks=rowBks.filter(b=>b.booking_date===ds);
+            return `<div class="cal2-tl-cell ${isT?'cal2-tl-today-c':''} ${isW?'cal2-tl-wend-c':''}"
+              style="min-width:${DAY_W}px;width:${DAY_W}px"
+              onclick="if(!event.target.closest('.cal2-bc-compact')) openBookingModal('${ds}','10:00')"
+              data-testid="tl-cell-${k}-${ds}">
+              ${dayBks.map(b=>_card(b,true)).join('')}
+            </div>`;
+          }).join('')}
+        </div>`;
+      }).join('')}
+    </div>`;
+    cont.innerHTML = html;
+    cont.style.overflow = 'auto';
+  }
+
+  // ══ MONTH VIEW ═══════════════════════════════════════════════
+  function renderMonthView() {
+    const cont = document.getElementById('cal2-grid-week');
+    if (!cont) return;
+    const df   = document.getElementById('date-from')?.value;
+    const base = df ? new Date(df+'T12:00:00') : new Date();
+    const yr   = base.getFullYear(), mo = base.getMonth();
+    const today= fmtDate(new Date());
+    const first= new Date(yr,mo,1), last=new Date(yr,mo+1,0);
+    const sDow = (first.getDay()+6)%7;
+    const cells=[];
+    for (let i=0;i<sDow;i++){const d=new Date(first);d.setDate(d.getDate()-(sDow-i));cells.push({date:d,curr:false});}
+    for (let i=1;i<=last.getDate();i++) cells.push({date:new Date(yr,mo,i),curr:true});
+    while(cells.length%7!==0){const l=cells[cells.length-1].date,nx=new Date(l);nx.setDate(nx.getDate()+1);cells.push({date:nx,curr:false});}
+    const mLabel=first.toLocaleDateString('es-ES',{month:'long',year:'numeric'});
+
+    let html = `<div class="cal2-mv">
+      <div class="cal2-mv-mh">${mLabel.charAt(0).toUpperCase()+mLabel.slice(1)}</div>
+      <div class="cal2-mv-grid">
+        ${['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'].map(d=>`<div class="cal2-mv-dow">${d}</div>`).join('')}
+        ${cells.map(c => {
+          const ds=fmtDate(c.date), isT=ds===today, isW=[0,6].includes(c.date.getDay());
+          const dayBks=bookings.filter(b=>b.booking_date===ds);
+          const show=dayBks.slice(0,3), more=dayBks.length-show.length;
+          return `<div class="cal2-mv-cell ${!c.curr?'cal2-mv-other':''} ${isT?'cal2-mv-today':''} ${isW?'cal2-mv-wend':''}"
+            data-date="${ds}" data-testid="mv-cell-${ds}"
+            onclick="if(!event.target.closest('.cal2-bc-compact')) NadakiCalendar.setDayView('${ds}')">
+            <div class="cal2-mv-dn ${isT?'cal2-today-pill cal2-today-pill-sm':''}">${c.date.getDate()}</div>
+            ${show.map(b=>_card(b,true)).join('')}
+            ${more>0?`<div class="cal2-mv-more">+${more} más</div>`:''}
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+    cont.innerHTML = html;
+    cont.style.overflow = '';
+  }
+
+  // ── Master render dispatcher ───────────────────────────────────
+  function _render(v) {
+    switch (v||_view) {
+      case 'week':     renderWeekView2();    break;
+      case 'day':      renderDayView();      break;
+      case 'timeline': renderTimelineView(); break;
+      case 'month':    renderMonthView();    break;
+    }
+  }
+
+  // ── Populate toolbar filters ───────────────────────────────────
   function _populateFilters() {
-    const capSel  = document.getElementById('cal2-captain-filter');
-    const boatSel = document.getElementById('cal2-boat-filter');
-
-    if (capSel) {
-      captains.forEach(c => {
-        const o = document.createElement('option');
-        o.value = c.id;
-        o.textContent = c.name + (c.status === 'inactive' ? ' (inactivo)' : '');
-        capSel.appendChild(o);
-      });
-    }
-
-    if (boatSel) {
-      boats.forEach(b => {
-        const o = document.createElement('option');
-        o.value = b.id || b.name;
-        o.dataset.name = b.name;
-        o.textContent = b.name;
-        boatSel.appendChild(o);
-      });
-    }
+    const cSel=document.getElementById('cal2-captain-filter');
+    const bSel=document.getElementById('cal2-boat-filter');
+    if (cSel) captains.forEach(c=>{
+      const o=document.createElement('option');
+      o.value=c.id; o.textContent=c.name+(c.status==='inactive'?' (inactivo)':'');
+      cSel.appendChild(o);
+    });
+    if (bSel) boats.forEach(b=>{
+      const o=document.createElement('option');
+      o.value=b.id||b.name; o.dataset.name=b.name; o.textContent=b.name;
+      bSel.appendChild(o);
+    });
   }
 
-  // ── Date label sync ───────────────────────────────────────────
+  // ── Date label sync ────────────────────────────────────────────
   function _updateDateLabel() {
-    const label = document.getElementById('cal2-date-label');
-    if (!label) return;
-    const dfrom = document.getElementById('date-from')?.value;
-    const dto   = document.getElementById('date-to')?.value;
-    if (dfrom && dto) {
-      const from = new Date(dfrom + 'T12:00:00');
-      const to   = new Date(dto   + 'T12:00:00');
-      label.textContent =
-        from.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }) +
-        ' – ' +
-        to.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
-    } else {
-      label.textContent = 'Semana actual';
-    }
+    const lbl=document.getElementById('cal2-date-label');
+    if (!lbl) return;
+    const df=document.getElementById('date-from')?.value;
+    const dt=document.getElementById('date-to')?.value;
+    if (df&&dt) {
+      const fr=new Date(df+'T12:00:00'), to=new Date(dt+'T12:00:00');
+      lbl.textContent=fr.toLocaleDateString('es-ES',{day:'numeric',month:'short'})
+        +' – '+to.toLocaleDateString('es-ES',{day:'numeric',month:'short',year:'numeric'});
+    } else { lbl.textContent='Semana actual'; }
   }
 
-  // ── Mount legacy week grid inside cal2-grid-week ──────────────
-  function _mountWeekGrid() {
-    const weekWrap  = document.querySelector('.week-grid-wrap');
-    const cal2Week  = document.getElementById('cal2-grid-week');
-    const loadingEl = document.getElementById('cal2-grid-loading');
-
-    if (weekWrap && cal2Week) {
-      cal2Week.appendChild(weekWrap);           // DOM move (reversible)
-      if (loadingEl) loadingEl.style.display = 'none';
-    }
-  }
-
-  // ── Wire CalendarToolbar events ───────────────────────────────
+  // ── Wire toolbar ───────────────────────────────────────────────
   function _wireToolbar() {
-    const prevBtn  = document.getElementById('cal2-prev');
-    const nextBtn  = document.getElementById('cal2-next');
-    const todayBtn = document.getElementById('cal2-today');
-    const nrBtn    = document.getElementById('cal2-btn-nueva-reserva');
-    const blockBtn = document.getElementById('cal2-btn-add-block');
-    const capSel   = document.getElementById('cal2-captain-filter');
-    const boatSel  = document.getElementById('cal2-boat-filter');
-
-    if (prevBtn) prevBtn.addEventListener('click', () => {
-      weekNav(-1);
-      _updateDateLabel();
-      renderKPIStrip();
+    const $=id=>document.getElementById(id);
+    $('cal2-prev')?.addEventListener('click',()=>{weekNav(-1);_updateDateLabel();renderKPIStrip();});
+    $('cal2-next')?.addEventListener('click',()=>{weekNav(1);_updateDateLabel();renderKPIStrip();});
+    $('cal2-today')?.addEventListener('click',()=>{
+      _dayDate=null; setDefaultDates(); initWeekStart();
+      loadScheduleData().then(()=>{_render();renderKPIStrip();_updateDateLabel();});
     });
-    if (nextBtn) nextBtn.addEventListener('click', () => {
-      weekNav(1);
-      _updateDateLabel();
-      renderKPIStrip();
+    $('cal2-btn-nueva-reserva')?.addEventListener('click',()=>openBookingModal());
+    $('cal2-btn-add-block')?.addEventListener('click',()=>openAvailabilityModal());
+    $('cal2-captain-filter')?.addEventListener('change',e=>{
+      const l=document.getElementById('captain-select'); if(l) l.value=e.target.value;
+      loadScheduleData().then(()=>{_render();renderKPIStrip();});
     });
-    if (todayBtn) todayBtn.addEventListener('click', () => {
-      setDefaultDates();
-      initWeekStart();
-      loadScheduleData().then(() => { renderWeekView(); renderKPIStrip(); });
-      _updateDateLabel();
-    });
-
-    // Delegate to existing global functions (Fase 1 compatibility)
-    if (nrBtn)    nrBtn.addEventListener('click', () => openBookingModal());
-    if (blockBtn) blockBtn.addEventListener('click', () => openAvailabilityModal());
-
-    // Captain filter → sync with legacy captain-select then reload
-    if (capSel) capSel.addEventListener('change', () => {
-      const legacyCap = document.getElementById('captain-select');
-      if (legacyCap) legacyCap.value = capSel.value;
-      loadScheduleData().then(() => { renderWeekView(); renderKPIStrip(); });
-    });
-
-    // Boat filter → client-side visual filter on chips (Fase 2: server-side)
-    if (boatSel) boatSel.addEventListener('change', () => {
-      const val = boatSel.value;
-      document.querySelectorAll('.booking-chip').forEach(chip => {
-        if (!val) {
-          chip.style.opacity = '1';
-        } else {
-          // Match against chip title attribute (contains boat label)
-          const inTitle = chip.title.toLowerCase().includes(
-            (boatSel.options[boatSel.selectedIndex]?.dataset?.name || val).toLowerCase()
-          );
-          chip.style.opacity = inTitle ? '1' : '0.2';
-        }
+    $('cal2-boat-filter')?.addEventListener('change',e=>{
+      const val=e.target.value;
+      const nm=e.target.options[e.target.selectedIndex]?.dataset?.name||'';
+      document.querySelectorAll('.cal2-bc,.cal2-bc-compact').forEach(el=>{
+        el.style.opacity=(!val||el.title.includes(nm))?'1':'0.2';
       });
     });
   }
 
-  // ── Wire ViewSwitcher events ──────────────────────────────────
+  // ── Wire ViewSwitcher ──────────────────────────────────────────
   function _wireViewSwitcher() {
-    document.querySelectorAll('.cal2-view-btn').forEach(btn => {
-      btn.addEventListener('click', () => switchView(btn.dataset.view));
+    document.querySelectorAll('.cal2-view-btn').forEach(btn=>{
+      btn.addEventListener('click',()=>switchView(btn.dataset.view));
     });
   }
 
-  // ── Hide legacy sections (reversible) ────────────────────────
+  // ── Intercept legacy renderWeekView ───────────────────────────
+  function _interceptLegacyRender() {
+    _origRenderWeek = window.renderWeekView;
+    window.renderWeekView = function() {
+      if (_initiated) _render();
+      else if (_origRenderWeek) _origRenderWeek();
+    };
+  }
+
+  // ── Hide legacy sections (reversible) ─────────────────────────
   function _hideLegacy() {
-    const selectors = [
-      '.page-header',
-      '.controls-bar',
-      '.week-section',
-      '.conflict-section',
-    ];
-    selectors.forEach(sel => {
-      document.querySelectorAll(sel).forEach(el => {
-        el.dataset.cal2LegacyDisplay = el.style.display || '';
-        el.dataset.cal2Legacy        = '1';
-        el.style.display             = 'none';
+    ['.page-header','.controls-bar','.week-section','.conflict-section'].forEach(sel=>{
+      document.querySelectorAll(sel).forEach(el=>{
+        el.dataset.cal2LegacyDisplay=el.style.display||'';
+        el.dataset.cal2Legacy='1';
+        el.style.display='none';
       });
     });
-    // Keep .list-section visible (bookings list, still useful below grid)
   }
 
-  // ── Show shell ────────────────────────────────────────────────
-  function _showShell() {
-    const shell = document.getElementById('cal2-shell');
-    if (shell) shell.style.display = 'block';
-  }
-
-  // ─────────────────────────────────────────────────────────────
+  // ═════════════════════════════════════════
   // PUBLIC API
-  // ─────────────────────────────────────────────────────────────
+  // ═════════════════════════════════════════
 
   function init() {
     if (_initiated) return;
     _initiated = true;
-
     _populateFilters();
     _wireToolbar();
     _wireViewSwitcher();
+    _interceptLegacyRender();
     renderKPIStrip();
-    _mountWeekGrid();
+    _render('week');
     _updateDateLabel();
-
-    // Show shell first, then hide legacy on next frame
-    // (ensures shell is rendered before legacy disappears)
-    _showShell();
-    requestAnimationFrame(() => {
-      _hideLegacy();
-    });
-
-    console.info('[NadakiCalendar] Fase 1 shell iniciado. Rollback: NadakiCalendar.restoreLegacy()');
+    document.getElementById('cal2-shell').style.display='block';
+    requestAnimationFrame(_hideLegacy);
+    console.info('[NadakiCalendar] Fase 2 activo — Week/Day/Timeline/Month. Rollback: NadakiCalendar.restoreLegacy()');
   }
 
   function switchView(view) {
-    _view = view;
-
-    // Update active button
-    document.querySelectorAll('.cal2-view-btn').forEach(b => {
-      b.classList.toggle('cal2-view-active', b.dataset.view === view);
+    _view=view;
+    document.querySelectorAll('.cal2-view-btn').forEach(b=>{
+      b.classList.toggle('cal2-view-active',b.dataset.view===view);
     });
-
-    const weekGrid   = document.getElementById('cal2-grid-week');
-    const placeholder = document.getElementById('cal2-view-placeholder');
-    const phTitle    = document.getElementById('cal2-ph-title');
-    const phMsg      = document.getElementById('cal2-ph-msg');
-
-    const labels = { day: 'Día', month: 'Mes', timeline: 'Timeline' };
-
-    if (view === 'week') {
-      if (weekGrid)    weekGrid.style.display    = 'block';
-      if (placeholder) placeholder.style.display = 'none';
-    } else {
-      if (weekGrid)    weekGrid.style.display    = 'none';
-      if (placeholder) placeholder.style.display = 'flex';
-      if (phTitle) phTitle.textContent = `Vista ${labels[view] || view}`;
-      if (phMsg)   phMsg.textContent   =
-        `La vista "${labels[view] || view}" estará disponible en Fase 2 — Grid Engine.`;
-    }
+    const ph=document.getElementById('cal2-view-placeholder');
+    if (ph) ph.style.display='none';
+    const gw=document.getElementById('cal2-grid-week');
+    if (gw) gw.style.display='block';
+    _render(view);
   }
 
-  // Reload data and re-render everything
+  function setDayView(ds) {
+    _dayDate=ds;
+    switchView('day');
+  }
+
   function refresh() {
-    return loadScheduleData().then(() => {
-      renderWeekView();
-      renderKPIStrip();
-      _updateDateLabel();
-    });
+    return loadScheduleData().then(()=>{_render();renderKPIStrip();_updateDateLabel();});
   }
 
-  // Delegate booking actions to existing global functions
-  function openBooking(id) {
-    if (id) openEditBooking(id);
-    else    openBookingModal();
-  }
+  function openBooking(id) { if(id) openEditBooking(id); else openBookingModal(); }
 
-  // Rollback: restores all legacy sections and hides cal2-shell
   function restoreLegacy() {
-    document.querySelectorAll('[data-cal2-legacy]').forEach(el => {
-      el.style.display = el.dataset.cal2LegacyDisplay || '';
+    document.querySelectorAll('[data-cal2-legacy]').forEach(el=>{
+      el.style.display=el.dataset.cal2LegacyDisplay||'';
       delete el.dataset.cal2Legacy;
       delete el.dataset.cal2LegacyDisplay;
     });
-
-    // Return week-grid-wrap to week-section
-    const weekWrap = document.querySelector('.week-grid-wrap');
-    const weekSection = document.querySelector('.week-section');
-    if (weekWrap && weekSection) weekSection.appendChild(weekWrap);
-
-    const shell = document.getElementById('cal2-shell');
-    if (shell) shell.style.display = 'none';
-
-    _initiated = false;
-    console.info('[NadakiCalendar] Legacy mode restored.');
+    const sh=document.getElementById('cal2-shell');
+    if (sh) sh.style.display='none';
+    _initiated=false;
+    console.info('[NadakiCalendar] Legacy mode restored. Recarga la página para el grid legacy completo.');
   }
 
-  // Stubs for upcoming phases
-  function createBlock(payload)      { openAvailabilityModal(); }
-  function updateBooking()           { console.warn('[NadakiCalendar] updateBooking — Fase 3'); }
-  function resolveConflict()         { console.warn('[NadakiCalendar] resolveConflict — Fase 3'); }
-  function renderDayView()           { console.warn('[NadakiCalendar] renderDayView — Fase 2'); }
-  function renderMonthView()         { console.warn('[NadakiCalendar] renderMonthView — Fase 2'); }
-  function renderTimelineView()      { console.warn('[NadakiCalendar] renderTimelineView — Fase 2'); }
+  // Stubs Fase 3+
+  function createBlock()    { openAvailabilityModal(); }
+  function updateBooking()  { console.warn('[NC] updateBooking — Fase 3'); }
+  function resolveConflict(){ console.warn('[NC] resolveConflict — Fase 3'); }
 
   return {
-    init,
-    switchView,
-    refresh,
-    renderKPIStrip,
-    openBooking,
-    createBlock,
-    updateBooking,
-    resolveConflict,
-    renderDayView,
-    renderMonthView,
-    renderTimelineView,
-    restoreLegacy,
+    init, switchView, setDayView, refresh, renderKPIStrip, openBooking,
+    createBlock, updateBooking, resolveConflict, restoreLegacy,
+    renderWeekView2, renderDayView, renderTimelineView, renderMonthView,
   };
 }());
