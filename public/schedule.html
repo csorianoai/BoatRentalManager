@@ -747,6 +747,74 @@
       font-size: 10px; color: #6366f1; font-weight: 600;
       margin-top: 2px; padding: 1px 4px;
     }
+
+    /* ══════════════════════════════════════════════════
+       CAL2 CONFLICT PANEL — Fase 3A
+    ══════════════════════════════════════════════════ */
+    .cal2-cp {
+      background: #fff;
+      border-top: 2px solid #e2e8f0;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .cal2-cp-head {
+      display: flex; align-items: center; gap: 8px;
+      padding: 9px 20px; cursor: pointer; user-select: none;
+      font-size: 13px; font-weight: 700; color: #475569;
+      transition: background 0.12s;
+    }
+    .cal2-cp-head:hover { background: #f8fafc; }
+    .cal2-cp-icon { font-size: 15px; }
+    .cal2-cp-title { flex: 1; }
+    .cal2-cp-chevron {
+      font-size: 11px; color: #94a3b8;
+      transition: transform 0.2s; display: inline-block;
+    }
+    .cal2-cp[data-open="true"] .cal2-cp-chevron { transform: rotate(180deg); }
+    .cal2-cp-body { display: none; }
+    .cal2-cp[data-open="true"] .cal2-cp-body { display: block; }
+    .cal2-cp-body-inner { display: flex; flex-direction: column; }
+
+    /* conflict item */
+    .cal2-ci {
+      display: flex; align-items: flex-start; gap: 14px;
+      padding: 11px 20px; border-bottom: 1px solid #f1f5f9;
+      font-size: 12px;
+    }
+    .cal2-ci:last-child { border-bottom: none; }
+    .cal2-ci-high   { border-left: 3px solid #ef4444; }
+    .cal2-ci-medium { border-left: 3px solid #f59e0b; }
+    .cal2-ci-low    { border-left: 3px solid #94a3b8; }
+    .cal2-ci-sev {
+      display: inline-block; padding: 2px 6px;
+      border-radius: 4px; font-size: 9.5px; font-weight: 800;
+      text-transform: uppercase; letter-spacing: 0.05em;
+      white-space: nowrap; margin-right: 5px;
+    }
+    .cal2-ci-high   .cal2-ci-sev { background: #fee2e2; color: #dc2626; }
+    .cal2-ci-medium .cal2-ci-sev { background: #fef3c7; color: #d97706; }
+    .cal2-ci-low    .cal2-ci-sev { background: #f1f5f9; color: #64748b; }
+    .cal2-ci-meta { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
+    .cal2-ci-label  { font-weight: 700; color: #1e293b; font-size: 12.5px; }
+    .cal2-ci-detail { color: #475569; font-size: 11.5px; }
+    .cal2-ci-action { color: #6366f1; font-size: 11px; font-style: italic; margin-top: 2px; }
+    .cal2-ci-resolve {
+      padding: 6px 14px; background: #1d4ed8; color: #fff;
+      border: none; border-radius: 5px; font-size: 11px; font-weight: 700;
+      cursor: pointer; white-space: nowrap; flex-shrink: 0;
+      align-self: center; transition: background 0.12s;
+    }
+    .cal2-ci-resolve:hover { background: #1e40af; }
+    .cal2-cp-ok {
+      display: flex; align-items: center; gap: 8px;
+      padding: 12px 20px; color: #16a34a; font-size: 12px; font-weight: 600;
+    }
+    /* KPI CONFLICTOS: pulsa si n > 0 */
+    .cal2-kpi-danger.has-conflicts .cal2-kpi-value {
+      color: #dc2626 !important;
+      animation: cal2-kpi-blink 1.8s ease-in-out infinite;
+    }
+    .cal2-kpi-danger { cursor: pointer; }
+    @keyframes cal2-kpi-blink { 0%,100%{opacity:1;} 50%{opacity:0.45;} }
   </style>
 </head>
 <body data-page="schedule">
@@ -825,6 +893,21 @@
         <span class="cal2-kpi-label">Bloqueos cap.</span>
         <span class="cal2-kpi-value" id="cal2-kpi-blocks">—</span>
         <span class="cal2-kpi-sub">en el período</span>
+      </div>
+    </div>
+
+    <!-- ── ConflictPanel — Fase 3A ── -->
+    <div id="cal2-conflict-panel" class="cal2-cp" style="display:none;"
+         data-open="false" data-testid="cal2-conflict-panel">
+      <div class="cal2-cp-head" id="cal2-cp-head"
+           onclick="NadakiCalendar.toggleConflicts()"
+           data-testid="btn-toggle-conflicts">
+        <span class="cal2-cp-icon" id="cal2-cp-icon">&#9888;</span>
+        <span class="cal2-cp-title" id="cal2-cp-title">Analizando conflictos…</span>
+        <span class="cal2-cp-chevron">&#9660;</span>
+      </div>
+      <div class="cal2-cp-body" id="cal2-cp-body" data-testid="cal2-cp-body">
+        <!-- populated by NadakiCalendar._renderConflictPanel() -->
       </div>
     </div>
 

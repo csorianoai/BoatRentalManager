@@ -735,24 +735,158 @@ window.NadakiCalendar = (function () {
       : (document.getElementById('date-from')?.value || today);
   }
 
-  // ── Conflict detection ──────────────────────────────────────
-  function _detectConflicts(bks) {
-    let n = 0;
+  // ── Conflict detection (count-only, used internally) ──────────
+  function _detectConflicts(bks) { return _buildConflicts(bks).filter(c=>c.type!=='no_captain').length; }
+
+  // ── Fase 3A: conflict helpers ──────────────────────────────────
+  function _tRange(b) {
+    const {h:sH,m:sM} = _hm(b.start_time);
+    const dur = b.duration_hours||4;
+    return `${String(sH).padStart(2,'0')}:${String(sM).padStart(2,'0')} – ${String(sH+dur).padStart(2,'0')}:${String(sM).padStart(2,'0')}`;
+  }
+
+  // Returns full conflict objects (3 types)
+  function _buildConflicts(bks) {
+    const out  = [];
+    const SKIP = ['cancelled','completed'];
+
+    // Types 1 & 2: pairwise overlap checks
     for (let i = 0; i < bks.length; i++) {
-      for (let j = i + 1; j < bks.length; j++) {
+      for (let j = i+1; j < bks.length; j++) {
         const a = bks[i], b = bks[j];
         if (a.booking_date !== b.booking_date) continue;
-        const sB = (a.boat_id && a.boat_id === b.boat_id) ||
-                   (!a.boat_id && !b.boat_id && a.boat_type && a.boat_type === b.boat_type);
-        const sC = !!(a.assigned_captain_id && a.assigned_captain_id === b.assigned_captain_id);
-        if (!sB && !sC) continue;
+        if (SKIP.includes(a.status) || SKIP.includes(b.status)) continue;
+        // Time overlap?
         const {h:aH,m:aM} = _hm(a.start_time), {h:bH,m:bM} = _hm(b.start_time);
-        const aS = aH*60+aM, bS = bH*60+bM;
-        const aE = aS+(a.duration_hours||4)*60, bE = bS+(b.duration_hours||4)*60;
-        if (aS < bE && bS < aE) n++;
+        const aS=aH*60+aM, bS=bH*60+bM;
+        const aE=aS+(a.duration_hours||4)*60, bE=bS+(b.duration_hours||4)*60;
+        if (!(aS<bE && bS<aE)) continue;
+
+        // Type 1: same boat, overlapping
+        const sameBoat = (a.boat_id && a.boat_id===b.boat_id) ||
+          (!a.boat_id && !b.boat_id && a.boat_type && a.boat_type===b.boat_type);
+        if (sameBoat) {
+          const boatN = a.boat_type||a.boat_id||'—';
+          out.push({
+            id:`bo_${a.id}_${b.id}`, type:'boat_overlap', severity:'high',
+            label:'Solapamiento de barco',
+            boat: boatN,
+            date: a.booking_date,
+            timeRange: _tRange(a),
+            desc:`"${boatN}" asignado a 2 reservas simultáneas (${a.customer_name||a.id} y ${b.customer_name||b.id})`,
+            action:'Reasignar barco o modificar horario de una de las reservas',
+            bookingIds:[a.id, b.id],
+          });
+        }
+
+        // Type 2: same captain, different boat, overlapping
+        const sameCap = !!(a.assigned_captain_id && a.assigned_captain_id===b.assigned_captain_id);
+        if (sameCap && !sameBoat) {
+          const capN = a.assigned_captain_name||a.assigned_captain_id||'—';
+          out.push({
+            id:`cd_${a.id}_${b.id}`, type:'captain_dup', severity:'high',
+            label:'Capitán duplicado',
+            boat:`${a.boat_type||a.boat_id||'—'} / ${b.boat_type||b.boat_id||'—'}`,
+            date: a.booking_date,
+            timeRange: _tRange(a),
+            desc:`Cap. "${capN}" asignado simultáneamente a 2 servicios`,
+            action:'Reasignar uno de los servicios a otro capitán disponible',
+            bookingIds:[a.id, b.id],
+          });
+        }
       }
     }
-    return n;
+
+    // Type 3: no captain assigned (active bookings only)
+    bks.forEach(b => {
+      if (SKIP.includes(b.status)) return;
+      if (!b.assigned_captain_id) {
+        out.push({
+          id:`nc_${b.id}`, type:'no_captain', severity:'medium',
+          label:'Sin capitán asignado',
+          boat: b.boat_type||b.boat_id||'—',
+          date: b.booking_date,
+          timeRange: _tRange(b),
+          desc:`"${b.customer_name||b.id}" (${b.booking_date}) sin capitán asignado`,
+          action:'Asignar un capitán disponible para este servicio',
+          bookingIds:[b.id],
+        });
+      }
+    });
+
+    return out;
+  }
+
+  // Render/update the ConflictPanel
+  function _renderConflictPanel() {
+    const panel    = document.getElementById('cal2-conflict-panel');
+    const body     = document.getElementById('cal2-cp-body');
+    const titleEl  = document.getElementById('cal2-cp-title');
+    const iconEl   = document.getElementById('cal2-cp-icon');
+    const headEl   = document.getElementById('cal2-cp-head');
+    const kpiEl    = document.getElementById('cal2-kpi-conflicts');
+    const kpiCard  = document.querySelector('[data-testid="kpi-conflicts"]');
+    if (!panel || !body) return;
+
+    const conflicts = _buildConflicts(bookings);
+    const n         = conflicts.length;
+    const highN     = conflicts.filter(c=>c.severity==='high').length;
+
+    // Update KPI counter
+    if (kpiEl) kpiEl.textContent = n;
+    if (kpiCard) kpiCard.classList.toggle('has-conflicts', highN > 0);
+
+    // Show panel
+    panel.style.display = 'block';
+
+    // Head: color + text + icon by status
+    if (n === 0) {
+      if (titleEl) titleEl.textContent = 'Sin conflictos detectados en el período';
+      if (iconEl)  iconEl.textContent  = '✓';
+      if (headEl)  headEl.style.color  = '#16a34a';
+    } else {
+      if (titleEl) titleEl.textContent = `${n} conflicto${n!==1?'s':''} detectado${n!==1?'s':''} — ${highN} de alta severidad`;
+      if (iconEl)  iconEl.innerHTML    = '&#9888;';
+      if (headEl)  headEl.style.color  = highN > 0 ? '#dc2626' : '#d97706';
+    }
+
+    // Build body items
+    const SEV_LBL  = {high:'ALTO', medium:'MEDIO', low:'BAJO'};
+    const TYPE_ICO = {boat_overlap:'&#9875;', captain_dup:'&#128100;', no_captain:'&#9888;'};
+
+    if (n === 0) {
+      body.innerHTML = `<div class="cal2-cp-ok">&#10003;&ensp;No se detectaron solapamientos ni reservas sin capitán en el período actual.</div>`;
+      return;
+    }
+    body.innerHTML = `<div class="cal2-cp-body-inner">
+      ${conflicts.map(c => {
+        const firstId = c.bookingIds[0];
+        return `<div class="cal2-ci cal2-ci-${c.severity}" data-testid="ci-${esc(c.id)}">
+          <div class="cal2-ci-meta">
+            <div class="cal2-ci-label">
+              <span class="cal2-ci-sev">${SEV_LBL[c.severity]||c.severity}</span>
+              ${TYPE_ICO[c.type]||''} ${esc(c.label)}
+            </div>
+            <div class="cal2-ci-detail">${esc(c.boat)} &middot; ${esc(c.date)} &middot; ${esc(c.timeRange)}</div>
+            <div class="cal2-ci-detail">${esc(c.desc)}</div>
+            <div class="cal2-ci-action">&#8594; ${esc(c.action)}</div>
+          </div>
+          <button class="cal2-ci-resolve"
+            onclick="openEditBooking('${esc(firstId)}')"
+            data-testid="btn-resolve-${esc(c.id)}">
+            Resolver
+          </button>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }
+
+  // Toggle ConflictPanel open/closed
+  function toggleConflicts() {
+    const panel = document.getElementById('cal2-conflict-panel');
+    if (!panel) return;
+    const isOpen = panel.dataset.open === 'true';
+    panel.dataset.open = isOpen ? 'false' : 'true';
   }
 
   // ── KPI Strip ─────────────────────────────────────────────────
@@ -764,7 +898,6 @@ window.NadakiCalendar = (function () {
     const pendBal   = allBks.reduce((s,b) => s+parseFloat(b.balance_pending||0), 0);
     const busy      = new Set(todayBks.map(b => b.boat_id||b.boat_type).filter(Boolean)).size;
     const blks      = availability.filter(a => a.is_available===0).length;
-    const confl     = _detectConflicts(allBks);
     const df        = document.getElementById('date-from')?.value||'';
     const dt        = document.getElementById('date-to')?.value||'';
     const pLabel    = df&&dt ? df.slice(5)+' → '+dt.slice(5) : 'semana actual';
@@ -777,8 +910,9 @@ window.NadakiCalendar = (function () {
     set('cal2-kpi-period-bookings', allBks.length);
     set('cal2-kpi-period-sub',      pLabel);
     set('cal2-kpi-boats-busy',      `${busy}/${boats.length||'?'}`);
-    set('cal2-kpi-conflicts',       confl);
     set('cal2-kpi-blocks',          blks);
+    // Fase 3A: update conflict panel on every KPI refresh
+    _renderConflictPanel();
   }
 
   // ── BookingCard ────────────────────────────────────────────────
@@ -1101,6 +1235,9 @@ window.NadakiCalendar = (function () {
         el.style.opacity=(!val||el.title.includes(nm))?'1':'0.2';
       });
     });
+    // Fase 3A: KPI CONFLICTOS card toggles ConflictPanel
+    document.querySelector('[data-testid="kpi-conflicts"]')
+      ?.addEventListener('click', toggleConflicts);
   }
 
   // ── Wire ViewSwitcher ──────────────────────────────────────────
@@ -1193,5 +1330,6 @@ window.NadakiCalendar = (function () {
     init, switchView, setDayView, refresh, renderKPIStrip, openBooking,
     createBlock, updateBooking, resolveConflict, restoreLegacy,
     renderWeekView2, renderDayView, renderTimelineView, renderMonthView,
+    toggleConflicts,
   };
 }());
