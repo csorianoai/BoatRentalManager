@@ -448,6 +448,7 @@
     // ⌘K / Ctrl+K anywhere
     document.addEventListener('keydown', (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        if (document.body.hasAttribute('data-nbic-cmdpal')) return; // Fase 9: yield ⌘K to NBIC
         e.preventDefault();
         const overlay = document.getElementById('gnav-cmdpal-overlay');
         if (overlay?.classList.contains('gnav-cmdpal--open')) {

@@ -9,6 +9,8 @@
   <!-- NBIC Design System -->
   <link rel="stylesheet" href="/assets/css/nbic-tokens.css">
   <link rel="stylesheet" href="/assets/css/nbic-components.css">
+  <!-- Global Nav (Fase 9) — también inyectado por global-nav.js, link estático para consistencia -->
+  <link rel="stylesheet" href="/assets/css/global-nav.css">
 
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -44,9 +46,80 @@
 
     /* Scrollable content area on desktop */
     .nbic-content { overflow-y: visible; }
+
+    /* ── Fase 9: Global-nav integration overrides ───────────── */
+
+    /* 1. Neutralize global-nav's body padding-top
+          NBIC usa position:fixed para todos sus elementos raíz,
+          el padding no contribuye al layout — eliminarlo evita
+          el doble espaciado con los margins del content */
+    body.nbic-root { padding-top: 0 !important; }
+
+    /* 2. Colapsar NBIC topbar de forma segura (NO display:none)
+          height:0 + overflow:hidden lo vuelve invisible y sin
+          espacio en el layout, pero el DOM intacto preserva
+          todos los IDs para nbic-ui.js */
+    .nbic-topbar {
+      height: 0 !important;
+      min-height: 0 !important;
+      overflow: hidden !important;
+    }
+
+    /* 3. Desplazar sidebar bajo global-nav
+          era: top: var(--nbic-topbar-h) = 48px
+          ahora: top: var(--gnav-h) = 52px  */
+    .nbic-sidebar {
+      top: var(--gnav-h, 52px) !important;
+    }
+
+    /* 4. Desplazar filterbar bajo global-nav */
+    .nbic-filterbar {
+      top: var(--gnav-h, 52px) !important;
+    }
+
+    /* 5. Corregir margin-top del content
+          era: calc(topbar-h + filterbar-h) = calc(48+52) = 100px
+          ahora: calc(gnav-h + filterbar-h)  = calc(52+52) = 104px
+          (4px de diferencia, imperceptible visualmente) */
+    .nbic-content {
+      margin-top: calc(var(--gnav-h, 52px) + var(--nbic-filterbar-h, 52px)) !important;
+      min-height: calc(100vh - var(--gnav-h, 52px) - var(--nbic-filterbar-h, 52px)) !important;
+    }
+
+    /* 6. Estilo del botón toggle en filterbar (reutiliza clase NBIC) */
+    #nbic-sidebar-toggle-fb {
+      flex-shrink: 0;
+      margin-right: 2px;
+    }
+
+    /* 7. Slot del breadcrumb en filterbar */
+    #nbic-fb-bc {
+      display: flex;
+      align-items: center;
+      font-size: var(--nbic-text-sm, 13px);
+      color: var(--nbic-text-secondary);
+      white-space: nowrap;
+      flex-shrink: 0;
+      gap: 4px;
+      overflow: hidden;
+      max-width: 260px;
+      text-overflow: ellipsis;
+    }
+    /* Heredar estilos del breadcrumb original en el nuevo contexto */
+    #nbic-fb-bc #nbic-breadcrumb { color: var(--nbic-text-secondary); }
+    #nbic-fb-bc #nbic-breadcrumb .sep { color: var(--nbic-text-tertiary); margin: 0 4px; }
+
+    /* 8. Separador visual entre toggle+breadcrumb y los filtros */
+    .nbic-fb-sep {
+      width: 1px;
+      height: 16px;
+      background: var(--nbic-border-subtle);
+      flex-shrink: 0;
+      margin: 0 6px;
+    }
   </style>
 </head>
-<body class="nbic-root">
+<body class="nbic-root" data-nbic-cmdpal>
 
 <!-- ── Desktop Warning ────────────────────────────────────── -->
 <div id="nbic-desktop-warning" class="nbic-desktop-warning" style="display:none">
@@ -182,6 +255,20 @@
 <!-- ── Filter Bar ─────────────────────────────────────────── -->
 <div class="nbic-filterbar" id="nbic-filterbar" role="toolbar" aria-label="Filtros globales">
 
+  <!-- Fase 9: Sidebar toggle (el original queda en topbar colapsado; este es el botón visible) -->
+  <button class="nbic-topbar__icon-btn" id="nbic-sidebar-toggle-fb"
+          aria-label="Toggle sidebar" title="Toggle sidebar"
+          onclick="if(window.NBICSidebar)NBICSidebar.toggle()">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 12h18M3 6h18M3 18h12"/></svg>
+  </button>
+
+  <!-- Fase 9: Slot para #nbic-breadcrumb (el span original se mueve aquí por JS;
+       NBICRouter sigue escribiendo en #nbic-breadcrumb por getElementById) -->
+  <div id="nbic-fb-bc" aria-label="Ruta actual"></div>
+
+  <!-- Separador visual -->
+  <div class="nbic-fb-sep" aria-hidden="true"></div>
+
   <!-- Date range -->
   <div class="nbic-date-picker">
     <button class="nbic-filter-chip" id="nbic-date-chip" aria-haspopup="listbox" aria-label="Rango de fechas">
@@ -286,6 +373,29 @@
 
 <!-- ── Scripts ────────────────────────────────────────────── -->
 <script src="/assets/js/nbic/nbic-ui.js"></script>
+
+<!-- Fase 9: Mover #nbic-breadcrumb (span original) al slot del filterbar.
+     getElementById sigue funcionando para NBICRouter.navigate() porque
+     el ID permanece en el mismo elemento, solo cambia su posición en el DOM. -->
+<script>
+(function () {
+  'use strict';
+  function moveBreadcrumb() {
+    var bc   = document.getElementById('nbic-breadcrumb');
+    var slot = document.getElementById('nbic-fb-bc');
+    if (bc && slot && bc.parentNode !== slot) {
+      slot.appendChild(bc);
+    }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', moveBreadcrumb);
+  } else {
+    moveBreadcrumb();
+  }
+}());
+</script>
+
+<script src="/assets/js/components/global-nav.js"></script>
 
 </body>
 </html>

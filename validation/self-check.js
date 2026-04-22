@@ -531,16 +531,17 @@ async function integrityTests() {
 async function navbarTests(url) {
   console.log('\n🧭 NAVBAR & ROUTING (Fase 5+6 hardening)');
 
-  // Pages that MUST have global-nav (migrated: Pilot + Batch A,B,C)
+  // Pages that MUST have global-nav (migrated: Pilot + Batch A,B,C + Fase 7 + Fase 9)
   const MIGRATED = [
     'fleet.html', 'dashboard.html', 'schedule.html', 'messages.html', 'crew.html',
     'accounting.html', 'boat-maintenance.html', 'operations.html', 'commissions.html',
     'pricing.html', 'dynamic-pricing.html', 'documents.html',
     'marine-conditions.html', 'fuel-tracker.html', 'assets.html',
-    'sync.html', // Fase 7
+    'sync.html',    // Fase 7
+    'reports.html', // Fase 9
   ];
-  // Pages that MUST NOT have global-nav (permanent exceptions)
-  const EXCEPTIONS_NO_NAV = ['captain.html', 'login.html', 'reports.html'];
+  // Pages that MUST NOT have global-nav (permanent exceptions — no NBIC shell, no nav bar)
+  const EXCEPTIONS_NO_NAV = ['captain.html', 'login.html'];
 
   // N-01: /executive.html devuelve 301 (redirect activo)
   await run('N-01', '¿/executive.html devuelve 301 (redirect Fase 4)?', async () => {
@@ -606,15 +607,16 @@ async function navbarTests(url) {
     return PASS(`${MIGRATED.length}/${MIGRATED.length} con JS`);
   });
 
-  // N-08: Excepciones NO contienen global-nav.js (respetan excepción)
-  await run('N-08', '¿Excepciones (captain/login/reports) sin global-nav.js?', async () => {
+  // N-08: Excepciones permanentes NO contienen global-nav.js (captain/login)
+  // reports.html migrado en Fase 9 — ya no es excepción
+  await run('N-08', '¿Excepciones permanentes (captain/login) sin global-nav.js?', async () => {
     const violations = [];
     for (const page of EXCEPTIONS_NO_NAV) {
       const r = await get(`${url}/${page}`).catch(() => ({ status: 0, body: '' }));
       if (r.body.includes('global-nav.js')) violations.push(page);
     }
     if (violations.length) return FAIL(`Con global-nav.js (no debería): ${violations.join(', ')}`);
-    return PASS(`${EXCEPTIONS_NO_NAV.length}/3 excepciones limpias`);
+    return PASS(`${EXCEPTIONS_NO_NAV.length}/${EXCEPTIONS_NO_NAV.length} excepciones limpias`);
   });
 
   // N-09: dashboard.html no enlaza directamente a /executive.html
@@ -625,15 +627,15 @@ async function navbarTests(url) {
     return PASS('Sin enlaces directos a /executive.html');
   });
 
-  // N-10: Excepciones y páginas migradas devuelven 200 (sin 404 ni 500)
-  await run('N-10', '¿Excepciones (captain/login/reports) devuelven 200?', async () => {
+  // N-10: Excepciones permanentes devuelven 200 (captain/login)
+  await run('N-10', '¿Excepciones permanentes (captain/login) devuelven 200?', async () => {
     const fails = [];
     for (const page of EXCEPTIONS_NO_NAV) {
       const r = await get(`${url}/${page}`).catch(() => ({ status: 0 }));
       if (r.status !== 200) fails.push(`${page}:${r.status}`);
     }
     if (fails.length) return FAIL(fails.join(', '));
-    return PASS(`${EXCEPTIONS_NO_NAV.length}/3 excepciones OK`);
+    return PASS(`${EXCEPTIONS_NO_NAV.length}/${EXCEPTIONS_NO_NAV.length} excepciones OK`);
   });
 }
 
