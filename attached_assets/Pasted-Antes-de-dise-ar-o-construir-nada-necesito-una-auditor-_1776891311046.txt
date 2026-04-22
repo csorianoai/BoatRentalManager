@@ -1,0 +1,265 @@
+Antes de diseñar o construir nada, necesito una auditoría completa del sistema contable existente en Nadaki.
+
+No construyas.
+No corrijas.
+No refactorices.
+No agregues tablas.
+No agregues endpoints.
+No hagas cambios de código.
+
+## ENTREGABLE ÚNICO
+
+Crear un archivo:
+
+`ACCOUNTING_AUDIT.md`
+
+---
+
+## OBJETIVO
+
+Determinar con evidencia real:
+
+1. Qué partes del sistema contable ya existen
+2. Cuáles funcionan realmente
+3. Cuáles están conectadas al flujo de bookings
+4. Cuáles tienen UI activa
+5. Dónde se rompe hoy el flujo del dinero
+6. Qué está duplicado o desconectado
+
+No quiero teoría.
+Quiero inventario real + data real + gaps reales.
+
+---
+
+## SECCIÓN 1 — INVENTARIO DE ENDPOINTS CONTABLES
+
+Audita exhaustivamente estos grupos:
+
+* `/api/accounting/*`
+* `/api/booking-deposits/*`
+* `/api/booking-receivables/*`
+* `/api/bookings-ledger/*`
+* `/api/brokers/*`
+* `/api/customers/*`
+* `/api/commissions/*`
+* `/api/scheduled-expenses/*`
+
+Para **cada endpoint**, reporta:
+
+* método + ruta
+* propósito funcional
+* archivo donde está implementado
+* qué tabla(s) de BD toca
+* si tiene validación/auth o no
+* si hay UI que lo consume
+* qué archivo frontend lo llama
+* si está siendo llamado actualmente o parece huérfano
+* si devuelve data real, vacía o mock
+* ejemplo real de response si es posible
+
+Formato obligatorio: tabla por grupo.
+
+---
+
+## SECCIÓN 2 — ESTADO DE DATOS REALES
+
+Ejecuta queries reales contra la base de datos y reporta resultados exactos.
+
+Necesito responder estas preguntas:
+
+### A. ¿Cuántos bookings tienen cuenta por cobrar creada?
+
+Usa la tabla real que corresponda (`booking_receivables` o equivalente).
+
+### B. ¿Cuántos pagos de bookings existen?
+
+Usa la tabla real (`booking_payments`, `booking_deposits`, `bookings_ledger`, o la que aplique).
+
+### C. ¿Cuántos bookings tienen balance pendiente?
+
+Cantidad + monto total pendiente.
+
+### D. ¿Cuántas transacciones no están conciliadas o no vinculadas a booking?
+
+Si existe tabla de transactions / ledger / deposits, reportarlo.
+
+### E. ¿Existe en bookings algo equivalente a:
+
+* `payer_type`
+* `broker_id`
+* `amount_due`
+* `balance_due`
+* `deposit_amount`
+* `payment_status`
+
+### F. Muestra 10 bookings recientes con su información financiera real:
+
+* booking_id
+* fecha
+* total_amount
+* deposit_amount
+* balance_due
+* payment_status
+* broker_name si existe
+* customer_name si existe
+* cualquier campo de receivable / ledger relacionado
+
+No adivines nombres de columnas: inspecciona el esquema real.
+
+---
+
+## SECCIÓN 3 — FLUJO REAL DEL DINERO HOY
+
+Traza el flujo real de un booking desde creación hasta conciliación bancaria.
+
+Quiero respuestas concretas para:
+
+1. Cuando se crea un booking:
+
+   * ¿qué tablas se tocan automáticamente?
+   * ¿se crea una A/R automáticamente o no?
+
+2. Cuando se recibe un depósito:
+
+   * ¿dónde se guarda?
+   * ¿cómo se vincula al booking?
+
+3. Cuando se paga el balance:
+
+   * ¿dónde se guarda?
+   * ¿quién lo recibe?
+   * ¿queda trazabilidad del método de pago?
+
+4. Cuando se recibe cash o Zelle fuera del sistema:
+
+   * ¿hay forma de registrarlo?
+   * ¿queda marcado como “pendiente de depositar”?
+
+5. Cuando el dinero llega al banco:
+
+   * ¿cómo se registra?
+   * ¿hay conciliación con extracto?
+
+6. Si hay broker:
+
+   * ¿el sistema distingue si quien debe pagar es broker o cliente?
+   * ¿en qué parte del flujo?
+
+Para cada punto, reporta:
+
+* qué sí existe
+* qué no existe
+* dónde se rompe el flujo
+
+---
+
+## SECCIÓN 4 — CONEXIÓN ENTRE BACKEND Y UI
+
+Quiero una matriz que conecte:
+
+* módulo backend
+* endpoint
+* página UI
+* componente/archivo frontend
+* status:
+
+  * conectado y funcionando
+  * conectado pero vacío
+  * backend existe sin UI
+  * UI existe pero consume endpoint incorrecto
+  * duplicado
+
+Especial atención a:
+
+* `accounting.html`
+* tabs de depósitos / receivables / ledger / brokers
+* cualquier vista ligada a bookings
+* cualquier vista ligada a conciliación
+
+---
+
+## SECCIÓN 5 — DUPLICADOS Y DEUDA
+
+Identifica concretamente:
+
+1. Features duplicadas entre módulos
+2. Tablas que parecen representar lo mismo
+3. Endpoints que hacen funciones similares
+4. UI que consume rutas deprecated o inconsistentes
+5. Campos financieros redundantes en bookings y módulos auxiliares
+
+No generalices.
+Lista exacta de duplicados con archivos/tablas/rutas.
+
+---
+
+## SECCIÓN 6 — GAP ANALYSIS
+
+Clasifica los hallazgos en 3 buckets:
+
+### A) INTEGRACIÓN
+
+Lo ya construido que solo necesita conectarse al flujo real de bookings.
+
+### B) CONSTRUCCIÓN FOCUSED
+
+Lo que falta realmente construir.
+
+### C) REDISEÑO / MIGRACIÓN
+
+Lo que está mal diseñado y debería reestructurarse.
+
+Para cada item, incluye:
+
+* descripción
+* impacto
+* prioridad
+* estimación de esfuerzo
+* riesgo
+
+---
+
+## SECCIÓN 7 — RECOMENDACIÓN FINAL
+
+Con base en evidencia real, responde:
+
+1. ¿Estamos ante un problema de integración o de ausencia de sistema?
+
+2. ¿Qué porcentaje del sistema contable ya existe realmente?
+
+3. ¿Cuál es la ruta correcta?
+
+   * integración rápida (3–5 días)
+   * construcción focused (1–2 semanas)
+   * rediseño mayor (2–3 semanas)
+
+4. ¿Cuál debe ser el orden exacto de trabajo después de la auditoría?
+
+---
+
+## REGLAS
+
+* NO modificar código
+* NO crear archivos adicionales salvo `ACCOUNTING_AUDIT.md`
+* NO ejecutar fixes
+* NO proponer arquitectura nueva todavía
+* NO asumir nombres de tablas o columnas
+* SI algo no existe, reportarlo con evidencia
+* SI algo existe pero está vacío, reportarlo claramente
+* SI algo parece mock, verificarlo y reportarlo
+
+---
+
+## FORMATO DE ENTREGA
+
+Entrega solo:
+
+* `ACCOUNTING_AUDIT.md`
+* resumen ejecutivo corto al final:
+
+  * hallazgo principal
+  * mayor fuga detectada
+  * siguiente paso recomendado
+
+No empieces a construir nada al terminar.
+Espera aprobación explícita.
