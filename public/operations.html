@@ -6,6 +6,7 @@
     <meta name="theme-color" content="#0066cc">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <title>Nadaki Excursions - Operaciones</title>
+    <link rel="stylesheet" href="/assets/css/global-nav.css?v=1776871035121">
     <link rel="manifest" href="/manifest.json">
     <link rel="apple-touch-icon" href="/icon-192.svg">
     <link rel="stylesheet" href="commissions.css">
@@ -430,23 +431,12 @@
 </head>
 <body>
     <div class="container">
-        <!-- Header -->
-        <header class="page-header">
-            <div class="header-content">
-                <a href="/dashboard.html" class="back-btn" data-testid="link-back-dashboard" data-i18n="ops.back">
-                    ← Dashboard
-                </a>
-                <div>
-                    <h1 class="page-title" data-i18n="ops.title">Operaciones</h1>
-                    <p class="page-subtitle" data-i18n="ops.subtitle">Agenda, tareas y seguimiento del negocio</p>
-                </div>
-            </div>
-            <div class="header-actions">
-                <button class="btn btn-primary" onclick="openTaskModal()" data-testid="button-new-task" data-i18n="ops.btn.new_task">
-                    + Nueva Tarea
-                </button>
-            </div>
-        </header>
+        <!-- Header actions -->
+        <div class="header-actions" style="padding:12px 0 4px;display:flex;justify-content:flex-end;">
+            <button class="btn btn-primary" onclick="openTaskModal()" data-testid="button-new-task" data-i18n="ops.btn.new_task">
+                + Nueva Tarea
+            </button>
+        </div>
 
         <!-- Tabs -->
         <div class="tabs">
@@ -783,5 +773,6 @@
 
     <script src="/i18n.js"></script>
     <script src="operations.js"></script>
+    <script src="/assets/js/components/global-nav.js?v=1776871035121"></script>
 </body>
 </html>
