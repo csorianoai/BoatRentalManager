@@ -1308,6 +1308,128 @@ window.NadakiCalendar = (function () {
     return loadScheduleData().then(()=>{_render();renderKPIStrip();_updateDateLabel();});
   }
 
+  // ── Fase 4A: QuickOps ─────────────────────────────────────────
+  let _qopsMsgTimer = null;
+
+  function _qopsMsg(text, isErr) {
+    const el = document.getElementById('cal2-qops-msg');
+    if (!el) return;
+    el.textContent = text;
+    el.className = 'visible ' + (isErr ? 'err' : 'ok');
+    clearTimeout(_qopsMsgTimer);
+    _qopsMsgTimer = setTimeout(() => { el.className = ''; }, 3200);
+  }
+
+  // Mark booking as paid — POST /api/bookings/:id/mark-paid (no auth)
+  async function _qopsPaid() {
+    const id = currentBookingId;
+    if (!id) return;
+    const btn = document.getElementById('cal2-qops-paid');
+    if (btn) btn.disabled = true;
+    try {
+      const r = await fetch(`/api/bookings/${id}/mark-paid`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const j = await r.json();
+      if (!r.ok) { _qopsMsg(j.error || 'Error al marcar', true); return; }
+      // Update local booking
+      const bk = bookings.find(b => b.id === id);
+      if (bk) { bk.payment_status = 'paid'; bk.balance_pending = 0; }
+      _qopsMsg('Pagado registrado');
+      _render(); renderKPIStrip();
+      // Refresh bk-balance field if visible
+      const balEl = document.getElementById('bk-balance');
+      if (balEl) balEl.value = '0';
+    } catch(e) { _qopsMsg('Error de red', true); }
+    finally { if (btn) btn.disabled = false; }
+  }
+
+  // Assign captain — POST /api/bookings/:id/assign-captain (no auth)
+  async function _qopsCaptain() {
+    const id = currentBookingId;
+    if (!id) return;
+    const sel = document.getElementById('cal2-qops-captain-sel');
+    const capId = sel?.value;
+    if (!capId) { _qopsMsg('Selecciona un capitán', true); return; }
+    const cap = captains.find(c => String(c.id) === capId);
+    if (!cap) return;
+    const btn = document.getElementById('cal2-qops-cap-btn');
+    if (btn) btn.disabled = true;
+    try {
+      const r = await fetch(`/api/bookings/${id}/assign-captain`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ captain_name: cap.name, captain_phone: cap.phone || '' }),
+      });
+      const j = await r.json();
+      if (!r.ok) { _qopsMsg(j.error || 'Error al asignar', true); return; }
+      // Update local booking
+      const bk = bookings.find(b => b.id === id);
+      if (bk) {
+        bk.assigned_captain_id   = String(cap.id);
+        bk.assigned_captain_name = cap.name;
+      }
+      _qopsMsg(`Cap. "${cap.name}" asignado`);
+      // Update captain dropdown in main form if visible
+      const capEl = document.getElementById('bk-captain');
+      if (capEl) capEl.value = String(cap.id);
+      _render(); renderKPIStrip();
+    } catch(e) { _qopsMsg('Error de red', true); }
+    finally { if (btn) btn.disabled = false; }
+  }
+
+  // Populate captain select when drawer opens with a booking
+  function _qopsRefresh(isEdit) {
+    const sel = document.getElementById('cal2-qops-captain-sel');
+    if (!sel) return;
+    if (!isEdit) return;
+    // Rebuild options
+    sel.innerHTML = '<option value="">— capitán —</option>' +
+      captains.filter(c=>c.status!=='inactive').map(c =>
+        `<option value="${esc(String(c.id))}">${esc(c.name)}</option>`
+      ).join('');
+    // Pre-select if already assigned
+    const bk = bookings.find(b => b.id === currentBookingId);
+    if (bk?.assigned_captain_id) sel.value = String(bk.assigned_captain_id);
+    // Show/hide paid button based on current state
+    const paidBtn = document.getElementById('cal2-qops-paid');
+    if (paidBtn) paidBtn.style.display = (bk?.payment_status === 'paid' || bk?.balance_pending == 0) ? 'none' : '';
+  }
+
+  function _initQuickOps() {
+    const mc = document.querySelector('#booking-modal .modal-content');
+    const mh = mc?.querySelector('.modal-header');
+    if (!mc || !mh || mc.querySelector('#cal2-qops-bar')) return; // already injected
+
+    const bar = document.createElement('div');
+    bar.id = 'cal2-qops-bar';
+    bar.setAttribute('data-testid', 'cal2-qops-bar');
+    bar.innerHTML = `
+      <button id="cal2-qops-paid" class="cal2-qops-btn cal2-qops-paid"
+              data-testid="btn-qops-paid" onclick="NadakiCalendar._qopsPaid()">
+        &#10003; Marcar pagado
+      </button>
+      <select id="cal2-qops-captain-sel" class="cal2-qops-sel"
+              data-testid="sel-qops-captain">
+        <option value="">— capitán —</option>
+      </select>
+      <button id="cal2-qops-cap-btn" class="cal2-qops-btn cal2-qops-cap"
+              data-testid="btn-qops-assign-cap" onclick="NadakiCalendar._qopsCaptain()">
+        Asignar
+      </button>
+      <span id="cal2-qops-msg"></span>
+    `;
+    mh.insertAdjacentElement('afterend', bar);
+
+    // MutationObserver: detect modal open/close
+    const modal = document.getElementById('booking-modal');
+    new MutationObserver(() => {
+      const isOpen = modal.classList.contains('show');
+      const isEdit = isOpen && !!currentBookingId;
+      if (isOpen && isEdit) _qopsRefresh(true);
+    }).observe(modal, { attributes: true, attributeFilter: ['class'] });
+  }
+
   function openBooking(id) { if(id) openEditBooking(id); else openBookingModal(); }
 
   // ── Fase 3B: DrawerBridge ──────────────────────────────────────
@@ -1333,6 +1455,9 @@ window.NadakiCalendar = (function () {
 
     // Esc key closes the drawer
     document.addEventListener('keydown', _drawerEsc);
+
+    // Fase 4A: inject QuickOps bar
+    _initQuickOps();
   }
 
   function _drawerEsc(e) {
@@ -1369,6 +1494,6 @@ window.NadakiCalendar = (function () {
     init, switchView, setDayView, refresh, renderKPIStrip, openBooking,
     createBlock, updateBooking, resolveConflict, restoreLegacy,
     renderWeekView2, renderDayView, renderTimelineView, renderMonthView,
-    toggleConflicts, closeDrawer,
+    toggleConflicts, closeDrawer, _qopsPaid, _qopsCaptain,
   };
 }());
