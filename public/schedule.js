@@ -1278,12 +1278,13 @@ window.NadakiCalendar = (function () {
     _wireToolbar();
     _wireViewSwitcher();
     _interceptLegacyRender();
+    _initDrawer();          // Fase 3B: activate drawer bridge
     renderKPIStrip();
     _render('week');
     _updateDateLabel();
     document.getElementById('cal2-shell').style.display='block';
     requestAnimationFrame(_hideLegacy);
-    console.info('[NadakiCalendar] Fase 2 activo — Week/Day/Timeline/Month. Rollback: NadakiCalendar.restoreLegacy()');
+    console.info('[NadakiCalendar] Fase 3B activo — DrawerBridge ON. Rollback: NadakiCalendar.restoreLegacy()');
   }
 
   function switchView(view) {
@@ -1309,7 +1310,45 @@ window.NadakiCalendar = (function () {
 
   function openBooking(id) { if(id) openEditBooking(id); else openBookingModal(); }
 
+  // ── Fase 3B: DrawerBridge ──────────────────────────────────────
+  function closeDrawer() {
+    closeBookingModal(); // removes .show → CSS transition reverses
+  }
+
+  function _initDrawer() {
+    // Activate drawer mode: body class drives all CSS overrides
+    document.body.classList.add('cal2-drawer-mode');
+
+    // Inject the left-edge close tab into .modal-content (once only)
+    const mc = document.querySelector('#booking-modal .modal-content');
+    if (mc && !mc.querySelector('#cal2-drawer-close')) {
+      const btn = document.createElement('button');
+      btn.id = 'cal2-drawer-close';
+      btn.setAttribute('aria-label', 'Cerrar panel');
+      btn.setAttribute('data-testid', 'btn-drawer-close');
+      btn.innerHTML = '&#10005;';
+      btn.addEventListener('click', closeDrawer);
+      mc.appendChild(btn);
+    }
+
+    // Esc key closes the drawer
+    document.addEventListener('keydown', _drawerEsc);
+  }
+
+  function _drawerEsc(e) {
+    if (e.key === 'Escape') {
+      const m = document.getElementById('booking-modal');
+      if (m && m.classList.contains('show')) closeDrawer();
+    }
+  }
+
   function restoreLegacy() {
+    // Fase 3B: remove drawer bridge
+    document.body.classList.remove('cal2-drawer-mode');
+    document.removeEventListener('keydown', _drawerEsc);
+    const btn = document.getElementById('cal2-drawer-close');
+    if (btn) btn.remove();
+    // Fase 2: restore legacy grid
     document.querySelectorAll('[data-cal2-legacy]').forEach(el=>{
       el.style.display=el.dataset.cal2LegacyDisplay||'';
       delete el.dataset.cal2Legacy;
@@ -1330,6 +1369,6 @@ window.NadakiCalendar = (function () {
     init, switchView, setDayView, refresh, renderKPIStrip, openBooking,
     createBlock, updateBooking, resolveConflict, restoreLegacy,
     renderWeekView2, renderDayView, renderTimelineView, renderMonthView,
-    toggleConflicts,
+    toggleConflicts, closeDrawer,
   };
 }());

@@ -815,6 +815,60 @@
     }
     .cal2-kpi-danger { cursor: pointer; }
     @keyframes cal2-kpi-blink { 0%,100%{opacity:1;} 50%{opacity:0.45;} }
+
+    /* ── Cal2 DrawerBridge — Fase 3B ──────────────────────────────────
+       Additive: only active when body.cal2-drawer-mode is present.
+       Rollback: NadakiCalendar.restoreLegacy() removes the body class.
+    ─────────────────────────────────────────────────────────────────── */
+    body.cal2-drawer-mode #booking-modal {
+      display: none;
+      align-items: stretch;
+      justify-content: flex-end;
+      padding: 0;
+      background: rgba(0,0,0,0.42);
+    }
+    body.cal2-drawer-mode #booking-modal.show { display: flex; }
+
+    body.cal2-drawer-mode #booking-modal .modal-content {
+      max-width: 540px;
+      width: 100%;
+      border-radius: 16px 0 0 16px;
+      height: 100dvh;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      transform: translateX(100%);
+      transition: transform 0.26s cubic-bezier(0.4,0,0.2,1);
+      position: relative;
+    }
+    body.cal2-drawer-mode #booking-modal.show .modal-content {
+      transform: translateX(0);
+    }
+    body.cal2-drawer-mode #booking-modal .modal-body {
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    /* Drawer: close-tab on left edge of panel */
+    #cal2-drawer-close {
+      display: none;
+      position: absolute;
+      top: 18px; left: -36px;
+      background: #0f172a;
+      color: #fff;
+      border: none; border-radius: 8px 0 0 8px;
+      padding: 8px 9px;
+      cursor: pointer; font-size: 17px; line-height: 1;
+      z-index: 1001;
+      transition: background 0.15s;
+    }
+    #cal2-drawer-close:hover { background: #1e40af; }
+    body.cal2-drawer-mode #booking-modal.show #cal2-drawer-close { display: block; }
+
+    @media (max-width: 600px) {
+      body.cal2-drawer-mode #booking-modal .modal-content { max-width: 100%; border-radius: 0; }
+    }
   </style>
 </head>
 <body data-page="schedule">
