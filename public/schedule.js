@@ -68,6 +68,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadScheduleData();
   setupEventListeners();
   renderWeekView();
+  // CAL2 Fase 1: inicializar shell después de que los datos legacy estén listos
+  NadakiCalendar.init();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 });
 
@@ -685,3 +687,330 @@ function setupEventListeners() {
     if (e.key === 'Escape') { closeBookingModal(); closeAvailabilityModal(); }
   });
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// NADAKI CALENDAR 2.0 — Namespace Global
+// Fase 1: Shell v2 (CalendarToolbar + KPIStrip + ViewSwitcher)
+// Fase 2+: Grid Engine, BookingDrawer, ConflictPanel, PaymentOps
+// Rollback: NadakiCalendar.restoreLegacy() desde consola
+// ═══════════════════════════════════════════════════════════════════
+window.NadakiCalendar = (function () {
+  'use strict';
+
+  // ── Internal state ────────────────────────────────────────────
+  let _view      = 'week';
+  let _initiated = false;
+
+  // ── Conflict detection (client-side, Fase 1) ──────────────────
+  function _detectConflicts(bks) {
+    let count = 0;
+    for (let i = 0; i < bks.length; i++) {
+      for (let j = i + 1; j < bks.length; j++) {
+        const a = bks[i], b = bks[j];
+        if (a.booking_date !== b.booking_date) continue;
+        const sameBoat = (a.boat_id && a.boat_id === b.boat_id) ||
+                         (!a.boat_id && !b.boat_id && a.boat_type && a.boat_type === b.boat_type);
+        const sameCap  = a.assigned_captain_id &&
+                         a.assigned_captain_id === b.assigned_captain_id;
+        if (!sameBoat && !sameCap) continue;
+        const aS = parseInt((a.start_time || '0').split(':')[0]);
+        const bS = parseInt((b.start_time || '0').split(':')[0]);
+        const aE = aS + (a.duration_hours || 4);
+        const bE = bS + (b.duration_hours || 4);
+        if (aS < bE && bS < aE) count++;
+      }
+    }
+    return count;
+  }
+
+  // ── KPI computation ───────────────────────────────────────────
+  function renderKPIStrip() {
+    const today       = fmtDate(new Date());
+    const todayBks    = bookings.filter(b => b.booking_date === today);
+    const periodBks   = bookings;
+
+    const todayRev    = todayBks.reduce((s, b) => s + parseFloat(b.total_amount   || 0), 0);
+    const pendingBal  = periodBks.reduce((s, b) => s + parseFloat(b.balance_pending || 0), 0);
+
+    const boatsBusy   = new Set(
+      todayBks.map(b => b.boat_id || b.boat_type).filter(Boolean)
+    ).size;
+    const totalBoats  = boats.length || '?';
+
+    const blocks      = availability.filter(a => a.is_available === 0).length;
+    const conflicts   = _detectConflicts(periodBks);
+
+    const dfrom = document.getElementById('date-from')?.value || '';
+    const dto   = document.getElementById('date-to')?.value   || '';
+    const periodLabel = dfrom && dto
+      ? dfrom.slice(5) + ' → ' + dto.slice(5)
+      : 'semana actual';
+
+    const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+
+    set('cal2-kpi-today-bookings',  todayBks.length);
+    set('cal2-kpi-today-sub',       `${periodBks.length} en el período`);
+    set('cal2-kpi-today-revenue',   fmtMoney(todayRev));
+    set('cal2-kpi-revenue-sub',     todayBks.length ? `${todayBks.length} reservas` : 'ninguna hoy');
+    set('cal2-kpi-balance',         pendingBal > 0 ? fmtMoney(pendingBal) : '$0');
+    set('cal2-kpi-period-bookings', periodBks.length);
+    set('cal2-kpi-period-sub',      periodLabel);
+    set('cal2-kpi-boats-busy',      `${boatsBusy}/${totalBoats}`);
+    set('cal2-kpi-conflicts',       conflicts > 0 ? conflicts : '0');
+    set('cal2-kpi-blocks',          blocks);
+
+    // Period label inside grid
+    set('cal2-period-label', periodLabel ? '📅 ' + periodLabel : '');
+  }
+
+  // ── Populate filter selects ───────────────────────────────────
+  function _populateFilters() {
+    const capSel  = document.getElementById('cal2-captain-filter');
+    const boatSel = document.getElementById('cal2-boat-filter');
+
+    if (capSel) {
+      captains.forEach(c => {
+        const o = document.createElement('option');
+        o.value = c.id;
+        o.textContent = c.name + (c.status === 'inactive' ? ' (inactivo)' : '');
+        capSel.appendChild(o);
+      });
+    }
+
+    if (boatSel) {
+      boats.forEach(b => {
+        const o = document.createElement('option');
+        o.value = b.id || b.name;
+        o.dataset.name = b.name;
+        o.textContent = b.name;
+        boatSel.appendChild(o);
+      });
+    }
+  }
+
+  // ── Date label sync ───────────────────────────────────────────
+  function _updateDateLabel() {
+    const label = document.getElementById('cal2-date-label');
+    if (!label) return;
+    const dfrom = document.getElementById('date-from')?.value;
+    const dto   = document.getElementById('date-to')?.value;
+    if (dfrom && dto) {
+      const from = new Date(dfrom + 'T12:00:00');
+      const to   = new Date(dto   + 'T12:00:00');
+      label.textContent =
+        from.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }) +
+        ' – ' +
+        to.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
+    } else {
+      label.textContent = 'Semana actual';
+    }
+  }
+
+  // ── Mount legacy week grid inside cal2-grid-week ──────────────
+  function _mountWeekGrid() {
+    const weekWrap  = document.querySelector('.week-grid-wrap');
+    const cal2Week  = document.getElementById('cal2-grid-week');
+    const loadingEl = document.getElementById('cal2-grid-loading');
+
+    if (weekWrap && cal2Week) {
+      cal2Week.appendChild(weekWrap);           // DOM move (reversible)
+      if (loadingEl) loadingEl.style.display = 'none';
+    }
+  }
+
+  // ── Wire CalendarToolbar events ───────────────────────────────
+  function _wireToolbar() {
+    const prevBtn  = document.getElementById('cal2-prev');
+    const nextBtn  = document.getElementById('cal2-next');
+    const todayBtn = document.getElementById('cal2-today');
+    const nrBtn    = document.getElementById('cal2-btn-nueva-reserva');
+    const blockBtn = document.getElementById('cal2-btn-add-block');
+    const capSel   = document.getElementById('cal2-captain-filter');
+    const boatSel  = document.getElementById('cal2-boat-filter');
+
+    if (prevBtn) prevBtn.addEventListener('click', () => {
+      weekNav(-1);
+      _updateDateLabel();
+      renderKPIStrip();
+    });
+    if (nextBtn) nextBtn.addEventListener('click', () => {
+      weekNav(1);
+      _updateDateLabel();
+      renderKPIStrip();
+    });
+    if (todayBtn) todayBtn.addEventListener('click', () => {
+      setDefaultDates();
+      initWeekStart();
+      loadScheduleData().then(() => { renderWeekView(); renderKPIStrip(); });
+      _updateDateLabel();
+    });
+
+    // Delegate to existing global functions (Fase 1 compatibility)
+    if (nrBtn)    nrBtn.addEventListener('click', () => openBookingModal());
+    if (blockBtn) blockBtn.addEventListener('click', () => openAvailabilityModal());
+
+    // Captain filter → sync with legacy captain-select then reload
+    if (capSel) capSel.addEventListener('change', () => {
+      const legacyCap = document.getElementById('captain-select');
+      if (legacyCap) legacyCap.value = capSel.value;
+      loadScheduleData().then(() => { renderWeekView(); renderKPIStrip(); });
+    });
+
+    // Boat filter → client-side visual filter on chips (Fase 2: server-side)
+    if (boatSel) boatSel.addEventListener('change', () => {
+      const val = boatSel.value;
+      document.querySelectorAll('.booking-chip').forEach(chip => {
+        if (!val) {
+          chip.style.opacity = '1';
+        } else {
+          // Match against chip title attribute (contains boat label)
+          const inTitle = chip.title.toLowerCase().includes(
+            (boatSel.options[boatSel.selectedIndex]?.dataset?.name || val).toLowerCase()
+          );
+          chip.style.opacity = inTitle ? '1' : '0.2';
+        }
+      });
+    });
+  }
+
+  // ── Wire ViewSwitcher events ──────────────────────────────────
+  function _wireViewSwitcher() {
+    document.querySelectorAll('.cal2-view-btn').forEach(btn => {
+      btn.addEventListener('click', () => switchView(btn.dataset.view));
+    });
+  }
+
+  // ── Hide legacy sections (reversible) ────────────────────────
+  function _hideLegacy() {
+    const selectors = [
+      '.page-header',
+      '.controls-bar',
+      '.week-section',
+      '.conflict-section',
+    ];
+    selectors.forEach(sel => {
+      document.querySelectorAll(sel).forEach(el => {
+        el.dataset.cal2LegacyDisplay = el.style.display || '';
+        el.dataset.cal2Legacy        = '1';
+        el.style.display             = 'none';
+      });
+    });
+    // Keep .list-section visible (bookings list, still useful below grid)
+  }
+
+  // ── Show shell ────────────────────────────────────────────────
+  function _showShell() {
+    const shell = document.getElementById('cal2-shell');
+    if (shell) shell.style.display = 'block';
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // PUBLIC API
+  // ─────────────────────────────────────────────────────────────
+
+  function init() {
+    if (_initiated) return;
+    _initiated = true;
+
+    _populateFilters();
+    _wireToolbar();
+    _wireViewSwitcher();
+    renderKPIStrip();
+    _mountWeekGrid();
+    _updateDateLabel();
+
+    // Show shell first, then hide legacy on next frame
+    // (ensures shell is rendered before legacy disappears)
+    _showShell();
+    requestAnimationFrame(() => {
+      _hideLegacy();
+    });
+
+    console.info('[NadakiCalendar] Fase 1 shell iniciado. Rollback: NadakiCalendar.restoreLegacy()');
+  }
+
+  function switchView(view) {
+    _view = view;
+
+    // Update active button
+    document.querySelectorAll('.cal2-view-btn').forEach(b => {
+      b.classList.toggle('cal2-view-active', b.dataset.view === view);
+    });
+
+    const weekGrid   = document.getElementById('cal2-grid-week');
+    const placeholder = document.getElementById('cal2-view-placeholder');
+    const phTitle    = document.getElementById('cal2-ph-title');
+    const phMsg      = document.getElementById('cal2-ph-msg');
+
+    const labels = { day: 'Día', month: 'Mes', timeline: 'Timeline' };
+
+    if (view === 'week') {
+      if (weekGrid)    weekGrid.style.display    = 'block';
+      if (placeholder) placeholder.style.display = 'none';
+    } else {
+      if (weekGrid)    weekGrid.style.display    = 'none';
+      if (placeholder) placeholder.style.display = 'flex';
+      if (phTitle) phTitle.textContent = `Vista ${labels[view] || view}`;
+      if (phMsg)   phMsg.textContent   =
+        `La vista "${labels[view] || view}" estará disponible en Fase 2 — Grid Engine.`;
+    }
+  }
+
+  // Reload data and re-render everything
+  function refresh() {
+    return loadScheduleData().then(() => {
+      renderWeekView();
+      renderKPIStrip();
+      _updateDateLabel();
+    });
+  }
+
+  // Delegate booking actions to existing global functions
+  function openBooking(id) {
+    if (id) openEditBooking(id);
+    else    openBookingModal();
+  }
+
+  // Rollback: restores all legacy sections and hides cal2-shell
+  function restoreLegacy() {
+    document.querySelectorAll('[data-cal2-legacy]').forEach(el => {
+      el.style.display = el.dataset.cal2LegacyDisplay || '';
+      delete el.dataset.cal2Legacy;
+      delete el.dataset.cal2LegacyDisplay;
+    });
+
+    // Return week-grid-wrap to week-section
+    const weekWrap = document.querySelector('.week-grid-wrap');
+    const weekSection = document.querySelector('.week-section');
+    if (weekWrap && weekSection) weekSection.appendChild(weekWrap);
+
+    const shell = document.getElementById('cal2-shell');
+    if (shell) shell.style.display = 'none';
+
+    _initiated = false;
+    console.info('[NadakiCalendar] Legacy mode restored.');
+  }
+
+  // Stubs for upcoming phases
+  function createBlock(payload)      { openAvailabilityModal(); }
+  function updateBooking()           { console.warn('[NadakiCalendar] updateBooking — Fase 3'); }
+  function resolveConflict()         { console.warn('[NadakiCalendar] resolveConflict — Fase 3'); }
+  function renderDayView()           { console.warn('[NadakiCalendar] renderDayView — Fase 2'); }
+  function renderMonthView()         { console.warn('[NadakiCalendar] renderMonthView — Fase 2'); }
+  function renderTimelineView()      { console.warn('[NadakiCalendar] renderTimelineView — Fase 2'); }
+
+  return {
+    init,
+    switchView,
+    refresh,
+    renderKPIStrip,
+    openBooking,
+    createBlock,
+    updateBooking,
+    resolveConflict,
+    renderDayView,
+    renderMonthView,
+    renderTimelineView,
+    restoreLegacy,
+  };
+}());

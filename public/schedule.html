@@ -253,9 +253,386 @@
       .form-grid, .form-grid-3 { grid-template-columns: 1fr; }
       .modal-body { padding: 16px; }
     }
+
+    /* ══════════════════════════════════════════════════
+       CAL2 SHELL — Fase 1
+       Prefijo: cal2-   Reversible: sí
+    ══════════════════════════════════════════════════ */
+
+    /* Fix gnav overlap — body correction */
+    body[data-page="schedule"] {
+      padding-top: var(--gnav-h, 52px);
+    }
+
+    /* ── CalendarToolbar ── */
+    .cal2-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 20px;
+      background: #0f172a;
+      border-bottom: 1px solid #1e293b;
+      min-height: 52px;
+      flex-wrap: wrap;
+      position: sticky;
+      top: var(--gnav-h, 52px);
+      z-index: 800;
+    }
+    .cal2-toolbar-left,
+    .cal2-toolbar-center,
+    .cal2-toolbar-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .cal2-date-label {
+      font-size: 14px;
+      font-weight: 700;
+      color: #e2e8f0;
+      min-width: 200px;
+      text-align: center;
+      white-space: nowrap;
+    }
+    .cal2-btn-icon {
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: #94a3b8;
+      width: 32px;
+      height: 32px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s;
+      flex-shrink: 0;
+    }
+    .cal2-btn-icon:hover { background: #334155; color: #e2e8f0; }
+    .cal2-btn-today {
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: #94a3b8;
+      padding: 5px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+      transition: background 0.15s;
+    }
+    .cal2-btn-today:hover { background: #334155; color: #e2e8f0; }
+
+    /* ── ViewSwitcher ── */
+    .cal2-view-switcher {
+      display: flex;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .cal2-view-btn {
+      padding: 6px 14px;
+      background: transparent;
+      border: none;
+      color: #64748b;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+      white-space: nowrap;
+    }
+    .cal2-view-btn:hover { background: #2d3f55; color: #94a3b8; }
+    .cal2-view-btn.cal2-view-active {
+      background: #0066cc;
+      color: #fff;
+    }
+
+    /* ── Toolbar filters ── */
+    .cal2-filter-select {
+      padding: 6px 10px;
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: #94a3b8;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      max-width: 170px;
+    }
+    .cal2-filter-select:focus { outline: none; border-color: #0066cc; }
+    .cal2-btn-primary {
+      padding: 7px 16px;
+      background: #0066cc;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 700;
+      white-space: nowrap;
+      transition: background 0.15s;
+    }
+    .cal2-btn-primary:hover { background: #0052a3; }
+    .cal2-btn-outline-dark {
+      padding: 6px 12px;
+      background: transparent;
+      border: 1px solid #334155;
+      color: #94a3b8;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+      transition: background 0.15s;
+    }
+    .cal2-btn-outline-dark:hover { background: #1e293b; color: #e2e8f0; }
+
+    /* ── KPI Strip ── */
+    .cal2-kpi-strip {
+      display: flex;
+      gap: 1px;
+      background: #e2e8f0;
+      border-bottom: 2px solid #e2e8f0;
+      overflow-x: auto;
+    }
+    .cal2-kpi {
+      flex: 1;
+      min-width: 110px;
+      background: #fff;
+      padding: 10px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      cursor: default;
+      transition: background 0.12s;
+    }
+    .cal2-kpi:hover { background: #f8fafc; }
+    .cal2-kpi-label {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #94a3b8;
+      white-space: nowrap;
+    }
+    .cal2-kpi-value {
+      font-size: 22px;
+      font-weight: 800;
+      color: #1e293b;
+      line-height: 1.2;
+    }
+    .cal2-kpi-sub {
+      font-size: 10px;
+      color: #cbd5e1;
+    }
+    .cal2-kpi-green .cal2-kpi-value { color: #16a34a; }
+    .cal2-kpi-warn .cal2-kpi-value  { color: #d97706; }
+    .cal2-kpi-danger .cal2-kpi-value { color: #dc2626; }
+    .cal2-kpi-blue .cal2-kpi-value  { color: #0066cc; }
+
+    /* ── Grid Container ── */
+    .cal2-grid-container {
+      background: #f8fafc;
+      min-height: 420px;
+    }
+    .cal2-grid-week {
+      padding: 16px 20px;
+    }
+    /* Inherit legacy week table styles */
+    .cal2-grid-week .week-grid-wrap {
+      border-radius: 10px;
+      overflow-x: auto;
+    }
+    .cal2-loading-state {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 200px;
+      color: #94a3b8;
+      font-size: 14px;
+      gap: 10px;
+    }
+    .cal2-loading-spinner {
+      width: 18px;
+      height: 18px;
+      border: 2px solid #e2e8f0;
+      border-top-color: #0066cc;
+      border-radius: 50%;
+      animation: cal2-spin 0.7s linear infinite;
+    }
+    @keyframes cal2-spin { to { transform: rotate(360deg); } }
+    .cal2-view-placeholder {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 320px;
+      gap: 14px;
+      color: #94a3b8;
+    }
+    .cal2-ph-icon { font-size: 40px; opacity: 0.4; }
+    .cal2-ph-title { font-size: 16px; font-weight: 700; color: #475569; }
+    .cal2-ph-msg {
+      font-size: 13px;
+      color: #94a3b8;
+      text-align: center;
+      max-width: 340px;
+    }
+    .cal2-ph-badge {
+      display: inline-block;
+      padding: 3px 10px;
+      background: #fef3c7;
+      color: #92400e;
+      border-radius: 12px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* ── Period strip (inside grid week) ── */
+    .cal2-period-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .cal2-period-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: #64748b;
+    }
+    .cal2-period-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 768px) {
+      .cal2-toolbar { padding: 8px 12px; gap: 6px; }
+      .cal2-filter-select { max-width: 120px; }
+      .cal2-kpi-value { font-size: 17px; }
+      .cal2-kpi { padding: 8px 12px; min-width: 90px; }
+      .cal2-date-label { min-width: 140px; font-size: 12px; }
+      .cal2-grid-week { padding: 12px; }
+    }
   </style>
 </head>
 <body data-page="schedule">
+
+  <!-- ══════════════════════════════════════════════════
+       CAL2 SHELL — Fase 1  (additive, reversible)
+       Rollback: NadakiCalendar.restoreLegacy()
+  ══════════════════════════════════════════════════ -->
+  <div id="cal2-shell" style="display:none;" data-testid="cal2-shell">
+
+    <!-- ── CalendarToolbar ── -->
+    <div class="cal2-toolbar" id="cal2-toolbar" data-testid="cal2-toolbar">
+
+      <div class="cal2-toolbar-left">
+        <button class="cal2-btn-icon" id="cal2-prev" title="Semana anterior" data-testid="button-cal2-prev">&#8249;</button>
+        <span class="cal2-date-label" id="cal2-date-label">Cargando...</span>
+        <button class="cal2-btn-icon" id="cal2-next" title="Semana siguiente" data-testid="button-cal2-next">&#8250;</button>
+        <button class="cal2-btn-today" id="cal2-today" data-testid="button-cal2-today">Hoy</button>
+      </div>
+
+      <div class="cal2-toolbar-center">
+        <!-- CalendarViewSwitcher -->
+        <div class="cal2-view-switcher" id="cal2-view-switcher" data-testid="cal2-view-switcher">
+          <button class="cal2-view-btn" data-view="day" data-testid="button-view-day">Día</button>
+          <button class="cal2-view-btn cal2-view-active" data-view="week" data-testid="button-view-week">Semana</button>
+          <button class="cal2-view-btn" data-view="month" data-testid="button-view-month">Mes</button>
+          <button class="cal2-view-btn" data-view="timeline" data-testid="button-view-timeline">Timeline</button>
+        </div>
+      </div>
+
+      <div class="cal2-toolbar-right">
+        <select class="cal2-filter-select" id="cal2-captain-filter" data-testid="select-cal2-captain">
+          <option value="">Todos los capitanes</option>
+        </select>
+        <select class="cal2-filter-select" id="cal2-boat-filter" data-testid="select-cal2-boat">
+          <option value="">Todos los barcos</option>
+        </select>
+        <button class="cal2-btn-outline-dark" id="cal2-btn-add-block" data-testid="button-cal2-add-block">&#128683; Bloquear</button>
+        <button class="cal2-btn-primary" id="cal2-btn-nueva-reserva" data-testid="button-cal2-nueva-reserva">+ Nueva Reserva</button>
+      </div>
+    </div>
+
+    <!-- ── CalendarKPIStrip ── -->
+    <div class="cal2-kpi-strip" id="cal2-kpi-strip" data-testid="cal2-kpi-strip">
+      <div class="cal2-kpi cal2-kpi-blue" data-testid="kpi-today-bookings">
+        <span class="cal2-kpi-label">Reservas hoy</span>
+        <span class="cal2-kpi-value" id="cal2-kpi-today-bookings">—</span>
+        <span class="cal2-kpi-sub" id="cal2-kpi-today-sub">del período</span>
+      </div>
+      <div class="cal2-kpi cal2-kpi-green" data-testid="kpi-today-revenue">
+        <span class="cal2-kpi-label">Revenue hoy</span>
+        <span class="cal2-kpi-value" id="cal2-kpi-today-revenue">—</span>
+        <span class="cal2-kpi-sub" id="cal2-kpi-revenue-sub">cobros confirmados</span>
+      </div>
+      <div class="cal2-kpi cal2-kpi-warn" data-testid="kpi-balance">
+        <span class="cal2-kpi-label">Saldo pendiente</span>
+        <span class="cal2-kpi-value" id="cal2-kpi-balance">—</span>
+        <span class="cal2-kpi-sub">en el período</span>
+      </div>
+      <div class="cal2-kpi" data-testid="kpi-period-bookings">
+        <span class="cal2-kpi-label">Reservas período</span>
+        <span class="cal2-kpi-value" id="cal2-kpi-period-bookings">—</span>
+        <span class="cal2-kpi-sub" id="cal2-kpi-period-sub">semana actual</span>
+      </div>
+      <div class="cal2-kpi" data-testid="kpi-boats-busy">
+        <span class="cal2-kpi-label">Barcos hoy</span>
+        <span class="cal2-kpi-value" id="cal2-kpi-boats-busy">—</span>
+        <span class="cal2-kpi-sub">en uso / total</span>
+      </div>
+      <div class="cal2-kpi cal2-kpi-danger" data-testid="kpi-conflicts">
+        <span class="cal2-kpi-label">Conflictos</span>
+        <span class="cal2-kpi-value" id="cal2-kpi-conflicts">—</span>
+        <span class="cal2-kpi-sub">solapamientos</span>
+      </div>
+      <div class="cal2-kpi" data-testid="kpi-blocks">
+        <span class="cal2-kpi-label">Bloqueos cap.</span>
+        <span class="cal2-kpi-value" id="cal2-kpi-blocks">—</span>
+        <span class="cal2-kpi-sub">en el período</span>
+      </div>
+    </div>
+
+    <!-- ── CalendarGrid Container ── -->
+    <div class="cal2-grid-container" id="cal2-grid-container">
+
+      <!-- Week view: receives legacy .week-grid-wrap via JS mount -->
+      <div class="cal2-grid-week" id="cal2-grid-week" data-testid="cal2-grid-week">
+        <div class="cal2-period-bar">
+          <span class="cal2-period-label" id="cal2-period-label"></span>
+          <div class="cal2-period-actions">
+            <span class="cal2-ph-badge" id="cal2-phase-badge">Fase 1 — Grid Engine en Fase 2</span>
+          </div>
+        </div>
+        <div class="cal2-loading-state" id="cal2-grid-loading">
+          <div class="cal2-loading-spinner"></div>
+          <span>Cargando vista semanal...</span>
+        </div>
+      </div>
+
+      <!-- Placeholder for non-week views (Day / Month / Timeline) -->
+      <div class="cal2-view-placeholder" id="cal2-view-placeholder">
+        <div class="cal2-ph-icon">&#128197;</div>
+        <div class="cal2-ph-title" id="cal2-ph-title">Vista en construcción</div>
+        <div class="cal2-ph-msg" id="cal2-ph-msg">
+          Esta vista estará disponible en Fase 2 — Grid Engine.
+        </div>
+        <span class="cal2-ph-badge">Próxima fase</span>
+      </div>
+
+    </div>
+  </div>
+  <!-- ── END CAL2 SHELL ── -->
+
   <!-- Page Header -->
   <div class="page-header">
     <div>
