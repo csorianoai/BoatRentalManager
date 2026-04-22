@@ -1,0 +1,277 @@
+Actúa como Principal Frontend Architect + Staff Software Engineer + UX Systems Lead + Ops Software Designer.
+
+No eres asesor.
+No eres decorador.
+No eres generador de mockups.
+
+Eres responsable de construir el módulo Calendar 2.0 más sólido, operativo y profesional posible dentro del sistema Nadaki Excursions, sin romper nada existente.
+
+## CONTEXTO
+
+Sistema actual:
+
+* HTML + JS vanilla
+* Express backend
+* PostgreSQL
+* navbar global ya migrado
+* dashboard 2.0 ya migrado
+* reports NBIC ya integrado
+* sync.html ya existe
+* captain.html y login.html son excepciones permanentes
+* schedule.html existe pero sigue siendo legacy funcional
+
+## OBJETIVO
+
+Transformar `schedule.html` en un **Calendar 2.0 operativo**, no solo visual.
+
+Debe convertirse en el centro real de operación diaria para:
+
+* reservas
+* conflictos
+* pagos pendientes
+* bloqueos
+* mantenimiento
+* tripulación
+* revenue operativo
+
+## RESTRICCIONES ABSOLUTAS
+
+* NO cambiar el stack
+* NO introducir frameworks
+* NO romper lógica actual sin auditar primero
+* NO tocar otras páginas
+* NO hacer deploy antes de validación total
+* TODO debe ser incremental, reversible y production-safe
+
+## PRINCIPIOS
+
+1. conflict-first UX
+2. financial visibility inside operations
+3. one-click operational context
+4. maintenance and weather blocks as first-class events
+5. desktop-first, mobile-safe
+6. zero fake mocks when real data exists
+
+## FASE 0 — PRE-AUDIT OBLIGATORIO
+
+Antes de escribir código, entrega un pre-audit completo de:
+
+* `public/schedule.html`
+* `public/assets/js/pages/schedule.js` o script real equivalente
+* scripts cargados
+* refs JS duras
+* IDs críticos
+* endpoints reales disponibles
+* dependencias con bookings, boats, payments, captains, maintenance
+* riesgos de colisión con navbar global
+* estrategia exacta de compatibilidad
+
+Debes clasificar cada parte del módulo como:
+
+* replace
+* preserve
+* adapt
+* isolate
+
+No implementes nada hasta terminar el pre-audit.
+
+## ARQUITECTURA OBJETIVO
+
+Debes diseñar y construir estos componentes:
+
+* CalendarToolbar
+* CalendarKPIStrip
+* CalendarViewSwitcher
+* CalendarGrid
+* BookingCard
+* BookingDrawer
+* ConflictPanel
+* CalendarFilters
+* CalendarLegend
+* CalendarEmptyState
+
+Namespace obligatorio:
+
+```js
+window.NadakiCalendar = {
+  init(),
+  loadData(),
+  render(),
+  switchView(view),
+  setDate(date),
+  applyFilters(filters),
+  openBooking(id),
+  createBooking(payload),
+  updateBooking(id, payload),
+  createBlock(payload),
+  resolveConflict(id, action),
+  refresh(),
+}
+```
+
+## VISTAS OBLIGATORIAS
+
+1. Día
+2. Semana
+3. Mes
+4. Timeline
+
+## FUNCIONALIDADES OBLIGATORIAS
+
+1. KPI strip con:
+
+* reservas del día
+* revenue del día
+* saldo pendiente
+* barcos ocupados/disponibles
+* conflictos
+* bloqueos de mantenimiento
+
+2. Calendario por barco con color por estado:
+
+* confirmed
+* deposit_paid
+* balance_due
+* paid
+* cancelled
+* maintenance
+* weather_hold
+
+3. Drawer operativo de reserva con:
+
+* cliente
+* barco
+* horario
+* estado
+* origen
+* total
+* depósito
+* saldo pendiente
+* capitán
+* notas
+* acciones rápidas
+
+4. Panel de conflictos con:
+
+* overlaps
+* maintenance conflicts
+* crew conflicts
+* payment risk
+* missing assignments
+
+5. Quick actions:
+
+* nueva reserva
+* nuevo bloqueo
+* marcar pagado
+* asignar capitán
+* mover reserva
+* editar duración
+* cancelar
+
+## DATA CONTRACTS
+
+Audita primero si ya existen endpoints.
+Si no existen, propón exactamente cuáles faltan y por qué.
+
+Endpoints objetivo esperados:
+
+* `/api/calendar/summary`
+* `/api/calendar/bookings`
+* `/api/calendar/blocks`
+* `/api/calendar/conflicts`
+* `/api/calendar/boats`
+* `/api/calendar/crew`
+
+No inventes mocks permanentes.
+Si algo falta, usa adaptadores reales a endpoints existentes o reporta el gap.
+
+## UX OBLIGATORIA
+
+Debe sentirse como:
+
+* centro operativo
+* calendar dispatch board
+* revenue-aware scheduler
+
+No debe sentirse como:
+
+* tabla vieja con filtros arriba
+* calendario genérico sin contexto
+* dashboard disfrazado
+
+## REGLAS TÉCNICAS
+
+* conservar IDs críticos existentes mientras sea necesario
+* no borrar lógica actual hasta que la nueva esté estable
+* usar prefijos CSS `cal2-`
+* no contaminar estilos legacy
+* accesibilidad con teclado
+* overlays cierran con Esc
+* click fuera cierra drawers si aplica
+* manejo de loading, empty, error y stale-data states
+
+## VALIDACIÓN OBLIGATORIA
+
+Antes de cerrar, debes ejecutar:
+
+* validation runner
+* Playwright real
+* screenshots de día / semana / timeline
+* verificación de consola
+* verificación de rollback
+
+## 10 AUTOEVALUACIONES OBLIGATORIAS
+
+No puedes declarar PASS hasta responder internamente con evidencia a estas 10 preguntas:
+
+1. ¿Preservé todos los IDs/listeners críticos existentes?
+2. ¿La página sigue funcionando si un endpoint falla?
+3. ¿Día/Semana/Mes/Timeline funcionan de forma coherente?
+4. ¿Cada booking muestra estado operativo y financiero real?
+5. ¿El conflict engine detecta overlaps reales?
+6. ¿El drawer reduce navegación y aumenta velocidad operativa?
+7. ¿Drag/drop valida antes de guardar?
+8. ¿La UI parece centro operativo real y no tabla maquillada?
+9. ¿El código quedó modular, reversible y seguro?
+10. ¿Runner + Playwright validan comportamiento real, no solo DOM?
+
+## ORDEN DE EJECUCIÓN OBLIGATORIO
+
+1. Pre-audit
+2. Shell v2
+3. Grid engine
+4. Drawer + booking cards
+5. Conflict panel
+6. Payment ops inline
+7. Drag/drop + resize
+8. Validación integral
+9. Readiness for deploy
+10. Deploy solo si GO explícito
+
+## PROHIBIDO
+
+* improvisar
+* trabajar en paralelo sin auditar
+* tocar otras páginas
+* mezclar fases
+* declarar éxito sin runner verde
+* cerrar con placeholders vacíos
+* sacrificar funcionalidad por estética
+
+## ENTREGA FINAL ESPERADA
+
+1. pre-audit
+2. implementación por fases
+3. archivos creados/modificados
+4. decisiones técnicas por componente
+5. evidencia runtime
+6. clasificación de riesgos
+7. resultado de autoevaluaciones
+8. veredicto final:
+
+   * PASS
+   * BLOCKED
+   * GO FOR DEPLOY
+
+Empieza ahora por Fase 0 — PRE-AUDIT.
