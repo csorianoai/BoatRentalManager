@@ -12828,36 +12828,72 @@ app.patch('/api/booking-receivables/:id/mark-paid', isAuthenticated, async (req,
     if (!arRes.rows.length) { await pg.query('ROLLBACK'); return res.status(404).json({ error: 'Cuenta por cobrar no encontrada' }); }
     const ar = arRes.rows[0];
 
-    // Create cash receipt transaction for the saldo cobrado
+    // Guard: already paid — return idempotent response without duplicating records
+    if (ar.status === 'paid') {
+      await pg.query('ROLLBACK');
+      const existing = await pool.query('SELECT * FROM booking_receivables WHERE id=$1', [req.params.id]);
+      return res.json({ ...existing.rows[0], already_paid: true });
+    }
+
+    // ── Create income transaction (account 4010 Revenue-Tours, fallback 1010 Cash) ──
     const { nanoid } = await import('nanoid');
     const txId = 'tx_ar_' + nanoid(8);
     const desc = `Saldo cobrado — ${ar.client_name || ar.party_name}${ar.boat_name ? ' / ' + ar.boat_name : ''}`;
+    const revenueAccRes = await pg.query(`SELECT id FROM chart_of_accounts WHERE account_code='4010' LIMIT 1`);
+    const cashAccRes    = await pg.query(`SELECT id FROM chart_of_accounts WHERE account_code='1010' LIMIT 1`);
+    const accountId = revenueAccRes.rows.length
+      ? revenueAccRes.rows[0].id
+      : cashAccRes.rows.length
+        ? cashAccRes.rows[0].id
+        : 'acc_booking_deposits_2500';
+
     await pg.query(
-      `INSERT INTO transactions (id, transaction_date, account_id, amount, transaction_type, description, reference_id, boat_id, notes, reference_type)
-       VALUES ($1, CURRENT_DATE, 'acc_booking_deposits_2500', $2, 'income', $3, $4, $5, $6, 'booking')`,
-      [txId, parseFloat(ar.amount), desc, ar.id, ar.boat_id||null, notes||null]
+      `INSERT INTO transactions
+         (id, transaction_date, account_id, amount, transaction_type,
+          description, reference_id, boat_id, notes, reference_type, booking_id, ledger_id)
+       VALUES ($1, CURRENT_DATE, $2, $3, 'income', $4, $5, $6, $7, 'booking', $8, $9)`,
+      [
+        txId, accountId, parseFloat(ar.amount), desc,
+        ar.id, ar.boat_id || null, notes || null,
+        null,           // booking_id — resolved below if ledger link exists
+        ar.booking_id || null,  // booking_id here is actually the ledger id (AR schema quirk)
+      ]
     );
 
-    // Note: we use the deposit account as placeholder — in a proper implementation
-    // a bank/cash account would be used. The user can reclassify if needed.
-    // Better approach: find the primary bank account
-    const bankAccRes = await pg.query(
-      `SELECT id FROM chart_of_accounts WHERE account_code = '1010' LIMIT 1`
-    );
-    if (bankAccRes.rows.length) {
-      // Update the transaction to use the bank account instead
-      await pg.query(
-        `UPDATE transactions SET account_id=$1 WHERE id=$2`,
-        [bankAccRes.rows[0].id, txId]
-      );
-    }
-
+    // ── Mark AR as paid ────────────────────────────────────────────
     await pg.query(
       `UPDATE booking_receivables SET status='paid', notes=COALESCE($1, notes) WHERE id=$2`,
-      [notes||null, req.params.id]
+      [notes || null, req.params.id]
     );
-    await pg.query('COMMIT');
 
+    // ── Fase 2 sync: update bookings_ledger + bookings via link chain ──
+    // ar.booking_id stores the ledger ID (bookings_ledger.id)
+    if (ar.booking_id) {
+      await pg.query(
+        `UPDATE bookings_ledger SET status='completed', payment_date=CURRENT_DATE
+         WHERE id=$1 AND status != 'completed'`,
+        [ar.booking_id]
+      );
+      // Extract booking_id from ledger.notes = 'booking:{id}...'
+      const ledNotes = await pg.query(`SELECT notes FROM bookings_ledger WHERE id=$1`, [ar.booking_id]);
+      if (ledNotes.rows.length && ledNotes.rows[0].notes) {
+        const match = String(ledNotes.rows[0].notes).match(/^booking:(\S+)/);
+        if (match) {
+          const linkedBookingId = match[1];
+          await pg.query(
+            `UPDATE bookings
+             SET payment_status='paid', balance_pending=0, payment_date=CURRENT_DATE, updated_at=NOW()
+             WHERE id=$1 AND (payment_status IS NULL OR payment_status IS DISTINCT FROM 'paid')`,
+            [linkedBookingId]
+          );
+          // Also update the transaction with the real booking_id
+          await pg.query(`UPDATE transactions SET booking_id=$1 WHERE id=$2`, [linkedBookingId, txId]);
+          console.log(`[AR mark-paid] OK ar:${ar.id} | tx:${txId} | ledger:${ar.booking_id}→completed | booking:${linkedBookingId}→paid`);
+        }
+      }
+    }
+
+    await pg.query('COMMIT');
     const updated = await pool.query('SELECT * FROM booking_receivables WHERE id=$1', [req.params.id]);
     res.json({ ...updated.rows[0], cash_receipt_transaction_id: txId });
   } catch (err) {
@@ -15319,16 +15355,58 @@ const HOST = '0.0.0.0'; // Required for deployment
 
   // POST /api/bookings/:id/mark-paid
   app.post('/api/bookings/:id/mark-paid', async (req, res) => {
+    const pg = await pool.connect();
     try {
+      await pg.query('BEGIN');
       const { id } = req.params;
       const { payment_method } = req.body;
-      const upd = await pool.query(
-        `UPDATE bookings SET payment_status='paid', balance_pending=0, payment_method=COALESCE($1,payment_method), payment_date=CURRENT_DATE, updated_at=NOW() WHERE id=$2 RETURNING id, payment_status`,
-        [payment_method || null, id]
-      );
-      if (upd.rows.length === 0) return res.status(404).json({ error: 'Booking not found' });
-      res.json({ ok: true, booking_id: id, payment_status: 'paid' });
-    } catch(err) { res.status(500).json({ error: err.message }); }
+
+      // Verify booking exists
+      const check = await pg.query('SELECT id FROM bookings WHERE id=$1', [id]);
+      if (!check.rows.length) {
+        await pg.query('ROLLBACK');
+        return res.status(404).json({ error: 'Booking not found' });
+      }
+
+      // ── Accounting hook (Fase 2) ──
+      const hookEnabled  = process.env.ACCOUNTING_HOOK_ENABLED  !== 'false';
+      const hookSoftFail = process.env.ACCOUNTING_HOOK_SOFT_FAIL === 'true';
+      let hookResult = null;
+      if (hookEnabled) {
+        try {
+          const { runBookingPaymentHook } = require('./server/bookingPaymentHook');
+          hookResult = await runBookingPaymentHook(pg, { bookingId: id, paymentMethod: payment_method, notes: null });
+        } catch (hookErr) {
+          console.error('[PaymentHook] Error:', hookErr.message);
+          if (!hookSoftFail) {
+            await pg.query('ROLLBACK');
+            return res.status(500).json({ error: `Payment hook failed: ${hookErr.message}` });
+          }
+          // soft-fail: mark paid on bookings only
+          console.warn('[PaymentHook] soft-fail ON — bookings.payment_status set without full accounting');
+          await pg.query(
+            `UPDATE bookings SET payment_status='paid', balance_pending=0,
+             payment_method=COALESCE($1,payment_method), payment_date=CURRENT_DATE, updated_at=NOW()
+             WHERE id=$2`,
+            [payment_method || null, id]
+          );
+        }
+      } else {
+        // Hook disabled: simple update only
+        await pg.query(
+          `UPDATE bookings SET payment_status='paid', balance_pending=0,
+           payment_method=COALESCE($1,payment_method), payment_date=CURRENT_DATE, updated_at=NOW()
+           WHERE id=$2`,
+          [payment_method || null, id]
+        );
+      }
+
+      await pg.query('COMMIT');
+      res.json({ ok: true, booking_id: id, payment_status: 'paid', ...(hookResult || {}) });
+    } catch(err) {
+      await pg.query('ROLLBACK');
+      res.status(500).json({ error: err.message });
+    } finally { pg.release(); }
   });
 
   // POST /api/bookings/:id/mark-confirmed
