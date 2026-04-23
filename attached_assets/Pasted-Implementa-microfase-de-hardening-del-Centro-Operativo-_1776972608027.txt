@@ -1,0 +1,120 @@
+Implementa microfase de hardening del **Centro Operativo Nadaki**.
+
+Objetivo:
+mejorar adopción, trazabilidad de uso y utilidad operativa del módulo recién creado, sin abrir una fase grande ni tocar backend innecesariamente.
+
+## ALCANCE EXACTO
+
+### 1. Botón visible hacia Centro Operativo en executive.html
+
+* añadir un botón o CTA visible y elegante en `executive.html`
+* debe enlazar a `/operational-center.html`
+* integrarse visualmente con el estilo existente
+* no rediseñar la página
+* additive only
+
+### 2. Analytics simples de uso del Centro Operativo
+
+Registrar de forma mínima y segura:
+
+* búsquedas ejecutadas en el buscador
+* quick actions clicadas
+* clicks a rutas desde FAQ/cards
+
+Preferencia:
+
+* client-side con `localStorage` si no hace falta backend
+* si ya existe un endpoint o patrón simple de tracking reutilizable, usarlo
+* no crear sistema grande de analytics
+
+Métricas mínimas a guardar:
+
+* término buscado
+* ruta clicada
+* timestamp
+* contador acumulado
+
+### 3. Sección pequeña “Últimos cambios del sistema”
+
+Dentro de `operational-center.html` añadir una sección compacta llamada:
+**Últimos cambios del sistema**
+
+Debe mostrar una lista visual de cambios recientes relevantes, por ejemplo:
+
+* Contabilidad V1/V2 cerrada
+* Cobros automáticos V1 activos
+* Reconciliación bancaria V1 activa
+* Dynamic Pricing básico activo
+* Calendar 2.0 activo
+
+No hardcodear texto desordenado.
+Presentarlo como lista premium con fecha/estado/badge.
+
+---
+
+## REGLAS
+
+1. no crear backend nuevo salvo necesidad extrema
+2. no rediseñar executive ni operational-center completos
+3. no tocar otras páginas fuera de:
+
+   * `public/executive.html`
+   * `public/operational-center.html`
+   * `public/operational-center.js`
+   * `public/operational-center.css` si hace falta
+4. additive only
+5. mantener consola limpia
+6. mantener runner verde
+7. respuesta compacta
+
+---
+
+## DETALLES DE IMPLEMENTACIÓN
+
+### Botón en executive.html
+
+* ubicación recomendada: hero/header superior o cerca de acciones rápidas
+* texto sugerido:
+
+  * `Centro Operativo`
+  * o `Abrir Centro Operativo`
+* con icono si el sistema ya usa iconos
+
+### Analytics mínimos
+
+Si usas localStorage:
+
+* guardar estructura tipo:
+
+```json
+{
+  "searches": [{ "term": "cobrar balance", "ts": "..." }],
+  "clicks": [{ "target": "/accounting.html", "label": "Ir a Cobros", "ts": "..." }]
+}
+```
+
+* mantener también contadores agregados si es útil
+
+### Últimos cambios
+
+Presentar 5–8 items con:
+
+* título
+* estado/badge
+* fecha simple o etiqueta tipo “Activo”
+* texto corto
+
+---
+
+## ENTREGA
+
+1. archivos tocados
+2. ubicación del botón en executive
+3. estrategia de analytics usada
+4. evidencia de búsqueda/clicks registrados
+5. sección “Últimos cambios” añadida
+6. consola / runner
+7. riesgos
+8. veredicto PASS o BLOCKED
+
+No avances a nuevas fases ni a SaaS en esta iteración.
