@@ -1430,6 +1430,44 @@
                     </tbody>
                 </table>
             </div>
+
+            <!-- V2.1B — Extracto sin Conciliar -->
+            <div id="unmatched-panel" style="margin-top:28px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
+                    <h2 style="margin:0;font-size:16px;font-weight:700;color:#1e293b;">
+                        Extracto Bancario Sin Conciliar
+                    </h2>
+                    <div style="display:flex;gap:8px;">
+                        <button class="action-btn btn-edit" onclick="loadUnmatched()" data-testid="button-refresh-unmatched"
+                                style="font-size:12px;padding:5px 13px;">Refrescar</button>
+                        <button class="action-btn btn-match" onclick="runAutoMatch()" data-testid="button-run-automatch"
+                                style="font-size:12px;padding:5px 13px;">Auto-Match</button>
+                    </div>
+                </div>
+
+                <!-- KPI strip -->
+                <div id="unmatched-kpi" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;"></div>
+
+                <!-- Feedback notice -->
+                <div id="unmatched-notice" style="display:none;padding:8px 14px;border-radius:6px;font-size:13px;margin-bottom:10px;"></div>
+
+                <div class="table-container" style="margin-top:0;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Monto</th>
+                                <th>Descripción</th>
+                                <th>Referencia</th>
+                                <th>Motivo probable</th>
+                            </tr>
+                        </thead>
+                        <tbody id="unmatched-tbody" data-testid="table-unmatched">
+                            <tr><td colspan="5" class="empty-state">Cargando…</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
 
         <!-- Import Tab -->
@@ -3726,6 +3764,115 @@
           el.style.display = 'block';
           setTimeout(()=>{ el.style.display='none'; }, 4000);
         }
+
+        // ── V2.1B — Extracto sin Conciliar ──────────────────────────────────
+
+        function _inferReason(row, allRows) {
+          // Duplicate import: same amount + description + date appears > 1 time
+          const dupes = allRows.filter(r =>
+            r.id !== row.id &&
+            r.amount === row.amount &&
+            r.description === row.description &&
+            String(r.statement_date).slice(0,10) === String(row.statement_date).slice(0,10)
+          );
+          if (dupes.length > 0) return { label: 'Duplicado importación', cls: 'badge-adjustment', key: 'duplicate_import_suspected' };
+
+          // Ambiguous: same amount + date (but different description) → multiple tx candidates
+          const sameAmtDate = allRows.filter(r =>
+            r.id !== row.id &&
+            Math.abs(parseFloat(r.amount) - parseFloat(row.amount)) <= 1 &&
+            Math.abs(new Date(r.statement_date) - new Date(row.statement_date)) <= 2 * 86400000
+          );
+          if (sameAmtDate.length > 0) return { label: 'Ambiguo (monto duplicado)', cls: 'badge-suggested', key: 'ambiguous' };
+
+          return { label: 'Sin candidato', cls: 'badge-unmatched', key: 'no_candidate' };
+        }
+
+        function _unmatchedNotice(msg, color) {
+          const el = document.getElementById('unmatched-notice');
+          const bg = { green:'#f0fdf4', red:'#fef2f2', blue:'#eff6ff' };
+          const tx = { green:'#065f46', red:'#991b1b', blue:'#1e40af' };
+          el.style.background  = bg[color] || bg.blue;
+          el.style.color       = tx[color] || tx.blue;
+          el.style.border      = `1px solid ${color === 'green' ? '#bbf7d0' : color === 'red' ? '#fecaca' : '#bfdbfe'}`;
+          el.style.borderRadius = '6px';
+          el.textContent = msg;
+          el.style.display = 'block';
+          setTimeout(() => { el.style.display = 'none'; }, 5000);
+        }
+
+        async function loadUnmatched() {
+          const tbody = document.getElementById('unmatched-tbody');
+          const kpi   = document.getElementById('unmatched-kpi');
+          if (!tbody) return;
+          tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Cargando…</td></tr>';
+          if (kpi) kpi.innerHTML = '';
+          try {
+            const d = await fetch('/api/bank/unmatched').then(r => r.json());
+            if (!d.ok) throw new Error(d.error || 'Error');
+            const rows = d.items || [];
+
+            // KPI strip
+            const counts = { no_candidate: 0, ambiguous: 0, duplicate_import_suspected: 0 };
+            rows.forEach(r => { const reason = _inferReason(r, rows); counts[reason.key]++; });
+            const kpiDefs = [
+              { label: 'Total sin match', val: rows.length,                        bg:'#fef2f2', tx:'#991b1b' },
+              { label: 'Sin candidato',   val: counts.no_candidate,                bg:'#fef2f2', tx:'#7f1d1d' },
+              { label: 'Ambiguos',        val: counts.ambiguous,                   bg:'#fffbeb', tx:'#92400e' },
+              { label: 'Posibles dupes',  val: counts.duplicate_import_suspected,  bg:'#f0f9ff', tx:'#075985' },
+            ];
+            if (kpi) kpi.innerHTML = kpiDefs.map(k =>
+              `<div style="background:${k.bg};color:${k.tx};padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;min-width:110px;text-align:center;">
+                <div style="font-size:20px;font-weight:800;">${k.val}</div>
+                <div style="font-size:11px;margin-top:2px;">${k.label}</div>
+              </div>`
+            ).join('');
+
+            // Table rows
+            if (rows.length === 0) {
+              tbody.innerHTML = '<tr><td colspan="5" class="empty-state" style="color:#16a34a;">Sin movimientos pendientes — todo conciliado</td></tr>';
+              return;
+            }
+            tbody.innerHTML = rows.map(r => {
+              const reason = _inferReason(r, rows);
+              const date   = String(r.statement_date).slice(0,10);
+              const amt    = parseFloat(r.amount).toLocaleString('en-US',{style:'currency',currency:'USD'});
+              const desc   = (r.description||'').slice(0, 60) + ((r.description||'').length > 60 ? '…' : '');
+              const ref    = r.reference_number || '—';
+              return `<tr data-testid="row-unmatched-${r.id}">
+                <td>${date}</td>
+                <td style="font-weight:600">${amt}</td>
+                <td title="${(r.description||'').replace(/"/g,'&quot;')}">${desc}</td>
+                <td style="font-family:monospace;font-size:12px">${ref}</td>
+                <td><span class="badge ${reason.cls}" data-testid="badge-reason-${r.id}">${reason.label}</span></td>
+              </tr>`;
+            }).join('');
+          } catch(e) {
+            tbody.innerHTML = `<tr><td colspan="5" class="empty-state" style="color:#dc2626;">Error: ${e.message}</td></tr>`;
+          }
+        }
+
+        async function runAutoMatch() {
+          const btn = document.querySelector('[data-testid="button-run-automatch"]');
+          if (btn) { btn.disabled = true; btn.textContent = 'Procesando…'; }
+          try {
+            const d = await fetch('/api/bank/auto-match', {
+              method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'
+            }).then(r => r.json());
+            if (!d.ok) throw new Error(d.error || 'Error');
+            _unmatchedNotice(`Auto-Match completado: ${d.matched} conciliado(s), ${d.skipped} sin match`, 'green');
+            await loadUnmatched();
+          } catch(e) {
+            _unmatchedNotice('Error en Auto-Match: ' + e.message, 'red');
+          } finally {
+            if (btn) { btn.disabled = false; btn.textContent = 'Auto-Match'; }
+          }
+        }
+
+        // Cargar automáticamente al activar el tab Reconciliación
+        document.querySelectorAll('.tab[data-tab="reconciliation"]').forEach(btn => {
+          btn.addEventListener('click', () => { setTimeout(loadUnmatched, 150); });
+        });
 
     </script>
 
