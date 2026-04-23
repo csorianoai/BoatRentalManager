@@ -1644,6 +1644,7 @@ async function initializeDatabase() {
       `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS balance_pending NUMERIC(10,2) DEFAULT 0`,
       `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS is_manual BOOLEAN DEFAULT FALSE`,
       `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMP`,
+      `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS reminder_count INTEGER DEFAULT 0`,
       `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`,
     ];
     for (const sql of bookingCols) {
@@ -5171,23 +5172,40 @@ cron.schedule('0 0 * * *', async () => {
 });
 
 // ========================================
-// ⏰ V2.5 — COBROS AUTOMÁTICOS (cron diario 9:00 AM)
+// ⏰ V2.6 — COBROS AUTOMÁTICOS (cron diario 9:00 AM America/New_York)
 // ========================================
-console.log('💰 Scheduling daily cobros reminder check (V2.5)...');
+
+// V2.6-B: Phone normalization — handles US/PR formats, strips dashes
+function normalizePhone(phone) {
+  if (!phone) return null;
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length === 10) return '+1' + digits;                              // 7875550001 → +17875550001
+  if (digits.length === 11 && digits.startsWith('1')) return '+' + digits;    // 13055550100 → +13055550100
+  if (digits.length >= 10 && phone.startsWith('+')) return '+' + digits;      // +1-305-555-0100 → +13055550100
+  return null;
+}
+
+console.log('💰 Scheduling daily cobros reminder check (V2.6 — America/New_York)...');
 cron.schedule('0 9 * * *', async () => {
-  console.log('💰 [V2.5] Running cobros reminder check...');
+  console.log('💰 [V2.6] Running cobros reminder check (9 AM ET)...');
   try {
     const twilioSid   = process.env.TWILIO_SID || '';
     const twilioToken = process.env.TWILIO_AUTH_TOKEN || '';
     if (!twilioSid || !twilioToken || !twilioSid.startsWith('AC')) {
-      console.log('💰 [V2.5] Twilio not configured — skipping cobros reminders');
+      console.log('💰 [V2.6] action=skipped reason=twilio_not_configured');
       return;
     }
     const client = require('twilio')(twilioSid, twilioToken);
-    const today  = moment().format('YYYY-MM-DD');
-    const plus2  = moment().add(2, 'days').format('YYYY-MM-DD');
+    // V2.6-A: dates in Eastern time without moment-timezone
+    const etDate = (offsetDays = 0) => {
+      const d = new Date(); d.setDate(d.getDate() + offsetDays);
+      const p = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(d);
+      return `${p.find(x=>x.type==='year').value}-${p.find(x=>x.type==='month').value}-${p.find(x=>x.type==='day').value}`;
+    };
+    const today = etDate(0);
+    const plus2 = etDate(2);
 
-    // Case A: booking 48h from now with balance; Case B: booking today with balance
+    // Remove phone filter from SQL — normalizePhone handles validation per row
     const result = await pool.query(`
       SELECT id, customer_name, customer_phone,
              booking_date,
@@ -5197,7 +5215,8 @@ cron.schedule('0 9 * * *', async () => {
                COALESCE(balance_pending, 0),
                GREATEST(total_amount - COALESCE(deposit_amount, 0), 0)
              ) AS effective_balance,
-             reminder_sent_at
+             reminder_sent_at,
+             COALESCE(reminder_count, 0) AS reminder_count
         FROM bookings
        WHERE status NOT IN ('cancelled', 'completed')
          AND booking_date IN ($1, $2)
@@ -5206,43 +5225,47 @@ cron.schedule('0 9 * * *', async () => {
                GREATEST(total_amount - COALESCE(deposit_amount, 0), 0)
              ) > 0
          AND customer_phone IS NOT NULL
-         AND customer_phone LIKE '+%'
+         AND customer_phone != ''
          AND (reminder_sent_at IS NULL
               OR reminder_sent_at < NOW() - INTERVAL '24 hours')
     `, [today, plus2]);
 
-    console.log(`💰 [V2.5] Found ${result.rows.length} bookings needing cobro reminder`);
+    console.log(`💰 [V2.6] Found ${result.rows.length} candidate bookings`);
 
     for (const b of result.rows) {
+      const normalizedPhone = normalizePhone(b.customer_phone);
+      if (!normalizedPhone) {
+        console.log(`💰 [V2.6] action=skipped booking_id=${b.id} raw_phone=${b.customer_phone} reason=invalid_phone`);
+        continue;
+      }
       try {
-        const isToday = b.booking_date.toISOString
-          ? b.booking_date.toISOString().startsWith(today)
-          : String(b.booking_date).startsWith(today);
-        const label = isToday ? 'hoy' : `el ${moment(b.booking_date).format('D [de] MMMM')}`;
+        const isToday = String(b.booking_date).startsWith(today);
+        const label   = isToday ? 'hoy' : `el ${moment(b.booking_date).format('D [de] MMMM')}`;
         const balance = parseFloat(b.effective_balance).toFixed(0);
+        const newCount = parseInt(b.reminder_count) + 1;
         const message = `Hola ${b.customer_name}, tienes un saldo pendiente de $${balance} con Nadaki Excursions. Tu reserva es ${label}. Por favor completa el pago antes de la salida. Gracias!`;
 
         await client.messages.create({
           body: message,
           from: 'whatsapp:+14155238886',
-          to: `whatsapp:${b.customer_phone}`,
+          to: `whatsapp:${normalizedPhone}`,
         });
 
         await pool.query(
-          `UPDATE bookings SET reminder_sent_at = NOW() WHERE id = $1`,
-          [b.id]
+          `UPDATE bookings SET reminder_sent_at = NOW(), reminder_count = $1 WHERE id = $2`,
+          [newCount, b.id]
         );
-        console.log(`💰 [V2.5] Reminder sent → ${b.customer_name} (${b.customer_phone}) balance=$${balance}`);
+        console.log(`💰 [V2.6] action=sent booking_id=${b.id} normalized_phone=${normalizedPhone} balance=$${balance} reminder_count=${newCount}`);
       } catch (e) {
-        console.error(`💰 [V2.5] Error sending to ${b.customer_name}:`, e.message);
+        console.error(`💰 [V2.6] action=error booking_id=${b.id} error=${e.message}`);
       }
-      await new Promise(r => setTimeout(r, 1500)); // rate limit
+      await new Promise(r => setTimeout(r, 1500));
     }
-    console.log('💰 [V2.5] Cobros reminder check complete');
+    console.log('💰 [V2.6] Cobros reminder check complete');
   } catch (e) {
-    console.error('💰 [V2.5] Cron error:', e.message);
+    console.error('💰 [V2.6] Cron error:', e.message);
   }
-});
+}, { timezone: 'America/New_York' });
 
 // ========================================
 // ⚡ FASE 7: PRICING MANAGEMENT ENDPOINTS
@@ -13116,7 +13139,7 @@ app.patch('/api/booking-receivables/:id/cancel', isAuthenticated, async (req, re
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ── V2.5: Manual cobro reminder endpoint ──────────────────────────────────
+// ── V2.6: Manual cobro reminder endpoint (hardened) ──────────────────────
 app.post('/api/cobros/send-reminder/:bookingId', isAuthenticated, async (req, res) => {
   try {
     const { bookingId } = req.params;
@@ -13128,7 +13151,8 @@ app.post('/api/cobros/send-reminder/:bookingId', isAuthenticated, async (req, re
                COALESCE(balance_pending, 0),
                GREATEST(total_amount - COALESCE(deposit_amount, 0), 0)
              ) AS effective_balance,
-             reminder_sent_at
+             reminder_sent_at,
+             COALESCE(reminder_count, 0) AS reminder_count
         FROM bookings WHERE id = $1
     `, [bookingId]);
 
@@ -13137,37 +13161,50 @@ app.post('/api/cobros/send-reminder/:bookingId', isAuthenticated, async (req, re
 
     // Anti-spam: skip if sent < 24h ago
     if (b.reminder_sent_at && new Date(b.reminder_sent_at) > new Date(Date.now() - 24*3600*1000)) {
+      console.log(`💰 [V2.6] action=skipped booking_id=${bookingId} reason=reminder_sent_recently`);
       return res.json({ ok: true, action: 'skipped', reason: 'reminder_sent_recently' });
     }
 
     const balance = parseFloat(b.effective_balance || 0);
-    if (balance <= 0) return res.json({ ok: true, action: 'skipped', reason: 'no_balance_pending' });
+    if (balance <= 0) {
+      console.log(`💰 [V2.6] action=skipped booking_id=${bookingId} reason=no_balance_pending`);
+      return res.json({ ok: true, action: 'skipped', reason: 'no_balance_pending' });
+    }
 
-    if (!b.customer_phone || !b.customer_phone.startsWith('+')) {
-      return res.json({ ok: true, action: 'skipped', reason: 'invalid_or_missing_phone' });
+    // V2.6-B: normalize phone
+    const normalizedPhone = normalizePhone(b.customer_phone);
+    if (!normalizedPhone) {
+      console.log(`💰 [V2.6] action=skipped booking_id=${bookingId} raw_phone=${b.customer_phone} reason=invalid_phone`);
+      return res.json({ ok: true, action: 'skipped', reason: 'invalid_phone', raw_phone: b.customer_phone });
     }
 
     const twilioSid   = process.env.TWILIO_SID || '';
     const twilioToken = process.env.TWILIO_AUTH_TOKEN || '';
     if (!twilioSid || !twilioToken || !twilioSid.startsWith('AC')) {
+      console.log(`💰 [V2.6] action=skipped booking_id=${bookingId} reason=twilio_not_configured`);
       return res.json({ ok: true, action: 'skipped', reason: 'twilio_not_configured' });
     }
 
     const dateLabel = moment(b.booking_date).format('D [de] MMMM');
-    const message = `Hola ${b.customer_name}, tienes un saldo pendiente de $${balance.toFixed(0)} con Nadaki Excursions. Tu reserva es el ${dateLabel}. Por favor completa el pago antes de la salida. Gracias!`;
+    const message   = `Hola ${b.customer_name}, tienes un saldo pendiente de $${balance.toFixed(0)} con Nadaki Excursions. Tu reserva es el ${dateLabel}. Por favor completa el pago antes de la salida. Gracias!`;
 
-    const client = require('twilio')(twilioSid, twilioToken);
+    const client   = require('twilio')(twilioSid, twilioToken);
     await client.messages.create({
       body: message,
       from: 'whatsapp:+14155238886',
-      to: `whatsapp:${b.customer_phone}`,
+      to: `whatsapp:${normalizedPhone}`,
     });
 
-    await pool.query(`UPDATE bookings SET reminder_sent_at = NOW() WHERE id = $1`, [bookingId]);
-    console.log(`💰 [V2.5] Manual reminder sent → ${b.customer_name} balance=$${balance.toFixed(0)}`);
-    res.json({ ok: true, action: 'sent', reason: 'reminder_sent', customer: b.customer_name, balance });
+    // V2.6-C: update both reminder_sent_at and reminder_count
+    const newCount = parseInt(b.reminder_count) + 1;
+    await pool.query(
+      `UPDATE bookings SET reminder_sent_at = NOW(), reminder_count = $1 WHERE id = $2`,
+      [newCount, bookingId]
+    );
+    console.log(`💰 [V2.6] action=sent booking_id=${bookingId} normalized_phone=${normalizedPhone} balance=$${balance.toFixed(0)} reminder_count=${newCount}`);
+    res.json({ ok: true, action: 'sent', reason: 'reminder_sent', customer: b.customer_name, balance, normalized_phone: normalizedPhone, reminder_count: newCount });
   } catch (err) {
-    console.error('[V2.5] send-reminder error:', err.message);
+    console.error(`💰 [V2.6] action=error booking_id=${req.params.bookingId} error=${err.message}`);
     res.status(500).json({ ok: false, reason: err.message });
   }
 });
