@@ -590,6 +590,127 @@
 
   </div>
 
+
+  <div class="oc-divider"></div>
+
+  <!-- ══ ÚLTIMOS CAMBIOS ══ -->
+  <div class="oc-section-hd">
+    <h2>Últimos cambios del sistema</h2>
+    <p>Módulos activados y actualizaciones recientes</p>
+  </div>
+
+  <div class="oc-changelog" data-testid="changelog-section">
+
+    <div class="oc-cl-item" data-testid="cl-accounting-v2">
+      <div class="oc-cl-dot bg-green"></div>
+      <div class="oc-cl-body">
+        <div class="oc-cl-top">
+          <span class="oc-cl-title">Contabilidad V1/V2 — Cierre formal</span>
+          <span class="oc-cl-badge badge-green">Cerrado</span>
+        </div>
+        <div class="oc-cl-desc">7 flujos E2E verificados. Anti-duplication guards activos. Trazabilidad booking → AR → transacción.</div>
+        <div class="oc-cl-meta">Abr 2026 · <a href="/accounting.html" class="oc-cl-link" data-track="/accounting.html|Abrir Contabilidad">Abrir módulo</a></div>
+      </div>
+    </div>
+
+    <div class="oc-cl-item" data-testid="cl-cobros-v2">
+      <div class="oc-cl-dot bg-blue"></div>
+      <div class="oc-cl-body">
+        <div class="oc-cl-top">
+          <span class="oc-cl-title">Cobros automáticos V2 — Cron activo</span>
+          <span class="oc-cl-badge badge-blue">Activo</span>
+        </div>
+        <div class="oc-cl-desc">Cron diario 9 AM ET con timezone America/New_York. reminder_count, normalizePhone y logging estructurado.</div>
+        <div class="oc-cl-meta">Abr 2026 · <a href="/reports.html#f1" class="oc-cl-link" data-track="/reports.html#f1|Ver Dashboard Cobros">Ver en Dashboard</a></div>
+      </div>
+    </div>
+
+    <div class="oc-cl-item" data-testid="cl-cobros-kpi">
+      <div class="oc-cl-dot bg-blue"></div>
+      <div class="oc-cl-body">
+        <div class="oc-cl-top">
+          <span class="oc-cl-title">Revenue Control Layer V2.7</span>
+          <span class="oc-cl-badge badge-blue">Activo</span>
+        </div>
+        <div class="oc-cl-desc">KPI bar de cobros (4 indicadores), badges RIESGO/BROKER/SIN TEL, filtros rápidos en Tab Cobros.</div>
+        <div class="oc-cl-meta">Abr 2026 · <a href="/reports.html#f1" class="oc-cl-link" data-track="/reports.html#f1|Tab Cobros">Tab Cobros</a></div>
+      </div>
+    </div>
+
+    <div class="oc-cl-item" data-testid="cl-reconciliation">
+      <div class="oc-cl-dot bg-teal"></div>
+      <div class="oc-cl-body">
+        <div class="oc-cl-top">
+          <span class="oc-cl-title">Reconciliación bancaria V1 — Activa</span>
+          <span class="oc-cl-badge badge-teal">Activo</span>
+        </div>
+        <div class="oc-cl-desc">Auto-match por monto + fecha. Import CSV. 4 registros matched, 7 unmatched disponibles para revisión.</div>
+        <div class="oc-cl-meta">Abr 2026 · <a href="/accounting.html#reconciliation" class="oc-cl-link" data-track="/accounting.html#reconciliation|Abrir Conciliación">Abrir</a></div>
+      </div>
+    </div>
+
+    <div class="oc-cl-item" data-testid="cl-dynamic-pricing">
+      <div class="oc-cl-dot bg-orange"></div>
+      <div class="oc-cl-body">
+        <div class="oc-cl-top">
+          <span class="oc-cl-title">Dynamic Pricing — Motor activo</span>
+          <span class="oc-cl-badge badge-orange">Activo</span>
+        </div>
+        <div class="oc-cl-desc">Ajuste por ocupación, fin de semana y lead time. Reasons explícitos en cada recomendación de precio.</div>
+        <div class="oc-cl-meta">Abr 2026 · <a href="/dynamic-pricing.html" class="oc-cl-link" data-track="/dynamic-pricing.html|Ver Pricing">Ver Pricing</a></div>
+      </div>
+    </div>
+
+    <div class="oc-cl-item" data-testid="cl-centro-operativo">
+      <div class="oc-cl-dot bg-purple"></div>
+      <div class="oc-cl-body">
+        <div class="oc-cl-top">
+          <span class="oc-cl-title">Centro Operativo Nadaki — Lanzado</span>
+          <span class="oc-cl-badge badge-purple">Nuevo</span>
+        </div>
+        <div class="oc-cl-desc">Guía visual, buscador por intención, 8 módulos, 3 flujos operativos y 9 FAQs accionables.</div>
+        <div class="oc-cl-meta">Abr 2026 · Esta página</div>
+      </div>
+    </div>
+
+    <div class="oc-cl-item" data-testid="cl-alert-engine">
+      <div class="oc-cl-dot bg-rose"></div>
+      <div class="oc-cl-body">
+        <div class="oc-cl-top">
+          <span class="oc-cl-title">Alert Engine V2.3 — Monitoreo activo</span>
+          <span class="oc-cl-badge badge-rose">Activo</span>
+        </div>
+        <div class="oc-cl-desc">Alertas por ingresos sin conciliar, bank_unmatched y pricing_gap. Visibles en Tab Alertas del Dashboard.</div>
+        <div class="oc-cl-meta">Abr 2026 · <a href="/reports.html" class="oc-cl-link" data-track="/reports.html|Ver Alertas">Ver alertas</a></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══ USAGE STATS (visible solo si hay datos) ══ -->
+  <div id="oc-usage-panel" style="display:none">
+    <div class="oc-divider"></div>
+    <div class="oc-section-hd">
+      <h2>Actividad de uso</h2>
+      <p>Búsquedas y accesos registrados en este dispositivo</p>
+    </div>
+    <div class="oc-usage-row" data-testid="usage-panel">
+      <div class="oc-usage-stat" id="stat-searches">
+        <div class="oc-usage-val" id="val-searches">0</div>
+        <div class="oc-usage-lbl">Búsquedas</div>
+      </div>
+      <div class="oc-usage-stat" id="stat-clicks">
+        <div class="oc-usage-val" id="val-clicks">0</div>
+        <div class="oc-usage-lbl">Accesos a módulos</div>
+      </div>
+      <div class="oc-usage-stat" id="stat-top">
+        <div class="oc-usage-val" id="val-top">—</div>
+        <div class="oc-usage-lbl">Módulo más usado</div>
+      </div>
+      <button class="oc-btn oc-btn-ghost oc-btn-sm" onclick="ocAnalytics.clearAll()" data-testid="btn-clear-analytics" style="align-self:center">Limpiar datos</button>
+    </div>
+  </div>
+
 </div><!-- /oc-page -->
 
 <script src="/operational-center.js"></script>

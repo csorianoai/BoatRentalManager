@@ -250,8 +250,119 @@ function escH(s) {
   return String(s || '').replace(/[<>&"']/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
+/* ── ANALYTICS (localStorage, no backend) ── */
+const ocAnalytics = (() => {
+  const KEY = 'oc_analytics_v1';
+
+  function load() {
+    try {
+      return JSON.parse(localStorage.getItem(KEY) || '{"searches":[],"clicks":[]}');
+    } catch (_) {
+      return { searches: [], clicks: [] };
+    }
+  }
+
+  function save(data) {
+    try {
+      // Keep max 200 entries each to avoid localStorage bloat
+      data.searches = data.searches.slice(-200);
+      data.clicks   = data.clicks.slice(-200);
+      localStorage.setItem(KEY, JSON.stringify(data));
+    } catch (_) { /* storage full or blocked — silent */ }
+  }
+
+  function trackSearch(term) {
+    if (!term || term.length < 2) return;
+    const data = load();
+    data.searches.push({ term: term.toLowerCase().trim(), ts: new Date().toISOString() });
+    save(data);
+    updateUsagePanel(data);
+  }
+
+  function trackClick(target, label) {
+    const data = load();
+    data.clicks.push({ target, label: label || target, ts: new Date().toISOString() });
+    save(data);
+    updateUsagePanel(data);
+  }
+
+  function getTopModule(clicks) {
+    if (!clicks.length) return '—';
+    const counts = {};
+    clicks.forEach(c => {
+      const key = c.target.split('#')[0].replace(/^\//, '').replace('.html', '') || 'home';
+      counts[key] = (counts[key] || 0) + 1;
+    });
+    return Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
+  }
+
+  function updateUsagePanel(data) {
+    const panel = document.getElementById('oc-usage-panel');
+    if (!panel) return;
+    const total = data.searches.length + data.clicks.length;
+    if (total === 0) { panel.style.display = 'none'; return; }
+    panel.style.display = 'block';
+    const vs = document.getElementById('val-searches');
+    const vc = document.getElementById('val-clicks');
+    const vt = document.getElementById('val-top');
+    if (vs) vs.textContent = data.searches.length;
+    if (vc) vc.textContent = data.clicks.length;
+    if (vt) vt.textContent = getTopModule(data.clicks);
+  }
+
+  function clearAll() {
+    try { localStorage.removeItem(KEY); } catch (_) {}
+    const panel = document.getElementById('oc-usage-panel');
+    if (panel) panel.style.display = 'none';
+  }
+
+  function init() {
+    updateUsagePanel(load());
+  }
+
+  return { trackSearch, trackClick, clearAll, init };
+})();
+
+/* ── CLICK TRACKING (event delegation) ── */
+function initClickTracking() {
+  document.addEventListener('click', (e) => {
+    // Track quick-action links
+    const qa = e.target.closest('.oc-qa-item');
+    if (qa) {
+      ocAnalytics.trackClick(qa.getAttribute('href') || '', qa.querySelector('.oc-qa-label')?.textContent || '');
+      return;
+    }
+    // Track oc-btn / faq links
+    const btn = e.target.closest('.oc-btn[href], .oc-cl-link[data-track]');
+    if (btn) {
+      const track = btn.getAttribute('data-track');
+      if (track) {
+        const [target, label] = track.split('|');
+        ocAnalytics.trackClick(target, label);
+      } else {
+        ocAnalytics.trackClick(btn.getAttribute('href') || '', btn.textContent.trim());
+      }
+    }
+  });
+}
+
 /* ── INIT ── */
 document.addEventListener('DOMContentLoaded', () => {
   initSearch();
   initFAQ();
+  initClickTracking();
+  ocAnalytics.init();
+
+  // Wire search tracking into the existing input listener
+  const input = document.getElementById('oc-search-input');
+  if (input) {
+    let searchTimer;
+    input.addEventListener('input', () => {
+      clearTimeout(searchTimer);
+      const term = input.value.trim();
+      if (term.length >= 2) {
+        searchTimer = setTimeout(() => ocAnalytics.trackSearch(term), 1200);
+      }
+    });
+  }
 });

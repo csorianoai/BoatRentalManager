@@ -433,6 +433,84 @@ body {
   .oc-qa-grid { grid-template-columns: 1fr 1fr; }
 }
 
+/* ── CHANGELOG ── */
+.oc-changelog {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+}
+.oc-cl-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 16px 20px;
+  border-bottom: 1px solid #f1f5f9;
+  transition: background .1s;
+}
+.oc-cl-item:last-child { border-bottom: none; }
+.oc-cl-item:hover { background: #fafbfc; }
+.oc-cl-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 5px;
+}
+.oc-cl-body { flex: 1; min-width: 0; }
+.oc-cl-top {
+  display: flex; align-items: center;
+  gap: 10px; flex-wrap: wrap;
+  margin-bottom: 3px;
+}
+.oc-cl-title {
+  font-size: 13px; font-weight: 700; color: #1a1a2e;
+}
+.oc-cl-badge {
+  font-size: 10px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .4px;
+  padding: 2px 7px; border-radius: 20px;
+  white-space: nowrap;
+}
+.badge-green  { background: #d1fae5; color: #065f46; }
+.badge-blue   { background: #dbeafe; color: #1d4ed8; }
+.badge-teal   { background: #cffafe; color: #164e63; }
+.badge-orange { background: #fef3c7; color: #92400e; }
+.badge-purple { background: #ede9fe; color: #5b21b6; }
+.badge-rose   { background: #ffe4e6; color: #9f1239; }
+.oc-cl-desc {
+  font-size: 12px; color: #64748b; margin-bottom: 4px; line-height: 1.4;
+}
+.oc-cl-meta {
+  font-size: 11px; color: #9ca3af;
+}
+.oc-cl-link {
+  color: #0066cc; text-decoration: none; font-weight: 600;
+}
+.oc-cl-link:hover { text-decoration: underline; }
+
+/* ── USAGE STATS ── */
+.oc-usage-row {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 18px 24px;
+  flex-wrap: wrap;
+}
+.oc-usage-stat { display: flex; flex-direction: column; gap: 2px; }
+.oc-usage-val {
+  font-size: 24px; font-weight: 800; color: #0066cc; line-height: 1;
+}
+.oc-usage-lbl {
+  font-size: 11px; color: #94a3b8; text-transform: uppercase;
+  letter-spacing: .4px; font-weight: 600;
+}
+
 /* ── HIGHLIGHT on scroll ── */
 .oc-highlight {
   animation: ocPulse 1.4s ease-out;
