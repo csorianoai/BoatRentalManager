@@ -1,0 +1,101 @@
+Implementa Fase V2.1 — Reconciliación bancaria mínima.
+
+Objetivo:
+importar extracto CSV, hacer auto-match determinista contra transactions y marcar reconciled.
+
+NO construir sistema completo.
+NO crear tablas nuevas si no es estrictamente necesario.
+Reutilizar bank_statements y transactions existentes.
+
+## PASO 1 — Auditar estructura real
+
+Antes de escribir código:
+
+* confirmar columnas reales de:
+
+  * bank_statements
+  * transactions
+* confirmar tipo de:
+
+  * amount
+  * date
+  * reference/notes
+* adaptar nombres reales
+
+## PASO 2 — Endpoint import CSV
+
+Crear:
+POST /api/bank/import-csv
+
+* aceptar CSV (multipart o text)
+* parsear columnas:
+
+  * date
+  * amount
+  * description
+  * reference (si existe)
+* insertar en bank_statements:
+
+  * amount
+  * date
+  * description
+  * reconciliation_status = 'unmatched'
+  * classification_status = 'unclassified'
+  * matched_transaction_id = NULL
+
+## PASO 3 — Endpoint auto-match
+
+Crear:
+POST /api/bank/auto-match
+
+Para cada fila unmatched:
+
+* buscar en transactions:
+
+  * ABS(tx.amount - bank.amount) <= 1
+  * fecha dentro de ±2 días
+  * si hay referencia tipo booking:{id}, priorizarla
+
+* si EXACTAMENTE 1 candidato:
+
+  * actualizar bank_statements:
+
+    * matched_transaction_id = tx.id
+    * reconciliation_status = 'matched'
+    * classification_status = 'posted'
+  * actualizar transactions:
+
+    * reconciled = 1
+
+* si 0 o múltiples:
+
+  * no tocar
+
+## PASO 4 — Endpoint unmatched
+
+Crear:
+GET /api/bank/unmatched
+
+* devolver bank_statements donde reconciliation_status != 'matched'
+
+## REGLAS
+
+* transaccionalidad por batch
+* idempotente (no duplicar matches)
+* logging claro [BankReconcile]
+* mantener runner verde
+* additive only
+
+## ENTREGA
+
+1. archivos tocados
+2. columnas reales usadas
+3. filas importadas (test)
+4. filas matched
+5. filas unmatched
+6. runner/consola
+7. veredicto PASS/BLOCKED
+
+No implementar UI.
+No usar IA.
+No avanzar a fases siguientes.

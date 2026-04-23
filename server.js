@@ -15571,6 +15571,10 @@ const HOST = '0.0.0.0'; // Required for deployment
   const { registerBackfillRoutes } = require('./server/bookingBackfillAudit');
   registerBackfillRoutes(app, pool);
 
+  // ── Fase V2.1: Bank reconciliation ───────────────────────
+  const { registerBankReconcileRoutes } = require('./server/bankReconcile');
+  registerBankReconcileRoutes(app, pool);
+
   app.listen(PORT, HOST, () => {
     console.log(`🚀 Nadaki Excursions Backend running on ${HOST}:${PORT}`);
     console.log(`🌐 WordPress: ${WORDPRESS_DOMAIN}`);
