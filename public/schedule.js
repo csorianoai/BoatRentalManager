@@ -1412,6 +1412,79 @@ window.NadakiCalendar = (function () {
       balEl.textContent = isPaid ? 'PAGADO' : `Saldo: ${fmtMoney(bal)}`;
       balEl.className    = isPaid ? 'paid' : '';
     }
+
+    // Fase 4A: finance strip population
+    if (bk) {
+      const $ = id => document.getElementById(id);
+      // Payer type — derived from booking data (no extra fetch)
+      const payerLabel = bk.broker_id
+        ? `Broker: ${esc(bk.broker_name || bk.broker_id)}`
+        : 'Cliente directo';
+      if ($('cal2-fin-payer')) $('cal2-fin-payer').textContent = payerLabel;
+
+      // Total & pending
+      const total = parseFloat(bk.total_amount || 0);
+      const pending = parseFloat(bk.balance_pending || 0);
+      const amountText = pending > 0
+        ? `${fmtMoney(total)} (${fmtMoney(pending)} pendiente)`
+        : fmtMoney(total);
+      if ($('cal2-fin-amount')) $('cal2-fin-amount').textContent = amountText;
+
+      // Payment status badge
+      const payEl = $('cal2-fin-payment');
+      const bkIsPaid = bk.payment_status === 'paid' || pending === 0;
+      if (payEl) {
+        payEl.textContent = bkIsPaid ? 'Pagado' : `Pendiente ${fmtMoney(pending)}`;
+        payEl.className = `cal2-fin-badge ${bkIsPaid ? 'paid' : 'pending'}`;
+      }
+
+      // Deposit status — async (guarded by booking ID)
+      const snapId = currentBookingId;
+      const depEl  = $('cal2-fin-deposit');
+      const depBtn = $('cal2-qops-deposit');
+      if (depEl) {
+        depEl.textContent = '…';
+        depEl.className = 'cal2-fin-badge';
+        if (depBtn) depBtn.style.display = 'none';
+        fetch(`/api/bookings/${snapId}/deposit-status`)
+          .then(r => r.json())
+          .then(d => {
+            if (currentBookingId !== snapId) return; // stale
+            const map = {
+              deposited:              ['Depositado',           'deposited'],
+              received_not_deposited: ['Recibido sin depositar','received'],
+              not_paid:               ['Sin pago',             'not_paid'],
+              no_transaction:         ['Sin transacción',      'not_paid'],
+            };
+            const [label, cls] = map[d.deposit_status] || ['—', 'not_paid'];
+            depEl.textContent = label;
+            depEl.className = `cal2-fin-badge ${cls}`;
+            if (depBtn) depBtn.style.display =
+              d.deposit_status === 'received_not_deposited' ? '' : 'none';
+          })
+          .catch(() => { if (depEl && currentBookingId === snapId) depEl.textContent = '—'; });
+      }
+    }
+  }
+
+  // Fase 4A: mark payment as deposited from the drawer
+  async function _qopsDeposit() {
+    const id = currentBookingId;
+    if (!id) return;
+    const btn = document.getElementById('cal2-qops-deposit');
+    if (btn) btn.disabled = true;
+    try {
+      const r = await fetch(`/api/bookings/${id}/mark-deposited`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deposit_date: new Date().toISOString().slice(0, 10) }),
+      });
+      const j = await r.json();
+      if (!r.ok) { _qopsMsg(j.error || 'Error al depositar', true); return; }
+      _qopsMsg('Depósito bancario registrado');
+      _qopsRefresh(true); // refresh strip
+    } catch(e) { _qopsMsg('Error de red', true); }
+    finally { if (btn) btn.disabled = false; }
   }
 
   function _initQuickOps() {
@@ -1439,6 +1512,33 @@ window.NadakiCalendar = (function () {
       <span id="cal2-qops-msg"></span>
     `;
     mh.insertAdjacentElement('afterend', bar);
+
+    // Fase 4A: Finance strip — injected right after the QuickOps bar
+    const fin = document.createElement('div');
+    fin.id = 'cal2-finance-strip';
+    fin.setAttribute('data-testid', 'cal2-finance-strip');
+    fin.innerHTML = `
+      <div class="cal2-fin-row">
+        <span class="cal2-fin-label">Pagador</span>
+        <span id="cal2-fin-payer" class="cal2-fin-val" data-testid="fin-payer">—</span>
+      </div>
+      <div class="cal2-fin-row">
+        <span class="cal2-fin-label">Total</span>
+        <span id="cal2-fin-amount" class="cal2-fin-val" data-testid="fin-amount">—</span>
+      </div>
+      <div class="cal2-fin-row">
+        <span class="cal2-fin-label">Pago</span>
+        <span id="cal2-fin-payment" class="cal2-fin-badge" data-testid="fin-payment">—</span>
+      </div>
+      <div class="cal2-fin-row">
+        <span class="cal2-fin-label">Depósito</span>
+        <span id="cal2-fin-deposit" class="cal2-fin-badge" data-testid="fin-deposit">—</span>
+        <button id="cal2-qops-deposit" style="display:none;"
+                data-testid="btn-qops-deposit"
+                onclick="NadakiCalendar._qopsDeposit()">Depositar</button>
+      </div>
+    `;
+    bar.insertAdjacentElement('afterend', fin);
 
     // MutationObserver: detect modal open/close
     const modal = document.getElementById('booking-modal');
@@ -1522,6 +1622,6 @@ window.NadakiCalendar = (function () {
     init, switchView, setDayView, refresh, renderKPIStrip, openBooking,
     createBlock, updateBooking, resolveConflict, restoreLegacy,
     renderWeekView2, renderDayView, renderTimelineView, renderMonthView,
-    toggleConflicts, closeDrawer, _qopsPaid, _qopsCaptain, toggleBalanceFilter,
+    toggleConflicts, closeDrawer, _qopsPaid, _qopsCaptain, _qopsDeposit, toggleBalanceFilter,
   };
 }());
