@@ -621,20 +621,51 @@ function renderExpenseDetail(boats) {
 }
 
 // ── AR ────────────────────────────────────────────────────────────
+// ── V2.5: send reminder util ──────────────────────────────────────
+async function sendReminderBtn(bookingId, btnEl) {
+  if (!bookingId) { alert('Sin booking_id para este registro.'); return; }
+  const orig = btnEl.textContent;
+  btnEl.disabled = true; btnEl.textContent = '…';
+  try {
+    const r = await fetch(`/api/cobros/send-reminder/${encodeURIComponent(bookingId)}`, {
+      method: 'POST', credentials: 'include',
+    });
+    const d = await r.json();
+    if (d.action === 'sent') {
+      btnEl.textContent = '✓ Enviado';
+      btnEl.style.color = '#10b981';
+    } else {
+      btnEl.textContent = 'Omitido';
+      btnEl.title = d.reason || '';
+      btnEl.style.color = '#94a3b8';
+    }
+  } catch (e) {
+    btnEl.textContent = 'Error';
+    btnEl.style.color = '#ef4444';
+    console.error('[V2.5]', e);
+  }
+  setTimeout(() => { btnEl.textContent = orig; btnEl.disabled = false; btnEl.style.color = ''; }, 4000);
+}
+
 function renderAR(rows) {
   $('ar-meta').textContent=(rows||[]).length+' cuentas';
   if (!rows||!rows.length) { $('ar-wrap').innerHTML='<div class="empty-st">Sin AR pendiente</div>'; return; }
   const now=new Date();
   $('ar-wrap').innerHTML=`<div class="tbl-wrap"><table>
-    <thead><tr><th>Cliente / Parte</th><th>Barco</th><th class="td-right">Monto</th><th>Vence</th><th>Estado</th></tr></thead>
+    <thead><tr><th>Cliente / Parte</th><th>Barco</th><th class="td-right">Monto</th><th>Vence</th><th>Estado</th><th></th></tr></thead>
     <tbody>${rows.map(r=>{
       const overdue=r.due_date&&new Date(r.due_date)<now;
+      const bkId = r.booking_id || '';
       return `<tr>
         <td class="td-bold">${esc(r.party_name||r.client_name||'—')}</td>
         <td>${esc(r.boat_name_ref||r.boat_id||'—')}</td>
         <td class="td-right td-mono">${f$(r.amount,2)}</td>
         <td style="${overdue?'color:#ef4444;font-weight:700':''}">${fDate(r.due_date)}</td>
         <td>${overdue?'<span class="badge bg-red">Vencida</span>':'<span class="badge bg-yellow">Pendiente</span>'}</td>
+        <td><button class="btn-reminder" data-testid="btn-reminder-ar-${esc(bkId)}"
+            onclick="sendReminderBtn('${esc(bkId)}',this)"
+            style="font-size:11px;padding:2px 8px;border:1px solid #475569;border-radius:4px;cursor:pointer;background:transparent;color:#94a3b8"
+            ${!bkId?'disabled title="Sin booking_id"':''}>Recordatorio</button></td>
       </tr>`;}).join('')}
     </tbody></table></div>`;
 }
@@ -660,18 +691,23 @@ function renderUpcoming(rows) {
   $('upcoming-meta').textContent=(rows||[]).length+' próximos';
   if (!rows||!rows.length) { $('upcoming-wrap').innerHTML='<div class="empty-st">Sin próximos bookings</div>'; return; }
   $('upcoming-wrap').innerHTML=`<div class="tbl-wrap"><table>
-    <thead><tr><th>Fecha</th><th>Cliente / Broker</th><th>Barco</th><th class="td-right">Total</th><th class="td-right">Dep.</th><th class="td-right">Saldo</th><th>Estado</th></tr></thead>
+    <thead><tr><th>Fecha</th><th>Cliente / Broker</th><th>Barco</th><th class="td-right">Total</th><th class="td-right">Dep.</th><th class="td-right">Saldo</th><th>Estado</th><th></th></tr></thead>
     <tbody>${rows.map(b=>{
       const client=b.customer_name||b.broker_name||b.final_customer_name||'—';
       const dep=parseFloat(b.deposit_amount||0), total=parseFloat(b.total_amount||0), bal=total-dep;
+      const hasBal=bal>0;
       return `<tr>
         <td style="white-space:nowrap">${fDate(b.booking_date)}</td>
         <td class="td-bold">${esc(client)}</td>
         <td>${esc(b.boat_name_ref||b.boat_id||'—')}</td>
         <td class="td-right td-mono">${f$(total,2)}</td>
         <td class="td-right td-mono" style="color:#10b981">${f$(dep,2)}</td>
-        <td class="td-right td-mono" style="color:${bal>0?'#f59e0b':'#94a3b8'};font-weight:${bal>0?700:400}">${f$(bal,2)}</td>
+        <td class="td-right td-mono" style="color:${hasBal?'#f59e0b':'#94a3b8'};font-weight:${hasBal?700:400}">${f$(bal,2)}</td>
         <td>${statusBadge(b.status)}</td>
+        <td>${hasBal?`<button class="btn-reminder" data-testid="btn-reminder-upcoming-${esc(b.id)}"
+            onclick="sendReminderBtn('${esc(b.id)}',this)"
+            style="font-size:11px;padding:2px 8px;border:1px solid #475569;border-radius:4px;cursor:pointer;background:transparent;color:#94a3b8">Recordatorio</button>`:''}
+        </td>
       </tr>`;}).join('')}
     </tbody></table></div>`;
 }

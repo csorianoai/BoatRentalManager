@@ -1643,6 +1643,7 @@ async function initializeDatabase() {
       `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS deposit_amount NUMERIC(10,2) DEFAULT 0`,
       `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS balance_pending NUMERIC(10,2) DEFAULT 0`,
       `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS is_manual BOOLEAN DEFAULT FALSE`,
+      `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMP`,
       `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`,
     ];
     for (const sql of bookingCols) {
@@ -5167,6 +5168,80 @@ cron.schedule('0 0 * * *', async () => {
     }
   }
   console.log('🤖 Daily demand forecast refresh completed');
+});
+
+// ========================================
+// ⏰ V2.5 — COBROS AUTOMÁTICOS (cron diario 9:00 AM)
+// ========================================
+console.log('💰 Scheduling daily cobros reminder check (V2.5)...');
+cron.schedule('0 9 * * *', async () => {
+  console.log('💰 [V2.5] Running cobros reminder check...');
+  try {
+    const twilioSid   = process.env.TWILIO_SID || '';
+    const twilioToken = process.env.TWILIO_AUTH_TOKEN || '';
+    if (!twilioSid || !twilioToken || !twilioSid.startsWith('AC')) {
+      console.log('💰 [V2.5] Twilio not configured — skipping cobros reminders');
+      return;
+    }
+    const client = require('twilio')(twilioSid, twilioToken);
+    const today  = moment().format('YYYY-MM-DD');
+    const plus2  = moment().add(2, 'days').format('YYYY-MM-DD');
+
+    // Case A: booking 48h from now with balance; Case B: booking today with balance
+    const result = await pool.query(`
+      SELECT id, customer_name, customer_phone,
+             booking_date,
+             total_amount,
+             COALESCE(deposit_amount, 0) AS deposit_amount,
+             GREATEST(
+               COALESCE(balance_pending, 0),
+               GREATEST(total_amount - COALESCE(deposit_amount, 0), 0)
+             ) AS effective_balance,
+             reminder_sent_at
+        FROM bookings
+       WHERE status NOT IN ('cancelled', 'completed')
+         AND booking_date IN ($1, $2)
+         AND GREATEST(
+               COALESCE(balance_pending, 0),
+               GREATEST(total_amount - COALESCE(deposit_amount, 0), 0)
+             ) > 0
+         AND customer_phone IS NOT NULL
+         AND customer_phone LIKE '+%'
+         AND (reminder_sent_at IS NULL
+              OR reminder_sent_at < NOW() - INTERVAL '24 hours')
+    `, [today, plus2]);
+
+    console.log(`💰 [V2.5] Found ${result.rows.length} bookings needing cobro reminder`);
+
+    for (const b of result.rows) {
+      try {
+        const isToday = b.booking_date.toISOString
+          ? b.booking_date.toISOString().startsWith(today)
+          : String(b.booking_date).startsWith(today);
+        const label = isToday ? 'hoy' : `el ${moment(b.booking_date).format('D [de] MMMM')}`;
+        const balance = parseFloat(b.effective_balance).toFixed(0);
+        const message = `Hola ${b.customer_name}, tienes un saldo pendiente de $${balance} con Nadaki Excursions. Tu reserva es ${label}. Por favor completa el pago antes de la salida. Gracias!`;
+
+        await client.messages.create({
+          body: message,
+          from: 'whatsapp:+14155238886',
+          to: `whatsapp:${b.customer_phone}`,
+        });
+
+        await pool.query(
+          `UPDATE bookings SET reminder_sent_at = NOW() WHERE id = $1`,
+          [b.id]
+        );
+        console.log(`💰 [V2.5] Reminder sent → ${b.customer_name} (${b.customer_phone}) balance=$${balance}`);
+      } catch (e) {
+        console.error(`💰 [V2.5] Error sending to ${b.customer_name}:`, e.message);
+      }
+      await new Promise(r => setTimeout(r, 1500)); // rate limit
+    }
+    console.log('💰 [V2.5] Cobros reminder check complete');
+  } catch (e) {
+    console.error('💰 [V2.5] Cron error:', e.message);
+  }
 });
 
 // ========================================
@@ -13039,6 +13114,62 @@ app.patch('/api/booking-receivables/:id/cancel', isAuthenticated, async (req, re
     if (!result.rows.length) return res.status(404).json({ error: 'Cuenta por cobrar no encontrada' });
     res.json(result.rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── V2.5: Manual cobro reminder endpoint ──────────────────────────────────
+app.post('/api/cobros/send-reminder/:bookingId', isAuthenticated, async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    const bRes = await pool.query(`
+      SELECT id, customer_name, customer_phone, booking_date,
+             total_amount,
+             COALESCE(deposit_amount, 0) AS deposit_amount,
+             GREATEST(
+               COALESCE(balance_pending, 0),
+               GREATEST(total_amount - COALESCE(deposit_amount, 0), 0)
+             ) AS effective_balance,
+             reminder_sent_at
+        FROM bookings WHERE id = $1
+    `, [bookingId]);
+
+    if (!bRes.rows.length) return res.status(404).json({ ok: false, reason: 'booking_not_found' });
+    const b = bRes.rows[0];
+
+    // Anti-spam: skip if sent < 24h ago
+    if (b.reminder_sent_at && new Date(b.reminder_sent_at) > new Date(Date.now() - 24*3600*1000)) {
+      return res.json({ ok: true, action: 'skipped', reason: 'reminder_sent_recently' });
+    }
+
+    const balance = parseFloat(b.effective_balance || 0);
+    if (balance <= 0) return res.json({ ok: true, action: 'skipped', reason: 'no_balance_pending' });
+
+    if (!b.customer_phone || !b.customer_phone.startsWith('+')) {
+      return res.json({ ok: true, action: 'skipped', reason: 'invalid_or_missing_phone' });
+    }
+
+    const twilioSid   = process.env.TWILIO_SID || '';
+    const twilioToken = process.env.TWILIO_AUTH_TOKEN || '';
+    if (!twilioSid || !twilioToken || !twilioSid.startsWith('AC')) {
+      return res.json({ ok: true, action: 'skipped', reason: 'twilio_not_configured' });
+    }
+
+    const dateLabel = moment(b.booking_date).format('D [de] MMMM');
+    const message = `Hola ${b.customer_name}, tienes un saldo pendiente de $${balance.toFixed(0)} con Nadaki Excursions. Tu reserva es el ${dateLabel}. Por favor completa el pago antes de la salida. Gracias!`;
+
+    const client = require('twilio')(twilioSid, twilioToken);
+    await client.messages.create({
+      body: message,
+      from: 'whatsapp:+14155238886',
+      to: `whatsapp:${b.customer_phone}`,
+    });
+
+    await pool.query(`UPDATE bookings SET reminder_sent_at = NOW() WHERE id = $1`, [bookingId]);
+    console.log(`💰 [V2.5] Manual reminder sent → ${b.customer_name} balance=$${balance.toFixed(0)}`);
+    res.json({ ok: true, action: 'sent', reason: 'reminder_sent', customer: b.customer_name, balance });
+  } catch (err) {
+    console.error('[V2.5] send-reminder error:', err.message);
+    res.status(500).json({ ok: false, reason: err.message });
+  }
 });
 
 // ── FASE 15: Fuel & Engine Usage Tracker ───────────────────────────────────
