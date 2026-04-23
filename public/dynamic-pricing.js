@@ -357,6 +357,16 @@ async function loadRecommendations() {
                             <strong>Factor Competencia:</strong> ${factors.competitiveFactor}x
                         </div>
                     </div>
+                    ${(() => {
+                        const r = factors.reasons;
+                        if (!r || !r.length) return '';
+                        return `<div style="margin-top:10px;padding:10px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;" data-testid="reasons-block-${rec.id}">
+                            <div style="font-size:12px;font-weight:700;color:#166534;margin-bottom:6px;">Ajustes aplicados</div>
+                            <ul style="margin:0;padding-left:16px;list-style:disc;">
+                              ${r.map(txt => `<li style="font-size:12px;color:#15803d;line-height:1.6;">${txt}</li>`).join('')}
+                            </ul>
+                          </div>`;
+                    })()}
                     <div style="margin-top: 10px; padding: 10px; background: #f8f9fa; border-radius: 5px;">
                         <small>
                             Generado: ${new Date(rec.created_at).toLocaleString('es-ES')}

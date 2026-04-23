@@ -151,32 +151,52 @@ class DynamicPricingService {
     const allPlatforms = Object.values(PLATFORM_REGION_MAP).flat();
     const relevantPlatforms = platformsForRegion.length > 0 ? platformsForRegion : allPlatforms;
 
-    let query = `
-      SELECT 
-        COUNT(*) as booking_count,
-        AVG(total_amount) as avg_amount,
-        EXTRACT(DOW FROM booking_date::date) as day_of_week,
-        EXTRACT(MONTH FROM booking_date::date) as month
-      FROM bookings 
-      WHERE booking_date::date >= $1
-        AND status IN ('confirmed', 'completed')
-    `;
-    
-    const params = [moment().subtract(6, 'months').format('YYYY-MM-DD')];
-    
-    if (platformsForRegion.length > 0) {
-      query += ` AND platform = ANY($${params.length + 1})`;
-      params.push(relevantPlatforms);
-    }
-    
-    if (boatType) {
-      query += ` AND boat_type = $${params.length + 1}`;
-      params.push(boatType);
-    }
-    
-    query += ` GROUP BY day_of_week, month ORDER BY booking_count DESC`;
+    // Gap B fix: status and boat_type columns may not exist in bookings;
+    // use boat_id join for per-boat occupancy, fallback to fleet when 0 rows.
+    const since = moment().subtract(6, 'months').format('YYYY-MM-DD');
 
-    const historicalBookings = await this.pool.query(query, params);
+    const buildQuery = (withBoatType) => {
+      let q = `
+        SELECT
+          COUNT(*) as booking_count,
+          AVG(total_amount) as avg_amount,
+          EXTRACT(DOW FROM booking_date::date) as day_of_week,
+          EXTRACT(MONTH FROM booking_date::date) as month
+        FROM bookings
+        WHERE booking_date::date >= $1
+          AND (payment_status = 'paid' OR payment_status IS NOT NULL OR booking_date IS NOT NULL)
+      `;
+      const p = [since];
+
+      if (platformsForRegion.length > 0) {
+        q += ` AND platform = ANY($${p.length + 1})`;
+        p.push(relevantPlatforms);
+      }
+
+      if (withBoatType && boatType) {
+        q += ` AND boat_id IN (SELECT id FROM boats WHERE boat_type = $${p.length + 1})`;
+        p.push(boatType);
+      }
+
+      q += ` GROUP BY day_of_week, month ORDER BY booking_count DESC`;
+      return { q, p };
+    };
+
+    let historicalBookings;
+    try {
+      const { q, p } = buildQuery(true);  // try with boatType filter first
+      historicalBookings = await this.pool.query(q, p);
+      // fallback to fleet if no rows (Gap B: boat_id NULL in existing bookings)
+      if (historicalBookings.rows.length === 0 && boatType) {
+        const { q: qf, p: pf } = buildQuery(false);
+        historicalBookings = await this.pool.query(qf, pf);
+        console.log(`[DynamicPricing] occupancy fallback to fleet (boatType=${boatType})`);
+      }
+    } catch (err) {
+      console.warn('[DynamicPricing] occupancy query error, using fleet fallback:', err.message);
+      const { q: qf, p: pf } = buildQuery(false);
+      historicalBookings = await this.pool.query(qf, pf);
+    }
 
     const targetDOW = moment(targetDate).day();
     const targetMonth = moment(targetDate).month() + 1;
@@ -336,19 +356,72 @@ class DynamicPricingService {
 
     recommendedPrice = Math.round(recommendedPrice * competitiveFactor);
 
+    // ── Gap A: Lead time rule ────────────────────────────────────────────────
+    const daysUntil = moment(date).diff(moment().startOf('day'), 'days');
+    let leadTimeFactor = 1.00;
+    let leadTimeLabel  = null;
+    if (daysUntil > 30) {
+      leadTimeFactor = 0.97;
+      leadTimeLabel  = `Reserva anticipada (${daysUntil}d): -3%`;
+    } else if (daysUntil >= 8) {
+      leadTimeFactor = 1.00;
+      leadTimeLabel  = null; // neutral — no reason emitted
+    } else if (daysUntil >= 3) {
+      leadTimeFactor = 1.08;
+      leadTimeLabel  = `Reserva próxima (${daysUntil}d): +8%`;
+    } else {
+      leadTimeFactor = 1.18;
+      leadTimeLabel  = `Reserva de última hora (${daysUntil}d): +18%`;
+    }
+    recommendedPrice = Math.round(recommendedPrice * leadTimeFactor);
+
+    // ── Gap C: reasons[] — human-readable adjustment list ────────────────────
+    const reasons = [];
+    const isWeekend  = forecast.factors.weekend;
+    const isSummer   = forecast.factors.summer;
+    const demandMult = forecast.recommendedMultiplier;
+
+    if (isWeekend && demandMult > 1.0)
+      reasons.push(`Fin de semana: +${Math.round((demandMult - 1) * 100)}%`);
+    else if (!isWeekend && demandMult > 1.0)
+      reasons.push(`Alta ocupación: +${Math.round((demandMult - 1) * 100)}%`);
+    else if (demandMult < 1.0)
+      reasons.push(`Baja ocupación: ${Math.round((demandMult - 1) * 100)}%`);
+
+    if (isSummer) reasons.push('Temporada alta (verano): incluido en demanda');
+
+    if (forecast.factors.events > 1.0)
+      reasons.push(`Evento de mercado: +${Math.round((forecast.factors.events - 1) * 100)}%`);
+
+    if (weatherFactor < 1.0)
+      reasons.push(`Condiciones marinas adversas: ${Math.round((weatherFactor - 1) * 100)}%`);
+    else if (weatherFactor > 1.0)
+      reasons.push(`Condiciones marinas favorables: +${Math.round((weatherFactor - 1) * 100)}%`);
+
+    if (competitiveFactor !== 1.0)
+      reasons.push(`Ajuste competitivo: ${competitiveFactor > 1 ? '+' : ''}${Math.round((competitiveFactor - 1) * 100)}%`);
+
+    if (leadTimeLabel) reasons.push(leadTimeLabel);
+
+    if (reasons.length === 0) reasons.push('Precio estándar sin ajustes activos');
+
+    // ── Persist ──────────────────────────────────────────────────────────────
     const id = `rec_${nanoid(10)}`;
     const factors = {
-      demandScore: forecast.demandScore,
-      demandMultiplier: forecast.recommendedMultiplier,
+      demandScore:       forecast.demandScore,
+      demandMultiplier:  forecast.recommendedMultiplier,
       weatherFactor,
       competitiveFactor,
+      leadTimeFactor,
+      leadTimeDays:      daysUntil,
       regionalMultiplier: forecast.factors.regional,
-      eventMultiplier: forecast.factors.events,
-      confidence: forecast.confidence
+      eventMultiplier:   forecast.factors.events,
+      confidence:        forecast.confidence,
+      reasons,           // Gap C: stored in JSONB alongside numeric factors
     };
 
     await this.pool.query(
-      `INSERT INTO pricing_recommendations 
+      `INSERT INTO pricing_recommendations
        (id, boat_id, recommended_date, duration_hours, base_price, recommended_price, factors)
        VALUES ($1, $2, $3, $4, $5, $6, $7)`,
       [id, boatId, date, durationHours, basePrice, recommendedPrice, JSON.stringify(factors)]
@@ -357,13 +430,13 @@ class DynamicPricingService {
     return {
       id,
       boatId,
-      boatName: boat.name,
-      recommendedDate: date,
+      boatName:         boat.name,
+      recommendedDate:  date,
       durationHours,
       basePrice,
       recommendedPrice,
       factors,
-      forecast
+      forecast,
     };
   }
 
