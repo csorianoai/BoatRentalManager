@@ -15435,6 +15435,128 @@ const HOST = '0.0.0.0'; // Required for deployment
     } catch(err) { res.status(500).json({ error: err.message }); }
   });
 
+  // ── Fase 3 contable: Deposit tracking ──────────────────────────────────────
+  // POST /api/bookings/:id/mark-deposited
+  // Reutiliza bank_statements + transactions.reconciled (0=received, 1=deposited).
+  // Crea un bank_statement manual ligado al payment transaction del booking.
+  app.post('/api/bookings/:id/mark-deposited', async (req, res) => {
+    const pg = await pool.connect();
+    try {
+      await pg.query('BEGIN');
+      const { id } = req.params;
+      const { deposit_date, bank_reference, notes, amount } = req.body;
+
+      // 1. Verify booking exists and is paid
+      const bkRes = await pg.query(
+        `SELECT id, payment_status, customer_name, total_amount, balance_pending FROM bookings WHERE id=$1`,
+        [id]
+      );
+      if (!bkRes.rows.length) {
+        await pg.query('ROLLBACK');
+        return res.status(404).json({ error: 'Booking not found' });
+      }
+      const bk = bkRes.rows[0];
+      if (bk.payment_status !== 'paid') {
+        await pg.query('ROLLBACK');
+        return res.status(400).json({ error: 'El booking no está marcado como pagado — marca el pago primero' });
+      }
+
+      // 2. Find the income transaction for this booking
+      const txRes = await pg.query(
+        `SELECT id, amount, reconciled, reconciliation_id FROM transactions
+         WHERE booking_id=$1 AND transaction_type='income' ORDER BY created_at DESC LIMIT 1`,
+        [id]
+      );
+      if (!txRes.rows.length) {
+        await pg.query('ROLLBACK');
+        return res.status(400).json({ error: 'No se encontró transacción de ingreso para este booking' });
+      }
+      const tx = txRes.rows[0];
+
+      // Idempotency: already deposited
+      if (parseInt(tx.reconciled) === 1) {
+        await pg.query('ROLLBACK');
+        const existing = await pool.query(
+          `SELECT id, statement_date, amount, reference_number FROM bank_statements WHERE matched_transaction_id=$1 LIMIT 1`,
+          [tx.id]
+        );
+        return res.json({
+          ok: true, already_deposited: true, deposit_status: 'deposited',
+          transaction_id: tx.id,
+          bank_statement: existing.rows[0] || null,
+        });
+      }
+
+      // 3. Create manual bank_statement entry (reutiliza tabla existente)
+      const { nanoid } = await import('nanoid');
+      const bsId = 'bs_dep_' + nanoid(8);
+      const depositAmt = amount != null ? parseFloat(amount) : parseFloat(tx.amount);
+      const depositDateSafe = deposit_date || new Date().toISOString().slice(0, 10);
+      const bsDesc = `Depósito bancario — booking ${id} / ${bk.customer_name}`;
+
+      await pg.query(
+        `INSERT INTO bank_statements
+           (id, statement_date, description, amount, transaction_type,
+            reconciliation_status, classification_status, matched_transaction_id,
+            reference_number, notes, import_batch_id)
+         VALUES ($1,$2,$3,$4,'credit','matched','posted',$5,$6,$7,'booking_deposit')`,
+        [bsId, depositDateSafe, bsDesc, depositAmt,
+         tx.id, bank_reference || null, notes || null]
+      );
+
+      // 4. Mark transaction as reconciled (deposited)
+      // reconciliation_id FK → reconciliation_sessions — leave NULL; link is via bank_statements.matched_transaction_id
+      await pg.query(
+        `UPDATE transactions SET reconciled=1, updated_at=NOW() WHERE id=$1`,
+        [tx.id]
+      );
+
+      await pg.query('COMMIT');
+      console.log(`[DepositHook] OK booking:${id} | tx:${tx.id}→reconciled | bs:${bsId} | amount:${depositAmt}`);
+
+      res.json({
+        ok: true, deposit_status: 'deposited', already_deposited: false,
+        transaction_id: tx.id, bank_statement_id: bsId,
+        amount: depositAmt, deposit_date: depositDateSafe,
+      });
+    } catch (err) {
+      await pg.query('ROLLBACK');
+      res.status(500).json({ error: err.message });
+    } finally { pg.release(); }
+  });
+
+  // GET /api/bookings/:id/deposit-status
+  // Returns deposit state: received_not_deposited | deposited | not_paid
+  app.get('/api/bookings/:id/deposit-status', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const bk = await pool.query(`SELECT payment_status FROM bookings WHERE id=$1`, [id]);
+      if (!bk.rows.length) return res.status(404).json({ error: 'Booking not found' });
+      if (bk.rows[0].payment_status !== 'paid') return res.json({ deposit_status: 'not_paid' });
+
+      const tx = await pool.query(
+        `SELECT t.id, t.amount, t.reconciled, t.reconciliation_id,
+                bs.id as bs_id, bs.statement_date, bs.reference_number
+         FROM transactions t
+         LEFT JOIN bank_statements bs ON bs.matched_transaction_id = t.id
+         WHERE t.booking_id=$1 AND t.transaction_type='income'
+         ORDER BY t.created_at DESC LIMIT 1`,
+        [id]
+      );
+      if (!tx.rows.length) return res.json({ deposit_status: 'no_transaction' });
+      const r = tx.rows[0];
+      const depositStatus = parseInt(r.reconciled) === 1 ? 'deposited' : 'received_not_deposited';
+      res.json({
+        deposit_status: depositStatus,
+        transaction_id: r.id, amount: r.amount,
+        bank_statement_id: r.bs_id || null,
+        deposited_date: r.statement_date || null,
+        bank_reference: r.reference_number || null,
+      });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+  // ── fin Fase 3 ─────────────────────────────────────────────────────────────
+
   // GET /api/fleet/captains — list available captains
   app.get('/api/fleet/captains', async (req, res) => {
     try {
