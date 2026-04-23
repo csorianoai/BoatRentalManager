@@ -1,0 +1,343 @@
+Actúa como Principal Product Designer + Staff Frontend Engineer + UX Systems Architect.
+
+No eres asesor.
+No eres redactor.
+No eres generador de ideas.
+Eres responsable de construir un módulo premium, funcional y usable inmediatamente dentro de `gestion.nadakiexcursions.com`.
+
+## OBJETIVO
+
+Construir una nueva página/módulo llamada:
+
+**Centro Operativo Nadaki**
+
+Debe servir como:
+
+* guía visual operativa
+* buscador por intención
+* centro de acceso rápido
+* manual accionable dentro del sistema
+
+No quiero una help page simple.
+Quiero un módulo premium, visual, práctico y utilizable inmediatamente.
+
+---
+
+## RESULTADO ESPERADO
+
+El usuario debe poder entrar al módulo y:
+
+1. buscar “cómo hago X”
+2. entender visualmente el flujo correcto
+3. ver errores comunes
+4. ir directo al módulo correcto del sistema
+5. ejecutar acciones rápidas sin confusión
+
+---
+
+## RESTRICCIONES
+
+* NO crear backend nuevo salvo que sea absolutamente indispensable
+* NO tocar módulos existentes salvo para añadir un link de acceso al nuevo módulo si hace falta
+* NO rehacer navbar global
+* NO romper nada existente
+* additive only
+* debe quedar listo para uso inmediato
+* no dejar placeholders vacíos
+* no hacer mockups teóricos
+* construir HTML + JS + CSS funcional real
+
+---
+
+## ARCHIVOS A CREAR / TOCAR
+
+Crear como mínimo:
+
+* `public/operational-center.html`
+* `public/operational-center.js`
+
+Si el proyecto ya usa CSS dedicado por página, crear:
+
+* `public/operational-center.css`
+
+Si no, usar `<style>` bien organizado dentro de la página.
+
+Opcional:
+
+* añadir link al módulo desde navegación existente si existe punto lógico y es seguro
+
+---
+
+## DISEÑO UX OBLIGATORIO
+
+### 1. HERO
+
+* Título: `Centro Operativo Nadaki`
+* Subtítulo breve y profesional
+* fondo limpio premium
+* integración con estilo del sistema existente
+
+### 2. BUSCADOR PRINCIPAL
+
+Un buscador grande con placeholder como:
+
+* “Buscar: cobrar balance, subir bank statement, registrar gasto, conciliación, broker…”
+
+Debe funcionar client-side contra una base de conocimientos local en JS.
+
+### 3. GRID DE MÓDULOS
+
+Crear 8 cards premium:
+
+1. Bookings
+2. Cobros
+3. Depósitos
+4. Reconciliación bancaria
+5. Gastos
+6. Brokers
+7. Pricing
+8. Alertas y seguimiento
+
+Cada card debe incluir:
+
+* icono
+* título
+* descripción corta
+* 1–2 botones de acción
+
+### 4. FLUJOS VISUALES
+
+Crear una sección llamada:
+**Flujos clave del negocio**
+
+Debe incluir como mínimo estos flujos:
+
+#### Flujo 1 — Booking a dinero
+
+* Booking creado
+* Cuenta por cobrar
+* Pago recibido
+* Depositado
+* Conciliado
+
+#### Flujo 2 — Cobro pendiente
+
+* Booking con saldo
+* Recordatorio enviado
+* Pago recibido
+* Estado actualizado
+
+#### Flujo 3 — Gasto operativo
+
+* Gasto registrado
+* Transaction expense
+* Visible en executive dashboard
+
+Presentación visual:
+
+* timeline horizontal o vertical
+* estados con color
+* tarjetas o nodos elegantes
+
+### 5. SECCIÓN “CÓMO LO HAGO”
+
+Crear tarjetas FAQ accionables.
+Cada una debe responder con pasos concretos.
+
+Preguntas mínimas:
+
+* Cómo registrar un booking correctamente
+* Cómo marcar un pago recibido
+* Cómo depositar un pago
+* Cómo subir un bank statement
+* Cómo reconciliar pagos
+* Cómo registrar un gasto
+* Cómo ver quién debe dinero
+* Cómo enviar un recordatorio
+* Cómo revisar pricing dinámico
+
+Cada respuesta debe incluir:
+
+* pasos
+* qué no hacer
+* botón “Ir ahora”
+
+### 6. ACCIONES RÁPIDAS
+
+Crear una sección de quick actions con botones grandes y claros hacia:
+
+* `/schedule.html`
+* `/executive.html`
+* `/accounting.html`
+* `/dynamic-pricing.html`
+* `/fleet.html`
+* cualquier otra ruta real relevante del sistema
+
+Verifica primero qué rutas existen.
+Si una ruta no existe, no la inventes.
+
+### 7. ESTILO PREMIUM
+
+Debe verse:
+
+* limpio
+* ejecutivo
+* moderno
+* fácil de leer
+* profesional
+
+Usar:
+
+* grid limpio
+* cards bien espaciadas
+* jerarquía tipográfica fuerte
+* colores coherentes con el sistema
+* badges de estado
+* sombras suaves
+* responsive razonable
+
+No usar colores aleatorios.
+No usar diseño tosco.
+No hacerlo “tipo manual viejo”.
+
+---
+
+## BASE DE CONOCIMIENTO LOCAL EN JS
+
+En `operational-center.js` crea una estructura de datos con:
+
+* categorías
+* preguntas
+* keywords
+* pasos
+* errores comunes
+* links
+
+El buscador debe:
+
+* filtrar por texto
+* mostrar resultados instantáneos
+* hacer scroll a la card/FAQ correcta
+* permitir abrir directamente el bloque encontrado
+
+Ejemplos de keywords:
+
+* cobrar
+* depósito
+* bank statement
+* reconciliar
+* gasto
+* broker
+* reminder
+* saldo pendiente
+* pricing
+* booking
+
+---
+
+## CONTENIDO OBLIGATORIO DE LOS FLUJOS
+
+### BOOKING
+
+Explicar:
+
+* crear booking
+* verificar total
+* verificar depósito
+* validar payer_type si aplica
+* no duplicar ingresos
+
+### COBROS
+
+Explicar:
+
+* usar mark-paid
+* no registrar dos veces
+* revisar balance pendiente
+* usar reminders
+
+### DEPÓSITOS
+
+Explicar:
+
+* depositar no crea ingreso nuevo
+* solo reconcilia
+
+### RECONCILIACIÓN
+
+Explicar:
+
+* subir CSV
+* correr auto-match
+* revisar unmatched
+
+### GASTOS
+
+Explicar:
+
+* registrar combustible
+* mantenimiento
+* crew
+* no mezclar con ingresos
+
+### PRICING
+
+Explicar:
+
+* precio recomendado
+* reasons
+* occupancy / weekend / lead time
+
+---
+
+## REGLAS DE NAVEGACIÓN
+
+Todos los botones “Ir ahora” deben apuntar a rutas reales del sistema.
+Antes de crear los links:
+
+* verifica si la página existe
+* si existe, enlaza
+* si no existe, omite el botón o desactívalo visualmente con texto claro
+
+---
+
+## VALIDACIÓN OBLIGATORIA
+
+Antes de entregar:
+
+1. la página debe cargar sin errores
+2. buscador debe funcionar
+3. cards deben verse correctas
+4. quick actions deben enlazar a rutas reales
+5. layout debe ser responsive básico
+6. no debe romper navbar
+7. consola limpia
+8. runner verde si aplica
+
+---
+
+## ENTREGA
+
+Responder en formato compacto:
+
+1. archivos creados/tocados
+2. qué rutas reales integró
+3. qué secciones incluye
+4. evidencia de buscador funcionando
+5. evidencia de quick actions
+6. consola / runner
+7. riesgos
+8. veredicto PASS o BLOCKED
+
+---
+
+## PROHIBIDO
+
+* dejar placeholders tipo lorem ipsum
+* inventar rutas no existentes
+* crear backend innecesario
+* reescribir módulos existentes
+* hacer solo diseño sin funcionalidad
+* detenerte en propuesta teórica
+
+Construye el módulo completo y listo para usar inmediatamente.
