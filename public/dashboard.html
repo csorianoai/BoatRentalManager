@@ -248,6 +248,9 @@
 
     </div><!-- /db2-kpi-grid -->
 
+    <!-- ═══ V2.3: ALERT STRIP ═══ -->
+    <div id="alert-strip" style="display:none;margin:0 0 18px 0;" data-testid="alert-strip"></div>
+
     <!-- ═══ UPCOMING BOOKINGS ═══ -->
     <div class="chart-card full-width upcoming-section db2-upcoming-wrap" id="upcomingSection">
         <div class="card-header">
@@ -479,6 +482,48 @@
     } else {
         init();
     }
+
+    // ── V2.3 Alert Strip ────────────────────────────────────────────────────
+    const SEV_STYLE = {
+        high:   { bg: '#fef2f2', border: '#fca5a5', dot: '#dc2626', label: 'Crítico' },
+        medium: { bg: '#fffbeb', border: '#fcd34d', dot: '#d97706', label: 'Atención' },
+        info:   { bg: '#f0f9ff', border: '#7dd3fc', dot: '#0284c7', label: 'Info' },
+    };
+
+    async function loadAlerts() {
+        const strip = document.getElementById('alert-strip');
+        if (!strip) return;
+        try {
+            const res = await fetch('/api/alerts', { credentials: 'include' });
+            if (!res.ok) return;
+            const alerts = await res.json();
+            const active = alerts.filter(a => a.count > 0);
+            if (!active.length) { strip.style.display = 'none'; return; }
+
+            strip.style.display = 'flex';
+            strip.style.cssText = 'display:flex;flex-wrap:wrap;gap:10px;margin:0 0 18px 0;';
+            strip.innerHTML = active.map(a => {
+                const s = SEV_STYLE[a.severity] || SEV_STYLE.info;
+                const amtStr = a.amount != null ? ` — $${Number(a.amount).toLocaleString('es-ES', {maximumFractionDigits:0})}` : '';
+                return `<a href="${a.link}" data-testid="alert-card-${a.id}"
+                    style="flex:1;min-width:220px;max-width:340px;display:flex;align-items:flex-start;gap:10px;
+                           padding:10px 14px;background:${s.bg};border:1px solid ${s.border};border-radius:8px;
+                           text-decoration:none;color:inherit;">
+                    <span style="width:10px;height:10px;border-radius:50%;background:${s.dot};flex-shrink:0;margin-top:3px;"></span>
+                    <span>
+                        <span style="font-size:12px;font-weight:700;color:${s.dot};">${s.label}</span>
+                        <span style="font-size:12px;font-weight:700;color:#1e293b;margin-left:6px;">${a.title}</span>
+                        <br>
+                        <span style="font-size:11px;color:#475569;">${a.message}${amtStr}</span>
+                    </span>
+                </a>`;
+            }).join('');
+        } catch (e) {
+            console.warn('[AlertStrip] No se pudo cargar alertas:', e.message);
+        }
+    }
+
+    loadAlerts();
 })();
 </script>
 

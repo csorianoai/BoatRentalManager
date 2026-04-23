@@ -15575,6 +15575,10 @@ const HOST = '0.0.0.0'; // Required for deployment
   const { registerBankReconcileRoutes } = require('./server/bankReconcile');
   registerBankReconcileRoutes(app, pool);
 
+  // ── Fase V2.3: Alert Engine básico ────────────────────────
+  const { registerAlertRoutes } = require('./server/alertEngine');
+  registerAlertRoutes(app, pool);
+
   app.listen(PORT, HOST, () => {
     console.log(`🚀 Nadaki Excursions Backend running on ${HOST}:${PORT}`);
     console.log(`🌐 WordPress: ${WORDPRESS_DOMAIN}`);

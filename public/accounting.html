@@ -281,6 +281,9 @@
         </div>
     </section>
 
+    <!-- V2.3: Alert badge contextual (income + bank) -->
+    <div id="acct-alert-bar" style="display:none;margin:0 16px 12px;"></div>
+
     <!-- Main Dashboard Grid -->
     <main class="dashboard-grid">
         <!-- KPI Cards -->
@@ -4061,5 +4064,40 @@
       </div>
     </div>
     <script src="/assets/js/components/global-nav.js"></script>
+<script>
+(async function loadAcctAlerts() {
+    const bar = document.getElementById('acct-alert-bar');
+    if (!bar) return;
+    try {
+        const res = await fetch('/api/alerts', { credentials: 'include' });
+        if (!res.ok) return;
+        const alerts = await res.json();
+        const relevant = alerts.filter(a =>
+            ['income_unreconciled','bank_unmatched','balance_pending','receivable_overdue'].includes(a.id)
+            && a.count > 0
+        );
+        if (!relevant.length) return;
+        const SEV = {
+            high:   { bg:'#fef2f2', border:'#fca5a5', dot:'#dc2626' },
+            medium: { bg:'#fffbeb', border:'#fcd34d', dot:'#d97706' },
+            info:   { bg:'#f0f9ff', border:'#7dd3fc', dot:'#0284c7' },
+        };
+        bar.style.display = 'flex';
+        bar.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;margin:0 16px 12px;';
+        bar.innerHTML = relevant.map(a => {
+            const s = SEV[a.severity] || SEV.info;
+            const amtStr = a.amount != null
+                ? ` — $${Number(a.amount).toLocaleString('es-ES', {maximumFractionDigits:0})}` : '';
+            return `<a href="${a.link}" data-testid="acct-alert-${a.id}"
+                style="display:inline-flex;align-items:center;gap:7px;padding:6px 12px;
+                       background:${s.bg};border:1px solid ${s.border};border-radius:6px;
+                       font-size:12px;font-weight:600;color:#1e293b;text-decoration:none;">
+                <span style="width:8px;height:8px;border-radius:50%;background:${s.dot};flex-shrink:0;"></span>
+                ${a.title}: <span style="color:${s.dot};margin-left:2px;">${a.count}${amtStr}</span>
+            </a>`;
+        }).join('');
+    } catch(e) {}
+})();
+</script>
 </body>
 </html>
