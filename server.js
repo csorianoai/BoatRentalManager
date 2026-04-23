@@ -15567,6 +15567,10 @@ const HOST = '0.0.0.0'; // Required for deployment
 
   // ── END FLEET OPS endpoints ──────────────────────────────
 
+  // ── Fase 4B: Backfill audit + minimal AR repair ──────────
+  const { registerBackfillRoutes } = require('./server/bookingBackfillAudit');
+  registerBackfillRoutes(app, pool);
+
   app.listen(PORT, HOST, () => {
     console.log(`🚀 Nadaki Excursions Backend running on ${HOST}:${PORT}`);
     console.log(`🌐 WordPress: ${WORDPRESS_DOMAIN}`);
