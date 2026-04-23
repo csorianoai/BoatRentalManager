@@ -1,0 +1,46 @@
+Runner verde. Reporte de entrega:
+
+V2.7 — ENTREGA COMPLETA
+1 — Archivos tocados
+Archivo	Cambios
+public/executive.html	+1 línea: <div id="cobros-kpi-bar"> antes de .row2 en #tab-cobros
+public/executive.js	+2 state vars · +3 funciones nuevas · 2 funciones modificadas · 1 call añadida
+Backend: 0 cambios. Sin endpoints nuevos. Sin tablas nuevas.
+
+2 — KPIs renderizados (fuente real)
+KPI	Valor actual	Fuente
+AR Pendiente Total	$2,900	arList.filter(status='pending').sum(amount)
+Pendiente Clientes	$2,000	party_type='customer'
+Pendiente Brokers	$900	party_type='broker'
+Sin Depósito	8 bookings	upcomingBookings.filter(deposit_amount=0)
+Clases CSS reutilizadas: .kpi-grid / .kpi-card / c-red / c-orange / c-purple / c-blue — idénticas al diseño existente.
+
+3 — Filtros implementados (client-side puro)
+[ Todos (15) ]  [ Sin depósito (8) ]  [ Alto riesgo (0) ]
+
+Estado en _upcomingFilter / _upcomingRows — sin refetch
+Contadores en vivo en cada pill
+Alto riesgo = deposit_amount=0 AND daysToBooking ≤ 7
+La pill activa se ilumina con .pill.active (CSS existente)
+4 — Risk badges en tabla Próximos Bookings
+Badge	Condición	Color
+RIESGO	deposit_amount=0 AND booking en ≤7 días	Rojo
+BROKER	broker_id presente	Morado
+SIN TEL	phone presente pero no normalizable	Gris
+—	ningún riesgo	gris tenue
+Nueva columna "Riesgo" insertada entre Cliente y Barco.
+
+5 — Broker rows en AR (renderAR)
+Fondo #faf5ff (lavanda muy sutil) en filas party_type='broker'
+Badge BROKER en morado junto al nombre del partido
+Sin cambio en la estructura de la tabla ni columnas
+6 — Runner
+50/50 PASS · 1 WARN (D-10 preexistente) · 0 FAIL · 2 SKIP
+
+7 — Riesgos residuales
+#	Riesgo	Estado
+R1	Alto riesgo muestra 0 actualmente	Correcto — no hay bookings ≤7 días sin depósito hoy; dato se llenará operacionalmente
+R2	bookings_ledger puede no tener customer_phone para todos	Manejado — riskBadges() hace fallback a final_customer_phone antes de evaluar
+R3	_upcomingFilter persiste entre refreshes de datos	Intencional — el filtro se mantiene si el usuario refresca el dashboard; es comportamiento deseable
+VEREDICTO: PASS
+¿Autorizas avanzar a V2.8?
