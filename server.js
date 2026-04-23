@@ -14086,6 +14086,30 @@ app.get('/api/executive-dashboard', isAuthenticated, async (req, res) => {
     if (upcomingWithBalance.length > 0) alerts.push({ priority: 'baja', msg: `${upcomingWithBalance.length} booking(s) próximo(s) con saldo pendiente de cobro`, type: 'upcoming_balance' });
     if (income > 0 && crewCost > income * 0.5) alerts.push({ priority: 'media', msg: `Crew cost total = ${(crewCost/income*100).toFixed(0)}% de ingresos del período`, type: 'high_crew_total' });
 
+    // ── V2.4 Gap C: Platform ranking (additive) ─────────────────────
+    let platformRanking = [];
+    try {
+      const prRow = await pool.query(`
+        SELECT platform,
+               COUNT(*) AS bookings,
+               COALESCE(SUM(total_amount), 0) AS revenue
+        FROM bookings
+        WHERE booking_date::date BETWEEN $1 AND $2
+          ${bc}
+          AND platform IS NOT NULL AND TRIM(platform) != ''
+        GROUP BY platform
+        ORDER BY bookings DESC
+        LIMIT 10
+      `, p);
+      platformRanking = prRow.rows.map(r => ({
+        platform: r.platform,
+        bookings: parseInt(r.bookings),
+        revenue:  parseFloat(r.revenue),
+      }));
+    } catch (e) {
+      console.warn('[Executive] platform ranking query error:', e.message);
+    }
+
     res.json({
       period: { start: startDate, end: endDate, prevStart: prevStartDate, prevEnd: prevEndDate, days: daysInPeriod },
       kpis: {
@@ -14112,6 +14136,7 @@ app.get('/api/executive-dashboard', isAuthenticated, async (req, res) => {
       pendingDeposits: depList.rows,
       boats: boatsAll.rows,
       alerts,
+      platformRanking,   // V2.4 Gap C
     });
   } catch (err) {
     console.error('Executive dashboard error:', err);

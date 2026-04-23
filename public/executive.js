@@ -116,15 +116,24 @@ async function loadData() {
 
   // Spinners for key elements
   ['owner-snap','kpi-grid','trend-chart-wrap','forecast-wrap','ranking-wrap','alerts-summary-wrap',
-   'comparison-wrap','profit-table-wrap','ar-wrap','dep-wrap','upcoming-wrap'].forEach(id=>{
+   'comparison-wrap','profit-table-wrap','ar-wrap','dep-wrap','upcoming-wrap',
+   'platform-ranking-wrap','full-alerts-wrap'].forEach(id=>{
     const el=$(id); if(el) el.innerHTML='<div class="loading"><div class="spinner"></div></div>';
   });
   $('kpi-grid').innerHTML='';
 
   try {
-    const r = await fetch('/api/executive-dashboard?'+params);
+    const [r, rAlerts] = await Promise.all([
+      fetch('/api/executive-dashboard?'+params),
+      fetch('/api/alerts', { credentials: 'include' }).catch(() => null),
+    ]);
     if (!r.ok) throw new Error('HTTP '+r.status);
     D = await r.json();
+    // V2.4 Gap A: attach financial alerts from V2.3 alert engine
+    D.financialAlerts = [];
+    if (rAlerts && rAlerts.ok) {
+      try { D.financialAlerts = await rAlerts.json(); } catch(_) {}
+    }
     renderAll(D);
     $('last-updated').textContent='Actualizado: '+new Date().toLocaleTimeString('es');
   } catch(err) {
@@ -136,7 +145,7 @@ async function loadData() {
 // ── RENDER ALL ────────────────────────────────────────────────────
 function renderAll(d) {
   renderOwnerSnap(d);
-  renderKPIs(d);
+  renderKPIs(d);                                      // Gap A: appends 3 financial KPI cards
   renderTrendChart(d.trendPerDay, d.incomePerDay);
   renderForecast(d);
   renderRanking(d.profitByBoat);
@@ -146,11 +155,14 @@ function renderAll(d) {
   renderAR(d.arList);
   renderDeposits(d.pendingDeposits);
   renderUpcoming(d.upcomingBookings);
-  renderFullAlerts(d.alerts);
-  // Alert badge
-  const alta = d.alerts.filter(a=>a.priority==='alta').length;
+  renderFullAlerts(d.alerts, d.financialAlerts);      // Gap B: grouped alerts
+  renderPlatformRanking(d.platformRanking);           // Gap C: platform ranking
+  // Alert badge — count internal alta + any financial high/medium
+  const internalAlta = (d.alerts||[]).filter(a=>a.priority==='alta').length;
+  const financialHigh = (d.financialAlerts||[]).filter(a=>a.severity==='high'&&a.count>0).length;
+  const badgeTotal = internalAlta + financialHigh;
   const badge=$('alert-badge');
-  if (alta>0) { badge.style.display='inline-block'; badge.textContent=alta; } else badge.style.display='none';
+  if (badgeTotal>0) { badge.style.display='inline-block'; badge.textContent=badgeTotal; } else badge.style.display='none';
   // Active tab chart re-render
   const activeTab = document.querySelector('.tab-content.active')?.id?.replace('tab-','');
   if (activeTab==='barcos')   { renderProfitBars(d.profitByBoat); renderIncomeBars(d.profitByBoat); }
@@ -219,6 +231,44 @@ function renderKPIs(d) {
       <div class="kpi-val">${k.v}</div>
       <div class="kpi-sub">${k.s}</div>
       ${k.ch!=null?chgTag(k.ch):''}
+    </div>`).join('');
+
+  // ── V2.4 Gap A: 3 financial health KPIs from /api/alerts ─────────
+  const fa = d.financialAlerts || [];
+  const getAlert = id => fa.find(a => a.id === id) || { count: 0, amount: null };
+  const a2 = getAlert('income_unreconciled');
+  const a3 = getAlert('bank_unmatched');
+  const a4 = getAlert('pricing_gap');
+
+  const financialKpis = [
+    {
+      l: 'Income sin Reconciliar',
+      v: a2.count,
+      s: a2.count > 0 ? f$(a2.amount, 0) + ' pendiente' : 'Todo reconciliado',
+      c: a2.count > 5 ? 'c-red' : a2.count > 0 ? 'c-orange' : 'c-green',
+      tid: 'kpi-income-sin-reconciliar',
+    },
+    {
+      l: 'Bank Sin Match',
+      v: a3.count,
+      s: a3.count > 0 ? f$(a3.amount, 0) + ' sin match' : 'Todo reconciliado',
+      c: a3.count > 0 ? 'c-orange' : 'c-green',
+      tid: 'kpi-bank-sin-match',
+    },
+    {
+      l: 'Pricing Gaps Activos',
+      v: a4.count,
+      s: a4.count > 0 ? 'Gap >20% en 7d — revisar' : 'Sin gaps significativos',
+      c: a4.count > 0 ? 'c-orange' : 'c-green',
+      tid: 'kpi-pricing-gaps-activos',
+    },
+  ];
+
+  $('kpi-grid').innerHTML += financialKpis.map(k => `
+    <div class="kpi-card ${k.c}" data-testid="${k.tid}" style="border-top:2px solid">
+      <div class="kpi-label" style="font-size:9px;letter-spacing:.3px">${esc(k.l)}</div>
+      <div class="kpi-val">${k.v}</div>
+      <div class="kpi-sub">${k.s}</div>
     </div>`).join('');
 }
 
@@ -626,15 +676,24 @@ function renderUpcoming(rows) {
     </tbody></table></div>`;
 }
 
-// ── FULL ALERTS ───────────────────────────────────────────────────
-function renderFullAlerts(alerts) {
-  $('full-alerts-meta').textContent=(alerts||[]).length+' alertas';
-  if (!alerts||!alerts.length) {
+// ── FULL ALERTS — V2.4 Gap B: Grouped Operativas + Financieras ────
+function renderFullAlerts(internalAlerts, financialAlerts) {
+  const ops  = internalAlerts  || [];
+  const fins = financialAlerts || [];
+  const total = ops.length + fins.length;
+  $('full-alerts-meta').textContent = total + ' alertas';
+
+  if (!total) {
     $('full-alerts-wrap').innerHTML='<div class="empty-st" style="padding:40px">Sin alertas. Todo en orden.</div>';
     return;
   }
-  const sorted=[...alerts].sort((a,b)=>({alta:0,media:1,baja:2}[a.priority]||2)-({alta:0,media:1,baja:2}[b.priority]||2));
-  $('full-alerts-wrap').innerHTML=`<div class="alert-list" style="max-height:none;padding:16px">${sorted.map(a=>`
+
+  const sortedOps = [...ops].sort((a,b)=>({alta:0,media:1,baja:2}[a.priority]||2)-({alta:0,media:1,baja:2}[b.priority]||2));
+
+  // Map financial severity to visual priority class
+  const sevClass = s => s==='high'?'alta':s==='medium'?'media':'baja';
+
+  const opRows = sortedOps.map(a=>`
     <div class="alert-row ${a.priority}">
       <div class="alert-dot"></div>
       <div style="flex:1">
@@ -642,5 +701,65 @@ function renderFullAlerts(alerts) {
         ${esc(a.msg)}
         ${a.boat?`<span class="badge bg-gray" style="margin-left:6px">${esc(a.boat)}</span>`:''}
       </div>
-    </div>`).join('')}</div>`;
+    </div>`).join('');
+
+  const finRows = fins.filter(a=>a.count>0).map(a=>`
+    <div class="alert-row ${sevClass(a.severity)}">
+      <div class="alert-dot"></div>
+      <div style="flex:1">
+        <span class="alert-pri">${a.severity.toUpperCase()}</span>
+        <strong>${esc(a.title)}</strong> — ${esc(a.message)}
+        ${a.count>0?`<span class="badge bg-gray" style="margin-left:6px">${a.count}</span>`:''}
+        ${a.link?`<a href="${esc(a.link)}" style="margin-left:8px;font-size:11px;color:#60a5fa">Ver</a>`:''}
+      </div>
+    </div>`).join('');
+
+  const opsSection = ops.length ? `
+    <div style="padding:10px 16px 4px;font-size:11px;font-weight:700;letter-spacing:.5px;color:var(--txt-dim,#94a3b8);text-transform:uppercase">
+      Alertas Operativas (${ops.length})
+    </div>
+    <div class="alert-list" style="max-height:none;padding:0 16px 8px">${opRows}</div>` : '';
+
+  const finSection = finRows ? `
+    <div style="padding:10px 16px 4px;font-size:11px;font-weight:700;letter-spacing:.5px;color:var(--txt-dim,#94a3b8);text-transform:uppercase">
+      Alertas Financieras (${fins.filter(a=>a.count>0).length})
+    </div>
+    <div class="alert-list" style="max-height:none;padding:0 16px 8px">${finRows}</div>` : '';
+
+  $('full-alerts-wrap').innerHTML = opsSection + finSection || '<div class="empty-st" style="padding:40px">Sin alertas activas.</div>';
+}
+
+// ── PLATFORM RANKING — V2.4 Gap C ────────────────────────────────
+function renderPlatformRanking(rows) {
+  const el = $('platform-ranking-wrap');
+  if (!el) return; // element may not exist yet
+  if (!rows || !rows.length) {
+    el.innerHTML = '<div class="empty-st" style="padding:24px">Sin datos de plataforma en el período</div>';
+    return;
+  }
+  const maxBookings = rows[0].bookings || 1;
+  const maxRevenue  = Math.max(...rows.map(r=>r.revenue)) || 1;
+  el.innerHTML = `
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead>
+        <tr style="color:#94a3b8;font-size:11px;text-transform:uppercase;letter-spacing:.5px">
+          <th style="padding:6px 8px;text-align:left">Plataforma</th>
+          <th style="padding:6px 8px;text-align:right">Bookings</th>
+          <th style="padding:6px 8px;text-align:right">Ingresos</th>
+          <th style="padding:6px 8px;min-width:120px">Volumen</th>
+        </tr>
+      </thead>
+      <tbody>${rows.map((r,i)=>`
+        <tr style="border-top:1px solid rgba(148,163,184,.1)">
+          <td style="padding:7px 8px;font-weight:${i===0?700:400}">${esc(r.platform)}</td>
+          <td style="padding:7px 8px;text-align:right;font-variant-numeric:tabular-nums">${r.bookings}</td>
+          <td style="padding:7px 8px;text-align:right;font-variant-numeric:tabular-nums">${f$(r.revenue,0)}</td>
+          <td style="padding:7px 8px">
+            <div style="height:6px;border-radius:3px;background:rgba(148,163,184,.15)">
+              <div style="height:6px;border-radius:3px;background:#3b82f6;width:${(r.bookings/maxBookings*100).toFixed(1)}%"></div>
+            </div>
+          </td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
 }
