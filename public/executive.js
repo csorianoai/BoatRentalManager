@@ -5,6 +5,10 @@
 let D = null; // current dataset
 let sortField = 'income', sortDir = 'desc';
 
+// ── V2.7: Cobros filter state ──────────────────────────────────────
+let _upcomingRows = [];
+let _upcomingFilter = 'all';
+
 // ── UTILS ─────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
 const esc = s => String(s||'').replace(/[<>&"']/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]));
@@ -33,6 +37,34 @@ const statusBadge = s => {
   const [cls,lbl]=m[s]||['bg-gray',s||'—'];
   return `<span class="badge ${cls}">${lbl}</span>`;
 };
+
+// ── V2.7: Phone normalization (client-side mirror of server normalizePhone) ──
+function normalizePhoneClient(phone) {
+  if (!phone) return null;
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length === 10) return '+1' + digits;
+  if (digits.length === 11 && digits.startsWith('1')) return '+' + digits;
+  if (digits.length >= 10 && phone.startsWith('+')) return '+' + digits;
+  return null;
+}
+
+// V2.7: Days until booking date (booking_date is TEXT: "YYYY-MM-DD")
+function daysToBooking(dateStr) {
+  if (!dateStr) return 999;
+  return Math.round((new Date(dateStr + 'T00:00:00') - Date.now()) / 86400000);
+}
+
+// V2.7: Risk badges for a booking row (returns HTML string)
+function riskBadges(b) {
+  const badges = [];
+  const dep = parseFloat(b.deposit_amount || 0);
+  const days = daysToBooking(b.booking_date);
+  if (dep === 0 && days <= 7)  badges.push('<span class="badge bg-red" title="Sin depósito en menos de 7 días">RIESGO</span>');
+  if (b.broker_id)             badges.push('<span class="badge bg-purple" title="Booking de broker">BROKER</span>');
+  const rawPhone = b.customer_phone || b.final_customer_phone || '';
+  if (rawPhone && !normalizePhoneClient(rawPhone)) badges.push('<span class="badge bg-gray" title="Teléfono no normalizable">SIN TEL</span>');
+  return badges.join(' ');
+}
 
 // ── HEALTH SCORE ──────────────────────────────────────────────────
 function healthScore(b, allBoats) {
@@ -155,6 +187,7 @@ function renderAll(d) {
   renderAR(d.arList);
   renderDeposits(d.pendingDeposits);
   renderUpcoming(d.upcomingBookings);
+  renderCobrosKPI(d);                                   // V2.7: KPI bar + filter state reset on refresh
   renderFullAlerts(d.alerts, d.financialAlerts);      // Gap B: grouped alerts
   renderPlatformRanking(d.platformRanking);           // Gap C: platform ranking
   // Alert badge — count internal alta + any financial high/medium
@@ -655,9 +688,10 @@ function renderAR(rows) {
     <thead><tr><th>Cliente / Parte</th><th>Barco</th><th class="td-right">Monto</th><th>Vence</th><th>Estado</th><th></th></tr></thead>
     <tbody>${rows.map(r=>{
       const overdue=r.due_date&&new Date(r.due_date)<now;
+      const isBroker = r.party_type === 'broker';
       const bkId = r.booking_id || '';
-      return `<tr>
-        <td class="td-bold">${esc(r.party_name||r.client_name||'—')}</td>
+      return `<tr${isBroker?' style="background:#faf5ff"':''}>
+        <td class="td-bold">${esc(r.party_name||r.client_name||'—')}${isBroker?' <span class="badge bg-purple" style="margin-left:4px">BROKER</span>':''}</td>
         <td>${esc(r.boat_name_ref||r.boat_id||'—')}</td>
         <td class="td-right td-mono">${f$(r.amount,2)}</td>
         <td style="${overdue?'color:#ef4444;font-weight:700':''}">${fDate(r.due_date)}</td>
@@ -687,18 +721,53 @@ function renderDeposits(rows) {
 }
 
 // ── UPCOMING ──────────────────────────────────────────────────────
+// V2.7: store rows globally so filters can re-render without refetch
 function renderUpcoming(rows) {
-  $('upcoming-meta').textContent=(rows||[]).length+' próximos';
-  if (!rows||!rows.length) { $('upcoming-wrap').innerHTML='<div class="empty-st">Sin próximos bookings</div>'; return; }
-  $('upcoming-wrap').innerHTML=`<div class="tbl-wrap"><table>
-    <thead><tr><th>Fecha</th><th>Cliente / Broker</th><th>Barco</th><th class="td-right">Total</th><th class="td-right">Dep.</th><th class="td-right">Saldo</th><th>Estado</th><th></th></tr></thead>
-    <tbody>${rows.map(b=>{
+  _upcomingRows = rows || [];
+  _applyUpcomingFilter();
+}
+
+function _applyUpcomingFilter() {
+  const wrap = $('upcoming-wrap');
+  if (!wrap) return;
+  const rows = _upcomingRows;
+  $('upcoming-meta').textContent = rows.length + ' próximos';
+
+  // Apply filter
+  const filtered = rows.filter(b => {
+    const dep = parseFloat(b.deposit_amount || 0);
+    const days = daysToBooking(b.booking_date);
+    if (_upcomingFilter === 'no-deposit') return dep === 0;
+    if (_upcomingFilter === 'high-risk')  return dep === 0 && days <= 7;
+    return true;
+  });
+
+  // V2.7: filter pills bar
+  const filterBar = `<div style="display:flex;gap:6px;padding:10px 16px 0;flex-wrap:wrap" data-testid="upcoming-filter-bar">
+    <button class="pill${_upcomingFilter==='all'?' active':''}" data-testid="filter-all"
+      onclick="_upcomingFilter='all';_applyUpcomingFilter()">Todos (${rows.length})</button>
+    <button class="pill${_upcomingFilter==='no-deposit'?' active':''}" data-testid="filter-no-deposit"
+      onclick="_upcomingFilter='no-deposit';_applyUpcomingFilter()">Sin depósito (${rows.filter(b=>!parseFloat(b.deposit_amount||0)).length})</button>
+    <button class="pill${_upcomingFilter==='high-risk'?' active':''}" data-testid="filter-high-risk"
+      onclick="_upcomingFilter='high-risk';_applyUpcomingFilter()">Alto riesgo (${rows.filter(b=>!parseFloat(b.deposit_amount||0)&&daysToBooking(b.booking_date)<=7).length})</button>
+  </div>`;
+
+  if (!filtered.length) {
+    wrap.innerHTML = filterBar + '<div class="empty-st">Sin bookings para este filtro</div>';
+    return;
+  }
+
+  wrap.innerHTML = filterBar + `<div class="tbl-wrap"><table>
+    <thead><tr><th>Fecha</th><th>Cliente / Broker</th><th>Riesgo</th><th>Barco</th><th class="td-right">Total</th><th class="td-right">Dep.</th><th class="td-right">Saldo</th><th>Estado</th><th></th></tr></thead>
+    <tbody>${filtered.map(b=>{
       const client=b.customer_name||b.broker_name||b.final_customer_name||'—';
       const dep=parseFloat(b.deposit_amount||0), total=parseFloat(b.total_amount||0), bal=total-dep;
       const hasBal=bal>0;
+      const badges=riskBadges(b);
       return `<tr>
         <td style="white-space:nowrap">${fDate(b.booking_date)}</td>
         <td class="td-bold">${esc(client)}</td>
+        <td style="white-space:nowrap">${badges||'<span style="color:#94a3b8;font-size:11px">—</span>'}</td>
         <td>${esc(b.boat_name_ref||b.boat_id||'—')}</td>
         <td class="td-right td-mono">${f$(total,2)}</td>
         <td class="td-right td-mono" style="color:#10b981">${f$(dep,2)}</td>
@@ -710,6 +779,39 @@ function renderUpcoming(rows) {
         </td>
       </tr>`;}).join('')}
     </tbody></table></div>`;
+}
+
+// ── V2.7: KPI bar for tab Cobros ──────────────────────────────────
+function renderCobrosKPI(d) {
+  const el = $('cobros-kpi-bar');
+  if (!el) return;
+  const ar = (d.arList || []).filter(r => r.status === 'pending');
+  const arTotal   = ar.reduce((s, r) => s + parseFloat(r.amount || 0), 0);
+  const arClients = ar.filter(r => r.party_type === 'customer').reduce((s, r) => s + parseFloat(r.amount || 0), 0);
+  const arBrokers = ar.filter(r => r.party_type === 'broker').reduce((s, r) => s + parseFloat(r.amount || 0), 0);
+  const noDeposit = (d.upcomingBookings || []).filter(b => !parseFloat(b.deposit_amount || 0)).length;
+  el.innerHTML = `<div class="kpi-grid" style="margin-bottom:16px">
+    <div class="kpi-card c-red" data-testid="kpi-ar-total">
+      <div class="kpi-label">AR Pendiente Total</div>
+      <div class="kpi-val">${f$(arTotal,0)}</div>
+      <div class="kpi-sub">${ar.length} cuenta${ar.length!==1?'s':''} pendientes</div>
+    </div>
+    <div class="kpi-card c-orange" data-testid="kpi-ar-clients">
+      <div class="kpi-label">Pendiente Clientes</div>
+      <div class="kpi-val">${f$(arClients,0)}</div>
+      <div class="kpi-sub">${ar.filter(r=>r.party_type==='customer').length} cuentas</div>
+    </div>
+    <div class="kpi-card c-purple" data-testid="kpi-ar-brokers">
+      <div class="kpi-label">Pendiente Brokers</div>
+      <div class="kpi-val">${f$(arBrokers,0)}</div>
+      <div class="kpi-sub">${ar.filter(r=>r.party_type==='broker').length} cuenta${ar.filter(r=>r.party_type==='broker').length!==1?'s':''}</div>
+    </div>
+    <div class="kpi-card c-blue" data-testid="kpi-no-deposit">
+      <div class="kpi-label">Sin Depósito</div>
+      <div class="kpi-val">${noDeposit}</div>
+      <div class="kpi-sub">bookings próximos</div>
+    </div>
+  </div>`;
 }
 
 // ── FULL ALERTS — V2.4 Gap B: Grouped Operativas + Financieras ────
