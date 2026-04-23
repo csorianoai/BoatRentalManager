@@ -552,7 +552,99 @@
         }
 
         /* ===== FLEET OPERATIONS CENTER ===== */
-        #foc-root { display:flex; flex-direction:column; height:calc(100vh - 120px); min-height:600px; background:#F8F9FA; border-radius:12px; overflow:hidden; }
+        #foc-root { display:flex; flex-direction:column; height:calc(100vh - 120px); min-height:500px; background:#F8F9FA; border-radius:12px; overflow:hidden; }
+
+        /* ══ FOC MODE — corrección de layout completo ══
+           Cuando FOC tab está activo, el container desperdicia 96px de padding + 48px
+           de margin-bottom en .tabs. Este bloque los elimina y recalcula la altura
+           con la ecuación correcta: 100vh - gnav(52px) - tabsBar(52px) = 100vh-104px */
+        body.foc-mode .container { max-width: none; padding: 0; }
+        body.foc-mode .tabs { margin-bottom: 0; padding: 0 16px; position: sticky; top: var(--gnav-h, 52px); background: #fff; z-index: 50; border-bottom: 2px solid #EBEBEB; }
+        body.foc-mode .tab-content.active { height: calc(100vh - var(--gnav-h, 52px) - 53px); overflow: hidden; }
+        body.foc-mode #foc-root { display: flex; flex-direction: row; height: 100%; border-radius: 0; overflow: hidden; min-height: 0; }
+
+        /* ══ FOC SIDEBAR ══ */
+        #foc-sidebar {
+          width: 240px; min-width: 240px; flex-shrink: 0;
+          background: #111827;
+          display: flex; flex-direction: column;
+          overflow: hidden;
+          transition: width .2s ease, min-width .2s ease;
+          border-right: 1px solid rgba(255,255,255,.06);
+        }
+        #foc-sidebar.foc-sb-collapsed { width: 52px; min-width: 52px; }
+        .foc-sb-hd {
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 11px 12px; border-bottom: 1px solid rgba(255,255,255,.06);
+          flex-shrink: 0;
+        }
+        .foc-sb-title {
+          font-size: 11px; font-weight: 700; color: #6B7280;
+          text-transform: uppercase; letter-spacing: .1em;
+          white-space: nowrap; overflow: hidden; transition: opacity .15s;
+        }
+        #foc-sidebar.foc-sb-collapsed .foc-sb-title { opacity: 0; width: 0; }
+        .foc-sb-toggle {
+          background: none; border: none; color: #4B5563; cursor: pointer;
+          padding: 4px 5px; border-radius: 5px; line-height: 1;
+          display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+        }
+        .foc-sb-toggle:hover { background: rgba(255,255,255,.08); color: #E5E7EB; }
+        .foc-sb-body { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 8px 0; }
+        .foc-sb-body::-webkit-scrollbar { width: 3px; }
+        .foc-sb-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,.1); border-radius: 2px; }
+        .foc-sb-section {
+          font-size: 10px; font-weight: 700; color: #374151;
+          text-transform: uppercase; letter-spacing: .1em;
+          padding: 10px 14px 4px; white-space: nowrap;
+          transition: opacity .15s;
+        }
+        #foc-sidebar.foc-sb-collapsed .foc-sb-section { opacity: 0; }
+        .foc-sb-item {
+          display: flex; align-items: center; gap: 9px;
+          padding: 8px 14px; font-size: 13px; font-weight: 500; color: #9CA3AF;
+          cursor: pointer; border: none; background: none; width: 100%;
+          text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+          transition: background .12s, color .12s;
+        }
+        .foc-sb-item:hover { background: rgba(255,255,255,.05); color: #F3F4F6; }
+        .foc-sb-item.foc-sb-active { background: rgba(59,130,246,.15); color: #60A5FA; }
+        .foc-sb-item svg { width: 14px; height: 14px; flex-shrink: 0; }
+        .foc-sb-label { flex: 1; overflow: hidden; text-overflow: ellipsis; transition: opacity .15s; }
+        #foc-sidebar.foc-sb-collapsed .foc-sb-label { opacity: 0; width: 0; pointer-events: none; }
+        .foc-sb-badge {
+          font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 10px;
+          background: rgba(239,68,68,.2); color: #FCA5A5; flex-shrink: 0;
+          transition: opacity .15s;
+        }
+        #foc-sidebar.foc-sb-collapsed .foc-sb-badge { opacity: 0; width: 0; padding: 0; overflow: hidden; }
+        .foc-sb-sep { height: 1px; background: rgba(255,255,255,.05); margin: 6px 0; }
+
+        /* ══ FOC MAIN AREA (right column) ══ */
+        #foc-main-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+
+        /* Mobile sidebar overlay */
+        @media (max-width: 768px) {
+          body.foc-mode #foc-sidebar {
+            position: fixed; left: 0; top: var(--gnav-h, 52px); bottom: 0;
+            z-index: 200; transform: translateX(-100%);
+            width: 240px !important; min-width: 240px !important;
+            transition: transform .25s ease;
+            box-shadow: 4px 0 24px rgba(0,0,0,.4);
+          }
+          body.foc-mode #foc-sidebar.foc-sb-mobile-open { transform: translateX(0); }
+          #foc-sb-mobile-overlay {
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,.4);
+            z-index: 199;
+          }
+          body.foc-mode #foc-sidebar.foc-sb-mobile-open ~ #foc-sb-mobile-overlay { display: block; }
+          #foc-sb-mobile-open { display: flex !important; }
+        }
+        @media (min-width: 769px) {
+          #foc-sb-mobile-overlay { display: none !important; }
+          .foc-sb-mobile-btn { display: none !important; }
+          #foc-sb-mobile-open { display: none !important; }
+        }
 
         /* Today strip */
         #foc-today-strip-wrap { background:#111827; color:#e5e7eb; font-size:12px; font-weight:500; padding:7px 16px; display:flex; align-items:center; gap:0; flex-wrap:wrap; min-height:32px; }
@@ -1101,6 +1193,81 @@
         <div class="tab-content" id="calendar-tab">
             <div id="foc-root">
 
+                <!-- ── SIDEBAR ── -->
+                <div id="foc-sidebar">
+                  <div class="foc-sb-hd">
+                    <span class="foc-sb-title">Operaciones</span>
+                    <button class="foc-sb-toggle" id="foc-sb-toggle-btn" title="Colapsar sidebar" data-testid="button-foc-sidebar-toggle">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 19l-7-7 7-7"/><path d="M19 19l-7-7 7-7"/></svg>
+                    </button>
+                  </div>
+                  <div class="foc-sb-body" id="foc-sb-body">
+
+                    <!-- Mobile open button (visible only on mobile) -->
+                    <button class="foc-sb-item foc-sb-mobile-btn" onclick="document.getElementById('foc-sidebar').classList.remove('foc-sb-mobile-open')" style="display:none">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                      <span class="foc-sb-label">Cerrar</span>
+                    </button>
+
+                    <!-- Navegación -->
+                    <div class="foc-sb-section">Navegación</div>
+                    <button class="foc-sb-item" onclick="document.getElementById('foc-goto-today')?.click()" data-testid="sb-btn-today">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                      <span class="foc-sb-label">Hoy</span>
+                    </button>
+                    <button class="foc-sb-item" onclick="document.getElementById('foc-view-timeline')?.click()" data-testid="sb-btn-timeline">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                      <span class="foc-sb-label">Vista Timeline</span>
+                    </button>
+                    <button class="foc-sb-item" onclick="document.getElementById('foc-view-weekly')?.click()" data-testid="sb-btn-weekly">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+                      <span class="foc-sb-label">Vista Semanal</span>
+                    </button>
+                    <button class="foc-sb-item" onclick="document.getElementById('foc-view-list')?.click()" data-testid="sb-btn-list">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/></svg>
+                      <span class="foc-sb-label">Vista Lista</span>
+                    </button>
+
+                    <div class="foc-sb-sep"></div>
+
+                    <!-- Alertas -->
+                    <div class="foc-sb-section">Alertas</div>
+                    <button class="foc-sb-item" id="foc-sb-alerts-btn" data-testid="sb-btn-alerts">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                      <span class="foc-sb-label">Ver alertas</span>
+                      <span class="foc-sb-badge" id="foc-sb-alert-count" style="display:none">0</span>
+                    </button>
+
+                    <div class="foc-sb-sep"></div>
+
+                    <!-- Barcos (populated by JS) -->
+                    <div class="foc-sb-section">Flota</div>
+                    <div id="foc-sb-boat-list"></div>
+
+                    <div class="foc-sb-sep"></div>
+
+                    <!-- Gestión -->
+                    <div class="foc-sb-section">Gestión</div>
+                    <a href="/fleet.html#barcos" class="foc-sb-item" data-testid="sb-link-boats">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17l4-8 4 4 4-6 4 10H3z"/><path d="M3 21h18"/></svg>
+                      <span class="foc-sb-label">Gestión de barcos</span>
+                    </a>
+                    <a href="/boat-maintenance.html" class="foc-sb-item" data-testid="sb-link-maintenance">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+                      <span class="foc-sb-label">Mantenimiento</span>
+                    </a>
+                    <a href="/schedule.html" class="foc-sb-item" data-testid="sb-link-schedule">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                      <span class="foc-sb-label">Calendario semanal</span>
+                    </a>
+                  </div>
+                </div>
+                <!-- Mobile overlay -->
+                <div id="foc-sb-mobile-overlay" onclick="document.getElementById('foc-sidebar').classList.remove('foc-sb-mobile-open')"></div>
+
+                <!-- ── MAIN AREA ── -->
+                <div id="foc-main-area">
+
                 <!-- Today Command Strip -->
                 <div id="foc-today-strip-wrap">
                     <div id="foc-today-strip">Cargando estado operativo...</div>
@@ -1115,6 +1282,11 @@
 
                 <!-- Controls Bar -->
                 <div id="foc-controls">
+                    <!-- Mobile: botón para abrir sidebar (solo visible en móvil) -->
+                    <button id="foc-sb-mobile-open" class="foc-nav-btn" data-testid="button-foc-sidebar-open"
+                      onclick="document.getElementById('foc-sidebar').classList.add('foc-sb-mobile-open')"
+                      style="display:none"
+                      title="Abrir menú">&#9776;</button>
                     <div class="foc-view-group">
                         <button id="foc-view-timeline" class="foc-view-btn foc-view-active" onclick="FleetOpsCenter.setViewMode('timeline')" data-testid="button-foc-view-timeline" title="Vista Timeline (T)">Timeline</button>
                         <button id="foc-view-weekly"   class="foc-view-btn" onclick="FleetOpsCenter.setViewMode('weekly')"   data-testid="button-foc-view-weekly"   title="Vista Semanal (W)">Semanal</button>
@@ -1149,9 +1321,11 @@
                     <div id="foc-alerts-panel"></div>
                 </div>
 
-            </div>
+                </div><!-- /foc-main-area -->
 
-            <!-- Detail Drawer (portal) -->
+            </div><!-- /foc-root -->
+
+            <!-- Detail Drawer (portal, position:fixed — puede ir fuera del root) -->
             <div id="foc-drawer"></div>
         </div>
 

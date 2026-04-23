@@ -66,8 +66,12 @@ function initTabs() {
       button.classList.add('active');
       document.getElementById(`${tabName}-tab`).classList.add('active');
 
+      // FOC mode: elimina padding del container y corrige altura cuando el tab FOC está activo
+      document.body.classList.toggle('foc-mode', tabName === 'calendar');
+
       if (tabName === 'calendar') {
         if (window.FleetOpsCenter) FleetOpsCenter.init();
+        initFOCSidebar();
       } else if (tabName === 'platforms') {
         loadPlatformBoatSelect();
       } else if (tabName === 'recurring-expenses') {
@@ -75,6 +79,95 @@ function initTabs() {
       }
     });
   });
+}
+
+// ─── FOC SIDEBAR ────────────────────────────────────────────────────────────
+function initFOCSidebar() {
+  const sidebar = document.getElementById('foc-sidebar');
+  if (!sidebar || sidebar.dataset.sbInit) return;
+  sidebar.dataset.sbInit = '1';
+
+  // Restaurar estado colapsado
+  if (localStorage.getItem('foc_sb_collapsed') === '1') {
+    sidebar.classList.add('foc-sb-collapsed');
+  }
+
+  // Toggle collapse/expand
+  const toggleBtn = document.getElementById('foc-sb-toggle-btn');
+  if (toggleBtn) {
+    toggleBtn.addEventListener('click', () => {
+      const collapsed = sidebar.classList.toggle('foc-sb-collapsed');
+      localStorage.setItem('foc_sb_collapsed', collapsed ? '1' : '0');
+      // Cambiar icono de la flecha según estado
+      toggleBtn.innerHTML = collapsed
+        ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 5l7 7-7 7"/><path d="M5 5l7 7-7 7"/></svg>'
+        : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 19l-7-7 7-7"/><path d="M19 19l-7-7 7-7"/></svg>';
+    });
+  }
+
+  // Alerts badge: sincroniza con el contador de #foc-alerts-panel
+  const alertsBadge = document.getElementById('foc-sb-alert-count');
+  const alertsBtn   = document.getElementById('foc-sb-alerts-btn');
+  if (alertsBtn) {
+    alertsBtn.addEventListener('click', () => {
+      const panel = document.getElementById('foc-alerts-panel');
+      if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    });
+  }
+
+  // Observar cambios en foc-alerts-panel para actualizar badge
+  const alertsPanel = document.getElementById('foc-alerts-panel');
+  if (alertsPanel && alertsBadge) {
+    const obs = new MutationObserver(() => {
+      const count = alertsPanel.querySelectorAll('.foc-alert-row').length;
+      alertsBadge.textContent = count;
+      alertsBadge.style.display = count > 0 ? '' : 'none';
+    });
+    obs.observe(alertsPanel, { childList: true, subtree: true });
+  }
+
+  // Poblar lista de barcos
+  renderFOCSidebarBoats();
+}
+
+function renderFOCSidebarBoats() {
+  const container = document.getElementById('foc-sb-boat-list');
+  if (!container) return;
+
+  // boats es el array global cargado por fleet.js
+  const boatList = (typeof boats !== 'undefined' && Array.isArray(boats)) ? boats : [];
+  if (!boatList.length) {
+    container.innerHTML = '<div style="font-size:11px;color:#4B5563;padding:6px 14px;">Cargando barcos...</div>';
+    // Reintentar en 1s si aún no cargaron
+    setTimeout(renderFOCSidebarBoats, 1000);
+    return;
+  }
+
+  container.innerHTML = boatList.map(b => {
+    const name = String(b.name || 'Barco').replace(/</g, '&lt;');
+    const status = (b.status || '').toLowerCase();
+    const dotColor = status === 'active' || status === 'activo'  ? '#10B981'
+                   : status === 'maintenance' || status === 'mantenimiento' ? '#F59E0B'
+                   : '#6B7280';
+    return `<button class="foc-sb-item" data-boat-id="${b.id}" data-testid="sb-boat-${b.id}"
+              onclick="focSidebarFilterBoat('${b.id}', this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="${dotColor}" stroke-width="2.5" width="14" height="14">
+        <circle cx="12" cy="12" r="4" fill="${dotColor}" stroke="none"/>
+      </svg>
+      <span class="foc-sb-label">${name}</span>
+    </button>`;
+  }).join('');
+}
+
+function focSidebarFilterBoat(boatId, btn) {
+  // Resalta el botón activo
+  document.querySelectorAll('#foc-sb-boat-list .foc-sb-item').forEach(el => el.classList.remove('foc-sb-active'));
+  if (btn) btn.classList.toggle('foc-sb-active', !btn.classList.contains('foc-sb-active'));
+
+  // Si el FOC expone un método de filtro por barco, lo usamos; si no, es cosmético
+  if (window.FleetOpsCenter && typeof FleetOpsCenter.filterByBoat === 'function') {
+    FleetOpsCenter.filterByBoat(boatId);
+  }
 }
 
 // Event Listeners
