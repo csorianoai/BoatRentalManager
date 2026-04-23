@@ -12,8 +12,9 @@
     {
       id: 'operaciones',
       label: 'Operaciones',
-      pages: ['/schedule.html', '/fleet.html', '/messages.html', '/operations.html', '/marine-conditions.html'],
+      pages: ['/schedule.html', '/fleet.html', '/messages.html', '/operations.html', '/marine-conditions.html', '/operational-center.html'],
       items: [
+        { label: 'Centro Operativo',         href: '/operational-center.html',   icon: '⚡', testid: 'nav-operational-center' },
         { label: 'Fleet Operations Center', href: '/fleet.html#foc',            icon: '🗓️', testid: 'nav-foc' },
         { label: 'Calendario Semanal',       href: '/schedule.html',             icon: '📋', testid: 'nav-schedule' },
         { label: 'Mensajes',                 href: '/messages.html',             icon: '💬', testid: 'nav-messages' },

@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a1628">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Centro Operativo — Nadaki Excursions</title>
+  <meta name="description" content="Guía operativa, buscador de flujos y acceso rápido a todos los módulos de Nadaki Excursions.">
+  <link rel="stylesheet" href="/assets/css/global-nav.css">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icon-192.svg">
+  <link rel="stylesheet" href="/operational-center.css">
+</head>
+<body>
+
+<!-- ── HERO ── -->
+<div class="oc-hero">
+  <div class="oc-hero-badge">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+    Sistema Operativo Nadaki
+  </div>
+  <h1>Centro Operativo</h1>
+  <p>Guía visual, flujos clave y acceso directo a cada módulo del sistema. Encuentra cualquier proceso en segundos.</p>
+
+  <div class="oc-search-wrap">
+    <svg class="oc-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+    </svg>
+    <input
+      type="text"
+      id="oc-search-input"
+      class="oc-search-input"
+      placeholder="Buscar: cobrar balance, depositar, reconciliar, gasto, broker, reminder…"
+      autocomplete="off"
+      data-testid="input-oc-search"
+    >
+    <div id="oc-search-results" class="oc-search-results" role="listbox"></div>
+  </div>
+</div>
+
+<!-- ── PAGE CONTENT ── -->
+<div class="oc-page">
+
+  <!-- ══ QUICK ACTIONS ══ -->
+  <div class="oc-section-hd">
+    <h2>Acceso rápido</h2>
+    <p>Los módulos más utilizados del sistema</p>
+  </div>
+
+  <div class="oc-qa-grid" data-testid="quick-actions-grid">
+
+    <a href="/fleet.html#foc" class="oc-qa-item" data-testid="qa-foc">
+      <div class="oc-qa-icon bg-blue">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+      </div>
+      <div class="oc-qa-label">Fleet Operations</div>
+      <div class="oc-qa-sub">Bookings del día</div>
+    </a>
+
+    <a href="/reports.html#f1" class="oc-qa-item" data-testid="qa-executive">
+      <div class="oc-qa-icon bg-indigo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m7 16 4-4 4 4 4-4"/></svg>
+      </div>
+      <div class="oc-qa-label">Executive Dashboard</div>
+      <div class="oc-qa-sub">KPIs y cobros</div>
+    </a>
+
+    <a href="/accounting.html" class="oc-qa-item" data-testid="qa-accounting">
+      <div class="oc-qa-icon bg-green">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+      </div>
+      <div class="oc-qa-label">Contabilidad</div>
+      <div class="oc-qa-sub">AR, depósitos, gastos</div>
+    </a>
+
+    <a href="/accounting.html#reconciliation" class="oc-qa-item" data-testid="qa-reconciliation">
+      <div class="oc-qa-icon bg-teal">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 16V4m0 0L3 8m4-4 4 4"/><path d="M17 8v12m0 0 4-4m-4 4-4-4"/></svg>
+      </div>
+      <div class="oc-qa-label">Conciliación</div>
+      <div class="oc-qa-sub">Bank statements</div>
+    </a>
+
+    <a href="/dynamic-pricing.html" class="oc-qa-item" data-testid="qa-pricing">
+      <div class="oc-qa-icon bg-orange">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+      </div>
+      <div class="oc-qa-label">Pricing Dinámico</div>
+      <div class="oc-qa-sub">Precios recomendados</div>
+    </a>
+
+    <a href="/schedule.html" class="oc-qa-item" data-testid="qa-schedule">
+      <div class="oc-qa-icon bg-purple">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M8 14h.01M12 14h.01M16 14h.01"/></svg>
+      </div>
+      <div class="oc-qa-label">Calendario Semanal</div>
+      <div class="oc-qa-sub">Vista semanal</div>
+    </a>
+
+    <a href="/boat-maintenance.html" class="oc-qa-item" data-testid="qa-maintenance">
+      <div class="oc-qa-icon bg-rose">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+      </div>
+      <div class="oc-qa-label">Mantenimiento</div>
+      <div class="oc-qa-sub">Barcos y reparaciones</div>
+    </a>
+
+    <a href="/fleet.html" class="oc-qa-item" data-testid="qa-fleet">
+      <div class="oc-qa-icon bg-blue">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17l4-8 4 4 4-6 4 10H3z"/><path d="M3 21h18"/></svg>
+      </div>
+      <div class="oc-qa-label">Gestión de Flota</div>
+      <div class="oc-qa-sub">Barcos y activos</div>
+    </a>
+
+    <a href="/reports.html" class="oc-qa-item" data-testid="qa-reports">
+      <div class="oc-qa-icon bg-indigo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+      </div>
+      <div class="oc-qa-label">Reportes / NBIC</div>
+      <div class="oc-qa-sub">Analytics avanzado</div>
+    </a>
+
+    <a href="/commissions.html" class="oc-qa-item" data-testid="qa-commissions">
+      <div class="oc-qa-icon bg-green">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>
+      </div>
+      <div class="oc-qa-label">Comisiones</div>
+      <div class="oc-qa-sub">Captains y stews</div>
+    </a>
+
+    <a href="/documents.html" class="oc-qa-item" data-testid="qa-docs">
+      <div class="oc-qa-icon bg-teal">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+      </div>
+      <div class="oc-qa-label">Documentos</div>
+      <div class="oc-qa-sub">Contratos y archivos</div>
+    </a>
+
+    <a href="/sync.html" class="oc-qa-item" data-testid="qa-sync">
+      <div class="oc-qa-icon bg-orange">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
+      </div>
+      <div class="oc-qa-label">Sincronización</div>
+      <div class="oc-qa-sub">Plataformas externas</div>
+    </a>
+
+  </div>
+
+  <div class="oc-divider"></div>
+
+  <!-- ══ MODULE CARDS ══ -->
+  <div class="oc-section-hd">
+    <h2>Módulos del sistema</h2>
+    <p>Cada área con sus funciones clave y acceso directo</p>
+  </div>
+
+  <div class="oc-modules-grid" data-testid="modules-grid">
+
+    <!-- Bookings -->
+    <div class="oc-module-card c-blue" data-testid="module-bookings">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div class="oc-card-icon bg-blue">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+        </div>
+        <div class="oc-card-title">Bookings</div>
+      </div>
+      <div class="oc-card-desc">Registra servicios, asigna capitanes, verifica depósito y total. El sistema crea la Cuenta por Cobrar automáticamente si hay saldo pendiente.</div>
+      <div class="oc-card-actions">
+        <a href="/fleet.html#foc" class="oc-btn oc-btn-primary" data-testid="btn-module-bookings">Fleet Operations</a>
+        <a href="/schedule.html" class="oc-btn oc-btn-ghost">Calendario</a>
+      </div>
+    </div>
+
+    <!-- Cobros -->
+    <div class="oc-module-card c-red" data-testid="module-cobros">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div class="oc-card-icon bg-red">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        </div>
+        <div class="oc-card-title">Cobros</div>
+      </div>
+      <div class="oc-card-desc">Gestiona Cuentas por Cobrar, marca pagos, envía recordatorios via WhatsApp y monitorea saldos pendientes por cliente y broker.</div>
+      <div class="oc-card-actions">
+        <a href="/reports.html#f1" class="oc-btn oc-btn-primary" data-testid="btn-module-cobros">Executive Dashboard</a>
+        <a href="/accounting.html" class="oc-btn oc-btn-ghost">Contabilidad</a>
+      </div>
+    </div>
+
+    <!-- Depósitos -->
+    <div class="oc-module-card c-green" data-testid="module-depositos">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div class="oc-card-icon bg-green">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+        </div>
+        <div class="oc-card-title">Depósitos</div>
+      </div>
+      <div class="oc-card-desc">Registra depósitos recibidos. El sistema crea automáticamente el ledger, la AR y la transacción contable. Marcar depositado concilia el ingreso.</div>
+      <div class="oc-card-actions">
+        <a href="/accounting.html#deposits" class="oc-btn oc-btn-primary" data-testid="btn-module-depositos">Ver Depósitos</a>
+      </div>
+    </div>
+
+    <!-- Reconciliación -->
+    <div class="oc-module-card c-teal" data-testid="module-reconciliacion">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div class="oc-card-icon bg-teal">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 16V4m0 0L3 8m4-4 4 4"/><path d="M17 8v12m0 0 4-4m-4 4-4-4"/></svg>
+        </div>
+        <div class="oc-card-title">Reconciliación Bancaria</div>
+      </div>
+      <div class="oc-card-desc">Sube CSV del banco, corre auto-match y revisa registros sin match. Enlaza transacciones del sistema con movimientos bancarios reales.</div>
+      <div class="oc-card-actions">
+        <a href="/accounting.html#reconciliation" class="oc-btn oc-btn-primary" data-testid="btn-module-recon">Ir a Conciliación</a>
+      </div>
+    </div>
+
+    <!-- Gastos -->
+    <div class="oc-module-card c-orange" data-testid="module-gastos">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div class="oc-card-icon bg-orange">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+        </div>
+        <div class="oc-card-title">Gastos</div>
+      </div>
+      <div class="oc-card-desc">Registra gastos por categoría y barco: combustible, mantenimiento, crew. Visible en Executive Dashboard y análisis de rentabilidad.</div>
+      <div class="oc-card-actions">
+        <a href="/accounting.html#gastos-analisis" class="oc-btn oc-btn-primary" data-testid="btn-module-gastos">Análisis de Gastos</a>
+        <a href="/fuel-tracker.html" class="oc-btn oc-btn-ghost">Combustible</a>
+      </div>
+    </div>
+
+    <!-- Brokers -->
+    <div class="oc-module-card c-purple" data-testid="module-brokers">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div class="oc-card-icon bg-purple">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        </div>
+        <div class="oc-card-title">Brokers</div>
+      </div>
+      <div class="oc-card-desc">Gestiona agencias y brokers. Asigna el payer_type correcto en cada booking. Los saldos de brokers se rastrean por separado en los KPIs de cobros.</div>
+      <div class="oc-card-actions">
+        <a href="/accounting.html" class="oc-btn oc-btn-primary" data-testid="btn-module-brokers">Contabilidad</a>
+        <a href="/commissions.html" class="oc-btn oc-btn-ghost">Comisiones</a>
+      </div>
+    </div>
+
+    <!-- Pricing -->
+    <div class="oc-module-card c-indigo" data-testid="module-pricing">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div class="oc-card-icon bg-indigo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m7 12 4-4 4 4 4-4"/></svg>
+        </div>
+        <div class="oc-card-title">Pricing</div>
+      </div>
+      <div class="oc-card-desc">Revisa precios recomendados por ocupación, fin de semana y lead time. Compara con la tarifa base y ajusta según demanda real del mercado.</div>
+      <div class="oc-card-actions">
+        <a href="/dynamic-pricing.html" class="oc-btn oc-btn-primary" data-testid="btn-module-pricing">Pricing Dinámico</a>
+        <a href="/pricing.html" class="oc-btn oc-btn-ghost">Precios base</a>
+      </div>
+    </div>
+
+    <!-- Alertas -->
+    <div class="oc-module-card c-rose" data-testid="module-alertas">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div class="oc-card-icon bg-rose">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        </div>
+        <div class="oc-card-title">Alertas y Seguimiento</div>
+      </div>
+      <div class="oc-card-desc">Monitorea alertas financieras, ingresos sin conciliar, bank statements sin match y gap de pricing. Accede al Executive Dashboard para el resumen.</div>
+      <div class="oc-card-actions">
+        <a href="/reports.html#f1" class="oc-btn oc-btn-primary" data-testid="btn-module-alertas">Executive Dashboard</a>
+        <a href="/reports.html" class="oc-btn oc-btn-ghost">NBIC Analytics</a>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="oc-divider"></div>
+
+  <!-- ══ VISUAL FLOWS ══ -->
+  <div class="oc-section-hd">
+    <h2>Flujos clave del negocio</h2>
+    <p>El camino correcto para cada proceso, de principio a fin</p>
+  </div>
+
+  <div class="oc-flows" data-testid="flows-section">
+
+    <!-- Flow 1: Booking a dinero -->
+    <div class="oc-flow-card" data-testid="flow-booking-dinero">
+      <div class="oc-flow-label">Flujo 1</div>
+      <div class="oc-flow-title">Booking a dinero — el ciclo completo</div>
+      <div class="oc-flow-steps">
+        <div class="oc-step">
+          <div class="oc-step-dot done">1</div>
+          <div class="oc-step-name">Booking creado</div>
+          <div class="oc-step-sub">Fleet Ops / Depósito</div>
+        </div>
+        <div class="oc-step">
+          <div class="oc-step-dot done">2</div>
+          <div class="oc-step-name">AR generada</div>
+          <div class="oc-step-sub">Auto si balance &gt; 0</div>
+        </div>
+        <div class="oc-step">
+          <div class="oc-step-dot active">3</div>
+          <div class="oc-step-name">Pago recibido</div>
+          <div class="oc-step-sub">Mark Paid → Transacción</div>
+        </div>
+        <div class="oc-step">
+          <div class="oc-step-dot pending">4</div>
+          <div class="oc-step-name">Depositado</div>
+          <div class="oc-step-sub">Mark Deposited → Bank Stmt</div>
+        </div>
+        <div class="oc-step">
+          <div class="oc-step-dot pending">5</div>
+          <div class="oc-step-name">Conciliado</div>
+          <div class="oc-step-sub">Auto-match o manual</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Flow 2: Cobro pendiente -->
+    <div class="oc-flow-card" data-testid="flow-cobro-pendiente">
+      <div class="oc-flow-label">Flujo 2</div>
+      <div class="oc-flow-title">Cobro pendiente — activar y cerrar</div>
+      <div class="oc-flow-steps">
+        <div class="oc-step">
+          <div class="oc-step-dot warn">1</div>
+          <div class="oc-step-name">Saldo pendiente</div>
+          <div class="oc-step-sub">AR en estado pending</div>
+        </div>
+        <div class="oc-step">
+          <div class="oc-step-dot active">2</div>
+          <div class="oc-step-name">Recordatorio</div>
+          <div class="oc-step-sub">WhatsApp manual o cron 9AM</div>
+        </div>
+        <div class="oc-step">
+          <div class="oc-step-dot pending">3</div>
+          <div class="oc-step-name">Pago recibido</div>
+          <div class="oc-step-sub">Mark Paid en AR</div>
+        </div>
+        <div class="oc-step">
+          <div class="oc-step-dot pending">4</div>
+          <div class="oc-step-name">Estado actualizado</div>
+          <div class="oc-step-sub">AR paid · reminder_count++</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Flow 3: Gasto operativo -->
+    <div class="oc-flow-card" data-testid="flow-gasto">
+      <div class="oc-flow-label">Flujo 3</div>
+      <div class="oc-flow-title">Gasto operativo — registro y visibilidad</div>
+      <div class="oc-flow-steps">
+        <div class="oc-step">
+          <div class="oc-step-dot done">1</div>
+          <div class="oc-step-name">Gasto identificado</div>
+          <div class="oc-step-sub">Combustible, mant., crew</div>
+        </div>
+        <div class="oc-step">
+          <div class="oc-step-dot active">2</div>
+          <div class="oc-step-name">Registrado</div>
+          <div class="oc-step-sub">Módulo correcto por tipo</div>
+        </div>
+        <div class="oc-step">
+          <div class="oc-step-dot done">3</div>
+          <div class="oc-step-name">Transacción</div>
+          <div class="oc-step-sub">Expense en libro contable</div>
+        </div>
+        <div class="oc-step">
+          <div class="oc-step-dot done">4</div>
+          <div class="oc-step-name">Visible en Dashboard</div>
+          <div class="oc-step-sub">Margen operativo actualizado</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="oc-divider"></div>
+
+  <!-- ══ FAQ ══ -->
+  <div class="oc-section-hd">
+    <h2>¿Cómo lo hago?</h2>
+    <p>Pasos concretos para cada proceso del sistema</p>
+  </div>
+
+  <div class="oc-faq-grid" data-testid="faq-grid">
+
+    <!-- 1. Crear booking -->
+    <div class="oc-faq-card" id="faq-booking-create" data-testid="faq-booking-create">
+      <div class="oc-faq-hd" role="button" aria-expanded="false">
+        <span class="oc-faq-q">Cómo registrar un booking correctamente</span>
+        <svg class="oc-faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="oc-faq-body">
+        <ol class="oc-steps-list">
+          <li><span class="oc-step-num">1</span>Ve a Fleet Operations Center en el menú Operaciones.</li>
+          <li><span class="oc-step-num">2</span>Haz clic en el día correspondiente y selecciona "Nuevo Booking".</li>
+          <li><span class="oc-step-num">3</span>Ingresa cliente, barco, fecha, hora, duración y total del servicio.</li>
+          <li><span class="oc-step-num">4</span>Si el cliente es vía broker, asigna el broker antes de guardar.</li>
+          <li><span class="oc-step-num">5</span>Registra el depósito recibido — el sistema calcula el saldo automáticamente.</li>
+          <li><span class="oc-step-num">6</span>Si hay balance pendiente, la AR se crea automáticamente.</li>
+        </ol>
+        <div class="oc-avoid">
+          <strong>No hacer:</strong>
+          No registres el mismo booking dos veces. No confundas el depósito inicial con el pago final.
+        </div>
+        <div class="oc-faq-action"><a href="/fleet.html#foc" class="oc-btn oc-btn-primary oc-btn-sm" data-testid="faq-link-booking-create">Ir a Fleet Operations</a></div>
+      </div>
+    </div>
+
+    <!-- 2. Marcar pago -->
+    <div class="oc-faq-card" id="faq-mark-paid" data-testid="faq-mark-paid">
+      <div class="oc-faq-hd" role="button">
+        <span class="oc-faq-q">Cómo marcar un pago recibido</span>
+        <svg class="oc-faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="oc-faq-body">
+        <ol class="oc-steps-list">
+          <li><span class="oc-step-num">1</span>Ve a Contabilidad → Cuentas por Cobrar.</li>
+          <li><span class="oc-step-num">2</span>Localiza la cuenta del booking correspondiente.</li>
+          <li><span class="oc-step-num">3</span>Haz clic en "Marcar Pagado".</li>
+          <li><span class="oc-step-num">4</span>El sistema registra la transacción de ingreso automáticamente.</li>
+          <li><span class="oc-step-num">5</span>Verifica el cambio de estado en el Executive Dashboard → Tab Cobros.</li>
+        </ol>
+        <div class="oc-avoid">
+          <strong>No hacer:</strong>
+          No crees la transacción manualmente si ya usaste "Marcar Pagado" — duplicarías el ingreso en el libro contable.
+        </div>
+        <div class="oc-faq-action"><a href="/accounting.html" class="oc-btn oc-btn-primary oc-btn-sm" data-testid="faq-link-mark-paid">Ir a Contabilidad</a></div>
+      </div>
+    </div>
+
+    <!-- 3. Depositar -->
+    <div class="oc-faq-card" id="faq-deposit" data-testid="faq-deposit">
+      <div class="oc-faq-hd" role="button">
+        <span class="oc-faq-q">Cómo depositar un pago al banco</span>
+        <svg class="oc-faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="oc-faq-body">
+        <ol class="oc-steps-list">
+          <li><span class="oc-step-num">1</span>El booking debe estar previamente marcado como "Pagado".</li>
+          <li><span class="oc-step-num">2</span>Ve a Contabilidad → Depósitos.</li>
+          <li><span class="oc-step-num">3</span>Busca el booking y haz clic en "Marcar Depositado".</li>
+          <li><span class="oc-step-num">4</span>Ingresa la fecha de depósito y referencia bancaria si tienes.</li>
+          <li><span class="oc-step-num">5</span>El sistema crea el registro en Bank Statements y concilia la transacción.</li>
+        </ol>
+        <div class="oc-avoid">
+          <strong>No hacer:</strong>
+          Depositar NO crea un ingreso nuevo — solo concilia el que ya existe. No uses esta función sin haber marcado el pago primero.
+        </div>
+        <div class="oc-faq-action"><a href="/accounting.html#deposits" class="oc-btn oc-btn-primary oc-btn-sm" data-testid="faq-link-deposit">Ir a Depósitos</a></div>
+      </div>
+    </div>
+
+    <!-- 4. Bank statement -->
+    <div class="oc-faq-card" id="faq-bank-statement" data-testid="faq-bank-statement">
+      <div class="oc-faq-hd" role="button">
+        <span class="oc-faq-q">Cómo subir un bank statement</span>
+        <svg class="oc-faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="oc-faq-body">
+        <ol class="oc-steps-list">
+          <li><span class="oc-step-num">1</span>Ve a Contabilidad → Conciliación Bancaria.</li>
+          <li><span class="oc-step-num">2</span>Haz clic en "Importar CSV".</li>
+          <li><span class="oc-step-num">3</span>Sube el archivo CSV de tu banco (formato estándar).</li>
+          <li><span class="oc-step-num">4</span>El sistema corre auto-match automáticamente contra transacciones existentes.</li>
+          <li><span class="oc-step-num">5</span>Revisa los registros "Unmatched" y asígnalos manualmente si es necesario.</li>
+        </ol>
+        <div class="oc-avoid">
+          <strong>No hacer:</strong>
+          No subas el mismo estado de cuenta dos veces — aunque el sistema detecta duplicados, es mejor evitarlo.
+        </div>
+        <div class="oc-faq-action"><a href="/accounting.html#reconciliation" class="oc-btn oc-btn-primary oc-btn-sm" data-testid="faq-link-bank-statement">Ir a Conciliación</a></div>
+      </div>
+    </div>
+
+    <!-- 5. Reconciliar -->
+    <div class="oc-faq-card" id="faq-reconcile" data-testid="faq-reconcile">
+      <div class="oc-faq-hd" role="button">
+        <span class="oc-faq-q">Cómo reconciliar pagos bancarios</span>
+        <svg class="oc-faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="oc-faq-body">
+        <ol class="oc-steps-list">
+          <li><span class="oc-step-num">1</span>Ve a Contabilidad → Conciliación Bancaria.</li>
+          <li><span class="oc-step-num">2</span>Filtra los registros con estado "Unmatched".</li>
+          <li><span class="oc-step-num">3</span>Busca la transacción correspondiente del sistema.</li>
+          <li><span class="oc-step-num">4</span>Haz clic en "Match" para enlazar los dos registros.</li>
+          <li><span class="oc-step-num">5</span>El Executive Dashboard actualiza el KPI de ingresos sin conciliar.</li>
+        </ol>
+        <div class="oc-avoid">
+          <strong>No hacer:</strong>
+          No borres registros bancarios sin reconciliarlos — se pierde la trazabilidad financiera.
+        </div>
+        <div class="oc-faq-action"><a href="/accounting.html#reconciliation" class="oc-btn oc-btn-primary oc-btn-sm" data-testid="faq-link-reconcile">Ir a Conciliación</a></div>
+      </div>
+    </div>
+
+    <!-- 6. Registrar gasto -->
+    <div class="oc-faq-card" id="faq-expense" data-testid="faq-expense">
+      <div class="oc-faq-hd" role="button">
+        <span class="oc-faq-q">Cómo registrar un gasto operativo</span>
+        <svg class="oc-faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="oc-faq-body">
+        <ol class="oc-steps-list">
+          <li><span class="oc-step-num">1</span>Identifica el tipo de gasto: combustible, mantenimiento, crew, recurrente.</li>
+          <li><span class="oc-step-num">2</span>Combustible → Flota → Combustible (Fuel Tracker).</li>
+          <li><span class="oc-step-num">3</span>Mantenimiento → Flota → Mantenimiento.</li>
+          <li><span class="oc-step-num">4</span>Crew (capitán/stew) → Contabilidad → Comisiones.</li>
+          <li><span class="oc-step-num">5</span>Siempre asigna el barco correcto para análisis por embarcación.</li>
+        </ol>
+        <div class="oc-avoid">
+          <strong>No hacer:</strong>
+          No mezcles tipos de gasto. No registres gastos como ingresos. No omitas el barco.
+        </div>
+        <div class="oc-faq-action"><a href="/accounting.html#gastos-analisis" class="oc-btn oc-btn-primary oc-btn-sm" data-testid="faq-link-expense">Ir a Gastos</a></div>
+      </div>
+    </div>
+
+    <!-- 7. Ver quién debe -->
+    <div class="oc-faq-card" id="faq-who-owes" data-testid="faq-who-owes">
+      <div class="oc-faq-hd" role="button">
+        <span class="oc-faq-q">Cómo ver quién debe dinero</span>
+        <svg class="oc-faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="oc-faq-body">
+        <ol class="oc-steps-list">
+          <li><span class="oc-step-num">1</span>Ve al Executive Dashboard → Tab Cobros.</li>
+          <li><span class="oc-step-num">2</span>Los KPIs superiores muestran: AR Total, Clientes, Brokers, Sin Depósito.</li>
+          <li><span class="oc-step-num">3</span>La tabla "Cuentas por Cobrar" lista cada saldo con fecha de vencimiento.</li>
+          <li><span class="oc-step-num">4</span>Usa los filtros de Próximos Bookings: "Sin depósito" o "Alto riesgo".</li>
+          <li><span class="oc-step-num">5</span>Los badges RIESGO, BROKER y SIN TEL indican prioridad de acción.</li>
+        </ol>
+        <div class="oc-avoid">
+          <strong>No hacer:</strong>
+          No confíes solo en el campo balance_pending de bookings — la fuente de verdad es booking_receivables.
+        </div>
+        <div class="oc-faq-action"><a href="/reports.html#f1" class="oc-btn oc-btn-primary oc-btn-sm" data-testid="faq-link-who-owes">Ir a Executive Dashboard</a></div>
+      </div>
+    </div>
+
+    <!-- 8. Enviar recordatorio -->
+    <div class="oc-faq-card" id="faq-reminder" data-testid="faq-reminder">
+      <div class="oc-faq-hd" role="button">
+        <span class="oc-faq-q">Cómo enviar un recordatorio de pago</span>
+        <svg class="oc-faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="oc-faq-body">
+        <ol class="oc-steps-list">
+          <li><span class="oc-step-num">1</span>Ve al Executive Dashboard → Tab Cobros.</li>
+          <li><span class="oc-step-num">2</span>Localiza al cliente en "Cuentas por Cobrar" o "Próximos Bookings".</li>
+          <li><span class="oc-step-num">3</span>Haz clic en el botón "Recordatorio".</li>
+          <li><span class="oc-step-num">4</span>El sistema envía un WhatsApp con el saldo, nombre del cliente y fecha.</li>
+          <li><span class="oc-step-num">5</span>El cron automático (9 AM ET) también envía recordatorios cada 24 horas.</li>
+        </ol>
+        <div class="oc-avoid">
+          <strong>No hacer:</strong>
+          No intentes enviar dos recordatorios en menos de 24 horas — el sistema tiene protección anti-spam incorporada.
+        </div>
+        <div class="oc-faq-action"><a href="/reports.html#f1" class="oc-btn oc-btn-primary oc-btn-sm" data-testid="faq-link-reminder">Ir a Executive Dashboard</a></div>
+      </div>
+    </div>
+
+    <!-- 9. Pricing dinámico -->
+    <div class="oc-faq-card" id="faq-pricing" data-testid="faq-pricing">
+      <div class="oc-faq-hd" role="button">
+        <span class="oc-faq-q">Cómo revisar el pricing dinámico</span>
+        <svg class="oc-faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="oc-faq-body">
+        <ol class="oc-steps-list">
+          <li><span class="oc-step-num">1</span>Ve a Comercial → Pricing Dinámico.</li>
+          <li><span class="oc-step-num">2</span>Selecciona el barco y la fecha deseada.</li>
+          <li><span class="oc-step-num">3</span>El sistema muestra el precio recomendado y los "reasons" del ajuste.</li>
+          <li><span class="oc-step-num">4</span>Revisa: ocupación, fin de semana, lead time, eventos de mercado.</li>
+          <li><span class="oc-step-num">5</span>Aplica el precio o ajústalo manualmente si hay circunstancias especiales.</li>
+        </ol>
+        <div class="oc-avoid">
+          <strong>No hacer:</strong>
+          No ignores los reasons sin leerlos — pueden reflejar alta demanda o temporada baja real.
+        </div>
+        <div class="oc-faq-action"><a href="/dynamic-pricing.html" class="oc-btn oc-btn-primary oc-btn-sm" data-testid="faq-link-pricing">Ir a Pricing Dinámico</a></div>
+      </div>
+    </div>
+
+  </div>
+
+</div><!-- /oc-page -->
+
+<script src="/operational-center.js"></script>
+<script src="/assets/js/components/global-nav.js"></script>
+</body>
+</html>
