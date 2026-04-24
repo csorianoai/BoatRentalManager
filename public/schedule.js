@@ -413,6 +413,9 @@ function openEditBooking(id) {
 
   updateEndTime();
   document.getElementById('booking-modal').classList.add('show');
+
+  // Fase 5: Cargar documentos/contratos para esta reserva
+  calDocuments.load(id);
 }
 
 function closeBookingModal() {
@@ -1624,4 +1627,230 @@ window.NadakiCalendar = (function () {
     renderWeekView2, renderDayView, renderTimelineView, renderMonthView,
     toggleConflicts, closeDrawer, _qopsPaid, _qopsCaptain, _qopsDeposit, toggleBalanceFilter,
   };
+}());
+
+/* ══════════════════════════════════════════════════════════════════
+   calDocuments — Documentos / Contrato en el BookingDrawer
+   Calendar-first: usa metadata del contrato, no booking_id,
+   para encontrar el booking correcto.
+   ══════════════════════════════════════════════════════════════════ */
+const calDocuments = (function () {
+  'use strict';
+
+  let _bookingId = null;
+
+  function _esc(s) {
+    if (s == null) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function _fmt(bytes) {
+    if (!bytes) return '';
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1048576) return Math.round(bytes / 1024) + ' KB';
+    return (bytes / 1048576).toFixed(1) + ' MB';
+  }
+
+  function _pill(mime) {
+    const base = 'display:inline-block;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:700;';
+    if (mime === 'application/pdf') return `<span style="${base}background:#FEE2E2;color:#DC2626">PDF</span>`;
+    if (mime && mime.startsWith('image/')) return `<span style="${base}background:#DBEAFE;color:#1D4ED8">IMG</span>`;
+    return `<span style="${base}background:#F3F4F6;color:#6B7280">DOC</span>`;
+  }
+
+  function _categoryLabel(cat, score) {
+    if (cat === 'already_linked') return `<span style="color:#16a34a;font-size:11px;font-weight:700;">&#10003; Vinculado</span>`;
+    if (cat === 'auto-link')      return `<span style="background:#D1FAE5;color:#065F46;font-size:10px;font-weight:700;border-radius:10px;padding:1px 7px;">Auto-link · ${score}/140</span>`;
+    if (cat === 'review')         return `<span style="background:#FEF3C7;color:#92400E;font-size:10px;font-weight:700;border-radius:10px;padding:1px 7px;">Revisar · ${score}/140</span>`;
+    return `<span style="background:#F3F4F6;color:#6B7280;font-size:10px;font-weight:700;border-radius:10px;padding:1px 7px;">Coincidencia baja · ${score}/140</span>`;
+  }
+
+  function _renderDoc(d) {
+    const cat = d.category;
+    const cm  = d.contract_meta || {};
+    const cardBg = cat === 'review' ? '#FFFBEB' : cat === 'already_linked' ? '#F0FDF4' : '#fff';
+    const border = cat === 'review' ? '1px solid #FDE68A' : cat === 'already_linked' ? '1px solid #BBF7D0' : '1px solid #E2E8F0';
+
+    const metaLine = (cm.customer_name || cm.boat_name || cm.rental_date || cm.total_amount) ? `
+      <div style="font-size:11px;color:#64748b;margin-top:3px;line-height:1.6;">
+        ${cm.customer_name ? `<b>Cliente:</b> ${_esc(cm.customer_name)} &nbsp;` : ''}
+        ${cm.boat_name     ? `<b>Barco:</b> ${_esc(cm.boat_name)} &nbsp;` : ''}
+        ${cm.rental_date   ? `<b>Fecha:</b> ${_esc(cm.rental_date)} &nbsp;` : ''}
+        ${cm.start_time_raw && cm.end_time_raw ? `<b>Hora:</b> ${_esc(cm.start_time_raw)}&ndash;${_esc(cm.end_time_raw)} &nbsp;` : cm.start_time_raw ? `<b>Hora:</b> ${_esc(cm.start_time_raw)} &nbsp;` : ''}
+        ${cm.total_amount   ? `<b>Total:</b> $${_esc(String(cm.total_amount))} &nbsp;` : ''}
+        ${cm.deposit_amount ? `<b>Dep:</b> $${_esc(String(cm.deposit_amount))} &nbsp;` : ''}
+      </div>` : '';
+
+    const reasonLine = d.breakdown && d.breakdown.length
+      ? `<div style="font-size:10px;color:#94a3b8;margin-top:2px;">${d.breakdown.map(_esc).join(' · ')}</div>` : '';
+
+    const actions = cat === 'already_linked' ? `
+      <a href="/api/documents/${_esc(d.id)}/view" target="_blank"
+         style="font-size:11px;color:#0066cc;text-decoration:none;font-weight:600;margin-right:10px;">Ver PDF</a>
+      <a href="/api/documents/${_esc(d.id)}/download"
+         style="font-size:11px;color:#475569;text-decoration:none;margin-right:10px;">Descargar</a>
+      <button onclick="calDocuments.unlink('${_esc(d.id)}')"
+              style="font-size:11px;border:none;background:none;color:#dc2626;cursor:pointer;padding:0;">Desvincular</button>
+    ` : `
+      <button onclick="calDocuments.confirm('${_esc(d.id)}')"
+              style="font-size:11px;border:1px solid #16a34a;border-radius:5px;background:#fff;color:#16a34a;cursor:pointer;padding:2px 9px;font-weight:600;margin-right:8px;">Confirmar vinculo</button>
+      <a href="/api/documents/${_esc(d.id)}/view" target="_blank"
+         style="font-size:11px;color:#0066cc;text-decoration:none;font-weight:600;margin-right:10px;">Ver PDF</a>
+      <a href="/api/documents/${_esc(d.id)}/download"
+         style="font-size:11px;color:#475569;text-decoration:none;">Descargar</a>
+    `;
+
+    return `
+    <div style="display:flex;gap:10px;padding:10px;border:${border};border-radius:6px;background:${cardBg};margin-bottom:8px;">
+      <div style="flex-shrink:0;padding-top:2px;">${_pill(d.mime_type)}</div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:600;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
+             title="${_esc(d.original_name)}">${_esc(d.original_name)}</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:3px;flex-wrap:wrap;">
+          ${_categoryLabel(cat, d.score)}
+          <span style="font-size:11px;color:#94a3b8;">${_fmt(d.file_size)}</span>
+        </div>
+        ${metaLine}
+        ${reasonLine}
+        <div style="margin-top:8px;">${actions}</div>
+      </div>
+    </div>`;
+  }
+
+  /* ── Load and render ──────────────────────────────────────── */
+  async function load(bookingId) {
+    _bookingId = bookingId;
+    const sec   = document.getElementById('bk-docs-section');
+    const body  = document.getElementById('bk-docs-body');
+    const badge = document.getElementById('bk-docs-badge');
+    const input = document.getElementById('bk-doc-upload');
+
+    if (!sec || !body) return;
+    sec.style.display = 'block';
+    body.innerHTML = '<div style="color:#94a3b8;font-size:13px;padding:8px 0;">Cargando documentos...</div>';
+    if (badge) badge.style.display = 'none';
+    if (input) input.value = '';
+
+    if (!bookingId) {
+      body.innerHTML = '<div style="color:#94a3b8;font-size:13px;padding:8px 0;">Guarda la reserva para gestionar documentos.</div>';
+      return;
+    }
+
+    try {
+      const r = await fetch(`/api/contracts/booking-suggestions?booking_id=${encodeURIComponent(bookingId)}`);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const data = await r.json();
+      _render(data.suggestions || [], badge);
+    } catch (e) {
+      body.innerHTML = `<div style="color:#dc2626;font-size:12px;padding:8px 0;">Error al cargar documentos.</div>`;
+      console.warn('[calDocuments]', e);
+    }
+  }
+
+  function _render(suggestions, badge) {
+    const body = document.getElementById('bk-docs-body');
+    if (!body) return;
+
+    if (!suggestions.length) {
+      body.innerHTML = '<div style="color:#94a3b8;font-size:13px;padding:8px 0;">Sin contratos vinculados ni sugerencias. Sube un PDF para comenzar.</div>';
+      if (badge) badge.style.display = 'none';
+      return;
+    }
+
+    // Badge shows count of review candidates
+    const reviewCount = suggestions.filter(d => d.category === 'review').length;
+    if (badge) {
+      badge.style.display = reviewCount ? 'inline-block' : 'none';
+      badge.textContent   = reviewCount;
+    }
+
+    const linked     = suggestions.filter(d => d.category === 'already_linked');
+    const autoLink   = suggestions.filter(d => d.category === 'auto-link');
+    const review     = suggestions.filter(d => d.category === 'review');
+    const other      = suggestions.filter(d => !['already_linked','auto-link','review'].includes(d.category));
+
+    let html = '';
+
+    if (linked.length) {
+      html += `<div style="font-size:11px;font-weight:700;color:#16a34a;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Vinculado</div>`;
+      linked.forEach(d => html += _renderDoc(d));
+    }
+
+    if (autoLink.length) {
+      html += `<div style="font-size:11px;font-weight:700;color:#0066cc;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;margin-top:${linked.length?'12px':'0'};">Alta coincidencia (auto-link disponible)</div>`;
+      autoLink.forEach(d => html += _renderDoc(d));
+    }
+
+    if (review.length) {
+      html += `<div style="font-size:11px;font-weight:700;color:#92400E;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;margin-top:${(linked.length||autoLink.length)?'12px':'0'};">Requiere revision (score 65-84)</div>`;
+      review.forEach(d => html += _renderDoc(d));
+    }
+
+    if (other.length) {
+      html += `<div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;margin-top:${(linked.length||autoLink.length||review.length)?'12px':'0'};">Otras coincidencias</div>`;
+      other.forEach(d => html += _renderDoc(d));
+    }
+
+    body.innerHTML = html;
+  }
+
+  /* ── Confirm link ─────────────────────────────────────────── */
+  async function confirm(docId) {
+    if (!_bookingId) return;
+    try {
+      const r = await fetch(`/api/documents/${docId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ booking_id: _bookingId }),
+      });
+      if (!r.ok) { const j = await r.json(); throw new Error(j.error || 'Error'); }
+      await load(_bookingId);
+    } catch (e) {
+      alert('Error al vincular: ' + e.message);
+    }
+  }
+
+  /* ── Unlink ───────────────────────────────────────────────── */
+  async function unlink(docId) {
+    if (!window.confirm('Desvincular este documento de la reserva?')) return;
+    try {
+      const r = await fetch(`/api/documents/${docId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ booking_id: null }),
+      });
+      if (!r.ok) { const j = await r.json(); throw new Error(j.error || 'Error'); }
+      await load(_bookingId);
+    } catch (e) {
+      alert('Error al desvincular: ' + e.message);
+    }
+  }
+
+  /* ── Upload files ─────────────────────────────────────────── */
+  async function uploadFiles(event) {
+    if (!_bookingId) { alert('Guarda la reserva primero.'); return; }
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
+
+    const input = event.target;
+    const statusEl = document.getElementById('bk-docs-body');
+    const orig = statusEl ? statusEl.innerHTML : '';
+
+    for (const file of files) {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('booking_id', _bookingId);
+      fd.append('doc_type', 'Contrato');
+      try {
+        const r = await fetch('/api/documents/upload', { method: 'POST', body: fd });
+        if (!r.ok) { const j = await r.json(); throw new Error(j.error || 'Error al subir ' + file.name); }
+      } catch (e) {
+        alert('Error: ' + e.message);
+      }
+    }
+    input.value = '';
+    await load(_bookingId);
+  }
+
+  return { load, confirm, unlink, uploadFiles };
 }());

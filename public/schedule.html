@@ -1401,6 +1401,24 @@
             </div>
           </div>
 
+          <!-- Sección 7: Documentos / Contrato -->
+          <div class="modal-section" id="bk-docs-section" style="display:none;">
+            <div class="modal-section-title" style="display:flex;align-items:center;gap:8px;">
+              Documentos / Contrato
+              <span id="bk-docs-badge" style="display:none;background:#DC2626;color:#fff;font-size:10px;font-weight:700;border-radius:10px;padding:1px 7px;">!</span>
+            </div>
+            <div id="bk-docs-body" style="min-height:40px;">
+              <div style="color:#94a3b8;font-size:13px;padding:8px 0;">Cargando documentos...</div>
+            </div>
+            <div style="margin-top:10px;">
+              <label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Subir contrato PDF</label>
+              <input type="file" id="bk-doc-upload" accept="application/pdf,*/*" multiple
+                     data-testid="input-bk-doc-upload"
+                     style="font-size:12px;border:1px solid #d1dbe8;border-radius:6px;padding:4px 8px;width:100%;background:#fff;"
+                     onchange="calDocuments.uploadFiles(event)">
+            </div>
+          </div>
+
           <div class="form-actions">
             <button type="button" class="btn-cancel" id="btn-cancel-booking" data-testid="button-cancel-booking">Cancelar</button>
             <button type="submit" class="btn-save" id="btn-save-booking" data-testid="button-save-booking">Guardar Reserva</button>

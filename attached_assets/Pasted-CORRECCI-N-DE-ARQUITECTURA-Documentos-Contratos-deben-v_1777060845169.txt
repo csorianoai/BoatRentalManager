@@ -1,0 +1,231 @@
+CORRECCIÓN DE ARQUITECTURA — Documentos/Contratos deben vincularse desde Calendar, no desde Fleet.
+
+Problema:
+La integración se implementó principalmente alrededor de Fleet/FOC, pero la fuente correcta de verdad es Calendar / schedule.html. El matching no debe depender inicialmente de booking_id, porque los contratos históricos no tienen booking_id. Debe usar fecha, hora, barco, cliente y monto para encontrar el booking correcto.
+
+Objetivo:
+Mover/corregir la lógica de vinculación de contratos para que funcione desde Calendar 2.0 / BookingDrawer de schedule.html, usando matching inteligente por metadata del contrato.
+
+## REGLA PRINCIPAL
+
+No empezar buscando booking_id.
+Primero buscar por datos operativos:
+
+1. fecha del contrato
+2. hora inicio / hora fin
+3. barco
+4. nombre del cliente
+5. total
+6. depósito
+7. email/teléfono si existe
+
+booking_id solo se usa después para guardar el vínculo cuando el match ya fue identificado.
+
+## AUDIT OBLIGATORIO
+
+Antes de cambiar código, audita:
+
+1. Qué archivo controla el BookingDrawer real del calendario:
+
+* schedule.html
+* schedule.js
+* otros scripts relacionados
+
+2. Qué archivo contiene el drawer de Fleet/FOC y qué debe quedar solo como consumidor secundario.
+
+3. Qué datos reales tiene cada booking en Calendar:
+
+* id
+* date / booking_date
+* start_time
+* end_time
+* boat_name / boat_id
+* customer_name / final_customer_name
+* total_amount
+* deposit_amount
+* email
+* phone
+
+4. Qué datos se pueden extraer de contratos reales:
+   Ejemplos:
+
+* Maritza Rueda · Searay 50 · 2026-04-11 · 3PM–9PM · $1100 · $200
+* Rohit Chaudhary · Cranchi 50 · 2026-04-17 · 4PM–7:30PM · $714.42 · $250
+* Devyn Gwydir · Viking 50 · 12PM–4PM · $1300 · $300
+* Shabria Williams · Searay 40 · 4:15PM–7:15PM · $498 · $120
+* Anton Kirichok · Searay 50 · 2026-04-22 · 4PM–8PM · $1200 · $300
+
+## IMPLEMENTACIÓN CORRECTA
+
+### 1. Crear servicio backend de matching
+
+Crear o corregir un módulo tipo:
+
+server/contractMatcher.js
+
+Funciones:
+
+* parseContractPdf(filePath)
+* normalizeBoatName(value)
+* normalizeTime(value)
+* normalizeMoney(value)
+* scoreContractAgainstBooking(contractMeta, booking)
+* findBookingForContract(contractMeta)
+
+### 2. Matching por etapas
+
+El matching debe reducir candidatos así:
+
+A. Fecha exacta:
+
+* buscar bookings donde booking_date = contract.rental_date
+
+B. Hora compatible:
+
+* start_time compatible ±30 min
+* end_time compatible ±30 min
+
+C. Barco:
+
+* Searay 50 = SEA RAY 500 = 50' Searay
+* Searay 40 = 40' Searay
+* Cranchi 50 = CRANCHI
+* Viking 50 = VIKING PRINCESS
+
+D. Cliente:
+
+* nombre case-insensitive
+* permitir partial/fuzzy match
+
+E. Monto:
+
+* total_amount similar ±5
+* deposit_amount similar ±5
+
+F. Email/teléfono:
+
+* si existe, usar como señal fuerte
+
+### 3. Scoring
+
+Usar score:
+
+* fecha exacta: +40
+* hora inicio compatible: +20
+* hora fin compatible: +15
+* barco compatible: +25
+* nombre cliente similar: +20
+* total similar: +10
+* depósito similar: +5
+* email exacto: +30
+* phone exacto: +25
+
+Threshold:
+
+* > = 85: auto-link permitido
+* 65–84: review required
+* <65: no link
+
+### 4. Endpoint de auditoría
+
+Crear endpoint read-only:
+
+GET /api/contracts/match-audit
+
+Debe devolver:
+
+* documentos PDF candidatos
+* metadata extraída
+* booking candidato
+* score
+* reasons
+* status:
+
+  * auto_link_candidate
+  * review_required
+  * unmatched
+  * already_linked
+
+### 5. Endpoint apply seguro
+
+Crear:
+
+POST /api/contracts/auto-link
+body:
+{
+"mode": "dry-run" | "apply",
+"minScore": 85
+}
+
+Reglas:
+
+* default dry-run
+* apply solo vincula score >= minScore
+* nunca sobreescribir booking_id existente salvo force=true
+* nunca borrar documentos
+* nunca mover documentos
+
+### 6. Calendar BookingDrawer
+
+En schedule.js / Calendar 2.0 drawer añadir sección:
+
+“Documentos / Contrato”
+
+Debe mostrar:
+
+* documento vinculado si existe
+* sugerencias de contratos para ese booking
+* score
+* reasons
+* Ver
+* Descargar
+* Confirmar vínculo
+
+Esto debe vivir en el BookingDrawer del calendario, no solo en Fleet.
+
+### 7. Fleet/FOC
+
+Fleet puede quedarse como vista secundaria:
+
+* si el documento ya está vinculado al booking, puede mostrarlo
+* pero NO debe ser la fuente principal del matching
+
+## VALIDACIÓN OBLIGATORIA
+
+Probar con al menos 5 contratos reales:
+
+1. Maritza Rueda / Searay 50 / 2026-04-11 / 3PM–9PM
+2. Rohit Chaudhary / Cranchi 50 / 2026-04-17 / 4PM–7:30PM
+3. Devyn Gwydir / Viking 50 / 12PM–4PM
+4. Shabria Williams / Searay 40 / 4:15PM–7:15PM
+5. Anton Kirichok / Searay 50 / 2026-04-22 / 4PM–8PM
+
+Para cada uno entregar:
+
+* metadata extraída
+* booking candidato encontrado
+* score
+* reasons
+* si auto-link o review
+
+## REGLAS
+
+* no romper documents.html
+* no romper Fleet/FOC
+* no depender de booking_id para encontrar documentos históricos
+* no vincular si score bajo
+* additive only
+* runner verde
+* consola limpia
+
+## ENTREGA
+
+1. qué estaba mal en la implementación anterior
+2. archivos tocados
+3. nuevo flujo Calendar-first
+4. resultados del match-audit
+5. ejemplos de 5 contratos reales
+6. evidencia en schedule.html BookingDrawer
+7. runner / consola
+8. riesgos
+9. veredicto PASS o BLOCKED

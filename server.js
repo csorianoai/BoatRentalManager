@@ -14131,6 +14131,55 @@ app.post('/api/documents/contract-auto-link', isAuthenticated, async (req, res) 
   }
 });
 
+// GET /api/contracts/booking-suggestions?booking_id=X
+// Returns unlinked PDFs scored against a specific booking (calendar drawer use)
+app.get('/api/contracts/booking-suggestions', isAuthenticated, async (req, res) => {
+  const { booking_id } = req.query;
+  if (!booking_id) return res.status(400).json({ error: 'booking_id required' });
+  try {
+    const contractEngine = require('./server/contractEngine');
+    // Load booking
+    const bRes = await pool.query('SELECT * FROM bookings WHERE id=$1 LIMIT 1', [booking_id]);
+    if (!bRes.rows.length) return res.status(404).json({ error: 'booking not found' });
+    const booking = bRes.rows[0];
+
+    // Load: all already-linked docs + unlinked PDFs with contract_meta
+    const dRes = await pool.query(`
+      SELECT id, original_name, doc_type, mime_type, file_size, booking_id, contract_meta, created_at
+      FROM documents
+      WHERE (
+        booking_id = $1
+        OR (mime_type='application/pdf' AND contract_meta IS NOT NULL AND booking_id IS NULL)
+      )
+      ORDER BY created_at DESC
+      LIMIT 100
+    `, [booking_id]);
+
+    const results = [];
+    for (const doc of dRes.rows) {
+      const meta = doc.contract_meta || {};
+      if (doc.booking_id === booking_id) {
+        // Already linked — include with flag
+        results.push({ ...doc, score: null, breakdown: [], category: 'already_linked' });
+        continue;
+      }
+      const { score, breakdown, category } = contractEngine.matchContractToBooking(meta, [booking]);
+      if (score >= 40) {
+        results.push({ ...doc, score, breakdown, category });
+      }
+    }
+    results.sort((a, b) => {
+      if (a.category === 'already_linked') return -1;
+      if (b.category === 'already_linked') return 1;
+      return (b.score || 0) - (a.score || 0);
+    });
+    res.json({ booking_id, suggestions: results });
+  } catch (err) {
+    console.error('[BookingSuggestions]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/documents/:id/view — serve file inline for PDF/image preview
 app.get('/api/documents/:id/view', isAuthenticated, (req, res) => serveDocument(req, res, 'inline'));
 
