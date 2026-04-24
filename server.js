@@ -1227,6 +1227,7 @@ async function initializeDatabase() {
     await pool.query(`ALTER TABLE documents ADD COLUMN IF NOT EXISTS file_data BYTEA`);
     await pool.query(`ALTER TABLE documents ADD COLUMN IF NOT EXISTS booking_id TEXT`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_documents_booking ON documents(booking_id)`);
+    await pool.query(`ALTER TABLE documents ADD COLUMN IF NOT EXISTS contract_meta JSONB`);
     console.log('✅ FASE 13 table created (document management)');
 
     // FASE 14: Captain & Stew Payments + enhanced expenses
@@ -13960,7 +13961,23 @@ app.post('/api/documents/upload', isAuthenticated, (req, res, next) => {
        req.user?.name || req.user?.email || 'sistema',
        req.file.buffer, booking_id || null]
     );
-    const doc = (await pool.query('SELECT id, original_name, stored_name, doc_type, entity_type, entity_id, boat_id, booking_id, visible_in_general, file_size, mime_type, notes, uploaded_by, created_at FROM documents WHERE id=$1', [id])).rows[0];
+    const doc = (await pool.query('SELECT id, original_name, stored_name, doc_type, entity_type, entity_id, boat_id, booking_id, contract_meta, visible_in_general, file_size, mime_type, notes, uploaded_by, created_at FROM documents WHERE id=$1', [id])).rows[0];
+
+    // Fire-and-forget: auto-link PDF contract to booking (non-blocking)
+    if ((req.file.mimetype === 'application/pdf' || req.file.originalname.toLowerCase().endsWith('.pdf')) && !booking_id) {
+      setImmediate(async () => {
+        try {
+          const contractEngine = require('./server/contractEngine');
+          const result = await contractEngine.autoLinkContract(id, pool, 'apply', 80, false);
+          if (result.action === 'linked') {
+            console.log(`[ContractAutoLink] upload auto-linked doc=${id} booking=${result.booking_id} score=${result.score}`);
+          } else if (result.action === 'review-flagged') {
+            console.log(`[ContractAutoLink] review-flagged doc=${id} candidate=${result.booking_id} score=${result.score}`);
+          }
+        } catch (e) { console.error('[ContractAutoLink] upload hook error:', e.message); }
+      });
+    }
+
     res.json({ success: true, document: doc });
   } catch (err) {
     console.error('[Documents] Upload error:', err);
@@ -13971,17 +13988,18 @@ app.post('/api/documents/upload', isAuthenticated, (req, res, next) => {
 // GET /api/documents — list with optional filters (NEVER include file_data — it's binary and breaks JSON serialization)
 app.get('/api/documents', isAuthenticated, async (req, res) => {
   try {
-    const { entity_type, entity_id, doc_type, boat_id, general_only, booking_id } = req.query;
+    const { entity_type, entity_id, doc_type, boat_id, general_only, booking_id, review_booking_id } = req.query;
     let where = [];
     let params = [];
-    if (entity_type)  { params.push(entity_type);  where.push(`entity_type = $${params.length}`); }
-    if (entity_id)    { params.push(entity_id);    where.push(`entity_id = $${params.length}`); }
-    if (doc_type)     { params.push(doc_type);     where.push(`doc_type = $${params.length}`); }
-    if (boat_id)      { params.push(boat_id);      where.push(`boat_id = $${params.length}`); }
-    if (booking_id)   { params.push(booking_id);   where.push(`booking_id = $${params.length}`); }
+    if (entity_type)        { params.push(entity_type);        where.push(`entity_type = $${params.length}`); }
+    if (entity_id)          { params.push(entity_id);          where.push(`entity_id = $${params.length}`); }
+    if (doc_type)           { params.push(doc_type);           where.push(`doc_type = $${params.length}`); }
+    if (boat_id)            { params.push(boat_id);            where.push(`boat_id = $${params.length}`); }
+    if (booking_id)         { params.push(booking_id);         where.push(`booking_id = $${params.length}`); }
+    if (review_booking_id)  { params.push(review_booking_id);  where.push(`(contract_meta->>'review_booking_id') = $${params.length}`); }
     if (general_only === 'true') { where.push(`visible_in_general = true`); }
     // Explicitly exclude file_data (BYTEA) — never serialize binary blobs to JSON
-    const cols = 'id, original_name, stored_name, doc_type, entity_type, entity_id, boat_id, booking_id, visible_in_general, file_size, mime_type, notes, uploaded_by, created_at';
+    const cols = 'id, original_name, stored_name, doc_type, entity_type, entity_id, boat_id, booking_id, contract_meta, visible_in_general, file_size, mime_type, notes, uploaded_by, created_at';
     const sql = `SELECT ${cols} FROM documents${where.length ? ' WHERE ' + where.join(' AND ') : ''} ORDER BY created_at DESC`;
     const result = await pool.query(sql, params);
     res.json(result.rows);
@@ -14031,6 +14049,87 @@ async function serveDocument(req, res, disposition) {
     res.status(500).json({ error: err.message });
   }
 }
+
+// GET /api/documents/contract-match-audit — read-only audit of all unlinked PDFs
+app.get('/api/documents/contract-match-audit', isAuthenticated, async (req, res) => {
+  try {
+    const contractEngine = require('./server/contractEngine');
+    const minScore = parseInt(req.query.minScore) || 60;
+    const results  = await contractEngine.batchAudit(pool, minScore);
+
+    const summary = {
+      total_pdf_unlinked:    results.length,
+      auto_link_candidates:  results.filter(r => r.category === 'auto-link').length,
+      review_candidates:     results.filter(r => r.category === 'review').length,
+      no_match:              results.filter(r => r.category === 'no-match').length,
+      errors:                results.filter(r => r.action === 'error').length,
+      skipped:               results.filter(r => r.action === 'skipped').length,
+    };
+    const detail = results.map(r => ({
+      doc_id:           r.docId,
+      action:           r.action,
+      category:         r.category,
+      score:            r.score,
+      booking_id:       r.booking_id || null,
+      booking_customer: r.booking_customer || null,
+      meta_confidence:  r.meta?.parse_confidence || 0,
+      extracted_date:   r.meta?.rental_date || null,
+      extracted_boat:   r.meta?.boat_name || null,
+      extracted_name:   r.meta?.customer_name || null,
+      extracted_total:  r.meta?.total_amount || null,
+      breakdown:        r.breakdown || [],
+      reason:           r.reason || null,
+    }));
+    res.json({ summary, detail });
+  } catch (err) {
+    console.error('[ContractAudit] error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/documents/contract-auto-link — controlled batch execution
+app.post('/api/documents/contract-auto-link', isAuthenticated, async (req, res) => {
+  try {
+    const contractEngine = require('./server/contractEngine');
+    const mode     = req.body.mode === 'apply' ? 'apply' : 'dry-run';
+    const minScore = parseInt(req.body.minScore) || 80;
+    const force    = req.body.force === true;
+
+    let docIds = [];
+    if (Array.isArray(req.body.doc_ids) && req.body.doc_ids.length) {
+      docIds = req.body.doc_ids;
+    } else {
+      const rows = await pool.query(
+        `SELECT id FROM documents
+         WHERE (mime_type = 'application/pdf' OR original_name ILIKE '%.pdf')
+         AND (booking_id IS NULL OR $1 = true)
+         AND file_data IS NOT NULL
+         ORDER BY created_at DESC`,
+        [force]
+      );
+      docIds = rows.rows.map(r => r.id);
+    }
+
+    const results = [];
+    for (const docId of docIds) {
+      const r = await contractEngine.autoLinkContract(docId, pool, mode, minScore, force);
+      results.push(r);
+    }
+    const summary = {
+      mode, minScore, force,
+      processed: results.length,
+      linked:    results.filter(r => r.action === 'linked' || r.action === 'would-link').length,
+      review:    results.filter(r => r.action === 'review-flagged').length,
+      skipped:   results.filter(r => r.action === 'skipped').length,
+      errors:    results.filter(r => r.action === 'error').length,
+    };
+    console.log(`[ContractAutoLink] batch ${mode}: processed=${summary.processed} linked=${summary.linked}`);
+    res.json({ summary, results });
+  } catch (err) {
+    console.error('[ContractAutoLink] batch error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // GET /api/documents/:id/view — serve file inline for PDF/image preview
 app.get('/api/documents/:id/view', isAuthenticated, (req, res) => serveDocument(req, res, 'inline'));
@@ -15791,6 +15890,9 @@ const HOST = '0.0.0.0'; // Required for deployment
   // ── Fase V2.3: Alert Engine básico ────────────────────────
   const { registerAlertRoutes } = require('./server/alertEngine');
   registerAlertRoutes(app, pool);
+
+  // ── Contract Engine (PDF auto-link) ──────────────────────
+  const contractEngine = require('./server/contractEngine');
 
   app.listen(PORT, HOST, () => {
     console.log(`🚀 Nadaki Excursions Backend running on ${HOST}:${PORT}`);

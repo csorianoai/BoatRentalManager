@@ -1480,13 +1480,14 @@ window.focDocuments = (function () {
   }
 
   function docIcon(mime) {
-    if (!mime) return '📄';
-    if (mime.startsWith('image/')) return '🖼';
-    if (mime === 'application/pdf') return '📋';
-    if (mime.includes('word')) return '📝';
-    if (mime.includes('excel') || mime.includes('spreadsheet')) return '📊';
-    if (mime.includes('zip') || mime.includes('compressed')) return '🗜';
-    return '📄';
+    const s = 'display:inline-block;width:22px;height:22px;border-radius:4px;font-size:10px;font-weight:700;text-align:center;line-height:22px;flex-shrink:0;';
+    if (!mime) return `<span style="${s}background:#E5E7EB;color:#6B7280">DOC</span>`;
+    if (mime.startsWith('image/'))                              return `<span style="${s}background:#DBEAFE;color:#1D4ED8">IMG</span>`;
+    if (mime === 'application/pdf')                             return `<span style="${s}background:#FEE2E2;color:#DC2626">PDF</span>`;
+    if (mime.includes('word'))                                  return `<span style="${s}background:#EDE9FE;color:#7C3AED">DOC</span>`;
+    if (mime.includes('excel') || mime.includes('spreadsheet')) return `<span style="${s}background:#D1FAE5;color:#065F46">XLS</span>`;
+    if (mime.includes('zip') || mime.includes('compressed'))    return `<span style="${s}background:#FEF3C7;color:#92400E">ZIP</span>`;
+    return `<span style="${s}background:#E5E7EB;color:#6B7280">DOC</span>`;
   }
 
   /* ── Scoring de auto-match ──────────────────────────────────────── */
@@ -1513,7 +1514,7 @@ window.focDocuments = (function () {
   }
 
   /* ── Render ─────────────────────────────────────────────────────── */
-  function renderSection(linked, suggestions, booking) {
+  function renderSection(linked, reviewDocs, suggestions, booking) {
     const sec = document.getElementById('foc-doc-section');
     if (!sec) return;
 
@@ -1527,12 +1528,15 @@ window.focDocuments = (function () {
       html += `<div class="foc-doc-empty">Sin documentos vinculados.</div>`;
     } else {
       linked.forEach(d => {
+        const cm = d.contract_meta;
+        const cmInfo = cm ? `<span class="foc-doc-meta" style="display:block">Contrato: ${esc(cm.customer_name || '')} · ${esc(cm.rental_date || '')} · ${cm.total_amount ? '$' + cm.total_amount : ''}</span>` : '';
         html += `
         <div class="foc-doc-card" data-doc-id="${esc(d.id)}">
           <div class="foc-doc-icon">${docIcon(d.mime_type)}</div>
           <div class="foc-doc-info">
             <div class="foc-doc-name" title="${esc(d.original_name)}">${esc(d.original_name)}</div>
-            <div class="foc-doc-meta">${esc(d.doc_type || 'Sin tipo')} · ${fmt(d.file_size)}</div>
+            <div class="foc-doc-meta">${esc(d.doc_type || 'Sin tipo')} &middot; ${fmt(d.file_size)}</div>
+            ${cmInfo}
             <span class="foc-doc-linked">&#10003; Vinculado</span>
             <div class="foc-doc-actions">
               <button class="foc-doc-btn foc-doc-btn-primary" onclick="focDocuments.viewDoc('${esc(d.id)}')">Ver</button>
@@ -1544,10 +1548,41 @@ window.focDocuments = (function () {
       });
     }
 
-    /* ── Sugerencias de auto-match ────────────────────────────────── */
+    /* ── Contratos que requieren revisión (score 60–79) ───────────── */
+    if (reviewDocs.length > 0) {
+      html += `<div class="foc-doc-section-hd" style="border-top:1px solid #FEF3C7;padding-top:12px;color:#92400E;background:#FFFBEB;">Requiere Revisión</div>`;
+      html += `<div class="foc-doc-sublabel">El sistema detectó estos contratos como posibles candidatos (score 60–79)</div>`;
+      reviewDocs.forEach(d => {
+        const cm = d.contract_meta || {};
+        const score = cm.match_score || 0;
+        html += `
+        <div class="foc-doc-card" data-doc-id="${esc(d.id)}" style="background:#FFFBEB;border-left:3px solid #F59E0B;padding-left:17px;">
+          <div class="foc-doc-icon">${docIcon(d.mime_type)}</div>
+          <div class="foc-doc-info">
+            <div class="foc-doc-name" title="${esc(d.original_name)}">${esc(d.original_name)}</div>
+            <div class="foc-doc-meta">${esc(d.doc_type || 'Sin tipo')} &middot; ${fmt(d.file_size)}</div>
+            <div class="foc-doc-meta" style="margin-top:3px;">
+              ${cm.customer_name ? `<b>Cliente:</b> ${esc(cm.customer_name)} &nbsp;` : ''}
+              ${cm.boat_name     ? `<b>Barco:</b> ${esc(cm.boat_name)} &nbsp;` : ''}
+              ${cm.rental_date   ? `<b>Fecha:</b> ${esc(cm.rental_date)} &nbsp;` : ''}
+              ${cm.start_time_raw ? `<b>Hora:</b> ${esc(cm.start_time_raw)}${cm.end_time_raw ? '&ndash;' + esc(cm.end_time_raw) : ''} &nbsp;` : ''}
+              ${cm.total_amount   ? `<b>Total:</b> $${esc(String(cm.total_amount))} &nbsp;` : ''}
+            </div>
+            <span class="foc-doc-score foc-doc-score-medium">Score ${score}/140</span>
+            <div class="foc-doc-actions">
+              <button class="foc-doc-btn foc-doc-btn-primary" onclick="focDocuments.linkDoc('${esc(d.id)}', '${esc(bookingId)}')">Confirmar vínculo</button>
+              <button class="foc-doc-btn" onclick="focDocuments.viewDoc('${esc(d.id)}')">Ver PDF</button>
+              <button class="foc-doc-btn" onclick="focDocuments.downloadDoc('${esc(d.id)}')">Descargar</button>
+            </div>
+          </div>
+        </div>`;
+      });
+    }
+
+    /* ── Sugerencias por barco (auto-match básico) ────────────────── */
     if (suggestions.length > 0) {
       html += `<div class="foc-doc-section-hd" style="border-top:1px solid #F3F4F6;padding-top:12px;">Sugerencias</div>`;
-      html += `<div class="foc-doc-sublabel">Documentos que podrían corresponder a esta reserva</div>`;
+      html += `<div class="foc-doc-sublabel">Documentos relacionados con este barco</div>`;
       suggestions.forEach(d => {
         const level = d._score >= 4 ? 'high' : d._score >= 2 ? 'medium' : 'low';
         const label = d._score >= 4 ? 'Alta coincidencia' : d._score >= 2 ? 'Posible' : 'Relacionado';
@@ -1556,7 +1591,7 @@ window.focDocuments = (function () {
           <div class="foc-doc-icon">${docIcon(d.mime_type)}</div>
           <div class="foc-doc-info">
             <div class="foc-doc-name" title="${esc(d.original_name)}">${esc(d.original_name)}</div>
-            <div class="foc-doc-meta">${esc(d.doc_type || 'Sin tipo')} · ${fmt(d.file_size)}</div>
+            <div class="foc-doc-meta">${esc(d.doc_type || 'Sin tipo')} &middot; ${fmt(d.file_size)}</div>
             <span class="foc-doc-score foc-doc-score-${level}">${label}</span>
             <div class="foc-doc-actions">
               <button class="foc-doc-btn foc-doc-btn-primary" onclick="focDocuments.linkDoc('${esc(d.id)}', '${esc(bookingId)}')">Vincular</button>
@@ -1579,12 +1614,12 @@ window.focDocuments = (function () {
       <input type="file" id="${dzId}" multiple accept="*/*" style="display:none"
              onchange="focDocuments._onFileInput(event,'${esc(bookingId)}','${esc(boatId)}')">
       <div class="foc-doc-dz-text">
-        <strong>Haz clic o arrastra archivos aquí</strong><br>
-        Se vincularán automáticamente a esta reserva.
+        <strong>Haz clic o arrastra archivos aqui</strong><br>
+        Los PDFs de contratos se vinculan automaticamente si el match es de alta confianza.
       </div>
     </div>
     <div class="foc-doc-footer">
-      <a class="foc-doc-deeplink" href="/documents.html?booking_id=${esc(bookingId)}" target="_blank">
+      <a class="foc-doc-deeplink" href="/documents.html" target="_blank">
         Ver todos los documentos &#8599;
       </a>
     </div>`;
@@ -1602,28 +1637,31 @@ window.focDocuments = (function () {
                      <div class="foc-doc-loading">Buscando documentos...</div>`;
 
     try {
-      // Paralelo: (1) docs ya vinculados al booking_id, (2) docs del mismo barco (para sugerencias)
-      const [linkedRes, boatRes] = await Promise.all([
+      // Paralelo: (1) docs vinculados, (2) candidatos review, (3) docs del barco para sugerencias
+      const [linkedRes, reviewRes, boatRes] = await Promise.all([
         fetch(`/api/documents?booking_id=${encodeURIComponent(booking.id)}`),
+        fetch(`/api/documents?review_booking_id=${encodeURIComponent(booking.id)}`),
         booking.boat_id ? fetch(`/api/documents?boat_id=${encodeURIComponent(booking.boat_id)}`) : Promise.resolve(null),
       ]);
 
       if (!linkedRes.ok) throw new Error('Error cargando documentos');
       const linked = await linkedRes.json();
+      const reviewDocs = (reviewRes && reviewRes.ok) ? await reviewRes.json() : [];
 
       let suggestions = [];
       if (boatRes && boatRes.ok) {
         const boatDocs = await boatRes.json();
         const linkedIds = new Set(linked.map(d => d.id));
+        const reviewIds = new Set(reviewDocs.map(d => d.id));
         suggestions = boatDocs
-          .filter(d => !linkedIds.has(d.id) && !d.booking_id)  // no vinculados a ningún booking
+          .filter(d => !linkedIds.has(d.id) && !reviewIds.has(d.id) && !d.booking_id)
           .map(d => ({ ...d, _score: matchScore(d, booking) }))
           .filter(d => d._score > 0)
           .sort((a, b) => b._score - a._score)
           .slice(0, 5);
       }
 
-      renderSection(linked, suggestions, booking);
+      renderSection(linked, reviewDocs, suggestions, booking);
     } catch (e) {
       if (sec) sec.innerHTML = `<div class="foc-doc-section-hd">Documentos del Booking</div>
                                  <div class="foc-doc-empty">Error al cargar documentos.</div>`;

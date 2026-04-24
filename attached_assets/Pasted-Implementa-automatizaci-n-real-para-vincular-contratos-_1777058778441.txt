@@ -1,0 +1,207 @@
+Implementa automatización real para vincular contratos PDF a bookings existentes.
+
+Problema:
+La integración documentos ↔ booking funciona técnicamente, pero no está automatizando bien contratos viejos. Los contratos contienen datos suficientes para hacer matching automático: fecha, barco, hora, cliente, total y depósito.
+
+Objetivo:
+Cuando se suba o exista un contrato PDF en documents, el sistema debe extraer metadata del contrato, buscar el booking correspondiente y vincular automáticamente si el match es de alta confianza. Si no es alta confianza, debe mostrarlo como “requiere revisión”.
+
+## FASE 1 — AUDIT
+
+Antes de implementar, audita:
+
+1. Cómo se guarda el archivo PDF actualmente:
+
+* path
+* filename
+* file_url
+* storage
+* mime_type
+* category/type
+
+2. Si el backend puede leer el contenido del PDF:
+
+* librería instalada
+* pdf-parse disponible
+* alternativa simple si no existe
+
+3. Qué campos reales existen en bookings:
+
+* id
+* booking_date
+* start_time
+* end_time
+* customer_name
+* final_customer_name
+* boat_name
+* boat_id
+* total_amount
+* deposit_amount
+* email
+* phone
+
+4. Qué datos reales extraen los contratos:
+
+* date
+* customer_name
+* boat/yacht
+* start_time
+* end_time
+* total
+* deposit
+* email
+* phone
+
+## FASE 2 — CONTRACT PARSER
+
+Crear una función backend tipo:
+
+parseContractPdf(filePath)
+
+Debe extraer, como mínimo:
+
+* customer_name
+* boat_name
+* rental_date
+* start_time
+* end_time
+* total_amount
+* deposit_amount
+* email
+* phone
+* document_ref
+* signed_at si aparece
+
+Ejemplos reales a soportar:
+
+* Searay 50 / Maritza Rueda / 2026-04-11 / 3PM–9PM / $1100 / $200
+* Cranchi 50 / Rohit Chaudhary / 2026-04-17 / 4PM–7:30PM / $714.42 / $250
+* Viking 50 / Devyn Gwydir / 12PM–4PM / $1300 / $300
+* Searay 40 / Shabria Williams / 4:15PM–7:15PM / $498 / $120
+* Searay 50 / Anton Kirichok / 2026-04-22 / 4PM–8PM / $1200 / $300
+
+## FASE 3 — MATCHING ENGINE
+
+Crear función:
+
+matchContractToBooking(contractMeta)
+
+Scoring recomendado:
+
+* fecha exacta: +35
+* barco exacto o normalizado: +25
+* hora inicio compatible: +15
+* hora fin compatible: +10
+* nombre cliente similar: +20
+* total_amount similar: +10
+* deposit_amount similar: +5
+* email exacto: +25
+* phone exacto: +20
+
+Thresholds:
+
+* score >= 80 → auto-link permitido
+* score 60–79 → sugerencia “review required”
+* score < 60 → no vincular
+
+Normalización obligatoria:
+
+* Searay 50 / SEA RAY 500 / 50' Searay deben considerarse equivalentes
+* Cranchi 50 / CRANCHI equivalentes
+* Viking 50 / VIKING PRINCESS equivalentes
+* horas 4PM, 4:00pm, 16:00 equivalentes
+* nombres case-insensitive
+* montos con $ y comas normalizados
+
+## FASE 4 — AUTO-LINK
+
+Cuando un documento PDF se suba o exista sin booking_id:
+
+1. parsear metadata
+2. buscar candidatos en bookings
+3. calcular score
+4. si score >= 80:
+
+   * actualizar documents.booking_id
+   * guardar extracted metadata si hay columna JSON disponible; si no, no crear tabla grande
+   * log: [ContractAutoLink] linked doc=X booking=Y score=Z
+5. si score 60–79:
+
+   * no vincular automáticamente
+   * mostrar en UI como “Sugerencia: revisar”
+6. si score < 60:
+
+   * dejar sin vínculo
+
+## FASE 5 — UI EN BOOKINGDRAWER
+
+En “Documentos del booking” mostrar:
+
+* Vinculados
+* Sugerencias de contrato
+* Requiere revisión
+
+Cada sugerencia debe mostrar:
+
+* cliente detectado
+* barco detectado
+* fecha detectada
+* hora detectada
+* score
+* botón Confirmar vínculo
+* botón Ver PDF
+* botón Descargar
+
+## FASE 6 — BACKFILL AUDIT
+
+Crear endpoint seguro read-only:
+
+GET /api/documents/contract-match-audit
+
+Debe devolver:
+
+* total PDFs contratos
+* linked
+* auto-link candidates
+* review candidates
+* unmatched
+* lista con score y razón
+
+Crear endpoint de ejecución controlada:
+
+POST /api/documents/contract-auto-link
+body:
+{ "mode": "dry-run" | "apply", "minScore": 80 }
+
+Reglas:
+
+* default dry-run
+* apply solo vincula score >= minScore
+* nunca borrar documentos
+* nunca mover archivos
+* nunca sobreescribir booking_id existente salvo force=true
+
+## REGLAS
+
+* additive only
+* no romper documents.html
+* no romper Calendar/FOC
+* no inventar links
+* no crear data falsa
+* no vincular si score bajo
+* mantener runner verde
+* consola limpia
+
+## ENTREGA
+
+1. archivos tocados
+2. parser implementado
+3. campos extraídos
+4. scoring engine
+5. ejemplo real de match con al menos 3 contratos
+6. resultado dry-run
+7. resultado apply si se autoriza internamente para high confidence
+8. UI en drawer
+9. consola / runner
+10. riesgos
+11. veredicto PASS/BLOCKED
