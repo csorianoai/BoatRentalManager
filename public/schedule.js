@@ -1637,7 +1637,8 @@ window.NadakiCalendar = (function () {
 const calDocuments = (function () {
   'use strict';
 
-  let _bookingId = null;
+  let _bookingId   = null;
+  let _bookingData = null;  // full booking object for metadata
 
   function _esc(s) {
     if (s == null) return '';
@@ -1719,20 +1720,24 @@ const calDocuments = (function () {
 
   /* ── Load and render ──────────────────────────────────────── */
   async function load(bookingId) {
-    _bookingId = bookingId;
-    const sec   = document.getElementById('bk-docs-section');
-    const body  = document.getElementById('bk-docs-body');
-    const badge = document.getElementById('bk-docs-badge');
-    const input = document.getElementById('bk-doc-upload');
+    _bookingId   = bookingId;
+    _bookingData = (typeof bookings !== 'undefined') ? (bookings.find(b => b.id === bookingId) || null) : null;
+
+    const sec    = document.getElementById('bk-docs-section');
+    const body   = document.getElementById('bk-docs-body');
+    const badge  = document.getElementById('bk-docs-badge');
+    const input  = document.getElementById('bk-doc-upload');
+    const status = document.getElementById('bk-docs-upload-status');
 
     if (!sec || !body) return;
     sec.style.display = 'block';
     body.innerHTML = '<div style="color:#94a3b8;font-size:13px;padding:8px 0;">Cargando documentos...</div>';
-    if (badge) badge.style.display = 'none';
-    if (input) input.value = '';
+    if (badge)  badge.style.display  = 'none';
+    if (input)  input.value          = '';
+    if (status) status.style.display = 'none';
 
     if (!bookingId) {
-      body.innerHTML = '<div style="color:#94a3b8;font-size:13px;padding:8px 0;">Guarda la reserva para gestionar documentos.</div>';
+      body.innerHTML = '<div style="color:#94a3b8;font-size:13px;padding:8px 0;">Guarda la reserva primero para gestionar documentos.</div>';
       return;
     }
 
@@ -1826,31 +1831,72 @@ const calDocuments = (function () {
     }
   }
 
-  /* ── Upload files ─────────────────────────────────────────── */
-  async function uploadFiles(event) {
-    if (!_bookingId) { alert('Guarda la reserva primero.'); return; }
-    const files = Array.from(event.target.files || []);
+  /* ── Drag-and-drop handler ────────────────────────────────── */
+  async function onDrop(event) {
+    event.preventDefault();
+    const dz = document.getElementById('bk-docs-dropzone');
+    if (dz) dz.classList.remove('bk-dz-over');
+    const files = Array.from(event.dataTransfer?.files || []);
     if (!files.length) return;
+    await _doUpload(files);
+  }
 
-    const input = event.target;
-    const statusEl = document.getElementById('bk-docs-body');
-    const orig = statusEl ? statusEl.innerHTML : '';
+  /* ── Upload files (from input) ────────────────────────────── */
+  async function uploadFiles(event) {
+    const files = Array.from(event.target.files || []);
+    event.target.value = '';
+    if (!files.length) return;
+    await _doUpload(files);
+  }
 
+  /* ── Core upload logic ────────────────────────────────────── */
+  async function _doUpload(files) {
+    if (!_bookingId) { alert('Guarda la reserva primero.'); return; }
+
+    const status = document.getElementById('bk-docs-upload-status');
+    if (status) { status.style.display = 'block'; status.textContent = `Subiendo ${files.length} archivo(s)...`; }
+
+    // Compute end_time from booking data
+    let endTime = null;
+    if (_bookingData && _bookingData.start_time && _bookingData.duration_hours) {
+      const [h, m] = _bookingData.start_time.split(':').map(Number);
+      const endMin = h * 60 + (m || 0) + parseFloat(_bookingData.duration_hours) * 60;
+      endTime = `${String(Math.floor(endMin / 60)).padStart(2,'0')}:${String(endMin % 60).padStart(2,'0')}`;
+    }
+
+    let uploaded = 0;
     for (const file of files) {
       const fd = new FormData();
       fd.append('file', file);
       fd.append('booking_id', _bookingId);
       fd.append('doc_type', 'Contrato');
+      // Send full booking context for server-side matching
+      if (_bookingData) {
+        if (_bookingData.customer_name)  fd.append('customer_name',  _bookingData.customer_name);
+        if (_bookingData.boat_type)      fd.append('boat_name',       _bookingData.boat_type);
+        if (_bookingData.booking_date)   fd.append('booking_date',    _bookingData.booking_date);
+        if (_bookingData.start_time)     fd.append('start_time',      _bookingData.start_time);
+        if (endTime)                     fd.append('end_time',        endTime);
+        if (_bookingData.total_amount)   fd.append('total_amount',    _bookingData.total_amount);
+        if (_bookingData.deposit_amount) fd.append('deposit_amount',  _bookingData.deposit_amount);
+      }
       try {
         const r = await fetch('/api/documents/upload', { method: 'POST', body: fd });
         if (!r.ok) { const j = await r.json(); throw new Error(j.error || 'Error al subir ' + file.name); }
+        uploaded++;
+        if (status) status.textContent = `Subido ${uploaded}/${files.length}: ${file.name}`;
       } catch (e) {
-        alert('Error: ' + e.message);
+        if (status) { status.style.color = '#dc2626'; status.textContent = 'Error: ' + e.message; }
       }
     }
-    input.value = '';
+
+    if (status) {
+      status.style.color = '#16a34a';
+      status.textContent = `${uploaded}/${files.length} archivo(s) subido(s) y vinculado(s)`;
+      setTimeout(() => { if (status) status.style.display = 'none'; }, 3000);
+    }
     await load(_bookingId);
   }
 
-  return { load, confirm, unlink, uploadFiles };
+  return { load, confirm, unlink, uploadFiles, onDrop };
 }());

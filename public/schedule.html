@@ -1410,13 +1410,23 @@
             <div id="bk-docs-body" style="min-height:40px;">
               <div style="color:#94a3b8;font-size:13px;padding:8px 0;">Cargando documentos...</div>
             </div>
-            <div style="margin-top:10px;">
-              <label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Subir contrato PDF</label>
+            <!-- Dropzone -->
+            <div id="bk-docs-dropzone"
+                 data-testid="dropzone-bk-docs"
+                 onclick="document.getElementById('bk-doc-upload').click()"
+                 ondragover="event.preventDefault();this.classList.add('bk-dz-over')"
+                 ondragleave="this.classList.remove('bk-dz-over')"
+                 ondrop="calDocuments.onDrop(event)"
+                 style="margin-top:10px;border:2px dashed #d1dbe8;border-radius:8px;padding:16px 12px;text-align:center;cursor:pointer;background:#f8fafc;transition:border-color .15s,background .15s;">
               <input type="file" id="bk-doc-upload" accept="application/pdf,*/*" multiple
-                     data-testid="input-bk-doc-upload"
-                     style="font-size:12px;border:1px solid #d1dbe8;border-radius:6px;padding:4px 8px;width:100%;background:#fff;"
+                     data-testid="input-bk-doc-upload" style="display:none"
                      onchange="calDocuments.uploadFiles(event)">
+              <div style="font-size:12px;color:#64748b;line-height:1.6;pointer-events:none;">
+                <strong style="color:#0066cc;">Haz clic o arrastra aqui</strong><br>
+                PDF de contrato &mdash; se vincula automaticamente al booking
+              </div>
             </div>
+            <div id="bk-docs-upload-status" style="display:none;font-size:12px;color:#0066cc;margin-top:6px;text-align:center;"></div>
           </div>
 
           <div class="form-actions">

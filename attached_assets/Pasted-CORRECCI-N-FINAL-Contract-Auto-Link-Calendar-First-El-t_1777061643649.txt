@@ -1,0 +1,297 @@
+CORRECCIÓN FINAL — Contract Auto-Link Calendar First.
+
+El trabajo anterior NO está completo. No basta con tener sección en schedule.html. El ciclo correcto debe ser:
+
+PDF subido → metadata extraída → booking encontrado por fecha/hora/barco/cliente/monto → document.booking_id actualizado → contrato visible en BookingDrawer del calendario con Ver/Descargar/Desvincular.
+
+## PROBLEMA ACTUAL
+
+El sistema sigue sin mostrar contratos reales porque:
+
+1. no hay ingestión completa de PDFs reales hacia documents
+2. el matching se probó contra datos de test sin fechas reales
+3. el BookingDrawer no demuestra que después del upload aparece el contrato visible
+4. no basta con buscar booking_id; para históricos hay que calcularlo por metadata
+
+## OBJETIVO
+
+Implementar flujo completo Calendar-first:
+
+### A. Upload desde Calendar BookingDrawer
+
+En `schedule.html / schedule.js`, dentro de “Documentos / Contrato”:
+
+* permitir subir PDF
+* al subir, enviar también:
+
+  * booking_id actual
+  * customer_name
+  * boat_name
+  * booking_date
+  * start_time
+  * end_time
+  * total_amount
+  * deposit_amount
+
+Si se sube desde el drawer de un booking, debe vincularse automáticamente a ese booking sin pedir matching.
+
+### B. Upload masivo / histórico
+
+Para PDFs que están en documents sin booking_id:
+
+* parsear PDF
+* extraer metadata
+* buscar booking por fecha primero
+* luego hora
+* luego barco
+* luego cliente
+* luego monto
+
+NO depender de booking_id para históricos.
+
+## PARSER OBLIGATORIO
+
+Crear o corregir:
+
+`server/contractMatcher.js`
+
+Funciones obligatorias:
+
+```js
+parseContractText(text)
+parseContractPdf(filePath)
+normalizeBoatName(value)
+normalizeTime(value)
+normalizeMoney(value)
+normalizeName(value)
+scoreContractAgainstBooking(contract, booking)
+findBestBookingForContract(contract)
+```
+
+Debe extraer:
+
+* rental_date
+* customer_name
+* boat_name
+* start_time
+* end_time
+* total_amount
+* deposit_amount
+* email
+* phone
+* document_ref
+* signed_at
+
+Soportar estos formatos reales:
+
+* `2026-04-11`
+* `3PM 9PM`
+* `4pm to 7:30pm`
+* `4:15PM 7:15PM`
+* `$1100`
+* `$714.42`
+* `Searay 50`
+* `Cranchi 50`
+* `Viking 50`
+
+## MATCHING CORRECTO
+
+Primero reducir por fecha:
+
+```sql
+WHERE booking_date = contract.rental_date
+```
+
+Luego puntuar:
+
+* fecha exacta: +40
+* hora inicio ±30 min: +20
+* hora fin ±30 min: +15
+* barco compatible: +25
+* cliente similar: +20
+* total similar ±5: +10
+* depósito similar ±5: +5
+* email exacto: +30
+* phone exacto: +25
+
+Thresholds:
+
+* > =85 auto-link
+* 65–84 review required
+* <65 unmatched
+
+Equivalencias obligatorias:
+
+* Searay 50 = SEA RAY 500 = 50' Searay
+* Searay 40 = 40' Searay
+* Cranchi 50 = CRANCHI
+* Viking 50 = VIKING PRINCESS
+
+## ENDPOINTS
+
+### 1. Audit
+
+Crear:
+
+`GET /api/contracts/match-audit`
+
+Debe devolver:
+
+```json
+{
+  "total": 0,
+  "already_linked": [],
+  "auto_link_candidates": [],
+  "review_required": [],
+  "unmatched": []
+}
+```
+
+Cada item debe incluir:
+
+* document_id
+* filename
+* extracted metadata
+* candidate booking
+* score
+* reasons
+
+### 2. Auto-link controlado
+
+Crear:
+
+`POST /api/contracts/auto-link`
+
+Body:
+
+```json
+{
+  "mode": "dry-run",
+  "minScore": 85
+}
+```
+
+Reglas:
+
+* default dry-run
+* apply solo si mode = apply
+* nunca sobreescribir booking_id existente salvo force=true
+* nunca borrar documentos
+* nunca mover archivos
+
+### 3. Upload desde booking
+
+Asegurar que:
+
+`POST /api/documents/upload`
+
+acepte:
+
+* booking_id
+* category = contract
+* customer_name
+* boat_name
+* booking_date
+* start_time
+* end_time
+
+Y si viene `booking_id`, el documento queda vinculado inmediatamente.
+
+## BOOKINGDRAWER — SCHEDULE.JS
+
+En el BookingDrawer real del calendario:
+
+Debe mostrar siempre:
+
+### Documentos / Contrato
+
+Estados:
+
+1. Documento vinculado
+
+   * filename
+   * badge Vinculado
+   * Ver
+   * Descargar
+   * Desvincular
+
+2. Sugerencia high/medium
+
+   * score
+   * reasons
+   * Confirmar vínculo
+   * Ver
+   * Descargar
+
+3. Sin documentos
+
+   * texto claro
+   * dropzone visible
+
+4. Upload completado
+
+   * refrescar automáticamente
+   * mostrar el documento sin cerrar el drawer
+
+## VALIDACIÓN OBLIGATORIA
+
+Usar datos reales de estos contratos:
+
+1. Maritza Rueda / Searay 50 / 2026-04-11 / 3PM–9PM / $1100 / $200
+2. Rohit Chaudhary / Cranchi 50 / 2026-04-17 / 4PM–7:30PM / $714.42 / $250
+3. Shabria Williams / Searay 40 / 2026-04-18 / 4:15PM–7:15PM / $498 / $120
+4. Anton Kirichok / Searay 50 / 2026-04-22 / 4PM–8PM / $1200 / $300
+
+Si los bookings reales no existen en DB, no digas PASS completo. Reporta:
+
+`BLOCKED_BY_MISSING_BOOKING_DATA`
+
+Pero el upload desde BookingDrawer debe funcionar sí o sí con cualquier booking existente.
+
+## TESTS DE ACEPTACIÓN
+
+### Test 1 — Upload desde booking
+
+1. abrir schedule.html
+2. abrir booking existente
+3. subir PDF por dropzone
+4. confirmar que documents.booking_id = booking.id
+5. confirmar que aparece inmediatamente en el drawer
+6. Ver y Descargar funcionan
+
+### Test 2 — Match audit
+
+1. subir contratos a documents sin booking_id
+2. correr GET /api/contracts/match-audit
+3. verificar metadata extraída
+4. verificar score/reasons
+
+### Test 3 — Apply
+
+1. correr POST /api/contracts/auto-link con dry-run
+2. revisar candidatos
+3. correr apply solo para score >=85
+4. verificar documents.booking_id actualizado
+
+## REGLAS
+
+* Calendar es la fuente principal
+* Fleet/FOC solo puede consumir documentos ya vinculados
+* no depender de booking_id para históricos
+* no vincular score bajo
+* no tocar contabilidad
+* no romper documents.html
+* additive only
+* runner verde
+
+## ENTREGA
+
+1. qué estaba incompleto
+2. archivos tocados
+3. parser implementado
+4. upload desde BookingDrawer validado
+5. match-audit validado
+6. auto-link validado o BLOCKED_BY_MISSING_BOOKING_DATA
+7. evidencia de contrato visible en schedule.html drawer
+8. consola / runner
+9. veredicto PASS o BLOCKED con causa exacta

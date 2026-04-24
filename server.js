@@ -14131,6 +14131,32 @@ app.post('/api/documents/contract-auto-link', isAuthenticated, async (req, res) 
   }
 });
 
+// GET /api/contracts/match-audit — audit ALL unlinked PDFs (Calendar-first)
+app.get('/api/contracts/match-audit', isAuthenticated, async (req, res) => {
+  try {
+    const matcher = require('./server/contractMatcher');
+    const minScore = parseInt(req.query.minScore || '0');
+    const result = await matcher.matchAuditAll(pool);
+    res.json(result);
+  } catch (err) {
+    console.error('[ContractMatchAudit]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/contracts/auto-link — controlled batch apply
+app.post('/api/contracts/auto-link', isAuthenticated, async (req, res) => {
+  try {
+    const matcher = require('./server/contractMatcher');
+    const { mode = 'dry-run', minScore = 85, force = false } = req.body;
+    const result = await matcher.batchAutoLink(pool, mode, Number(minScore), Boolean(force));
+    res.json(result);
+  } catch (err) {
+    console.error('[ContractAutoLink]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/contracts/booking-suggestions?booking_id=X
 // Returns unlinked PDFs scored against a specific booking (calendar drawer use)
 app.get('/api/contracts/booking-suggestions', isAuthenticated, async (req, res) => {
