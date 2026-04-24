@@ -1,0 +1,151 @@
+Implementa integración automatizada de documentos/contratos en Calendar 2.0.
+
+Objetivo:
+al abrir un booking en el calendario, el sistema debe buscar automáticamente documentos/contratos relacionados y permitir vincularlos o subirlos con la menor intervención posible.
+
+No quiero una integración manual básica.
+Quiero el flujo más automatizado posible, pero seguro.
+
+## FASE 1 — AUDIT OBLIGATORIO
+
+Antes de implementar, audita:
+
+1. Cómo documents.html lista documentos
+2. Endpoints reales de documentos:
+
+   * listar
+   * ver
+   * descargar
+   * subir
+   * eliminar
+3. Tabla/modelo real de documentos:
+
+   * id
+   * filename
+   * customer/client
+   * boat
+   * category/type
+   * url/path
+   * created_at
+   * booking_id si existe
+4. Si existe forma segura de actualizar/vincular documento a booking
+5. Si existe upload endpoint reutilizable
+6. Cómo identificar documentos tipo contrato
+7. Qué campos del booking están disponibles en Calendar:
+
+   * customer_name
+   * email
+   * phone
+   * boat_name
+   * boat_id
+   * date
+
+## FASE 2 — AUTO-MATCH
+
+Implementar búsqueda automática cuando se abre BookingDrawer.
+
+Matching por prioridad:
+
+1. booking_id exacto si existe
+2. customer email / phone
+3. customer name normalizado
+4. boat_name + fecha cercana
+5. filename contiene palabras tipo:
+
+   * contract
+   * contrato
+   * agreement
+
+Cada match debe tener score:
+
+* high
+* medium
+* low
+
+Mostrar:
+
+* “Contrato probable encontrado”
+* score
+* botones:
+
+  * Confirmar vínculo
+  * Ver
+  * Descargar
+  * Buscar otro
+
+## FASE 3 — VINCULAR DOCUMENTO EXISTENTE
+
+Si existe endpoint seguro:
+
+* permitir confirmar vínculo booking_id → document_id
+
+Si no existe:
+
+* no inventar escritura peligrosa
+* dejar modo sugerencia + deep link a documents.html con búsqueda prellenada
+
+## FASE 4 — UPLOAD AUTOMATIZADO
+
+Si existe endpoint de upload reutilizable:
+añadir dropzone en BookingDrawer:
+
+“Arrastra aquí el contrato PDF”
+
+Al subir:
+
+* category/type = Contrato
+* boat_id / boat_name desde booking
+* customer_name desde booking
+* booking_id si existe campo
+* vincular al booking si hay soporte
+* refrescar lista de documentos
+
+Si no existe upload seguro:
+
+* no construir upload nuevo en esta fase
+* dejar botón “Subir en Documentos”
+
+## UI EN BOOKINGDRAWER
+
+Agregar sección:
+
+“Documentos del booking”
+
+Estados:
+
+1. Documento vinculado
+2. Contrato probable encontrado
+3. Sin documentos
+4. Upload disponible
+5. Match incierto
+
+Cada documento debe mostrar:
+
+* filename
+* tipo
+* boat/customer si existe
+* score
+* botones Ver / Descargar / Confirmar vínculo
+
+## REGLAS
+
+* no duplicar archivos
+* no romper documents.html
+* no mover documentos existentes
+* no eliminar documentos
+* no crear backend nuevo salvo endpoint mínimo de vínculo si la tabla lo soporta claramente
+* additive only
+* runner verde
+* consola limpia
+
+## ENTREGA
+
+1. audit de documentos
+2. estrategia de auto-match
+3. si se pudo vincular automáticamente o solo sugerir
+4. si se pudo upload/dropzone o no
+5. archivos tocados
+6. evidencia runtime
+7. consola / runner
+8. riesgos
+9. veredicto PASS/BLOCKED

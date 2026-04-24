@@ -1155,6 +1155,12 @@
             <div class="foc-activity-log">${actItems}</div>
           </div>
 
+          <!-- ── Sección 5: Documentos (cargado async) ── -->
+          <div id="foc-doc-section">
+            <div class="foc-doc-section-hd">Documentos del Booking</div>
+            <div class="foc-doc-loading">Buscando documentos...</div>
+          </div>
+
         </div>
 
         <!-- ── Footer: 8 acciones en 2 filas ─────────── -->
@@ -1173,6 +1179,9 @@
 
     drawer.classList.add('foc-drawer-open');
     document.body.style.overflow = 'hidden';
+
+    // Cargar documentos relacionados al booking de forma async (no bloquea el drawer)
+    if (window.focDocuments) focDocuments.load(b);
   }
 
   function closeDrawer() {
@@ -1441,5 +1450,282 @@
     exportListCSV, exportListPDF,
     showShortcutsModal, closeShortcutsModal,
   };
+
+})();
+
+/* ═══════════════════════════════════════════════════════════════════
+   focDocuments — Módulo de documentos del BookingDrawer (FOC FASE 5)
+   Independiente del IIFE principal; define su propio helper esc().
+   ═══════════════════════════════════════════════════════════════════ */
+window.focDocuments = (function () {
+  'use strict';
+
+  /* ── Estado interno ─────────────────────────────────────────────── */
+  let _booking = null;
+
+  /* ── Helpers ────────────────────────────────────────────────────── */
+  function esc(s) {
+    if (s == null) return '';
+    return String(s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function fmt(bytes) {
+    if (!bytes) return '';
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1048576) return (bytes / 1024).toFixed(0) + ' KB';
+    return (bytes / 1048576).toFixed(1) + ' MB';
+  }
+
+  function docIcon(mime) {
+    if (!mime) return '📄';
+    if (mime.startsWith('image/')) return '🖼';
+    if (mime === 'application/pdf') return '📋';
+    if (mime.includes('word')) return '📝';
+    if (mime.includes('excel') || mime.includes('spreadsheet')) return '📊';
+    if (mime.includes('zip') || mime.includes('compressed')) return '🗜';
+    return '📄';
+  }
+
+  /* ── Scoring de auto-match ──────────────────────────────────────── */
+  function matchScore(doc, booking) {
+    let score = 0;
+    const name = (doc.original_name || '').toLowerCase();
+    const bDate = booking.booking_date ? booking.booking_date.substring(0, 10) : '';
+    const bDateCompact = bDate.replace(/-/g, '');
+
+    // Mismo barco
+    if (doc.boat_id && booking.boat_id && doc.boat_id === booking.boat_id) score += 3;
+    // Fecha en nombre de archivo
+    if (bDate && name.includes(bDate)) score += 2;
+    if (bDateCompact && name.includes(bDateCompact)) score += 2;
+    // Año + mes
+    if (bDate && name.includes(bDate.substring(0, 7).replace('-', ''))) score += 1;
+    // Nombre cliente en archivo
+    const cname = (booking.customer_name || '').toLowerCase().split(' ');
+    cname.forEach(n => { if (n.length > 2 && name.includes(n)) score += 1; });
+    // Tipo contrato/factura
+    if (/contrato|contract|charter|factura|invoice/.test(name)) score += 1;
+
+    return score;
+  }
+
+  /* ── Render ─────────────────────────────────────────────────────── */
+  function renderSection(linked, suggestions, booking) {
+    const sec = document.getElementById('foc-doc-section');
+    if (!sec) return;
+
+    const bookingId = booking.id;
+    const boatId    = booking.boat_id || '';
+
+    /* ── Documentos ya vinculados ─────────────────────────────────── */
+    let html = `<div class="foc-doc-section-hd">Documentos del Booking</div>`;
+
+    if (linked.length === 0) {
+      html += `<div class="foc-doc-empty">Sin documentos vinculados.</div>`;
+    } else {
+      linked.forEach(d => {
+        html += `
+        <div class="foc-doc-card" data-doc-id="${esc(d.id)}">
+          <div class="foc-doc-icon">${docIcon(d.mime_type)}</div>
+          <div class="foc-doc-info">
+            <div class="foc-doc-name" title="${esc(d.original_name)}">${esc(d.original_name)}</div>
+            <div class="foc-doc-meta">${esc(d.doc_type || 'Sin tipo')} · ${fmt(d.file_size)}</div>
+            <span class="foc-doc-linked">&#10003; Vinculado</span>
+            <div class="foc-doc-actions">
+              <button class="foc-doc-btn foc-doc-btn-primary" onclick="focDocuments.viewDoc('${esc(d.id)}')">Ver</button>
+              <button class="foc-doc-btn foc-doc-btn-primary" onclick="focDocuments.downloadDoc('${esc(d.id)}')">Descargar</button>
+              <button class="foc-doc-btn" onclick="focDocuments.unlinkDoc('${esc(d.id)}', '${esc(bookingId)}')">Desvincular</button>
+            </div>
+          </div>
+        </div>`;
+      });
+    }
+
+    /* ── Sugerencias de auto-match ────────────────────────────────── */
+    if (suggestions.length > 0) {
+      html += `<div class="foc-doc-section-hd" style="border-top:1px solid #F3F4F6;padding-top:12px;">Sugerencias</div>`;
+      html += `<div class="foc-doc-sublabel">Documentos que podrían corresponder a esta reserva</div>`;
+      suggestions.forEach(d => {
+        const level = d._score >= 4 ? 'high' : d._score >= 2 ? 'medium' : 'low';
+        const label = d._score >= 4 ? 'Alta coincidencia' : d._score >= 2 ? 'Posible' : 'Relacionado';
+        html += `
+        <div class="foc-doc-card" data-doc-id="${esc(d.id)}">
+          <div class="foc-doc-icon">${docIcon(d.mime_type)}</div>
+          <div class="foc-doc-info">
+            <div class="foc-doc-name" title="${esc(d.original_name)}">${esc(d.original_name)}</div>
+            <div class="foc-doc-meta">${esc(d.doc_type || 'Sin tipo')} · ${fmt(d.file_size)}</div>
+            <span class="foc-doc-score foc-doc-score-${level}">${label}</span>
+            <div class="foc-doc-actions">
+              <button class="foc-doc-btn foc-doc-btn-primary" onclick="focDocuments.linkDoc('${esc(d.id)}', '${esc(bookingId)}')">Vincular</button>
+              <button class="foc-doc-btn" onclick="focDocuments.viewDoc('${esc(d.id)}')">Ver</button>
+            </div>
+          </div>
+        </div>`;
+      });
+    }
+
+    /* ── Dropzone para subir nuevo documento ──────────────────────── */
+    const dzId  = 'foc-dz-input';
+    html += `
+    <div class="foc-doc-section-hd" style="border-top:1px solid #F3F4F6;padding-top:12px;">Subir documento</div>
+    <div class="foc-doc-dropzone" id="foc-doc-dropzone"
+         onclick="document.getElementById('${dzId}').click()"
+         ondragover="event.preventDefault();this.classList.add('dz-over')"
+         ondragleave="this.classList.remove('dz-over')"
+         ondrop="focDocuments._onDrop(event,'${esc(bookingId)}','${esc(boatId)}')">
+      <input type="file" id="${dzId}" multiple accept="*/*" style="display:none"
+             onchange="focDocuments._onFileInput(event,'${esc(bookingId)}','${esc(boatId)}')">
+      <div class="foc-doc-dz-text">
+        <strong>Haz clic o arrastra archivos aquí</strong><br>
+        Se vincularán automáticamente a esta reserva.
+      </div>
+    </div>
+    <div class="foc-doc-footer">
+      <a class="foc-doc-deeplink" href="/documents.html?booking_id=${esc(bookingId)}" target="_blank">
+        Ver todos los documentos &#8599;
+      </a>
+    </div>`;
+
+    sec.innerHTML = html;
+  }
+
+  /* ── API principal ──────────────────────────────────────────────── */
+
+  async function load(booking) {
+    _booking = booking;  // guardar para re-uso en linkDoc / unlinkDoc
+    const sec = document.getElementById('foc-doc-section');
+    if (!sec) return;
+    sec.innerHTML = `<div class="foc-doc-section-hd">Documentos del Booking</div>
+                     <div class="foc-doc-loading">Buscando documentos...</div>`;
+
+    try {
+      // Paralelo: (1) docs ya vinculados al booking_id, (2) docs del mismo barco (para sugerencias)
+      const [linkedRes, boatRes] = await Promise.all([
+        fetch(`/api/documents?booking_id=${encodeURIComponent(booking.id)}`),
+        booking.boat_id ? fetch(`/api/documents?boat_id=${encodeURIComponent(booking.boat_id)}`) : Promise.resolve(null),
+      ]);
+
+      if (!linkedRes.ok) throw new Error('Error cargando documentos');
+      const linked = await linkedRes.json();
+
+      let suggestions = [];
+      if (boatRes && boatRes.ok) {
+        const boatDocs = await boatRes.json();
+        const linkedIds = new Set(linked.map(d => d.id));
+        suggestions = boatDocs
+          .filter(d => !linkedIds.has(d.id) && !d.booking_id)  // no vinculados a ningún booking
+          .map(d => ({ ...d, _score: matchScore(d, booking) }))
+          .filter(d => d._score > 0)
+          .sort((a, b) => b._score - a._score)
+          .slice(0, 5);
+      }
+
+      renderSection(linked, suggestions, booking);
+    } catch (e) {
+      if (sec) sec.innerHTML = `<div class="foc-doc-section-hd">Documentos del Booking</div>
+                                 <div class="foc-doc-empty">Error al cargar documentos.</div>`;
+      console.warn('[focDocuments] load error:', e);
+    }
+  }
+
+  async function linkDoc(docId, bookingId) {
+    try {
+      const r = await fetch(`/api/documents/${encodeURIComponent(docId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ booking_id: bookingId }),
+      });
+      if (!r.ok) throw new Error(await r.text());
+      // Refrescar sección — buscar el booking en el drawer abierto
+      const booking = _currentBooking();
+      if (booking) load(booking);
+    } catch (e) {
+      alert('Error al vincular documento: ' + e.message);
+    }
+  }
+
+  async function unlinkDoc(docId, bookingId) {
+    if (!confirm('¿Desvincular este documento de la reserva?')) return;
+    try {
+      const r = await fetch(`/api/documents/${encodeURIComponent(docId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ booking_id: null }),
+      });
+      if (!r.ok) throw new Error(await r.text());
+      const booking = _currentBooking();
+      if (booking) load(booking);
+    } catch (e) {
+      alert('Error al desvincular: ' + e.message);
+    }
+  }
+
+  function viewDoc(docId) {
+    window.open(`/api/documents/${encodeURIComponent(docId)}/view`, '_blank');
+  }
+
+  function downloadDoc(docId) {
+    window.open(`/api/documents/${encodeURIComponent(docId)}/download`, '_blank');
+  }
+
+  /* ── Upload helpers ─────────────────────────────────────────────── */
+
+  async function _uploadFiles(files, bookingId, boatId) {
+    const dz = document.getElementById('foc-doc-dropzone');
+    if (dz) dz.innerHTML = `<div class="foc-doc-uploading">Subiendo ${files.length} archivo(s)...</div>`;
+
+    let ok = 0, fail = 0;
+    for (const file of files) {
+      try {
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('doc_type', 'otro');
+        fd.append('booking_id', bookingId);
+        if (boatId) fd.append('boat_id', boatId);
+        fd.append('entity_type', 'booking');
+        fd.append('entity_id', bookingId);
+
+        const r = await fetch('/api/documents/upload', { method: 'POST', body: fd });
+        if (!r.ok) throw new Error(await r.text());
+        ok++;
+      } catch (e) {
+        fail++;
+        console.warn('[focDocuments] upload fail:', e);
+      }
+    }
+
+    // Resetear input para permitir re-subir mismos archivos
+    const inp = document.getElementById('foc-dz-input');
+    if (inp) inp.value = '';
+
+    // Refrescar sección
+    const booking = _currentBooking();
+    if (booking) load(booking);
+
+    if (fail > 0) alert(`${ok} subido(s), ${fail} con error.`);
+  }
+
+  function _onDrop(e, bookingId, boatId) {
+    e.preventDefault();
+    const dz = document.getElementById('foc-doc-dropzone');
+    if (dz) dz.classList.remove('dz-over');
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) _uploadFiles(files, bookingId, boatId);
+  }
+
+  function _onFileInput(e, bookingId, boatId) {
+    const files = Array.from(e.target.files);
+    if (files.length > 0) _uploadFiles(files, bookingId, boatId);
+  }
+
+  /* ── Helper: recuperar booking del drawer abierto ───────────────── */
+  function _currentBooking() {
+    return _booking;
+  }
+
+  return { load, linkDoc, unlinkDoc, viewDoc, downloadDoc, _onDrop, _onFileInput };
 
 })();

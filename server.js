@@ -1225,6 +1225,8 @@ async function initializeDatabase() {
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_documents_boat ON documents(boat_id)`);
     // Store file content in DB so files survive redeployments (no ephemeral filesystem dependency)
     await pool.query(`ALTER TABLE documents ADD COLUMN IF NOT EXISTS file_data BYTEA`);
+    await pool.query(`ALTER TABLE documents ADD COLUMN IF NOT EXISTS booking_id TEXT`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_documents_booking ON documents(booking_id)`);
     console.log('✅ FASE 13 table created (document management)');
 
     // FASE 14: Captain & Stew Payments + enhanced expenses
@@ -13927,7 +13929,7 @@ app.post('/api/documents/upload', isAuthenticated, (req, res, next) => {
   });
 }, async (req, res) => {
   try {
-    const { doc_type, entity_type, entity_id, boat_id, visible_in_general, notes } = req.body;
+    const { doc_type, entity_type, entity_id, boat_id, visible_in_general, notes, booking_id } = req.body;
     if (!req.file) return res.status(400).json({ error: 'No se recibió ningún archivo' });
     if (!doc_type) return res.status(400).json({ error: 'doc_type es obligatorio' });
 
@@ -13949,16 +13951,16 @@ app.post('/api/documents/upload', isAuthenticated, (req, res, next) => {
     await pool.query(
       `INSERT INTO documents
          (id, original_name, stored_name, file_path, doc_type, entity_type, entity_id,
-          boat_id, visible_in_general, file_size, mime_type, notes, uploaded_by, file_data)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+          boat_id, visible_in_general, file_size, mime_type, notes, uploaded_by, file_data, booking_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
       [id, req.file.originalname, storedName, 'db:' + id,
        doc_type, resolvedEntityType, resolvedEntityId,
        resolvedBoatId, resolvedVisible,
        req.file.size, req.file.mimetype, notes || null,
        req.user?.name || req.user?.email || 'sistema',
-       req.file.buffer]
+       req.file.buffer, booking_id || null]
     );
-    const doc = (await pool.query('SELECT id, original_name, stored_name, doc_type, entity_type, entity_id, boat_id, visible_in_general, file_size, mime_type, notes, uploaded_by, created_at FROM documents WHERE id=$1', [id])).rows[0];
+    const doc = (await pool.query('SELECT id, original_name, stored_name, doc_type, entity_type, entity_id, boat_id, booking_id, visible_in_general, file_size, mime_type, notes, uploaded_by, created_at FROM documents WHERE id=$1', [id])).rows[0];
     res.json({ success: true, document: doc });
   } catch (err) {
     console.error('[Documents] Upload error:', err);
@@ -13969,16 +13971,17 @@ app.post('/api/documents/upload', isAuthenticated, (req, res, next) => {
 // GET /api/documents — list with optional filters (NEVER include file_data — it's binary and breaks JSON serialization)
 app.get('/api/documents', isAuthenticated, async (req, res) => {
   try {
-    const { entity_type, entity_id, doc_type, boat_id, general_only } = req.query;
+    const { entity_type, entity_id, doc_type, boat_id, general_only, booking_id } = req.query;
     let where = [];
     let params = [];
     if (entity_type)  { params.push(entity_type);  where.push(`entity_type = $${params.length}`); }
     if (entity_id)    { params.push(entity_id);    where.push(`entity_id = $${params.length}`); }
     if (doc_type)     { params.push(doc_type);     where.push(`doc_type = $${params.length}`); }
     if (boat_id)      { params.push(boat_id);      where.push(`boat_id = $${params.length}`); }
+    if (booking_id)   { params.push(booking_id);   where.push(`booking_id = $${params.length}`); }
     if (general_only === 'true') { where.push(`visible_in_general = true`); }
     // Explicitly exclude file_data (BYTEA) — never serialize binary blobs to JSON
-    const cols = 'id, original_name, stored_name, doc_type, entity_type, entity_id, boat_id, visible_in_general, file_size, mime_type, notes, uploaded_by, created_at';
+    const cols = 'id, original_name, stored_name, doc_type, entity_type, entity_id, boat_id, booking_id, visible_in_general, file_size, mime_type, notes, uploaded_by, created_at';
     const sql = `SELECT ${cols} FROM documents${where.length ? ' WHERE ' + where.join(' AND ') : ''} ORDER BY created_at DESC`;
     const result = await pool.query(sql, params);
     res.json(result.rows);
@@ -14048,6 +14051,23 @@ app.delete('/api/documents/:id', isAuthenticated, async (req, res) => {
     await pool.query('DELETE FROM documents WHERE id=$1', [req.params.id]);
     res.json({ success: true });
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PATCH /api/documents/:id — vincular documento a booking (campo booking_id)
+app.patch('/api/documents/:id', isAuthenticated, async (req, res) => {
+  try {
+    const { booking_id } = req.body;
+    if (booking_id === undefined) return res.status(400).json({ error: 'booking_id requerido en body' });
+    const result = await pool.query(
+      `UPDATE documents SET booking_id=$1 WHERE id=$2 RETURNING id, original_name, doc_type, booking_id`,
+      [booking_id || null, req.params.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Documento no encontrado' });
+    res.json({ success: true, document: result.rows[0] });
+  } catch (err) {
+    console.error('[Documents] PATCH error:', err);
     res.status(500).json({ error: err.message });
   }
 });
