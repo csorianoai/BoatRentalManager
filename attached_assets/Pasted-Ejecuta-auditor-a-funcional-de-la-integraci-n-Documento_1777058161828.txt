@@ -1,0 +1,120 @@
+Ejecuta auditoría funcional de la integración Documentos ↔ BookingDrawer/FOC.
+
+Problema:
+No veo documentos/contratos con link dentro del booking drawer/calendario. Necesito verificar si la integración realmente está funcionando o si falta wiring, data, endpoint, selector o render.
+
+## REGLA PRINCIPAL
+
+Primero audita y prueba.
+No hagas cambios de código salvo fix pequeño y claramente necesario.
+Si encuentras un bug simple, corrígelo y valida.
+Si el problema es falta de data/documentos vinculados, NO inventes data sin reportarlo.
+
+## Validar backend
+
+1. Confirmar si existe columna:
+
+* documents.booking_id
+
+2. Confirmar si existen documentos en DB:
+
+* total documentos
+* documentos con booking_id
+* documentos sin booking_id
+* documentos tipo contract/contrato/agreement si existe category/type/filename
+
+3. Probar endpoints:
+
+* GET /api/documents
+* GET /api/documents?booking_id=<booking_real>
+* PATCH /api/documents/:id para vincular/desvincular
+* POST /api/documents/upload con booking_id solo si ya existe endpoint seguro
+
+4. Reportar response real de un booking con documentos vinculados, si existe.
+
+## Validar frontend
+
+5. Abrir Calendar/FOC y seleccionar un booking real.
+
+6. Confirmar que aparece sección:
+   “Documentos del booking”
+
+7. Confirmar si el módulo `focDocuments` se inicializa:
+
+* logs
+* función disponible
+* no errores en consola
+
+8. Confirmar que `_currentBooking()` devuelve booking correcto:
+
+* booking id
+* boat id/name
+* customer name
+* fecha
+
+9. Confirmar que se llama al endpoint correcto:
+
+* GET /api/documents?booking_id=...
+* GET /api/documents para candidatos
+
+10. Confirmar que renderiza:
+
+* vinculados
+* sugerencias
+* dropzone
+* botones Ver / Descargar / Confirmar vínculo
+
+## Si no hay documentos vinculados
+
+Crear SOLO data de prueba segura si hace falta:
+
+* usar un documento existente sin booking_id
+* vincularlo temporalmente a un booking real con PATCH
+* abrir el booking y verificar que aparece
+* luego reportar si quedó vinculado o si conviene revertir
+
+No crear archivos falsos.
+No subir PDFs falsos salvo que sea absolutamente necesario.
+
+## Revisar causas probables
+
+Verificar explícitamente:
+
+* ruta del JS cargada correctamente
+* módulo añadido al archivo correcto
+* booking drawer realmente usa fleet-ops.js
+* IDs/selectores correctos del drawer
+* conflicto con Calendar 2.0 drawer vs FOC drawer
+* endpoint requiere auth y frontend no lo maneja
+* documentos existen pero no tienen URLs válidas
+* botones usan campo incorrecto: file_url/path/download_url/url
+
+## Entrega compacta
+
+1. estado backend:
+
+   * columna
+   * documentos totales
+   * documentos vinculados
+   * endpoints probados
+2. estado frontend:
+
+   * sección visible sí/no
+   * módulo inicializa sí/no
+   * endpoints llamados sí/no
+   * render sí/no
+3. causa exacta de por qué no veo links
+4. si aplicaste fix pequeño:
+
+   * archivo tocado
+   * cambio exacto
+5. evidencia runtime:
+
+   * booking usado
+   * documento usado
+   * link visible o no
+6. consola / runner
+7. veredicto:
+
+   * PASS
+   * o BLOCKED con causa exacta
