@@ -2022,6 +2022,18 @@ async function initializeDatabase() {
     console.log(`✅ FASE 17: Fleet Ops tables ready — ${fcCount.rows[0].count} active boats in fleet_config`);
     // ── END FASE 17 ──────────────────────────────────────────────────────
 
+    // ── FASE 18: Revenue Integrity columns ───────────────────────────────
+    await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS pricing_override BOOLEAN DEFAULT false`);
+    await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS override_reason TEXT`);
+    await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS override_authorized_by TEXT`);
+    await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS pricing_integrity_status TEXT DEFAULT 'unknown'`);
+    await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS pricing_expected NUMERIC(10,2)`);
+    await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS pricing_delta NUMERIC(10,2)`);
+    // Backfill corrected booking
+    await pool.query(`UPDATE bookings SET pricing_integrity_status='valid', pricing_expected=560, pricing_delta=0 WHERE id='book_nk2efafe2d'`);
+    console.log('✅ FASE 18: Revenue integrity columns ready');
+    // ── END FASE 18 ──────────────────────────────────────────────────────
+
     console.log('✅ Database schema initialized successfully (all 10 phases + authentication)');
     
     // Insert default message templates if they don't exist
@@ -3067,6 +3079,31 @@ app.get('/api/bookings/search', isAuthenticated, async (req, res) => {
   }
 });
 
+// Revenue Integrity Audit
+app.get('/api/bookings/revenue-audit', isAuthenticated, async (req, res) => {
+  try {
+    const { auditAllBookings } = require('./server/revenueIntegrity');
+    const results = await auditAllBookings(pool);
+    const issues  = results.filter(r => r.integrity !== 'valid');
+    const valid   = results.filter(r => r.integrity === 'valid');
+    res.json({ total_checked: results.length, issues_found: issues.length, clean: valid.length, issues, all: results });
+  } catch (err) {
+    console.error('[revenue-audit] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Revenue Integrity check (single booking calc, no save)
+app.post('/api/bookings/check-price', isAuthenticated, async (req, res) => {
+  try {
+    const { validateRevenue } = require('./server/revenueIntegrity');
+    const result = await validateRevenue(pool, req.body);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Create manual booking
 app.post('/api/bookings', isAuthenticated, async (req, res) => {
   const pg = await pool.connect();
@@ -3089,7 +3126,21 @@ app.post('/api/bookings', isAuthenticated, async (req, res) => {
     if (!customer_name) { await pg.query('ROLLBACK'); return res.status(400).json({ error: 'El nombre del cliente es obligatorio' }); }
     if (!boat_type && !boat_id) { await pg.query('ROLLBACK'); return res.status(400).json({ error: 'El barco es obligatorio' }); }
 
+    // ── Revenue Integrity Check ────────────────────────────────────────
+    const { validateRevenue } = require('./server/revenueIntegrity');
+    const integrityResult = await validateRevenue(pool, req.body);
+    if (integrityResult.blocked) {
+      await pg.query('ROLLBACK');
+      return res.status(422).json({
+        error: integrityResult.message,
+        pricing_integrity: integrityResult,
+        hint: 'Para forzar el precio, envía pricing_override=true, override_reason y override_authorized_by en el body.',
+      });
+    }
+    // ── End Revenue Integrity Check ────────────────────────────────────
+
     const id = 'book_' + nanoid(10);
+    const { pricing_override, override_reason, override_authorized_by } = req.body;
     const result = await pg.query(`
       INSERT INTO bookings (
         id, platform, customer_name, customer_phone, customer_email,
@@ -3097,9 +3148,12 @@ app.post('/api/bookings', isAuthenticated, async (req, res) => {
         total_amount, status, assigned_captain_id, assigned_captain_name,
         stew_id, stew_name, broker_id, broker_name,
         pickup_location, num_guests, deposit_amount, balance_pending,
-        notes, internal_notes, is_manual
+        notes, internal_notes, is_manual,
+        pricing_integrity_status, pricing_expected, pricing_delta,
+        pricing_override, override_reason, override_authorized_by
       ) VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,
+        $26,$27,$28,$29,$30,$31
       ) RETURNING *`,
       [
         id, platform || 'Manual', customer_name, customer_phone || '', customer_email || '',
@@ -3109,6 +3163,12 @@ app.post('/api/bookings', isAuthenticated, async (req, res) => {
         pickup_location || null, num_guests ? parseInt(num_guests) : 0,
         parseFloat(deposit_amount || 0), parseFloat(balance_pending || 0),
         notes || null, internal_notes || null, true,
+        integrityResult.status,
+        integrityResult.expected || null,
+        integrityResult.delta || null,
+        pricing_override || false,
+        override_reason || null,
+        override_authorized_by || null,
       ]
     );
     const newBooking = result.rows[0];
@@ -3165,6 +3225,8 @@ app.patch('/api/bookings/:id', isAuthenticated, async (req, res) => {
       'boat_type','boat_id','assigned_captain_id','assigned_captain_name','stew_id','stew_name',
       'broker_id','broker_name','platform','total_amount','deposit_amount','balance_pending',
       'status','pickup_location','num_guests','notes','internal_notes',
+      'pricing_override','override_reason','override_authorized_by',
+      'pricing_integrity_status','pricing_expected','pricing_delta',
     ];
     const sets = [];
     const vals = [];

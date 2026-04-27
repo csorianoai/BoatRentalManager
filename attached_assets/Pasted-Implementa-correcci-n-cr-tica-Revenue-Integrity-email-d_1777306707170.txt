@@ -1,0 +1,262 @@
+Implementa corrección crítica: Revenue Integrity + email de corrección al cliente.
+
+Problema real detectado:
+En la web el precio correcto indica:
+
+* 3h = $420
+* 4h = $560
+
+Pero un booking/email quedó con:
+
+* 4h
+* total $420
+
+Esto crea disparidad de precio, error contable y pérdida de revenue. Debe corregirse y evitarse para futuros bookings.
+
+## OBJETIVO
+
+1. Auditar y corregir el booking afectado.
+2. Evitar que vuelva a pasar con cualquier booking futuro.
+3. Detectar otros bookings con incongruencias similares.
+4. Si la corrección queda validada, enviar email al cliente notificando la corrección.
+
+---
+
+## FASE 1 — AUDITAR EL CASO REAL
+
+Buscar booking por estos datos:
+
+* Code: `NK-2EFAFE2D`
+* Client: `Estefanytorres25`
+* Email: `estefanytorres25@gmail.com`
+* Phone: `7328532187`
+* Boat: `40' Sea Ray Yacht | Miami Charter`
+* Date: `Sun, May 3, 2026`
+* Time: `1:00 PM – 5:00 PM`
+* Guests: `4`
+* Total actual incorrecto: `$420`
+* Paid: `$0`
+
+Validar en DB:
+
+* booking_id
+* duration_hours real
+* total_amount actual
+* selected duration
+* boat_id / boat_name
+* pricing source
+* deposit/balance
+* payment_status
+* email status
+
+---
+
+## FASE 2 — CALCULAR PRECIO CORRECTO
+
+Para este booking:
+
+* duración real = 4 horas
+* precio correcto según UI = $560
+
+Debe calcularse desde la fuente de pricing real, no hardcodeado si existe pricing engine o tabla de pricing.
+
+Si la fuente real no existe:
+
+* usar fallback temporal documentado:
+
+  * 3h = 420
+  * 4h = 560
+  * 5h = 700
+  * 6h = 840
+
+Pero dejar claro en logs que fue fallback.
+
+---
+
+## FASE 3 — CORREGIR BOOKING
+
+Si Paid = $0:
+
+* actualizar total_amount a $560
+* actualizar balance_pending a $560
+* registrar audit log si existe
+* si no existe audit log, agregar nota clara en booking notes:
+  `Revenue correction: duration 4h required total $560; previous total $420 was 3h rate.`
+
+Si el booking ya tuviera payment parcial:
+
+* no borrar pagos
+* recalcular balance_pending = corrected_total - paid_amount
+* no duplicar A/R ni transaction
+* actualizar receivable si existe
+
+---
+
+## FASE 4 — REVENUE INTEGRITY VALIDATION
+
+Implementar validación en backend para futuros bookings:
+
+Cuando se crea o actualiza un booking:
+
+1. calcular duración real desde start_time/end_time o duration_hours
+2. calcular expected_price desde pricing source
+3. comparar con total_amount
+
+Si total_amount < expected_price:
+
+* bloquear booking salvo que haya override explícito
+
+Override permitido solo si:
+
+* `pricing_override = true`
+* `override_reason` no vacío
+* `override_authorized_by` presente o valor del usuario/admin actual
+
+Guardar:
+
+* expected_price
+* actual_price
+* pricing_delta
+* pricing_integrity_status:
+
+  * valid
+  * override
+  * blocked
+
+No permitir silent mismatch.
+
+---
+
+## FASE 5 — AUDITAR TODOS LOS BOOKINGS
+
+Crear o ejecutar auditoría:
+
+Buscar todos los bookings donde:
+
+* duration_hours = 4 pero total_amount = precio de 3h
+* o total_amount < expected_price
+* o price_per_hour muy bajo para ese barco/duración
+
+Entregar lista:
+
+* booking_id
+* client
+* date
+* duration
+* actual_total
+* expected_total
+* delta
+* status
+* suggested action
+
+No corregir masivamente sin autorización, excepto el caso específico si está validado.
+
+---
+
+## FASE 6 — EMAIL DE CORRECCIÓN
+
+Solo después de:
+
+* booking corregido
+* balance actualizado
+* validación sin errores
+* runner verde
+
+Enviar email al cliente:
+
+To:
+`estefanytorres25@gmail.com`
+
+Subject:
+`Correction to Your Nadaki Excursions Booking NK-2EFAFE2D`
+
+Body sugerido:
+
+Hello Estefany,
+
+We noticed a pricing mismatch on your booking NK-2EFAFE2D.
+
+Your reservation is for:
+
+* Boat: 40' Sea Ray Yacht
+* Date: Sunday, May 3, 2026
+* Time: 1:00 PM – 5:00 PM
+* Duration: 4 hours
+
+The 3-hour charter price is $420, but your booking is for 4 hours. The correct 4-hour charter total is $560.
+
+We have updated your booking to reflect the correct total:
+
+* Correct total: $560
+* Amount paid: $0
+* Balance due: $560
+
+We apologize for the confusion and appreciate your understanding.
+
+If you have any questions, you may reply to this email or contact us directly at +1 (786) 327-0078.
+
+Thank you,
+Nadaki Excursions
+
+Reglas:
+
+* No enviar email si la corrección no fue aplicada.
+* No enviar email si el booking no fue encontrado.
+* No enviar email si el runner falla.
+* Registrar email sent status si existe estructura para eso.
+
+---
+
+## FASE 7 — VALIDACIÓN FINAL
+
+Validar:
+
+1. Booking corregido:
+
+   * total_amount = 560
+   * balance_pending = 560
+   * duration = 4h
+
+2. No duplicación:
+
+   * no duplicate transaction
+   * no duplicate receivable
+   * no duplicate email
+
+3. Revenue integrity:
+
+   * backend bloquea booking futuro 4h/$420
+   * backend permite 4h/$560
+   * backend permite override solo con reason
+
+4. UI:
+
+   * booking/email/confirmation muestran precio correcto
+   * Calendar/Executive/Accounting reflejan balance correcto
+
+5. Runner:
+
+   * 50/50 PASS o equivalente
+   * consola limpia
+
+---
+
+## ENTREGA
+
+Responder compacto:
+
+1. booking afectado encontrado sí/no
+2. precio correcto calculado
+3. corrección aplicada
+4. auditoría de otros bookings
+5. validación anti-disparidad implementada
+6. email enviado sí/no
+7. evidencia DB
+8. runner/consola
+9. riesgos
+10. veredicto PASS/BLOCKED
+
+No avances a nuevas fases.
+No toques documentos.
+No toques fleet.
+No toques pricing dinámico salvo lectura de pricing source.
