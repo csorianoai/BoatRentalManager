@@ -495,10 +495,24 @@ async function saveBooking() {
       throw new Error(d.error || 'Error al guardar');
     }
 
+    const saved = await res.json();
     closeBookingModal();
     await loadScheduleData();
     renderWeekView();
-    showToast(currentBookingId ? 'Reserva actualizada.' : 'Reserva creada correctamente.');
+
+    // Show advisory notice if price differs from expected (but booking was saved)
+    const integrity = saved?.pricing_integrity_status;
+    if (integrity === 'advisory') {
+      const expected = saved?.pricing_expected;
+      const actual   = parseFloat(saved?.total_amount || 0);
+      const delta    = saved?.pricing_delta;
+      const note = expected
+        ? ` (precio esperado: $${expected}, diferencia: $${Math.abs(delta || 0).toFixed(2)})`
+        : '';
+      showToast(`Reserva guardada. Precio personalizado registrado${note}.`);
+    } else {
+      showToast(currentBookingId ? 'Reserva actualizada.' : 'Reserva creada correctamente.');
+    }
   } catch(err) {
     showToast(err.message || 'Error al guardar', true);
   } finally {

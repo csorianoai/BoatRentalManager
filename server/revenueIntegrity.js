@@ -11,10 +11,15 @@
  *  2. FALLBACK_TABLE (Sea Ray 40' / standard charter rates)
  *
  * Status values:
- *  'valid'   — amount matches expected
- *  'override'— mismatch allowed by explicit override
- *  'blocked' — mismatch without override → reject booking
- *  'unknown' — no pricing data available (pass-through allowed)
+ *  'valid'    — amount matches expected (within tolerance)
+ *  'advisory' — manual booking with price mismatch (logged, not blocked)
+ *  'override' — mismatch allowed by explicit override
+ *  'blocked'  — mismatch on platform booking without override → reject
+ *  'unknown'  — no pricing data available (pass-through allowed)
+ *
+ * RULE: Manual bookings (is_manual=true or platform='Manual') are NEVER
+ * blocked — staff may deliberately enter custom/discounted prices.
+ * The mismatch is recorded for audit but the booking proceeds.
  */
 
 // Fallback pricing for standard Sea Ray / nadaki charters
@@ -32,8 +37,15 @@ const FALLBACK_PRICING = {
 // Boats that use the fallback pricing table
 const FALLBACK_BOAT_IDS = ['boat_searay36', 'boat_searay31'];
 
-// Tolerance: allow up to $5 rounding difference without flagging
-const PRICE_TOLERANCE = 5;
+// Tolerance: allow up to $50 OR 15% of expected price (whichever is larger)
+// This prevents false positives on group discounts, broker rates, and rounding
+const PRICE_TOLERANCE_FIXED   = 50;      // $50 flat floor
+const PRICE_TOLERANCE_PCT     = 0.15;    // 15% of expected
+
+function getTolerance(expected) {
+  if (!expected || expected <= 0) return PRICE_TOLERANCE_FIXED;
+  return Math.max(PRICE_TOLERANCE_FIXED, expected * PRICE_TOLERANCE_PCT);
+}
 
 /**
  * Calculate expected price for a booking.
@@ -56,7 +68,12 @@ async function getExpectedPrice(pool, { boat_id, duration_hours }) {
       const r = await pool.query('SELECT hourly_rate_base FROM boats WHERE id=$1', [boat_id]);
       if (r.rows.length && r.rows[0].hourly_rate_base) {
         const rate = parseFloat(r.rows[0].hourly_rate_base);
-        return { expected: Math.round(rate * h * 100) / 100, source: 'hourly_rate_base' };
+        // Sanity check: rate must be > 0 and < 10000 $/h to be plausible
+        if (rate > 0 && rate < 10000) {
+          return { expected: Math.round(rate * h * 100) / 100, source: 'hourly_rate_base' };
+        }
+        // Rate seems implausible (e.g. stored in cents) — pass-through
+        console.warn(`[revenueIntegrity] Suspicious hourly_rate_base=${rate} for boat=${boat_id} — skipping`);
       }
     } catch (_) {}
   }
@@ -71,52 +88,83 @@ async function getExpectedPrice(pool, { boat_id, duration_hours }) {
  *  { status, expected, actual, delta, blocked, message, source }
  *
  * status:
- *   'valid'   — price matches
- *   'override'— mismatch with valid override fields
- *   'blocked' — mismatch without override (reject)
- *   'unknown' — no pricing data to validate
+ *   'valid'    — price matches within tolerance
+ *   'advisory' — manual booking, price mismatch logged but not blocked
+ *   'override' — mismatch with valid override fields
+ *   'blocked'  — mismatch without override on a platform booking
+ *   'unknown'  — no pricing data to validate
+ *
+ * @param {object} pool - pg Pool
+ * @param {object} booking - booking payload from request body
+ * @param {object} [options]
+ * @param {boolean} [options.isManual=false] - true for manually created bookings
  */
-async function validateRevenue(pool, booking) {
+async function validateRevenue(pool, booking, options = {}) {
   const {
     boat_id, duration_hours, total_amount,
     pricing_override, override_reason, override_authorized_by,
+    platform,
   } = booking;
 
+  // Determine if this is a manual booking (staff-created custom booking)
+  const isManual = options.isManual ||
+    booking.is_manual === true ||
+    platform === 'Manual' ||
+    platform === 'manual';
+
   const actual = parseFloat(total_amount);
+  if (isNaN(actual) || actual <= 0) {
+    return {
+      status: 'invalid', expected: null, actual, delta: null,
+      blocked: true, source: 'validation',
+      message: 'El monto total debe ser mayor a $0.',
+    };
+  }
+
   const { expected, source } = await getExpectedPrice(pool, { boat_id, duration_hours });
 
   if (expected === null) {
     return {
       status: 'unknown', expected: null, actual, delta: null,
       blocked: false, source,
-      message: `No pricing data for boat=${boat_id}, duration=${duration_hours}h — pass-through allowed`,
+      message: `Sin datos de precio para barco=${boat_id}, duración=${duration_hours}h — permitido`,
     };
   }
 
   const delta = actual - expected;
+  const tolerance = getTolerance(expected);
 
-  if (Math.abs(delta) <= PRICE_TOLERANCE) {
+  if (Math.abs(delta) <= tolerance) {
     return {
       status: 'valid', expected, actual, delta,
       blocked: false, source,
-      message: `Price OK: $${actual} ≈ expected $${expected}`,
+      message: `Precio OK: $${actual} ≈ esperado $${expected} (tolerancia ±$${tolerance.toFixed(0)})`,
     };
   }
 
-  // Mismatch detected
+  // Mismatch detected — check for explicit override first
   if (pricing_override && override_reason && override_reason.trim()) {
     return {
       status: 'override', expected, actual, delta,
       blocked: false, source,
-      message: `Price override authorized by ${override_authorized_by || 'user'}. Reason: ${override_reason}. Delta: $${delta.toFixed(2)}`,
+      message: `Override autorizado por ${override_authorized_by || 'usuario'}. Razón: ${override_reason}. Delta: $${delta.toFixed(2)}`,
     };
   }
 
-  // No override → block
+  // MANUAL BOOKINGS: never block — just log advisory
+  if (isManual) {
+    return {
+      status: 'advisory', expected, actual, delta,
+      blocked: false, source,
+      message: `[Reserva manual] Precio $${actual} difiere del esperado $${expected} (delta $${delta.toFixed(2)}). Registrado para auditoría.`,
+    };
+  }
+
+  // Platform booking without override → block
   return {
     status: 'blocked', expected, actual, delta,
     blocked: true, source,
-    message: `Revenue integrity violation: duration=${duration_hours}h, expected $${expected}, got $${actual} (delta $${delta.toFixed(2)}). To override, set pricing_override=true with override_reason.`,
+    message: `Alerta de integridad: duración=${duration_hours}h, esperado $${expected}, recibido $${actual} (delta $${delta.toFixed(2)}). Envía pricing_override=true con override_reason para forzar.`,
   };
 }
 
@@ -126,7 +174,7 @@ async function validateRevenue(pool, booking) {
 async function auditAllBookings(pool) {
   const bks = await pool.query(
     `SELECT id, customer_name, customer_email, booking_date, duration_hours,
-            total_amount, balance_pending, payment_status, status, boat_id, boat_type
+            total_amount, balance_pending, payment_status, status, boat_id, boat_type, is_manual
      FROM bookings WHERE status NOT IN ('cancelled','blocked') ORDER BY booking_date DESC`
   );
 
@@ -136,22 +184,24 @@ async function auditAllBookings(pool) {
     if (expected === null) continue;
     const actual = parseFloat(bk.total_amount);
     const delta = actual - expected;
+    const tolerance = getTolerance(expected);
     results.push({
       booking_id: bk.id,
       client: bk.customer_name,
       email: bk.customer_email,
       date: bk.booking_date,
       duration: bk.duration_hours + 'h',
+      is_manual: bk.is_manual,
       actual_total: actual,
       expected_total: expected,
       delta: parseFloat(delta.toFixed(2)),
       status: bk.status,
       payment_status: bk.payment_status,
       pricing_source: source,
-      integrity: Math.abs(delta) <= PRICE_TOLERANCE ? 'valid' : (delta < 0 ? 'underpaid' : 'overpaid_or_discount'),
-      suggested_action: Math.abs(delta) <= PRICE_TOLERANCE
+      integrity: Math.abs(delta) <= tolerance ? 'valid' : (delta < 0 ? 'underpaid' : 'overpaid_or_discount'),
+      suggested_action: Math.abs(delta) <= tolerance
         ? 'OK'
-        : (delta < 0 ? `Correct total to $${expected}` : `Verify discount — $${Math.abs(delta).toFixed(2)} over expected`),
+        : (delta < 0 ? `Corregir total a $${expected}` : `Verificar descuento — $${Math.abs(delta).toFixed(2)} sobre esperado`),
     });
   }
   return results;

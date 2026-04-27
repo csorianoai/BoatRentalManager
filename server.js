@@ -3149,8 +3149,10 @@ app.post('/api/bookings', isAuthenticated, async (req, res) => {
     if (!boat_type && !boat_id) { await pg.query('ROLLBACK'); return res.status(400).json({ error: 'El barco es obligatorio' }); }
 
     // ── Revenue Integrity Check ────────────────────────────────────────
+    // Manual bookings (is_manual=true / platform='Manual') are NEVER blocked —
+    // staff deliberately enters custom/discounted prices. Mismatch is logged only.
     const { validateRevenue } = require('./server/revenueIntegrity');
-    const integrityResult = await validateRevenue(pool, req.body);
+    const integrityResult = await validateRevenue(pool, req.body, { isManual: true });
     if (integrityResult.blocked) {
       await pg.query('ROLLBACK');
       return res.status(422).json({
