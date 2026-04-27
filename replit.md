@@ -10,7 +10,7 @@ Preferred communication style: Simple, everyday language.
 
 ## Frontend Architecture
 
-The system employs a dual-layer frontend: a modern React, TypeScript, and Tailwind CSS v3 dashboard (`/app`) for advanced analytics and a business intelligence dashboard built with Vanilla JavaScript, featuring real-time metrics and Chart.js for data visualization. Both interfaces provide a comprehensive control center. Core modules include calendar, commissions, pricing, accounting, messages, boat maintenance, marine conditions, fleet management, and an Executive Dashboard. An AI chat widget enables real-time customer interaction. UI/UX emphasizes a futuristic design system, secure content rendering against XSS, and clear data presentation with KPI cards, financial analysis panels, and trend charts.
+The system employs a dual-layer frontend: a modern React, TypeScript, and Tailwind CSS v3 dashboard (`/app`) for advanced analytics and a business intelligence dashboard built with Vanilla JavaScript, featuring real-time metrics and Chart.js for data visualization. Both interfaces provide a comprehensive control center. Core modules include calendar, commissions, pricing, accounting, messages, boat maintenance, marine conditions, fleet management, a unified Gastos (Expenses) module, and an Executive Dashboard. An AI chat widget enables real-time customer interaction. UI/UX emphasizes a futuristic design system, secure content rendering against XSS, and clear data presentation with KPI cards, financial analysis panels, and trend charts.
 
 ## Backend Architecture
 

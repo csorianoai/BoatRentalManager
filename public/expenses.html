@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0066cc">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Nadaki">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icon-192.svg">
+  <title>Nadaki Excursions — Gastos</title>
+  <link rel="stylesheet" href="commissions.css">
+  <link rel="stylesheet" href="/assets/css/global-nav.css?v=1777314886">
+  <style>
+    /* ── Layout ── */
+    body { background: #f5f7fa; margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    .page-container { max-width: 1400px; margin: 0 auto; padding: 20px 16px 60px; }
+
+    /* ── Page header ── */
+    .page-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }
+    .page-header h1 { margin: 0; font-size: 24px; color: #111; }
+    .page-header .subtitle { color: #666; font-size: 14px; margin: 4px 0 0; }
+
+    /* ── KPI cards ── */
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 20px; }
+    .kpi-card { background: white; border-radius: 10px; padding: 16px 18px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+    .kpi-label { font-size: 12px; color: #888; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; }
+    .kpi-value { font-size: 22px; font-weight: 700; color: #111; }
+    .kpi-card.kpi-total  .kpi-value { color: #dc2626; }
+    .kpi-card.kpi-fuel   .kpi-value { color: #f59e0b; }
+    .kpi-card.kpi-maint  .kpi-value { color: #8b5cf6; }
+    .kpi-card.kpi-crew   .kpi-value { color: #0066cc; }
+    .kpi-card.kpi-other  .kpi-value { color: #10b981; }
+
+    /* ── Filter bar ── */
+    .filters-bar { background: white; border-radius: 10px; padding: 16px 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 20px; display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+    .filter-group { display: flex; flex-direction: column; min-width: 140px; }
+    .filter-group label { font-size: 12px; font-weight: 600; color: #555; margin-bottom: 4px; }
+    .filter-group select, .filter-group input { padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; background: white; }
+    .filter-group select:focus, .filter-group input:focus { outline: none; border-color: #0066cc; }
+
+    /* ── Table ── */
+    .table-card { background: white; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); overflow: hidden; }
+    .table-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid #f0f0f0; flex-wrap: wrap; gap: 10px; }
+    .table-toolbar h3 { margin: 0; font-size: 16px; color: #111; }
+    .expenses-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .expenses-table th { background: #f8fafc; font-weight: 600; color: #555; padding: 10px 14px; text-align: left; border-bottom: 2px solid #e8ecf0; white-space: nowrap; }
+    .expenses-table td { padding: 10px 14px; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }
+    .expenses-table tr:last-child td { border-bottom: none; }
+    .expenses-table tr:hover td { background: #fafbfc; }
+
+    /* ── Buttons ── */
+    .btn { padding: 9px 18px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600; transition: background .2s; }
+    .btn-primary { background: #0066cc; color: white; }
+    .btn-primary:hover { background: #0052a3; }
+    .btn-secondary { background: #6c757d; color: white; }
+    .btn-secondary:hover { background: #5a6268; }
+    .btn-danger { background: #dc3545; color: white; }
+    .btn-danger:hover { background: #c82333; }
+    .btn-outline { background: white; color: #0066cc; border: 1px solid #0066cc; }
+    .btn-outline:hover { background: #e8f0fe; }
+    .btn-sm { padding: 5px 10px; font-size: 12px; border-radius: 4px; }
+
+    /* ── Modal ── */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+      z-index: 9999; align-items: center; justify-content: center; padding: 16px;
+    }
+    .modal-box {
+      background: white; border-radius: 12px; width: 100%; max-width: 600px;
+      max-height: 92vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 20px 24px 16px; border-bottom: 1px solid #eee; }
+    .modal-header h2 { margin: 0; font-size: 18px; color: #111; }
+    .modal-body { padding: 20px 24px; }
+    .modal-footer { padding: 16px 24px; border-top: 1px solid #eee; display: flex; gap: 10px; justify-content: flex-end; }
+    .btn-close-modal { background: none; border: none; font-size: 22px; cursor: pointer; color: #888; line-height: 1; padding: 0 4px; }
+    .btn-close-modal:hover { color: #333; }
+
+    /* ── Form fields ── */
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .form-grid .full-width { grid-column: 1 / -1; }
+    .form-group { display: flex; flex-direction: column; }
+    .form-group label { font-size: 13px; font-weight: 600; color: #444; margin-bottom: 5px; }
+    .form-group label .required { color: #dc2626; margin-left: 2px; }
+    .form-group input, .form-group select, .form-group textarea {
+      padding: 9px 11px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;
+    }
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+      outline: none; border-color: #0066cc; box-shadow: 0 0 0 3px rgba(0,102,204,0.1);
+    }
+    .dynamic-fields { display: none; margin-top: 4px; }
+    .section-label {
+      font-size: 12px; font-weight: 700; color: #0066cc; text-transform: uppercase;
+      letter-spacing: .5px; margin: 16px 0 10px; border-bottom: 1px solid #e8f0fe; padding-bottom: 6px;
+    }
+    .form-error {
+      display: none; background: #FEE2E2; border: 1px solid #FECACA; border-radius: 6px;
+      padding: 10px 14px; color: #dc2626; font-size: 13px; margin-bottom: 14px;
+    }
+    .form-hint { font-size: 11px; color: #9ca3af; margin-top: 3px; }
+
+    /* ── Type info banner ── */
+    .type-info {
+      background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 6px;
+      padding: 10px 14px; font-size: 13px; color: #1d4ed8; margin-bottom: 14px;
+    }
+
+    /* ── Toast ── */
+    #toast {
+      display: none; position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+      background: #1f2937; color: white; padding: 12px 24px; border-radius: 8px;
+      font-size: 14px; z-index: 99999; transition: opacity .4s;
+    }
+  </style>
+</head>
+<body>
+
+<div class="page-container">
+
+  <!-- Page Header -->
+  <div class="page-header">
+    <div>
+      <h1>Gastos</h1>
+      <p class="subtitle">Punto de entrada único para todos los gastos operacionales de la flotilla</p>
+    </div>
+    <button class="btn btn-primary" id="btn-new-expense" data-testid="btn-new-expense">+ Nuevo Gasto</button>
+  </div>
+
+  <!-- KPI Summary -->
+  <div class="kpi-grid">
+    <div class="kpi-card kpi-total">
+      <div class="kpi-label">Total Gastos</div>
+      <div class="kpi-value" id="kpi-total">$0</div>
+    </div>
+    <div class="kpi-card kpi-fuel">
+      <div class="kpi-label">Combustible</div>
+      <div class="kpi-value" id="kpi-fuel">$0</div>
+    </div>
+    <div class="kpi-card kpi-maint">
+      <div class="kpi-label">Mantenimiento</div>
+      <div class="kpi-value" id="kpi-maintenance">$0</div>
+    </div>
+    <div class="kpi-card kpi-crew">
+      <div class="kpi-label">Crew / Capitán</div>
+      <div class="kpi-value" id="kpi-crew">$0</div>
+    </div>
+    <div class="kpi-card kpi-other">
+      <div class="kpi-label">Recurrente + Otros</div>
+      <div class="kpi-value" id="kpi-other">$0</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Total Registros</div>
+      <div class="kpi-value" id="kpi-count" style="color:#555;">0</div>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="filters-bar">
+    <div class="filter-group">
+      <label>Tipo de Gasto</label>
+      <select id="filter-type" data-testid="select-filter-type">
+        <option value="">Todos los tipos</option>
+        <option value="fuel">Combustible</option>
+        <option value="maintenance">Mantenimiento</option>
+        <option value="crew">Crew / Capitán</option>
+        <option value="recurring">Recurrente</option>
+        <option value="other">Otro</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label>Barco</label>
+      <select id="filter-boat" class="boat-select" data-testid="select-filter-boat">
+        <option value="">Todos los barcos</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label>Desde</label>
+      <input type="date" id="filter-start" data-testid="input-filter-start">
+    </div>
+    <div class="filter-group">
+      <label>Hasta</label>
+      <input type="date" id="filter-end" data-testid="input-filter-end">
+    </div>
+    <div class="filter-group" style="justify-content:flex-end;">
+      <button class="btn btn-outline" id="btn-clear-filters" data-testid="btn-clear-filters">Limpiar</button>
+    </div>
+  </div>
+
+  <!-- Table -->
+  <div class="table-card">
+    <div class="table-toolbar">
+      <h3>Registro de Gastos</h3>
+    </div>
+    <div style="overflow-x:auto;">
+      <table class="expenses-table" id="expenses-table">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Tipo</th>
+            <th>Descripción</th>
+            <th>Barco</th>
+            <th>Monto</th>
+            <th>Método Pago</th>
+            <th>Reserva</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="expenses-tbody">
+          <tr><td colspan="8" style="text-align:center;color:#999;padding:32px;">Cargando...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div><!-- /page-container -->
+
+<!-- ── New / Edit Expense Modal ───────────────────────────────────────── -->
+<div id="expense-modal" class="modal-overlay" role="dialog" aria-modal="true">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h2 id="modal-title">Nuevo Gasto</h2>
+      <button class="btn-close-modal" id="btn-cancel-modal" data-testid="btn-cancel-expense" aria-label="Cerrar">&times;</button>
+    </div>
+    <form id="expense-form" novalidate>
+      <div class="modal-body">
+
+        <div id="form-error" class="form-error" role="alert"></div>
+
+        <!-- Core fields — always visible -->
+        <div class="form-grid">
+
+          <div class="form-group">
+            <label for="form-expense-type">Tipo de Gasto <span class="required">*</span></label>
+            <select id="form-expense-type" name="expense_type" required data-testid="select-expense-type">
+              <option value="">— Seleccionar tipo —</option>
+              <option value="fuel">Combustible (Fuel)</option>
+              <option value="maintenance">Mantenimiento</option>
+              <option value="crew">Crew / Capitán / Stew</option>
+              <option value="recurring">Recurrente</option>
+              <option value="other">Otro</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="form-boat">Barco <span class="required">*</span></label>
+            <select id="form-boat" name="boat_id" class="boat-select" required data-testid="select-expense-boat">
+              <option value="">— Seleccionar barco —</option>
+            </select>
+            <span class="form-hint">Obligatorio — todo gasto debe tener barco asignado</span>
+          </div>
+
+          <div class="form-group">
+            <label for="form-amount">Monto ($) <span class="required">*</span></label>
+            <input type="number" id="form-amount" name="amount" min="0.01" step="0.01" required placeholder="0.00" data-testid="input-expense-amount">
+          </div>
+
+          <div class="form-group">
+            <label for="form-date">Fecha <span class="required">*</span></label>
+            <input type="date" id="form-date" name="expense_date" required data-testid="input-expense-date">
+          </div>
+
+          <div class="form-group full-width">
+            <label for="form-description">Descripción <span class="required">*</span></label>
+            <input type="text" id="form-description" name="description" required placeholder="Ej: Carga de combustible — SeaRay 36" data-testid="input-expense-description">
+          </div>
+
+          <div class="form-group">
+            <label for="form-payment-method">Método de Pago</label>
+            <select id="form-payment-method" name="payment_method" data-testid="select-expense-payment">
+              <option value="">— Opcional —</option>
+              <option value="cash">Efectivo</option>
+              <option value="card">Tarjeta</option>
+              <option value="transfer">Transferencia</option>
+              <option value="check">Cheque</option>
+              <option value="other">Otro</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="form-vendor">Proveedor / Vendor</label>
+            <input type="text" id="form-vendor" name="vendor" placeholder="Nombre del proveedor" data-testid="input-expense-vendor">
+          </div>
+
+          <div class="form-group">
+            <label for="form-booking-id">Reserva (opcional)</label>
+            <input type="text" id="form-booking-id" name="booking_id" placeholder="ID de reserva si aplica" data-testid="input-expense-booking">
+            <span class="form-hint">Obligatorio si el gasto pertenece a una reserva</span>
+          </div>
+
+          <div class="form-group">
+            <label for="form-subcategory">Subcategoría</label>
+            <input type="text" id="form-subcategory" name="subcategory" placeholder="captain_fee, hull_clean, etc." data-testid="input-expense-subcategory">
+          </div>
+
+          <div class="form-group full-width">
+            <label for="form-notes">Notas</label>
+            <textarea id="form-notes" name="notes" rows="2" placeholder="Notas internas adicionales" data-testid="input-expense-notes"></textarea>
+          </div>
+
+        </div><!-- /form-grid core -->
+
+        <!-- ── Dynamic: Combustible ── -->
+        <div id="fields-fuel" class="dynamic-fields">
+          <div class="section-label">Datos de Combustible</div>
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="form-fuel-gallons">Galones</label>
+              <input type="number" id="form-fuel-gallons" name="fuel_gallons" min="0" step="0.1" placeholder="0.0" data-testid="input-fuel-gallons">
+            </div>
+            <div class="form-group">
+              <label for="form-fuel-station">Estación / Marina</label>
+              <input type="text" id="form-fuel-station" name="fuel_station" placeholder="Nombre de la estación" data-testid="input-fuel-station">
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Dynamic: Mantenimiento ── -->
+        <div id="fields-maintenance" class="dynamic-fields">
+          <div class="section-label">Datos de Mantenimiento</div>
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="form-invoice">Número de Factura</label>
+              <input type="text" id="form-invoice" name="invoice_number" placeholder="INV-XXXXX" data-testid="input-invoice-number">
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Dynamic: Crew ── -->
+        <div id="fields-crew" class="dynamic-fields">
+          <div class="section-label">Datos de Crew / Capitán</div>
+          <div class="type-info">
+            Los gastos de crew (captain_fee, stew_fee) afectan únicamente el costo operativo y NO se registran como ingresos.
+          </div>
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="form-crew-name">Nombre del Tripulante <span class="required">*</span></label>
+              <input type="text" id="form-crew-name" name="crew_name" placeholder="Nombre completo" data-testid="input-crew-name">
+            </div>
+            <div class="form-group">
+              <label for="form-role">Rol <span class="required">*</span></label>
+              <select id="form-role" name="role" data-testid="select-crew-role">
+                <option value="">— Seleccionar rol —</option>
+                <option value="captain">Capitán</option>
+                <option value="stew">Stew / Azafato</option>
+                <option value="crew">Tripulante</option>
+                <option value="other">Otro</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /modal-body -->
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="btn-cancel-modal-2" onclick="document.getElementById('btn-cancel-modal').click()" data-testid="btn-cancel-expense-2">Cancelar</button>
+        <button type="submit" class="btn btn-primary" id="btn-save-expense" data-testid="btn-save-expense">Guardar Gasto</button>
+      </div>
+
+    </form>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<!-- Scripts -->
+<script src="/expenses.js"></script>
+<script src="/assets/js/components/global-nav.js?v=1777314886"></script>
+</body>
+</html>

@@ -465,6 +465,102 @@ async function dataTestsPhase3A(baseURL) {
   });
 }
 
+// ── EXPENSES API TESTS (E-01 … E-08) ────────────────────────────────────────
+async function expensesTests() {
+  console.log('\n💰 EXPENSES (Fase 19)');
+
+  // E-01: GET /api/expenses requires auth
+  await run('E-01', '¿GET /api/expenses requiere autenticación (401)?', async () => {
+    try {
+      const r = await get(`${baseURL}/api/expenses`);
+      if (r.status === 401) return PASS('401 sin sesión ✓');
+      if (r.status === 200) return WARN('Endpoint público — verificar si es intencional');
+      return FAIL(`Status inesperado: ${r.status}`);
+    } catch (e) { return FAIL(e.message); }
+  });
+
+  // E-02: GET /api/expenses/summary requires auth
+  await run('E-02', '¿GET /api/expenses/summary requiere autenticación (401)?', async () => {
+    try {
+      const r = await get(`${baseURL}/api/expenses/summary`);
+      if (r.status === 401) return PASS('401 sin sesión ✓');
+      if (r.status === 200) return WARN('Endpoint público — verificar si es intencional');
+      return FAIL(`Status inesperado: ${r.status}`);
+    } catch (e) { return FAIL(e.message); }
+  });
+
+  // E-03: POST /api/expenses requires auth
+  await run('E-03', '¿POST /api/expenses requiere autenticación (401)?', async () => {
+    try {
+      const lib = baseURL.startsWith('https') ? require('https') : require('http');
+      const body = JSON.stringify({ expense_type: 'crew', boat_id: 'x', amount: 261, expense_date: '2026-05-01', description: 'test', role: 'captain' });
+      const result = await new Promise((resolve, reject) => {
+        const u = new URL(`${baseURL}/api/expenses`);
+        const req = lib.request({ hostname: u.hostname, port: u.port||443, path: u.pathname, method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } }, res => {
+          let d = ''; res.on('data', c => d += c); res.on('end', () => resolve({ status: res.statusCode, body: d }));
+        });
+        req.on('error', reject);
+        req.write(body); req.end();
+      });
+      if (result.status === 401) return PASS('401 sin sesión ✓');
+      if (result.status === 422 || result.status === 400) return WARN('No bloqueó por auth pero sí validó datos');
+      return FAIL(`Status inesperado: ${result.status}`);
+    } catch (e) { return FAIL(e.message); }
+  });
+
+  // E-04: expenses.html returns 200
+  await run('E-04', '¿/expenses.html devuelve 200?', async () => {
+    try {
+      const r = await get(`${baseURL}/expenses.html`);
+      if (r.status === 200) return PASS(`200 OK — page exists`);
+      return FAIL(`Status: ${r.status}`);
+    } catch (e) { return FAIL(e.message); }
+  });
+
+  // E-05: expenses.html has global-nav
+  await run('E-05', '¿/expenses.html incluye global-nav?', async () => {
+    try {
+      const r = await get(`${baseURL}/expenses.html`);
+      if (r.body.includes('global-nav.js')) return PASS('global-nav.js incluido ✓');
+      return FAIL('global-nav.js no encontrado en expenses.html');
+    } catch (e) { return FAIL(e.message); }
+  });
+
+  // E-06: FASE 19 migration verified — expense_type column exists
+  await run('E-06', '¿FASE 19: columna expense_type existe en boat_expenses?', async () => {
+    try {
+      const { Pool } = require('pg');
+      const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+      const r = await pool.query(`SELECT column_name FROM information_schema.columns WHERE table_name='boat_expenses' AND column_name='expense_type'`);
+      await pool.end();
+      if (r.rows.length) return PASS('expense_type column exists ✓');
+      return FAIL('expense_type column NOT found in boat_expenses');
+    } catch (e) { return FAIL(e.message); }
+  });
+
+  // E-07: Existing boat_expenses rows have valid expense_type
+  await run('E-07', '¿Rows existentes tienen expense_type válido?', async () => {
+    try {
+      const { Pool } = require('pg');
+      const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+      const r = await pool.query(`SELECT COUNT(*) AS bad FROM boat_expenses WHERE expense_type IS NULL OR expense_type NOT IN ('fuel','maintenance','crew','recurring','other')`);
+      await pool.end();
+      const bad = parseInt(r.rows[0].bad);
+      if (bad === 0) return PASS('Todos los rows tienen expense_type válido ✓');
+      return WARN(`${bad} rows con expense_type inválido o NULL`);
+    } catch (e) { return FAIL(e.message); }
+  });
+
+  // E-08: expenses.js file is served
+  await run('E-08', '¿/expenses.js se sirve correctamente?', async () => {
+    try {
+      const r = await get(`${baseURL}/expenses.js`);
+      if (r.status === 200 && r.body.includes('loadExpenses')) return PASS('expenses.js disponible ✓');
+      return FAIL(`Status ${r.status} o contenido incorrecto`);
+    } catch (e) { return FAIL(e.message); }
+  });
+}
+
 // ── INTEGRITY TESTS (C-01 … C-04) ────────────────────────────────────────────
 async function integrityTests() {
   console.log('\n🔐 INTEGRITY');
@@ -537,8 +633,9 @@ async function navbarTests(url) {
     'accounting.html', 'boat-maintenance.html', 'operations.html', 'commissions.html',
     'pricing.html', 'dynamic-pricing.html', 'documents.html',
     'marine-conditions.html', 'fuel-tracker.html', 'assets.html',
-    'sync.html',    // Fase 7
-    'reports.html', // Fase 9
+    'sync.html',      // Fase 7
+    'reports.html',   // Fase 9
+    'expenses.html',  // Fase 19
   ];
   // Pages that MUST NOT have global-nav (permanent exceptions — no NBIC shell, no nav bar)
   const EXCEPTIONS_NO_NAV = ['captain.html', 'login.html'];
@@ -644,11 +741,12 @@ function printReport(targetUrl, buildTs, durationMs) {
   const warns = results.tests.filter(t => t.result === 'WARN');
   const fails = results.tests.filter(t => t.result === 'FAIL');
 
-  const infraR  = results.tests.filter(t => t.id.startsWith('I-'));
-  const dataR   = results.tests.filter(t => t.id.startsWith('D-'));
-  const uiR     = results.tests.filter(t => t.id.startsWith('U-'));
-  const intR    = results.tests.filter(t => t.id.startsWith('C-'));
-  const navR    = results.tests.filter(t => t.id.startsWith('N-'));
+  const infraR    = results.tests.filter(t => t.id.startsWith('I-'));
+  const dataR     = results.tests.filter(t => t.id.startsWith('D-'));
+  const uiR       = results.tests.filter(t => t.id.startsWith('U-'));
+  const expR      = results.tests.filter(t => t.id.startsWith('E-'));
+  const intR      = results.tests.filter(t => t.id.startsWith('C-'));
+  const navR      = results.tests.filter(t => t.id.startsWith('N-'));
 
   function blockScore(tests, label) {
     const p = tests.filter(t => t.result === 'PASS').length;
@@ -685,6 +783,7 @@ function printReport(targetUrl, buildTs, durationMs) {
   console.log(blockScore(infraR, 'INFRA'));
   console.log(blockScore(dataR,  'DATA'));
   console.log(blockScore(uiR,    'UI'));
+  console.log(blockScore(expR,   'EXPENSES'));
   console.log(blockScore(intR,   'INTEGRITY'));
   console.log(blockScore(navR,   'NAVBAR/ROUTING'));
   console.log('-------------------------------------------');
@@ -744,6 +843,7 @@ async function main() {
     await dataTests();
     await uiTests(html);
     await dataTestsPhase3A(url);
+    await expensesTests();
     await integrityTests();
     await navbarTests(url);
 

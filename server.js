@@ -2034,6 +2034,28 @@ async function initializeDatabase() {
     console.log('✅ FASE 18: Revenue integrity columns ready');
     // ── END FASE 18 ──────────────────────────────────────────────────────
 
+    // ── FASE 19: Unified Expenses Architecture ────────────────────────────
+    // Add expense_type + crew fields + status/booking link to boat_expenses
+    await pool.query(`ALTER TABLE boat_expenses ADD COLUMN IF NOT EXISTS expense_type TEXT DEFAULT 'other'`);
+    await pool.query(`ALTER TABLE boat_expenses ADD COLUMN IF NOT EXISTS booking_id TEXT REFERENCES bookings(id) ON DELETE SET NULL`);
+    await pool.query(`ALTER TABLE boat_expenses ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active'`);
+    await pool.query(`ALTER TABLE boat_expenses ADD COLUMN IF NOT EXISTS created_by TEXT`);
+    await pool.query(`ALTER TABLE boat_expenses ADD COLUMN IF NOT EXISTS crew_name TEXT`);
+    await pool.query(`ALTER TABLE boat_expenses ADD COLUMN IF NOT EXISTS role TEXT`);
+    await pool.query(`ALTER TABLE boat_expenses ADD COLUMN IF NOT EXISTS subcategory TEXT`);
+    // Backfill expense_type from category for existing rows
+    await pool.query(`
+      UPDATE boat_expenses SET expense_type = CASE
+        WHEN category = 'fuel' THEN 'fuel'
+        WHEN category IN ('maintenance_parts','labor','emergency_repairs','hull_cleaning','engine_service') THEN 'maintenance'
+        WHEN category IN ('captain_fee','stew_fee','crew_fee') THEN 'crew'
+        WHEN category = 'recurring' THEN 'recurring'
+        ELSE 'other'
+      END WHERE expense_type IS NULL OR expense_type = 'other'
+    `);
+    console.log('✅ FASE 19: Unified expenses architecture ready');
+    // ── END FASE 19 ───────────────────────────────────────────────────────
+
     console.log('✅ Database schema initialized successfully (all 10 phases + authentication)');
     
     // Insert default message templates if they don't exist
@@ -11511,6 +11533,208 @@ app.get('/api/mechanics/performance', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch performance data' });
   }
 });
+
+// ========== UNIFIED EXPENSES API (FASE 19) ==========
+// Single source of truth for all expense types:
+//   fuel | maintenance | crew | recurring | other
+
+const VALID_EXPENSE_TYPES = ['fuel', 'maintenance', 'crew', 'recurring', 'other'];
+
+// GET /api/expenses — filtered list
+app.get('/api/expenses', isAuthenticated, async (req, res) => {
+  try {
+    const { expense_type, boat_id, booking_id, start_date, end_date, status } = req.query;
+    let q = `
+      SELECT be.*, b.name AS boat_name
+      FROM boat_expenses be
+      LEFT JOIN boats b ON be.boat_id = b.id
+      WHERE (be.status IS NULL OR be.status != 'archived')
+    `;
+    const params = [];
+    let idx = 1;
+    if (expense_type) { q += ` AND be.expense_type = $${idx++}`; params.push(expense_type); }
+    if (boat_id)      { q += ` AND be.boat_id = $${idx++}`;      params.push(boat_id); }
+    if (booking_id)   { q += ` AND be.booking_id = $${idx++}`;   params.push(booking_id); }
+    if (start_date)   { q += ` AND be.expense_date >= $${idx++}`;params.push(start_date); }
+    if (end_date)     { q += ` AND be.expense_date <= $${idx++}`;params.push(end_date); }
+    if (status)       { q += ` AND be.status = $${idx++}`;        params.push(status); }
+    q += ' ORDER BY be.expense_date DESC, be.created_at DESC';
+    const result = await pool.query(q, params);
+    res.json(result.rows);
+  } catch (e) {
+    console.error('GET /api/expenses error:', e);
+    res.status(500).json({ error: 'Failed to fetch expenses' });
+  }
+});
+
+// GET /api/expenses/summary — aggregated totals by type
+app.get('/api/expenses/summary', isAuthenticated, async (req, res) => {
+  try {
+    const { start_date, end_date, boat_id } = req.query;
+    let where = `WHERE (status IS NULL OR status != 'archived')`;
+    const params = [];
+    let idx = 1;
+    if (start_date) { where += ` AND expense_date >= $${idx++}`; params.push(start_date); }
+    if (end_date)   { where += ` AND expense_date <= $${idx++}`; params.push(end_date); }
+    if (boat_id)    { where += ` AND boat_id = $${idx++}`;       params.push(boat_id); }
+    const r = await pool.query(`
+      SELECT
+        COALESCE(SUM(amount),0) AS total,
+        COALESCE(SUM(CASE WHEN expense_type='fuel' THEN amount END),0) AS fuel,
+        COALESCE(SUM(CASE WHEN expense_type='maintenance' THEN amount END),0) AS maintenance,
+        COALESCE(SUM(CASE WHEN expense_type='crew' THEN amount END),0) AS crew,
+        COALESCE(SUM(CASE WHEN expense_type='recurring' THEN amount END),0) AS recurring,
+        COALESCE(SUM(CASE WHEN expense_type='other' THEN amount END),0) AS other,
+        COUNT(*) AS count
+      FROM boat_expenses ${where}
+    `, params);
+    res.json(r.rows[0]);
+  } catch (e) {
+    console.error('GET /api/expenses/summary error:', e);
+    res.status(500).json({ error: 'Failed to fetch expense summary' });
+  }
+});
+
+// POST /api/expenses — create expense (master entry point)
+app.post('/api/expenses', isAuthenticated, async (req, res) => {
+  try {
+    const { nanoid } = await import('nanoid');
+    const {
+      expense_type, boat_id, booking_id, amount, expense_date, description,
+      payment_method, vendor, notes, subcategory, created_by,
+      crew_name, role,
+      // fuel-specific
+      fuel_gallons, fuel_station,
+      // maintenance-specific
+      mechanic_id, invoice_number, is_tax_deductible,
+      // category (detailed, optional)
+      category
+    } = req.body;
+
+    // ── Validations ───────────────────────────────────────────────
+    if (!expense_type || !VALID_EXPENSE_TYPES.includes(expense_type)) {
+      return res.status(400).json({ error: `expense_type must be one of: ${VALID_EXPENSE_TYPES.join(', ')}` });
+    }
+    if (!boat_id) {
+      return res.status(400).json({ error: 'boat_id is required — every expense must be assigned to a vessel' });
+    }
+    const parsedAmount = parseFloat(amount);
+    if (!amount || isNaN(parsedAmount) || parsedAmount <= 0) {
+      return res.status(400).json({ error: 'amount must be a positive number' });
+    }
+    if (!expense_date) {
+      return res.status(400).json({ error: 'expense_date is required' });
+    }
+    if (!description || description.trim().length < 3) {
+      return res.status(400).json({ error: 'description is required (min 3 chars)' });
+    }
+    if (expense_type === 'crew' && !role) {
+      return res.status(400).json({ error: 'role is required for crew expenses (captain | stew | crew | other)' });
+    }
+    // Verify boat exists
+    const boatQ = await pool.query('SELECT id, name FROM boats WHERE id = $1', [boat_id]);
+    if (!boatQ.rows.length) {
+      return res.status(400).json({ error: `boat_id '${boat_id}' not found` });
+    }
+    const boatName = boatQ.rows[0].name;
+    // ── End validations ───────────────────────────────────────────
+
+    // Derive category from expense_type if not explicitly provided
+    const derivedCategory = category || (expense_type === 'fuel' ? 'fuel' :
+      expense_type === 'maintenance' ? 'maintenance_parts' :
+      expense_type === 'crew' ? (subcategory || 'captain_fee') :
+      expense_type === 'recurring' ? 'recurring' : 'operational');
+
+    const id = `exp_${nanoid(10)}`;
+    const result = await pool.query(`
+      INSERT INTO boat_expenses
+        (id, boat_id, category, expense_type, amount, expense_date, description,
+         payment_method, vendor, notes, subcategory, created_by,
+         crew_name, role, booking_id,
+         fuel_gallons, fuel_station, mechanic_id, invoice_number, is_tax_deductible,
+         status, created_at, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,'active',NOW(),NOW())
+      RETURNING *
+    `, [
+      id, boat_id, derivedCategory, expense_type, parsedAmount, expense_date, description.trim(),
+      payment_method || null, vendor || null, notes || null, subcategory || null, created_by || null,
+      crew_name || null, role || null, booking_id || null,
+      fuel_gallons || null, fuel_station || null, mechanic_id || null,
+      invoice_number || null, is_tax_deductible ? 1 : 0
+    ]);
+
+    const expense = result.rows[0];
+    expense.boat_name = boatName;
+
+    // ── Bridge: crew expense → captain_payments / stew_payments ──
+    if (expense_type === 'crew' && role && (role === 'captain' || role === 'stew')) {
+      try {
+        const crewId = `cpay_${nanoid(8)}`;
+        const table = role === 'captain' ? 'captain_payments' : 'stew_payments';
+        const nameCol = role === 'captain' ? 'captain_id' : 'stew_id';
+        await pool.query(`
+          INSERT INTO ${table}
+            (id, ${nameCol}, ${role}_name, boat_id, boat_name, amount, work_date,
+             description, status, payment_method, booking_id, created_at, updated_at)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pending',$9,$10,NOW(),NOW())
+          ON CONFLICT DO NOTHING
+        `, [crewId, id, crew_name || '', boat_id, boatName, parsedAmount,
+            expense_date, description.trim(), payment_method || null, booking_id || null]);
+      } catch (bridgeErr) {
+        // Bridge failure is non-blocking — expense record already saved
+        console.warn('[EXPENSES] Bridge to crew payments failed (non-blocking):', bridgeErr.message);
+      }
+    }
+
+    res.status(201).json(expense);
+  } catch (e) {
+    console.error('POST /api/expenses error:', e);
+    res.status(500).json({ error: 'Failed to create expense' });
+  }
+});
+
+// PATCH /api/expenses/:id — update expense
+app.patch('/api/expenses/:id', isAuthenticated, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const allowed = ['expense_type','category','amount','expense_date','description',
+      'payment_method','vendor','notes','subcategory','crew_name','role',
+      'booking_id','fuel_gallons','fuel_station','status'];
+    const fields = Object.keys(req.body).filter(k => allowed.includes(k));
+    if (!fields.length) return res.status(400).json({ error: 'No valid fields to update' });
+    if (req.body.amount !== undefined && parseFloat(req.body.amount) <= 0) {
+      return res.status(400).json({ error: 'amount must be a positive number' });
+    }
+    let q = 'UPDATE boat_expenses SET updated_at=NOW()';
+    const params = [];
+    let idx = 1;
+    fields.forEach(f => { q += `, ${f}=$${idx++}`; params.push(req.body[f]); });
+    q += ` WHERE id=$${idx} RETURNING *`;
+    params.push(id);
+    const r = await pool.query(q, params);
+    if (!r.rows.length) return res.status(404).json({ error: 'Expense not found' });
+    res.json(r.rows[0]);
+  } catch (e) {
+    console.error('PATCH /api/expenses error:', e);
+    res.status(500).json({ error: 'Failed to update expense' });
+  }
+});
+
+// DELETE /api/expenses/:id — soft delete (archive)
+app.delete('/api/expenses/:id', isAuthenticated, async (req, res) => {
+  try {
+    const r = await pool.query(
+      `UPDATE boat_expenses SET status='archived', updated_at=NOW() WHERE id=$1 RETURNING id`,
+      [req.params.id]
+    );
+    if (!r.rows.length) return res.status(404).json({ error: 'Expense not found' });
+    res.json({ success: true, id: req.params.id });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to delete expense' });
+  }
+});
+
+// ── END UNIFIED EXPENSES API ──────────────────────────────────────────────
 
 // ========== SCHEDULED EXPENSES APIs ==========
 
