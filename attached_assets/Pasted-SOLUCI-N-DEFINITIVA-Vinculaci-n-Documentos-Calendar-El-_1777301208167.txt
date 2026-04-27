@@ -1,0 +1,217 @@
+SOLUCIÓN DEFINITIVA — Vinculación Documentos ↔ Calendar.
+
+El matching automático ha fallado varias veces porque intenta adivinar el booking después de subir documentos. Vamos a cambiar la arquitectura.
+
+## OBJETIVO
+
+Resolver de forma definitiva la relación entre contratos/documentos y bookings del calendario.
+
+La fuente de verdad debe ser:
+
+documents.booking_id → bookings.id
+
+No depender de auto-match como vía principal.
+
+---
+
+## CAMBIO PRINCIPAL
+
+### 1. documents.html debe permitir vincular documento a reserva al subirlo
+
+En el modal/form de subir documento añadir:
+
+**Campo obligatorio/opcional según tipo: “Vincular a reserva”**
+
+Debe ser un buscador/select de bookings reales del calendario.
+
+Buscar por:
+
+* fecha
+* cliente
+* barco
+* hora
+* monto
+
+Cada resultado debe mostrar:
+
+Fecha · Hora · Cliente · Barco · Total
+
+Ejemplo visual:
+2026-04-22 · 4PM–8PM · Anton Kirichok · Searay 50 · $1200
+
+Al seleccionar:
+
+* enviar booking_id en POST /api/documents/upload
+* guardar documents.booking_id
+
+Si category/type = Contrato:
+
+* recomendar fuertemente seleccionar booking
+* permitir “Sin reserva” solo si el usuario confirma
+
+---
+
+## 2. schedule.html / BookingDrawer
+
+En el BookingDrawer del calendario:
+
+Consultar únicamente documentos vinculados:
+
+GET /api/documents?booking_id=<booking.id>
+
+Mostrar:
+
+* filename
+* category/type
+* Ver
+* Descargar
+* Desvincular
+
+Si no hay documentos:
+mostrar:
+“Sin documentos vinculados”
+Botón:
+“Subir contrato para esta reserva”
+
+Ese botón debe abrir el upload de documentos ya con booking_id preseleccionado, o permitir upload directo desde el drawer.
+
+---
+
+## 3. Upload directo desde BookingDrawer
+
+Si el usuario sube un PDF desde el drawer del calendario:
+
+* enviar booking_id automáticamente
+* category/type = Contrato por defecto
+* guardar el documento con ese booking_id
+* refrescar la sección inmediatamente
+* mostrar Ver / Descargar
+
+Aquí NO se usa auto-match porque el booking ya está abierto.
+
+---
+
+## 4. Auto-match solo para históricos
+
+Crear o mantener un bloque secundario:
+
+“Documentos sin reserva”
+
+Para documentos existentes sin booking_id:
+
+* extraer metadata si es posible
+* sugerir booking probable
+* mostrar score
+* botón “Confirmar vínculo”
+
+Pero nunca depender de esto para el flujo nuevo.
+
+---
+
+## 5. Endpoints requeridos
+
+Verificar o implementar:
+
+### GET /api/bookings/search
+
+Debe aceptar:
+
+* q
+* date
+* boat
+* customer
+
+Debe devolver:
+
+* id
+* booking_date
+* start_time
+* end_time
+* customer_name/final_customer_name
+* boat_name
+* total_amount
+* deposit_amount
+
+Si ya existe endpoint de bookings, reutilizarlo. No crear duplicado innecesario.
+
+### POST /api/documents/upload
+
+Debe aceptar:
+
+* booking_id
+* category/type
+* file
+
+### GET /api/documents?booking_id=
+
+Debe funcionar y devolver documentos vinculados.
+
+### PATCH /api/documents/:id
+
+Debe permitir:
+
+* booking_id
+* null para desvincular
+
+---
+
+## 6. Validación obligatoria
+
+### Test A — subir desde documents.html
+
+1. abrir documents.html
+2. subir un contrato
+3. buscar reserva por cliente/fecha/barco
+4. seleccionar booking
+5. guardar
+6. verificar DB:
+   documents.booking_id = booking.id
+
+### Test B — ver desde calendario
+
+1. abrir schedule.html
+2. abrir ese booking
+3. verificar que aparece el contrato
+4. Ver funciona
+5. Descargar funciona
+
+### Test C — subir desde BookingDrawer
+
+1. abrir booking en calendario
+2. subir contrato desde sección Documentos
+3. verificar que se vincula automáticamente
+4. aparece sin recargar toda la página
+
+### Test D — desvincular
+
+1. click Desvincular
+2. documents.booking_id queda null
+3. contrato desaparece del drawer
+
+---
+
+## REGLAS
+
+* Calendar es fuente principal operativa
+* documents.booking_id es la relación canónica
+* auto-match NO es flujo principal
+* Fleet/FOC solo consume documentos ya vinculados
+* no depender de filename solamente
+* no romper documents.html
+* no romper schedule.html
+* no tocar contabilidad
+* additive only
+* runner verde
+
+---
+
+## ENTREGA
+
+1. archivos tocados
+2. cómo se selecciona booking desde documents.html
+3. cómo se sube desde BookingDrawer
+4. evidencia DB documents.booking_id
+5. evidencia en schedule drawer
+6. Ver/Descargar funcionando
+7. runner/consola
+8. veredicto PASS/BLOCKED

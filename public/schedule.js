@@ -1742,58 +1742,93 @@ const calDocuments = (function () {
     }
 
     try {
-      const r = await fetch(`/api/contracts/booking-suggestions?booking_id=${encodeURIComponent(bookingId)}`);
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      const data = await r.json();
-      _render(data.suggestions || [], badge);
+      // PRIMARY: documents directly linked via booking_id (canonical truth)
+      const r1 = await fetch(`/api/documents?booking_id=${encodeURIComponent(bookingId)}`);
+      if (!r1.ok) throw new Error('HTTP ' + r1.status);
+      const linked = await r1.json();
+
+      // SECONDARY (async, non-blocking): auto-match suggestions for unlinked PDFs
+      let suggestions = [];
+      try {
+        const r2 = await fetch(`/api/contracts/booking-suggestions?booking_id=${encodeURIComponent(bookingId)}`);
+        if (r2.ok) {
+          const d2 = await r2.json();
+          // Filter out docs already directly linked (avoid duplication)
+          const linkedIds = new Set(linked.map(d => d.id));
+          suggestions = (d2.suggestions || []).filter(s => !linkedIds.has(s.id) && s.category !== 'already_linked');
+        }
+      } catch(e2) { /* non-fatal */ }
+
+      _render(linked, suggestions, badge);
     } catch (e) {
       body.innerHTML = `<div style="color:#dc2626;font-size:12px;padding:8px 0;">Error al cargar documentos.</div>`;
       console.warn('[calDocuments]', e);
     }
   }
 
-  function _render(suggestions, badge) {
+  function _renderLinkedDoc(d) {
+    const typeLabel = d.doc_type || 'Doc';
+    const size = _fmt(d.file_size);
+    const dateStr = d.created_at ? d.created_at.slice(0,10) : '';
+    return `
+    <div style="display:flex;gap:10px;padding:10px;border:1px solid #bbf7d0;border-radius:6px;background:#f0fdf4;margin-bottom:8px;"
+         data-testid="linked-doc-${_esc(d.id)}">
+      <div style="flex-shrink:0;padding-top:2px;">${_pill(d.mime_type)}</div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:600;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
+             title="${_esc(d.original_name)}">${_esc(d.original_name)}</div>
+        <div style="font-size:11px;color:#64748b;margin-top:2px;">${_esc(typeLabel)}${size ? ' · ' + size : ''}${dateStr ? ' · ' + dateStr : ''}</div>
+        <div style="margin-top:8px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+          <a href="/api/documents/${_esc(d.id)}/view" target="_blank"
+             style="font-size:11px;color:#0066cc;text-decoration:none;font-weight:600;"
+             data-testid="view-doc-${_esc(d.id)}">Ver</a>
+          <a href="/api/documents/${_esc(d.id)}/download"
+             style="font-size:11px;color:#475569;text-decoration:none;"
+             data-testid="download-doc-${_esc(d.id)}">Descargar</a>
+          <button onclick="calDocuments.unlink('${_esc(d.id)}')"
+                  style="font-size:11px;border:none;background:none;color:#dc2626;cursor:pointer;padding:0;"
+                  data-testid="unlink-doc-${_esc(d.id)}">Desvincular</button>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  function _render(linked, suggestions, badge) {
     const body = document.getElementById('bk-docs-body');
     if (!body) return;
 
-    if (!suggestions.length) {
-      body.innerHTML = '<div style="color:#94a3b8;font-size:13px;padding:8px 0;">Sin contratos vinculados ni sugerencias. Sube un PDF para comenzar.</div>';
-      if (badge) badge.style.display = 'none';
-      return;
-    }
-
-    // Badge shows count of review candidates
-    const reviewCount = suggestions.filter(d => d.category === 'review').length;
+    // Badge: count of review suggestions
+    const reviewCount = suggestions.filter(s => s.category === 'review').length;
     if (badge) {
       badge.style.display = reviewCount ? 'inline-block' : 'none';
       badge.textContent   = reviewCount;
     }
 
-    const linked     = suggestions.filter(d => d.category === 'already_linked');
-    const autoLink   = suggestions.filter(d => d.category === 'auto-link');
-    const review     = suggestions.filter(d => d.category === 'review');
-    const other      = suggestions.filter(d => !['already_linked','auto-link','review'].includes(d.category));
-
     let html = '';
 
+    // ── PRIMARY: directly linked documents ──────────────
     if (linked.length) {
-      html += `<div style="font-size:11px;font-weight:700;color:#16a34a;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Vinculado</div>`;
-      linked.forEach(d => html += _renderDoc(d));
+      linked.forEach(d => { html += _renderLinkedDoc(d); });
+    } else {
+      html += `<div style="color:#94a3b8;font-size:13px;padding:8px 0;">
+        Sin documentos vinculados.
+        <span style="color:#0369a1;"> Arrastra un PDF arriba o usa el botón.</span>
+      </div>`;
     }
 
-    if (autoLink.length) {
-      html += `<div style="font-size:11px;font-weight:700;color:#0066cc;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;margin-top:${linked.length?'12px':'0'};">Alta coincidencia (auto-link disponible)</div>`;
-      autoLink.forEach(d => html += _renderDoc(d));
-    }
+    // ── SECONDARY: auto-match candidates (unlinked PDFs) ──
+    const autoLink = suggestions.filter(s => s.category === 'auto-link');
+    const review   = suggestions.filter(s => s.category === 'review');
 
-    if (review.length) {
-      html += `<div style="font-size:11px;font-weight:700;color:#92400E;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;margin-top:${(linked.length||autoLink.length)?'12px':'0'};">Requiere revision (score 65-84)</div>`;
-      review.forEach(d => html += _renderDoc(d));
-    }
+    if (autoLink.length || review.length) {
+      html += `<div style="margin-top:14px;padding-top:12px;border-top:1px dashed #e2e8f0;">
+        <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">
+          Documentos sin vincular — posibles coincidencias
+        </div>`;
 
-    if (other.length) {
-      html += `<div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;margin-top:${(linked.length||autoLink.length||review.length)?'12px':'0'};">Otras coincidencias</div>`;
-      other.forEach(d => html += _renderDoc(d));
+      autoLink.forEach(d => { html += _renderDoc(d); });
+      review.forEach(d   => { html += _renderDoc(d); });
+      html += `</div>`;
     }
 
     body.innerHTML = html;

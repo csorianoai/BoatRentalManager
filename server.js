@@ -3019,6 +3019,47 @@ app.get('/api/bookings', isAuthenticated, async (req, res) => {
   }
 });
 
+// GET /api/bookings/search — lightweight booking search for document linking
+app.get('/api/bookings/search', isAuthenticated, async (req, res) => {
+  try {
+    const { q, date, boat, customer } = req.query;
+    let where = [];
+    let params = [];
+
+    if (date) {
+      params.push(date);
+      where.push(`booking_date = $${params.length}`);
+    }
+    if (boat) {
+      params.push('%' + boat.toLowerCase() + '%');
+      where.push(`LOWER(COALESCE(boat_type,'')) LIKE $${params.length}`);
+    }
+    if (customer) {
+      params.push('%' + customer.toLowerCase() + '%');
+      where.push(`LOWER(COALESCE(customer_name,'')) LIKE $${params.length}`);
+    }
+    if (q) {
+      const term = '%' + q.toLowerCase() + '%';
+      params.push(term); params.push(term); params.push(term);
+      where.push(`(LOWER(COALESCE(customer_name,'')) LIKE $${params.length-2}
+        OR LOWER(COALESCE(boat_type,'')) LIKE $${params.length-1}
+        OR CAST(booking_date AS TEXT) LIKE $${params.length})`);
+    }
+
+    const sql = `SELECT id, booking_date, start_time, duration_hours,
+                        customer_name, boat_type, total_amount, deposit_amount, status, platform
+                 FROM bookings
+                 ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+                 ORDER BY booking_date DESC, start_time ASC
+                 LIMIT 30`;
+    const result = await pool.query(sql, params);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('[Bookings/Search]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Create manual booking
 app.post('/api/bookings', isAuthenticated, async (req, res) => {
   const pg = await pool.connect();

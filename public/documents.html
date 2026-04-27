@@ -877,6 +877,33 @@
       </div>
       <!-- ═══ END INVOICE SECTION ═══ -->
 
+      <!-- ═══ BOOKING LINK SECTION (shown when type=contract) ═══ -->
+      <div id="contractBookingSection" style="display:none;border:1px solid #bbf7d0;border-radius:8px;background:#f0fdf4;padding:14px;flex-direction:column;gap:10px;">
+        <div style="font-size:12px;font-weight:700;color:#065f46;text-transform:uppercase;letter-spacing:0.06em;">
+          Vincular a reserva del calendario
+        </div>
+        <div style="font-size:12px;color:#047857;">
+          Busca la reserva a la que pertenece este contrato. Recomendado para contratos de clientes.
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input type="text" id="bookingSearchInput" class="form-control" placeholder="Buscar por cliente, fecha, barco…"
+            style="flex:1;" data-testid="input-booking-search"
+            oninput="bookingSearchDebounce()" autocomplete="off">
+          <button type="button" onclick="clearBookingSelection()" title="Limpiar selección"
+            style="background:none;border:1px solid #d1d5db;border-radius:6px;padding:5px 10px;cursor:pointer;font-size:12px;color:#6b7280;">
+            Limpiar
+          </button>
+        </div>
+        <div id="bookingSearchResults" style="max-height:180px;overflow-y:auto;"></div>
+        <div id="bookingSelectedDisplay" style="display:none;background:#dcfce7;border:1px solid #86efac;border-radius:6px;padding:8px 12px;font-size:12px;color:#065f46;font-weight:600;">
+        </div>
+        <div style="font-size:11px;color:#6b7280;">
+          Si el contrato no tiene reserva aún, puedes omitir este paso.
+          <a href="#" onclick="skipBookingLink();return false;" style="color:#0369a1;" data-testid="link-skip-booking">Sin reserva</a>
+        </div>
+      </div>
+      <!-- ═══ END BOOKING LINK SECTION ═══ -->
+
       <div id="generalDocFields">
         <div class="checkbox-row">
           <input type="checkbox" id="visibleGeneral" checked data-testid="check-visible-general">
@@ -933,6 +960,8 @@
   let selectedFiles   = [];
   let viewerCurrentId = null;
   let viewerCurrentName = null;
+  let selectedBookingId = null;   // booking selected in upload modal
+  let bookingSearchTimer = null;
 
   const TYPE_LABELS = {
     invoice: 'Factura', contract: 'Contrato', insurance: 'Seguro',
@@ -1197,7 +1226,7 @@
   }
 
   // ── Upload modal ───────────────────────────────────────
-  function openUploadModal(preselectedBoatId) {
+  function openUploadModal(preselectedBoatId, preselectedBookingId) {
     selectedFiles = [];
     resetDropZone();
     document.getElementById('docNotes').value = '';
@@ -1215,6 +1244,17 @@
     document.getElementById('actionCreate').checked = true;
     document.getElementById('linkExpenseGroup').style.display = 'none';
     document.getElementById('linkExpenseSelect').innerHTML = '<option value="">-- Selecciona primero un barco --</option>';
+
+    // Reset booking selection
+    clearBookingSelection();
+    if (preselectedBookingId) {
+      // Pre-select booking if provided (e.g. opened from drawer link)
+      selectedBookingId = preselectedBookingId;
+      const disp = document.getElementById('bookingSelectedDisplay');
+      if (disp) { disp.style.display = 'block'; disp.textContent = 'Reserva preseleccionada: ' + preselectedBookingId; }
+      // Switch to contract type automatically
+      document.getElementById('docType').value = 'contract';
+    }
 
     // Preselect boat if viewing a specific boat
     const boatSel = document.getElementById('boatSelect');
@@ -1236,14 +1276,93 @@
 
   function onDocTypeChange() {
     const type = document.getElementById('docType').value;
-    const isInvoice = type === 'invoice';
+    const isInvoice  = type === 'invoice';
+    const isContract = type === 'contract';
     document.getElementById('invoiceSection').style.display = isInvoice ? 'flex' : 'none';
+    document.getElementById('contractBookingSection').style.display = isContract ? 'flex' : 'none';
     document.getElementById('generalDocFields').style.display = isInvoice ? 'none' : 'block';
     // When invoice, boat is required
     document.getElementById('boatRequired').style.display = isInvoice ? 'inline' : 'none';
     if (isInvoice && document.getElementById('boatSelect').value) {
       loadBoatExpenses(document.getElementById('boatSelect').value);
     }
+    // Clear booking selection when switching away from contract
+    if (!isContract) clearBookingSelection();
+  }
+
+  // ── Booking search functions ──────────────────────────
+  function bookingSearchDebounce() {
+    clearTimeout(bookingSearchTimer);
+    bookingSearchTimer = setTimeout(runBookingSearch, 350);
+  }
+
+  async function runBookingSearch() {
+    const q = document.getElementById('bookingSearchInput').value.trim();
+    const resultsEl = document.getElementById('bookingSearchResults');
+    if (!q) { resultsEl.innerHTML = ''; return; }
+    resultsEl.innerHTML = '<div style="font-size:12px;color:#6b7280;padding:6px 0;">Buscando…</div>';
+    try {
+      const r = await fetch('/api/bookings/search?q=' + encodeURIComponent(q));
+      const rows = await r.json();
+      if (!rows.length) {
+        resultsEl.innerHTML = '<div style="font-size:12px;color:#6b7280;padding:6px 0;">Sin resultados. Prueba con otro término.</div>';
+        return;
+      }
+      resultsEl.innerHTML = rows.map(b => {
+        const date   = b.booking_date ? b.booking_date.slice(0,10) : '–';
+        const start  = b.start_time   ? b.start_time.slice(0,5) : '–';
+        const dur    = b.duration_hours ? parseFloat(b.duration_hours) : null;
+        const endMin = dur && b.start_time ? (() => {
+          const [h, m] = b.start_time.split(':').map(Number);
+          const em = h * 60 + (m || 0) + dur * 60;
+          return String(Math.floor(em/60)).padStart(2,'0') + ':' + String(em%60).padStart(2,'0');
+        })() : null;
+        const timeStr = endMin ? start + '–' + endMin : start;
+        const amount  = b.total_amount ? '$' + parseFloat(b.total_amount).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:2}) : '';
+        const name    = escHtml(b.customer_name || '–');
+        const boat    = escHtml(b.boat_type || '–');
+        return `<div onclick="selectBooking('${escHtml(b.id)}','${date}','${timeStr}','${name}','${boat}','${amount}')"
+          style="padding:8px 10px;border:1px solid #e2e8f0;border-radius:6px;margin-bottom:6px;cursor:pointer;font-size:12px;background:#fff;"
+          onmouseover="this.style.background='#f0fdf4'" onmouseout="this.style.background='#fff'"
+          data-testid="booking-result-${b.id}">
+          <span style="font-weight:700;color:#065f46;">${date}</span>
+          <span style="color:#374151;"> · ${timeStr} · ${name}</span>
+          <span style="color:#6b7280;"> · ${boat}</span>
+          <span style="color:#0369a1;font-weight:600;"> ${amount}</span>
+        </div>`;
+      }).join('');
+    } catch(e) {
+      resultsEl.innerHTML = '<div style="font-size:12px;color:#dc2626;padding:6px 0;">Error al buscar reservas.</div>';
+    }
+  }
+
+  function selectBooking(id, date, time, name, boat, amount) {
+    selectedBookingId = id;
+    document.getElementById('bookingSearchResults').innerHTML = '';
+    document.getElementById('bookingSearchInput').value = '';
+    const disp = document.getElementById('bookingSelectedDisplay');
+    disp.style.display = 'block';
+    disp.innerHTML = '&#10003; Reserva seleccionada: <b>' + date + ' · ' + time + ' · ' + name + ' · ' + boat + ' · ' + amount + '</b>';
+  }
+
+  function clearBookingSelection() {
+    selectedBookingId = null;
+    const inp = document.getElementById('bookingSearchInput');
+    if (inp) inp.value = '';
+    const res = document.getElementById('bookingSearchResults');
+    if (res) res.innerHTML = '';
+    const disp = document.getElementById('bookingSelectedDisplay');
+    if (disp) { disp.style.display = 'none'; disp.innerHTML = ''; }
+  }
+
+  function skipBookingLink() {
+    clearBookingSelection();
+    document.getElementById('contractBookingSection').style.border = '1px solid #fde68a';
+    document.getElementById('contractBookingSection').style.background = '#fffbeb';
+    setTimeout(() => {
+      document.getElementById('contractBookingSection').style.border = '1px solid #bbf7d0';
+      document.getElementById('contractBookingSection').style.background = '#f0fdf4';
+    }, 2000);
   }
 
   function onInvoiceActionChange() {
@@ -1369,6 +1488,8 @@
           const vendor = document.getElementById('invoiceVendor').value.trim();
           formData.append('notes', `${vendor} — ${desc}`);
         }
+        // Include booking_id if a booking was selected (for contracts)
+        if (selectedBookingId) formData.append('booking_id', selectedBookingId);
 
         const res  = await fetch('/api/documents/upload', { method: 'POST', body: formData });
         const data = await res.json();
