@@ -4,8 +4,8 @@
 
 'use strict';
 
-/* ── KNOWLEDGE BASE ── */
-const KB = [
+/* ── EMBEDDED FALLBACK (used instantly; replaced by JSON when available) ── */
+const EMBEDDED_KB = [
   {
     id: 'kb-booking-create',
     category: 'Bookings',
@@ -180,6 +180,105 @@ const KB = [
   },
 ];
 
+/* ── LIVE KB (starts with embedded; replaced by JSON when available) ── */
+let KB = EMBEDDED_KB.slice();
+
+/* ── UTILS ── */
+function escH(s) {
+  return String(s || '').replace(/[<>&"']/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/* ── CONTENT REGISTRY: load JSON, update KB + UI ── */
+function loadContentRegistry() {
+  fetch('/data/operational-help.json', { cache: 'no-cache' })
+    .then(r => {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(data => {
+      // 1. Update KB from JSON guides (search now uses richer data)
+      if (Array.isArray(data.guides) && data.guides.length) {
+        KB = data.guides.map(g => ({
+          id:        g.id        || '',
+          category:  g.category  || '',
+          title:     g.title     || '',
+          keywords:  Array.isArray(g.keywords) ? g.keywords : [],
+          steps:     Array.isArray(g.steps)    ? g.steps    : [],
+          avoid:     g.avoid     || '',
+          link:      g.link      || '',
+          linkLabel: g.linkLabel || '',
+          faqId:     g.faqId     || '',
+        }));
+      }
+
+      // 2. Render "Última actualización" in hero
+      if (data.lastUpdated) {
+        renderLastUpdated(data.lastUpdated);
+      }
+
+      // 3. Render changelog from JSON (replaces static HTML)
+      if (Array.isArray(data.changelog) && data.changelog.length) {
+        renderChangelog(data.changelog);
+      }
+    })
+    .catch(() => {
+      // Silent fallback — embedded KB + static HTML remain intact
+    });
+}
+
+/* ── RENDER: Última actualización ── */
+function renderLastUpdated(dateStr) {
+  const el = document.getElementById('oc-last-updated');
+  if (!el) return;
+  try {
+    const d = new Date(dateStr + 'T00:00:00');
+    const label = d.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' });
+    el.textContent = 'Última actualización: ' + label;
+    el.style.display = 'inline-block';
+  } catch (_) {
+    el.textContent = 'Última actualización: ' + escH(dateStr);
+    el.style.display = 'inline-block';
+  }
+}
+
+/* ── RENDER: Changelog from JSON ── */
+const BADGE_COLORS = {
+  green:  'badge-green',
+  blue:   'badge-blue',
+  teal:   'badge-teal',
+  orange: 'badge-orange',
+  purple: 'badge-purple',
+  rose:   'badge-rose',
+  red:    'badge-red',
+  indigo: 'badge-indigo',
+};
+
+function renderChangelog(items) {
+  const container = document.getElementById('oc-changelog-dynamic');
+  if (!container) return;
+
+  container.innerHTML = items.map(item => {
+    const badgeCls = BADGE_COLORS[item.color] || 'badge-blue';
+    const dotCls   = 'bg-' + (item.color || 'blue');
+    const metaLink = item.link
+      ? `<a href="${escH(item.link)}" class="oc-cl-link" data-track="${escH(item.link)}|${escH(item.linkLabel || item.title)}">${escH(item.linkLabel || 'Abrir')}</a>`
+      : 'Esta página';
+
+    return `
+      <div class="oc-cl-item" data-testid="${escH(item.id)}">
+        <div class="oc-cl-dot ${escH(dotCls)}"></div>
+        <div class="oc-cl-body">
+          <div class="oc-cl-top">
+            <span class="oc-cl-title">${escH(item.title)}</span>
+            <span class="oc-cl-badge ${escH(badgeCls)}">${escH(item.status)}</span>
+          </div>
+          <div class="oc-cl-desc">${escH(item.description)}</div>
+          <div class="oc-cl-meta">${escH(item.date)} · ${metaLink}</div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
 /* ── SEARCH ENGINE ── */
 function initSearch() {
   const input   = document.getElementById('oc-search-input');
@@ -243,11 +342,6 @@ function initFAQ() {
       card.classList.toggle('open');
     });
   });
-}
-
-/* ── UTILS ── */
-function escH(s) {
-  return String(s || '').replace(/[<>&"']/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
 /* ── ANALYTICS (localStorage, no backend) ── */
@@ -352,6 +446,9 @@ document.addEventListener('DOMContentLoaded', () => {
   initFAQ();
   initClickTracking();
   ocAnalytics.init();
+
+  // Load content registry (JSON) — async, non-blocking
+  loadContentRegistry();
 
   // Wire search tracking into the existing input listener
   const input = document.getElementById('oc-search-input');

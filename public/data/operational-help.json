@@ -1,0 +1,407 @@
+{
+  "lastUpdated": "2026-04-27",
+  "changelog": [
+    {
+      "id": "cl-doc-booking-link",
+      "title": "Vinculación Documentos–Reservas",
+      "date": "Abr 2026",
+      "status": "Nuevo",
+      "color": "purple",
+      "description": "Los contratos y documentos ahora se pueden vincular a una reserva específica desde el modal de subida y desde el drawer del calendario. Desvinculación disponible con un clic.",
+      "link": "/documents.html",
+      "linkLabel": "Abrir Documentos"
+    },
+    {
+      "id": "cl-accounting-v2",
+      "title": "Contabilidad V1/V2 — Cierre formal",
+      "date": "Abr 2026",
+      "status": "Cerrado",
+      "color": "green",
+      "description": "7 flujos E2E verificados. Anti-duplication guards activos. Trazabilidad booking → AR → transacción.",
+      "link": "/accounting.html",
+      "linkLabel": "Abrir módulo"
+    },
+    {
+      "id": "cl-cobros-v2",
+      "title": "Cobros automáticos V2 — Cron activo",
+      "date": "Abr 2026",
+      "status": "Activo",
+      "color": "blue",
+      "description": "Cron diario 9 AM ET con timezone America/New_York. reminder_count, normalizePhone y logging estructurado.",
+      "link": "/reports.html#f1",
+      "linkLabel": "Ver en Dashboard"
+    },
+    {
+      "id": "cl-cobros-kpi",
+      "title": "Revenue Control Layer V2.7",
+      "date": "Abr 2026",
+      "status": "Activo",
+      "color": "blue",
+      "description": "KPI bar de cobros (4 indicadores), badges RIESGO/BROKER/SIN TEL, filtros rápidos en Tab Cobros.",
+      "link": "/reports.html#f1",
+      "linkLabel": "Tab Cobros"
+    },
+    {
+      "id": "cl-reconciliation",
+      "title": "Reconciliación bancaria V1 — Activa",
+      "date": "Abr 2026",
+      "status": "Activo",
+      "color": "teal",
+      "description": "Auto-match por monto + fecha. Import CSV. Registros matched y unmatched disponibles para revisión.",
+      "link": "/accounting.html#reconciliation",
+      "linkLabel": "Abrir"
+    },
+    {
+      "id": "cl-dynamic-pricing",
+      "title": "Dynamic Pricing — Motor activo",
+      "date": "Abr 2026",
+      "status": "Activo",
+      "color": "orange",
+      "description": "Ajuste por ocupación, fin de semana y lead time. Reasons explícitos en cada recomendación de precio.",
+      "link": "/dynamic-pricing.html",
+      "linkLabel": "Ver Pricing"
+    },
+    {
+      "id": "cl-centro-operativo",
+      "title": "Centro Operativo Nadaki — Lanzado",
+      "date": "Abr 2026",
+      "status": "Nuevo",
+      "color": "purple",
+      "description": "Guía visual, buscador por intención, módulos, flujos operativos y FAQs accionables. Contenido ahora separado en JSON actualizable.",
+      "link": null,
+      "linkLabel": null
+    },
+    {
+      "id": "cl-alert-engine",
+      "title": "Alert Engine V2.3 — Monitoreo activo",
+      "date": "Abr 2026",
+      "status": "Activo",
+      "color": "rose",
+      "description": "Alertas por ingresos sin conciliar, bank_unmatched y pricing_gap. Visibles en Tab Alertas del Dashboard.",
+      "link": "/reports.html",
+      "linkLabel": "Ver alertas"
+    }
+  ],
+  "guides": [
+    {
+      "id": "kb-booking-create",
+      "category": "Bookings",
+      "title": "Cómo registrar un booking correctamente",
+      "keywords": ["booking", "crear", "registrar", "nuevo", "reserva", "crear booking"],
+      "steps": [
+        "Ve a Fleet Operations Center en el menú Operaciones.",
+        "Haz clic en \"Nuevo Booking\" en el día correspondiente.",
+        "Ingresa cliente, barco, fecha, hora y duración.",
+        "Define el total del servicio y el depósito recibido.",
+        "Si hay broker, selecciona el broker antes de guardar.",
+        "El sistema crea automáticamente la Cuenta por Cobrar si hay saldo pendiente."
+      ],
+      "avoid": "No registres el mismo booking dos veces. No mezcles el depósito con el pago final — son pasos separados.",
+      "link": "/fleet.html#foc",
+      "linkLabel": "Ir a Fleet Operations Center",
+      "faqId": "faq-booking-create"
+    },
+    {
+      "id": "kb-mark-paid",
+      "category": "Cobros",
+      "title": "Cómo marcar un pago recibido",
+      "keywords": ["pago", "cobrar", "mark paid", "marcar pagado", "saldo", "cobro", "balance"],
+      "steps": [
+        "Ve a Contabilidad → Cuentas por Cobrar.",
+        "Busca la cuenta correspondiente al booking.",
+        "Haz clic en \"Marcar Pagado\".",
+        "El sistema registra la transacción de ingreso automáticamente.",
+        "Verifica en el Executive Dashboard que el saldo refleje el pago."
+      ],
+      "avoid": "No registres el ingreso manualmente en Transacciones si ya usaste \"Marcar Pagado\" — se duplicaría el ingreso.",
+      "link": "/accounting.html",
+      "linkLabel": "Ir a Contabilidad",
+      "faqId": "faq-mark-paid"
+    },
+    {
+      "id": "kb-deposit",
+      "category": "Depósitos",
+      "title": "Cómo registrar un depósito bancario",
+      "keywords": ["depositar", "depósito", "bancario", "bank", "deposit", "depositado"],
+      "steps": [
+        "El booking debe estar previamente marcado como \"Pagado\".",
+        "Ve a Contabilidad → Depósitos.",
+        "Busca el booking y haz clic en \"Marcar Depositado\".",
+        "Ingresa la fecha de depósito y referencia bancaria si aplica.",
+        "El sistema crea el registro en Bank Statements y reconcilia la transacción."
+      ],
+      "avoid": "Depositar NO crea un nuevo ingreso — solo concilia el ingreso ya registrado. No uses esta función sin haber marcado el pago primero.",
+      "link": "/accounting.html#deposits",
+      "linkLabel": "Ir a Depósitos",
+      "faqId": "faq-deposit"
+    },
+    {
+      "id": "kb-bank-statement",
+      "category": "Reconciliación",
+      "title": "Cómo subir un bank statement",
+      "keywords": ["bank statement", "estado de cuenta", "csv", "subir", "importar", "banco"],
+      "steps": [
+        "Ve a Contabilidad → Conciliación Bancaria.",
+        "Haz clic en \"Importar CSV\".",
+        "Sube el archivo CSV de tu banco (formato estándar).",
+        "El sistema corre auto-match automáticamente.",
+        "Revisa los registros \"Unmatched\" y asígnalos manualmente si aplica."
+      ],
+      "avoid": "No subas el mismo estado de cuenta dos veces — el sistema detecta duplicados, pero es mejor evitarlo.",
+      "link": "/accounting.html#reconciliation",
+      "linkLabel": "Ir a Conciliación",
+      "faqId": "faq-bank-statement"
+    },
+    {
+      "id": "kb-reconcile",
+      "category": "Reconciliación",
+      "title": "Cómo reconciliar pagos bancarios",
+      "keywords": ["reconciliar", "conciliar", "match", "matched", "unmatched", "reconciliación", "conciliación"],
+      "steps": [
+        "Ve a Contabilidad → Conciliación Bancaria.",
+        "Revisa los registros con estado \"Unmatched\".",
+        "Busca la transacción correspondiente en el sistema.",
+        "Haz clic en \"Match\" para enlazar ambos registros.",
+        "Los registros \"Matched\" aparecen reconciliados en el Executive Dashboard."
+      ],
+      "avoid": "No borres registros bancarios sin reconciliarlos primero — se pierde la trazabilidad.",
+      "link": "/accounting.html#reconciliation",
+      "linkLabel": "Ir a Conciliación",
+      "faqId": "faq-reconcile"
+    },
+    {
+      "id": "kb-expense",
+      "category": "Gastos",
+      "title": "Cómo registrar un gasto operativo",
+      "keywords": ["gasto", "expense", "combustible", "mantenimiento", "crew", "registrar gasto", "costo"],
+      "steps": [
+        "Ve a Contabilidad → Gastos o Flota → Barcos según el tipo.",
+        "Para combustible: Flota → Combustible.",
+        "Para mantenimiento: Flota → Mantenimiento.",
+        "Para crew (capitán/stew): Contabilidad → Comisiones.",
+        "Para gastos recurrentes: Flota → Gastos Recurrentes.",
+        "Asigna siempre el barco correcto para análisis por embarcación."
+      ],
+      "avoid": "No registres gastos como ingresos por error. No mezcles gastos de diferentes barcos en un mismo registro.",
+      "link": "/accounting.html#gastos-analisis",
+      "linkLabel": "Ir a Análisis de Gastos",
+      "faqId": "faq-expense"
+    },
+    {
+      "id": "kb-who-owes",
+      "category": "Cobros",
+      "title": "Cómo ver quién debe dinero",
+      "keywords": ["quien debe", "saldo pendiente", "AR", "cuentas por cobrar", "pendiente", "owes", "debe"],
+      "steps": [
+        "Ve al Executive Dashboard → Tab Cobros.",
+        "La sección \"Cuentas por Cobrar\" muestra todos los saldos pendientes.",
+        "Filtra por \"Sin depósito\" o \"Alto riesgo\" para priorizar.",
+        "Los KPIs superiores muestran totales: AR Pendiente Total, Clientes, Brokers.",
+        "Usa el botón \"Recordatorio\" para enviar WhatsApp al cliente."
+      ],
+      "avoid": "",
+      "link": "/reports.html#f1",
+      "linkLabel": "Ir a Executive Dashboard",
+      "faqId": "faq-who-owes"
+    },
+    {
+      "id": "kb-reminder",
+      "category": "Cobros",
+      "title": "Cómo enviar un recordatorio de pago",
+      "keywords": ["recordatorio", "reminder", "whatsapp", "enviar", "cobrar", "notificación"],
+      "steps": [
+        "Ve al Executive Dashboard → Tab Cobros.",
+        "En \"Cuentas por Cobrar\" o \"Próximos Bookings\", busca el cliente.",
+        "Haz clic en el botón \"Recordatorio\".",
+        "El sistema envía un WhatsApp automático con el saldo pendiente.",
+        "El cron diario (9 AM ET) también envía recordatorios automáticamente."
+      ],
+      "avoid": "El sistema tiene protección anti-spam de 24 horas — no intentes enviar dos recordatorios seguidos al mismo cliente.",
+      "link": "/reports.html#f1",
+      "linkLabel": "Ir a Executive Dashboard",
+      "faqId": "faq-reminder"
+    },
+    {
+      "id": "kb-pricing",
+      "category": "Pricing",
+      "title": "Cómo revisar el pricing dinámico",
+      "keywords": ["pricing", "precio", "dinámico", "recomendado", "occupancy", "tarifa", "dynamic pricing"],
+      "steps": [
+        "Ve a Comercial → Pricing Dinámico.",
+        "El sistema muestra el precio recomendado por barco y fecha.",
+        "Revisa los \"reasons\" que explican cada ajuste (ocupación, fin de semana, lead time).",
+        "Aplica el precio recomendado o ajusta manualmente si hay circunstancias especiales.",
+        "Compara con el precio base en Comercial → Precios."
+      ],
+      "avoid": "No ignores las recomendaciones sin revisar los reasons — pueden reflejar alta demanda o temporada baja.",
+      "link": "/dynamic-pricing.html",
+      "linkLabel": "Ir a Pricing Dinámico",
+      "faqId": "faq-pricing"
+    },
+    {
+      "id": "kb-broker",
+      "category": "Brokers",
+      "title": "Cómo manejar un booking de broker",
+      "keywords": ["broker", "agencia", "intermediario", "comisión", "broker pending"],
+      "steps": [
+        "Al crear el depósito/booking, selecciona el broker en el campo correspondiente.",
+        "El payer_type se asigna como \"broker\" automáticamente.",
+        "La Cuenta por Cobrar se crea a nombre del broker, no del cliente final.",
+        "En Tab Cobros, los brokers aparecen con badge BROKER en color morado.",
+        "El saldo pendiente de brokers se muestra separado en los KPIs."
+      ],
+      "avoid": "No registres el pago de un broker como pago de cliente directo — afecta la trazabilidad de comisiones.",
+      "link": "/accounting.html",
+      "linkLabel": "Ir a Contabilidad",
+      "faqId": "faq-broker"
+    },
+    {
+      "id": "kb-doc-link",
+      "category": "Documentos",
+      "title": "Cómo vincular un documento a una reserva",
+      "keywords": ["documento", "contrato", "vincular", "booking", "archivo", "pdf", "link", "reserva"],
+      "steps": [
+        "Ve a Comercial → Documentos.",
+        "Haz clic en \"+ Subir documento\".",
+        "Selecciona tipo \"Contrato\" — aparecerá la sección de vinculación.",
+        "Busca la reserva por nombre del cliente, fecha o barco.",
+        "Haz clic en la reserva para seleccionarla y luego sube el archivo.",
+        "El documento quedará vinculado y visible desde el drawer del calendario."
+      ],
+      "avoid": "Un contrato sin reserva vinculada no aparece en el drawer del calendario. Vincúlalos siempre para trazabilidad completa.",
+      "link": "/documents.html",
+      "linkLabel": "Ir a Documentos",
+      "faqId": "faq-booking-create"
+    }
+  ],
+  "flows": [
+    {
+      "id": "flow-booking-dinero",
+      "label": "Flujo 1",
+      "title": "Booking a dinero — el ciclo completo",
+      "steps": [
+        { "num": 1, "name": "Booking creado",  "sub": "Fleet Ops / Depósito",        "state": "done"    },
+        { "num": 2, "name": "AR generada",     "sub": "Auto si balance > 0",          "state": "done"    },
+        { "num": 3, "name": "Pago recibido",   "sub": "Mark Paid → Transacción",      "state": "active"  },
+        { "num": 4, "name": "Depositado",      "sub": "Mark Deposited → Bank Stmt",   "state": "pending" },
+        { "num": 5, "name": "Conciliado",      "sub": "Auto-match o manual",          "state": "pending" }
+      ]
+    },
+    {
+      "id": "flow-cobro-pendiente",
+      "label": "Flujo 2",
+      "title": "Cobro pendiente — activar y cerrar",
+      "steps": [
+        { "num": 1, "name": "Saldo pendiente",      "sub": "AR en estado pending",         "state": "warn"    },
+        { "num": 2, "name": "Recordatorio",          "sub": "WhatsApp manual o cron 9AM",   "state": "active"  },
+        { "num": 3, "name": "Pago recibido",         "sub": "Mark Paid en AR",              "state": "pending" },
+        { "num": 4, "name": "Estado actualizado",    "sub": "AR paid · reminder_count++",   "state": "pending" }
+      ]
+    },
+    {
+      "id": "flow-gasto",
+      "label": "Flujo 3",
+      "title": "Gasto operativo — registro y visibilidad",
+      "steps": [
+        { "num": 1, "name": "Gasto identificado",    "sub": "Combustible, mant., crew",         "state": "done"   },
+        { "num": 2, "name": "Registrado",            "sub": "Módulo correcto por tipo",          "state": "active" },
+        { "num": 3, "name": "Transacción",           "sub": "Expense en libro contable",         "state": "done"   },
+        { "num": 4, "name": "Visible en Dashboard",  "sub": "Margen operativo actualizado",      "state": "done"   }
+      ]
+    }
+  ],
+  "quickActions": [
+    { "id": "qa-foc",           "label": "Fleet Operations",    "sub": "Bookings del día",        "link": "/fleet.html#foc",              "icon": "calendar",    "color": "blue"   },
+    { "id": "qa-executive",     "label": "Executive Dashboard", "sub": "KPIs y cobros",           "link": "/reports.html#f1",             "icon": "chart",       "color": "indigo" },
+    { "id": "qa-accounting",    "label": "Contabilidad",        "sub": "AR, depósitos, gastos",   "link": "/accounting.html",             "icon": "dollar",      "color": "green"  },
+    { "id": "qa-reconciliation","label": "Conciliación",        "sub": "Bank statements",         "link": "/accounting.html#reconciliation","icon": "arrows",     "color": "teal"   },
+    { "id": "qa-pricing",       "label": "Pricing Dinámico",    "sub": "Precios recomendados",    "link": "/dynamic-pricing.html",        "icon": "dollar",      "color": "orange" },
+    { "id": "qa-schedule",      "label": "Calendario Semanal",  "sub": "Vista semanal",           "link": "/schedule.html",               "icon": "calendar-2",  "color": "purple" },
+    { "id": "qa-maintenance",   "label": "Mantenimiento",       "sub": "Barcos y reparaciones",   "link": "/boat-maintenance.html",       "icon": "wrench",      "color": "rose"   },
+    { "id": "qa-fleet",         "label": "Gestión de Flota",    "sub": "Barcos y activos",        "link": "/fleet.html",                  "icon": "fleet",       "color": "blue"   },
+    { "id": "qa-reports",       "label": "Reportes / NBIC",     "sub": "Analytics avanzado",      "link": "/reports.html",                "icon": "file",        "color": "indigo" },
+    { "id": "qa-commissions",   "label": "Comisiones",          "sub": "Captains y stews",        "link": "/commissions.html",            "icon": "medal",       "color": "green"  },
+    { "id": "qa-docs",          "label": "Documentos",          "sub": "Contratos y archivos",    "link": "/documents.html",              "icon": "folder",      "color": "teal"   },
+    { "id": "qa-sync",          "label": "Sincronización",      "sub": "Plataformas externas",    "link": "/sync.html",                   "icon": "sync",        "color": "orange" }
+  ],
+  "modules": [
+    {
+      "id": "module-bookings",
+      "color": "blue",
+      "title": "Bookings",
+      "desc": "Registra servicios, asigna capitanes, verifica depósito y total. El sistema crea la Cuenta por Cobrar automáticamente si hay saldo pendiente.",
+      "actions": [
+        { "label": "Fleet Operations", "link": "/fleet.html#foc",  "primary": true  },
+        { "label": "Calendario",       "link": "/schedule.html",   "primary": false }
+      ]
+    },
+    {
+      "id": "module-cobros",
+      "color": "red",
+      "title": "Cobros",
+      "desc": "Gestiona Cuentas por Cobrar, marca pagos, envía recordatorios via WhatsApp y monitorea saldos pendientes por cliente y broker.",
+      "actions": [
+        { "label": "Executive Dashboard", "link": "/reports.html#f1", "primary": true  },
+        { "label": "Contabilidad",        "link": "/accounting.html", "primary": false }
+      ]
+    },
+    {
+      "id": "module-depositos",
+      "color": "green",
+      "title": "Depósitos",
+      "desc": "Registra depósitos recibidos. El sistema crea automáticamente el ledger, la AR y la transacción contable. Marcar depositado concilia el ingreso.",
+      "actions": [
+        { "label": "Ver Depósitos", "link": "/accounting.html#deposits", "primary": true }
+      ]
+    },
+    {
+      "id": "module-reconciliacion",
+      "color": "teal",
+      "title": "Reconciliación Bancaria",
+      "desc": "Sube CSV del banco, corre auto-match y revisa registros sin match. Enlaza transacciones del sistema con movimientos bancarios reales.",
+      "actions": [
+        { "label": "Ir a Conciliación", "link": "/accounting.html#reconciliation", "primary": true }
+      ]
+    },
+    {
+      "id": "module-gastos",
+      "color": "orange",
+      "title": "Gastos",
+      "desc": "Registra gastos por categoría y barco: combustible, mantenimiento, crew. Visible en Executive Dashboard y análisis de rentabilidad.",
+      "actions": [
+        { "label": "Análisis de Gastos", "link": "/accounting.html#gastos-analisis", "primary": true  },
+        { "label": "Combustible",         "link": "/fuel-tracker.html",               "primary": false }
+      ]
+    },
+    {
+      "id": "module-brokers",
+      "color": "purple",
+      "title": "Brokers",
+      "desc": "Gestiona agencias y brokers. Asigna el payer_type correcto en cada booking. Los saldos de brokers se rastrean por separado en los KPIs de cobros.",
+      "actions": [
+        { "label": "Contabilidad", "link": "/accounting.html",    "primary": true  },
+        { "label": "Comisiones",   "link": "/commissions.html",   "primary": false }
+      ]
+    },
+    {
+      "id": "module-pricing",
+      "color": "indigo",
+      "title": "Pricing",
+      "desc": "Revisa precios recomendados por ocupación, fin de semana y lead time. Compara con la tarifa base y ajusta según demanda real del mercado.",
+      "actions": [
+        { "label": "Pricing Dinámico", "link": "/dynamic-pricing.html", "primary": true  },
+        { "label": "Precios base",     "link": "/pricing.html",         "primary": false }
+      ]
+    },
+    {
+      "id": "module-alertas",
+      "color": "rose",
+      "title": "Alertas y Seguimiento",
+      "desc": "Monitorea alertas financieras, ingresos sin conciliar, bank statements sin match y gap de pricing. Accede al Executive Dashboard para el resumen.",
+      "actions": [
+        { "label": "Executive Dashboard", "link": "/reports.html#f1", "primary": true  },
+        { "label": "NBIC Analytics",      "link": "/reports.html",    "primary": false }
+      ]
+    }
+  ]
+}

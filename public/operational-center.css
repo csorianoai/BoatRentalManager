@@ -52,7 +52,18 @@ body {
   font-size: 16px;
   color: #94a3b8;
   max-width: 520px;
-  margin: 0 auto 28px;
+  margin: 0 auto 12px;
+}
+.oc-last-updated {
+  display: inline-block;
+  font-size: 11px;
+  color: #475569;
+  letter-spacing: .4px;
+  margin-bottom: 20px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 4px;
+  padding: 3px 10px;
 }
 
 /* ── SEARCH ── */
