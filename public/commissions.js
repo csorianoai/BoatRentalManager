@@ -459,7 +459,9 @@ function formatCurrency(amount) {
 }
 
 function formatDate(dateString) {
-    const date = new Date(dateString);
+    if (!dateString) return '—';
+    const safe = (typeof dateString === 'string' && dateString.length === 10) ? dateString + 'T12:00:00' : dateString;
+    const date = new Date(safe);
     return date.toLocaleDateString('es-ES', {
         year: 'numeric',
         month: 'short',

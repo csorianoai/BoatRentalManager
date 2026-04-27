@@ -1191,9 +1191,8 @@ function setDefaultDates() {
 
 function formatDate(dateString) {
   if (!dateString) return 'N/A';
-  // Handle both date-only strings and ISO format
-  const date = dateString.includes('T') ? new Date(dateString) : new Date(dateString + 'T00:00:00');
-  // Check if date is valid
+  // Append T12:00:00 for date-only strings to avoid UTC midnight shifting the day back
+  const date = dateString.includes('T') ? new Date(dateString) : new Date(dateString + 'T12:00:00');
   if (isNaN(date.getTime())) return 'N/A';
   return date.toLocaleDateString('es-ES', { year: 'numeric', month: 'short', day: 'numeric' });
 }

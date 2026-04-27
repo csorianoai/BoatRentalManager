@@ -350,7 +350,8 @@ function formatScope(scope) {
 
 function formatDate(dateStr) {
     if (!dateStr) return null;
-    const date = new Date(dateStr);
+    const safe = (typeof dateStr === 'string' && dateStr.length === 10) ? dateStr + 'T12:00:00' : dateStr;
+    const date = new Date(safe);
     return date.toLocaleDateString('es-ES');
 }
 
