@@ -25,7 +25,7 @@ const ROLES = ['captain','stew','crew','other'];
 let expenses    = [];
 let boats       = [];
 let summaryData = {};
-let filters     = { expense_type: '', boat_id: '', start_date: '', end_date: '' };
+let filters     = { expense_type: '', boat_id: '', start_date: '', end_date: '', status: '', payment_method: '' };
 let editingId   = null;
 
 // ── Init ─────────────────────────────────────────────────────────────────────
@@ -62,10 +62,12 @@ async function loadBoats() {
 async function loadExpenses() {
   try {
     const params = new URLSearchParams();
-    if (filters.expense_type) params.set('expense_type', filters.expense_type);
-    if (filters.boat_id)      params.set('boat_id',      filters.boat_id);
-    if (filters.start_date)   params.set('start_date',   filters.start_date);
-    if (filters.end_date)     params.set('end_date',     filters.end_date);
+    if (filters.expense_type)   params.set('expense_type',   filters.expense_type);
+    if (filters.boat_id)        params.set('boat_id',        filters.boat_id);
+    if (filters.start_date)     params.set('start_date',     filters.start_date);
+    if (filters.end_date)       params.set('end_date',       filters.end_date);
+    if (filters.status)         params.set('status',         filters.status);
+    if (filters.payment_method) params.set('payment_method', filters.payment_method);
     expenses = await apiFetch(`${API.expenses}?${params}`);
     renderTable();
   } catch (e) {
@@ -117,12 +119,24 @@ function setupFilters() {
     filters.end_date = e.target.value;
     loadExpenses();
   });
+  const filterStatus = document.getElementById('filter-status');
+  if (filterStatus) filterStatus.addEventListener('change', e => {
+    filters.status = e.target.value;
+    loadExpenses();
+  });
+  const filterPayment = document.getElementById('filter-payment');
+  if (filterPayment) filterPayment.addEventListener('change', e => {
+    filters.payment_method = e.target.value;
+    loadExpenses();
+  });
   document.getElementById('btn-clear-filters').addEventListener('click', () => {
-    filters = { expense_type: '', boat_id: '', start_date: '', end_date: '' };
+    filters = { expense_type: '', boat_id: '', start_date: '', end_date: '', status: '', payment_method: '' };
     document.getElementById('filter-type').value  = '';
     document.getElementById('filter-boat').value  = '';
     document.getElementById('filter-start').value = '';
     document.getElementById('filter-end').value   = '';
+    if (filterStatus)  filterStatus.value  = '';
+    if (filterPayment) filterPayment.value = '';
     loadExpenses();
     loadSummary();
   });
@@ -141,20 +155,29 @@ function renderSummary() {
   document.getElementById('kpi-count').textContent     = d.count || 0;
 }
 
+const STATUS_STYLES = {
+  pending:  { label: 'Pendiente', bg: '#FEF3C7', color: '#92400E' },
+  paid:     { label: 'Pagado',    bg: '#D1FAE5', color: '#065F46' },
+  approved: { label: 'Aprobado', bg: '#DBEAFE', color: '#1E40AF' },
+  archived: { label: 'Archivado', bg: '#F3F4F6', color: '#6B7280' },
+};
+
 // ── Render table ──────────────────────────────────────────────────────────────
 function renderTable() {
   const tbody = document.getElementById('expenses-tbody');
   if (!expenses.length) {
-    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:#999;padding:32px;">Sin gastos registrados. Haz clic en "Nuevo Gasto" para comenzar.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:#999;padding:32px;">Sin gastos registrados. Haz clic en "Nuevo Gasto" para comenzar.</td></tr>`;
     return;
   }
   tbody.innerHTML = expenses.map(e => {
-    const t = TYPE_LABELS[e.expense_type] || TYPE_LABELS.other;
+    const t    = TYPE_LABELS[e.expense_type] || TYPE_LABELS.other;
+    const st   = STATUS_STYLES[e.status] || STATUS_STYLES.pending;
     const date = formatDate(e.expense_date);
     const amt  = '$' + parseFloat(e.amount).toLocaleString('en-US', { minimumFractionDigits: 2 });
     const boat = esc(e.boat_name || e.boat_id || '—');
     const desc = esc(e.description || '');
-    const badge = `<span style="background:${t.bg};color:${t.color};padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;">${t.label}</span>`;
+    const badge     = `<span style="background:${t.bg};color:${t.color};padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;">${t.label}</span>`;
+    const statusBadge = `<span style="background:${st.bg};color:${st.color};padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;">${st.label}</span>`;
     const crew  = e.crew_name ? `<div style="font-size:11px;color:#666;">${esc(e.crew_name)} (${e.role || ''})</div>` : '';
     const pm    = e.payment_method ? `<span style="font-size:11px;color:#888;">${esc(e.payment_method)}</span>` : '—';
     return `<tr data-testid="row-expense-${e.id}">
@@ -163,6 +186,7 @@ function renderTable() {
       <td>${desc}${crew}</td>
       <td>${boat}</td>
       <td style="font-weight:700;color:#333;">${amt}</td>
+      <td>${statusBadge}</td>
       <td>${pm}</td>
       <td>${e.booking_id ? `<code style="font-size:11px;">${esc(e.booking_id)}</code>` : '—'}</td>
       <td>
@@ -215,6 +239,7 @@ function openModal(expense = null) {
     document.getElementById('form-date').value          = (expense.expense_date || '').slice(0, 10);
     document.getElementById('form-description').value   = expense.description || '';
     document.getElementById('form-payment-method').value = expense.payment_method || '';
+    document.getElementById('form-status').value         = expense.status || 'pending';
     document.getElementById('form-vendor').value        = expense.vendor || '';
     document.getElementById('form-notes').value         = expense.notes || '';
     document.getElementById('form-booking-id').value    = expense.booking_id || '';

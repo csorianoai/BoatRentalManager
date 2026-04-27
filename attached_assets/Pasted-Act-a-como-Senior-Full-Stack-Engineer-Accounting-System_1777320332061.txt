@@ -1,0 +1,136 @@
+Actúa como Senior Full-Stack Engineer + Accounting Systems Architect + QA Lead.
+
+OBJETIVO:
+Corregir la arquitectura de gastos del sistema para eliminar confusión entre “Gastos”, “Flota”, “Combustible”, “Mantenimiento” y “Contabilidad → Comisiones”.
+
+REGLA MAESTRA:
+Debe existir UN SOLO punto de entrada para registrar gastos:
+
+✅ Gastos / Expenses
+
+Las demás secciones deben funcionar como vistas filtradas, reportes o accesos contextuales, NO como fuentes separadas de verdad.
+
+CLASIFICACIÓN OFICIAL:
+1. Combustible → tipo: fuel
+2. Mantenimiento → tipo: maintenance
+3. Crew / Capitán / Steward → tipo: crew
+4. Recurrente → tipo: recurring
+5. Otros → tipo: other
+
+CAMPOS OBLIGATORIOS PARA TODO GASTO:
+- expense_type
+- amount
+- date
+- vessel_id / boat_id
+- description
+- payment_method
+- created_by
+- status
+
+CAMPOS RECOMENDADOS:
+- booking_id opcional, pero obligatorio si el gasto pertenece a una reserva
+- vendor_name
+- receipt_url
+- notes
+- category/subcategory
+
+REGLAS CONTABLES:
+- Nunca registrar gastos como ingresos.
+- Nunca permitir gasto sin barco asignado.
+- Nunca mezclar combustible con crew o mantenimiento.
+- Captain Fee de $261 debe registrarse como:
+  expense_type = crew
+  subcategory = captain_fee
+  amount = 261
+  relacionado al booking correcto si aplica
+  relacionado al barco correcto
+
+CAMBIO DE ARQUITECTURA:
+1. “Gastos” será el único formulario maestro para registrar cualquier gasto.
+2. “Flota → Combustible” debe leer gastos tipo fuel.
+3. “Flota → Mantenimiento” debe leer gastos tipo maintenance.
+4. “Contabilidad → Comisiones” debe leer gastos tipo crew, no crear registros independientes.
+5. Si existen formularios duplicados en Combustible, Mantenimiento o Comisiones, convertirlos en accesos rápidos que creen registros en la tabla/modelo central de gastos.
+6. Si la pestaña “Contabilidad → Comisiones” está rota, repararla como vista filtrada de gastos tipo crew.
+7. La sección “Comisiones” NO debe ser fuente de verdad separada.
+
+UI / UX:
+- En “Gastos”, agregar selector claro:
+  Fuel / Maintenance / Crew / Recurring / Other
+- Si tipo = fuel:
+  mostrar campos relevantes de combustible.
+- Si tipo = maintenance:
+  mostrar campos relevantes de mantenimiento.
+- Si tipo = crew:
+  mostrar campos:
+    captain/stew name
+    role
+    booking_id
+    boat_id
+    amount
+    payment status
+- Hacer obligatorio seleccionar barco.
+- Mostrar advertencia si falta booking cuando el gasto es crew asociado a reserva.
+- Mostrar confirmación antes de guardar.
+
+MIGRACIÓN / NORMALIZACIÓN:
+- Revisar si existen tablas o arrays separados para fuel, maintenance, commissions o crew payments.
+- No borrar data.
+- Crear adaptadores o migración segura hacia expenses si aplica.
+- Mantener compatibilidad con datos existentes.
+- Evitar refactors destructivos.
+- Agregar comentarios claros donde se unifica la lógica.
+
+VALIDACIONES:
+- Bloquear amount <= 0.
+- Bloquear gasto sin boat_id.
+- Bloquear expense_type inválido.
+- Bloquear crew expense sin role.
+- No permitir que un gasto afecte ingresos brutos.
+- Debe afectar únicamente net profit / operating cost.
+
+REPORTES:
+- Gastos debe poder filtrarse por:
+  - barco
+  - booking
+  - tipo de gasto
+  - fecha
+  - método de pago
+  - estado
+- Contabilidad debe mostrar:
+  total ingresos
+  total gastos
+  gastos crew
+  gastos fuel
+  gastos maintenance
+  net profit
+- Flota debe mostrar gasto por barco.
+
+TESTS OBLIGATORIOS:
+Crear o actualizar pruebas que verifiquen:
+1. Se puede crear gasto tipo crew desde Gastos.
+2. Captain Fee de 261 queda clasificado como crew/captain_fee.
+3. El gasto requiere boat_id.
+4. El gasto no aumenta ingresos.
+5. El gasto reduce utilidad neta.
+6. Combustible lee solo fuel.
+7. Mantenimiento lee solo maintenance.
+8. Comisiones lee solo crew.
+9. No existen entradas duplicadas inconsistentes.
+10. La UI no permite guardar gasto incompleto.
+
+AUTOVALIDACIÓN:
+Después de implementar:
+- Ejecutar build/test/lint disponibles.
+- Hacer smoke test manual del flujo:
+  Gastos → Crew → Captain Fee $261 → barco correcto → booking correcto → aparece en Contabilidad/Comisiones → afecta net profit.
+- Documentar archivos modificados.
+- Documentar cualquier deuda técnica encontrada.
+- No cerrar hasta confirmar que la pestaña Contabilidad/Comisiones funciona como vista filtrada de crew expenses.
+
+IMPORTANTE:
+No romper funciones existentes.
+No inventar datos.
+No ocultar errores.
+No crear pantallas falsas.
+Si falta backend o tabla, crear solución incremental mínima y funcional.

@@ -175,6 +175,25 @@
       </select>
     </div>
     <div class="filter-group">
+      <label>Estado</label>
+      <select id="filter-status" data-testid="select-filter-status">
+        <option value="">Todos</option>
+        <option value="pending">Pendiente</option>
+        <option value="paid">Pagado</option>
+        <option value="approved">Aprobado</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label>Método Pago</label>
+      <select id="filter-payment" data-testid="select-filter-payment">
+        <option value="">Todos</option>
+        <option value="cash">Efectivo</option>
+        <option value="card">Tarjeta</option>
+        <option value="transfer">Transferencia</option>
+        <option value="check">Cheque</option>
+      </select>
+    </div>
+    <div class="filter-group">
       <label>Desde</label>
       <input type="date" id="filter-start" data-testid="input-filter-start">
     </div>
@@ -201,13 +220,14 @@
             <th>Descripción</th>
             <th>Barco</th>
             <th>Monto</th>
+            <th>Estado</th>
             <th>Método Pago</th>
             <th>Reserva</th>
             <th>Acciones</th>
           </tr>
         </thead>
         <tbody id="expenses-tbody">
-          <tr><td colspan="8" style="text-align:center;color:#999;padding:32px;">Cargando...</td></tr>
+          <tr><td colspan="9" style="text-align:center;color:#999;padding:32px;">Cargando...</td></tr>
         </tbody>
       </table>
     </div>
@@ -274,6 +294,15 @@
               <option value="transfer">Transferencia</option>
               <option value="check">Cheque</option>
               <option value="other">Otro</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="form-status">Estado de Pago <span class="required">*</span></label>
+            <select id="form-status" name="status" required data-testid="select-expense-status">
+              <option value="pending">Pendiente</option>
+              <option value="paid">Pagado</option>
+              <option value="approved">Aprobado</option>
             </select>
           </div>
 
