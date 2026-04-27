@@ -145,9 +145,10 @@
 <!-- Main Tab Navigation -->
 <nav>
   <div class="main-tabs">
-    <button class="main-tab active" data-pane="captains" data-testid="tab-captains">⚓ Capitanes</button>
-    <button class="main-tab" data-pane="stew" data-testid="tab-stew">👥 Stew</button>
-    <button class="main-tab" data-pane="platforms" data-testid="tab-platforms">🌐 Plataformas</button>
+    <button class="main-tab active" data-pane="captains" data-testid="tab-captains">Capitanes</button>
+    <button class="main-tab" data-pane="stew" data-testid="tab-stew">Stew</button>
+    <button class="main-tab" data-pane="platforms" data-testid="tab-platforms">Plataformas</button>
+    <button class="main-tab" data-pane="crew-expenses" data-testid="tab-crew-expenses" onclick="loadCrewExpenses()">Gastos Crew</button>
   </div>
 </nav>
 
@@ -355,6 +356,62 @@
       </table>
     </div>
   </main>
+</div>
+
+<!-- ═══════════════════════ TAB: GASTOS CREW ═══════════════════════ -->
+<div class="main-tab-pane" id="pane-crew-expenses">
+
+  <div class="kpi-row" id="crew-exp-kpis">
+    <div class="kpi-mini"><div class="km-label">Total Gastos Crew</div><div class="km-val" id="crew-exp-total">$0</div><div class="km-sub" id="crew-exp-count">0 registros</div></div>
+    <div class="kpi-mini"><div class="km-label">Pendiente</div><div class="km-val" id="crew-exp-pending" style="color:#856404;">$0</div><div class="km-sub">sin pagar</div></div>
+    <div class="kpi-mini"><div class="km-label">Pagado</div><div class="km-val" id="crew-exp-paid" style="color:#155724;">$0</div><div class="km-sub">completado</div></div>
+  </div>
+
+  <div class="fbar" style="margin-bottom:14px;">
+    <div class="fg"><label>Barco</label><select id="crew-exp-boat" data-testid="select-crew-exp-boat"><option value="">Todos</option></select></div>
+    <div class="fg"><label>Estado</label>
+      <select id="crew-exp-status" data-testid="select-crew-exp-status">
+        <option value="">Todos</option>
+        <option value="pending">Pendiente</option>
+        <option value="paid">Pagado</option>
+        <option value="approved">Aprobado</option>
+      </select>
+    </div>
+    <div class="fg"><label>Desde</label><input type="date" id="crew-exp-start" data-testid="input-crew-exp-start"></div>
+    <div class="fg"><label>Hasta</label><input type="date" id="crew-exp-end" data-testid="input-crew-exp-end"></div>
+    <div class="fbar-actions">
+      <button class="btn btn-ghost" onclick="loadCrewExpenses()" data-testid="button-crew-exp-filter">Filtrar</button>
+      <a href="/expenses.html?type=crew" class="btn btn-primary" data-testid="link-add-crew-expense">+ Nuevo gasto crew</a>
+    </div>
+  </div>
+
+  <div class="tbl-card">
+    <div class="tbl-card-header">
+      <h3>Gastos de Crew y Capitanes — Tabla Unificada</h3>
+      <span style="font-size:12px;color:#aaa;margin-left:8px;">Vista de <strong>/api/expenses?expense_type=crew</strong></span>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Nombre</th>
+            <th>Rol</th>
+            <th>Barco</th>
+            <th>Descripción</th>
+            <th>Monto</th>
+            <th>Estado</th>
+            <th>Método</th>
+            <th>Reserva</th>
+          </tr>
+        </thead>
+        <tbody id="crew-exp-tbody" data-testid="table-crew-expenses">
+          <tr><td colspan="9" style="text-align:center;color:#aaa;padding:28px;">Cargando...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
 </div>
 
 <!-- ═══ CAPTAIN PROFILE MODAL ═══ -->
@@ -988,9 +1045,95 @@ async function submitStewProfile() {
   } catch(e) { showToast(e.message, false); }
 }
 
+// ── CREW EXPENSES (Gastos Unificados — expense_type=crew) ─────────────
+let crewExpenses = [];
+
+async function loadCrewExpenses() {
+  const tbody = document.getElementById('crew-exp-tbody');
+  if (!tbody) return;
+  try {
+    const params = new URLSearchParams({ expense_type: 'crew' });
+    const boatVal   = document.getElementById('crew-exp-boat')?.value;
+    const statusVal = document.getElementById('crew-exp-status')?.value;
+    const startVal  = document.getElementById('crew-exp-start')?.value;
+    const endVal    = document.getElementById('crew-exp-end')?.value;
+    if (boatVal)   params.set('boat_id',    boatVal);
+    if (statusVal) params.set('status',     statusVal);
+    if (startVal)  params.set('start_date', startVal);
+    if (endVal)    params.set('end_date',   endVal);
+
+    const res = await fetch('/api/expenses?' + params, { credentials: 'include' });
+    if (!res.ok) throw new Error('Error ' + res.status);
+    crewExpenses = await res.json();
+    renderCrewExpenses();
+    updateCrewExpenseKPIs();
+  } catch (e) {
+    console.error('loadCrewExpenses:', e);
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:#dc3545;padding:24px;">Error al cargar gastos crew: ${e.message}</td></tr>`;
+  }
+}
+
+function renderCrewExpenses() {
+  const tbody = document.getElementById('crew-exp-tbody');
+  if (!crewExpenses.length) {
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:#aaa;padding:32px;">Sin gastos crew registrados. <a href="/expenses.html?type=crew" style="color:#0066cc;">Registrar en Gastos</a></td></tr>`;
+    return;
+  }
+  const ST = { pending:'#856404', paid:'#155724', approved:'#1E40AF', archived:'#6B7280' };
+  const SB = { pending:'#FEF3C7', paid:'#D1FAE5', approved:'#DBEAFE', archived:'#F3F4F6' };
+  const SL = { pending:'Pendiente', paid:'Pagado', approved:'Aprobado', archived:'Archivado' };
+  tbody.innerHTML = crewExpenses.map(e => {
+    const dt  = e.expense_date ? new Date(e.expense_date.length===10 ? e.expense_date+'T12:00:00' : e.expense_date).toLocaleDateString('es-ES',{day:'numeric',month:'short',year:'numeric'}) : '—';
+    const amt = '$' + parseFloat(e.amount||0).toLocaleString('en-US',{minimumFractionDigits:2});
+    const st  = e.status || 'pending';
+    const stBadge = `<span style="background:${SB[st]||SB.pending};color:${ST[st]||ST.pending};padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;">${SL[st]||st}</span>`;
+    return `<tr data-testid="row-crew-expense-${e.id}">
+      <td>${dt}</td>
+      <td style="font-weight:600;">${escC(e.crew_name || '—')}</td>
+      <td>${escC(e.role || '—')}</td>
+      <td>${escC(e.boat_name || e.boat_id || '—')}</td>
+      <td>${escC(e.description || '')}</td>
+      <td style="font-weight:700;color:#333;">${amt}</td>
+      <td>${stBadge}</td>
+      <td>${e.payment_method ? `<span style="font-size:11px;color:#888;">${escC(e.payment_method)}</span>` : '—'}</td>
+      <td>${e.booking_id ? `<code style="font-size:11px;">${escC(e.booking_id)}</code>` : '—'}</td>
+    </tr>`;
+  }).join('');
+}
+
+function updateCrewExpenseKPIs() {
+  const total   = crewExpenses.reduce((s,e) => s + parseFloat(e.amount||0), 0);
+  const pending = crewExpenses.filter(e => !e.status || e.status==='pending').reduce((s,e) => s + parseFloat(e.amount||0), 0);
+  const paid    = crewExpenses.filter(e => e.status==='paid' || e.status==='approved').reduce((s,e) => s + parseFloat(e.amount||0), 0);
+  const fmt = v => '$' + v.toLocaleString('en-US',{minimumFractionDigits:2});
+  document.getElementById('crew-exp-total').textContent   = fmt(total);
+  document.getElementById('crew-exp-pending').textContent = fmt(pending);
+  document.getElementById('crew-exp-paid').textContent    = fmt(paid);
+  document.getElementById('crew-exp-count').textContent   = `${crewExpenses.length} registro${crewExpenses.length!==1?'s':''}`;
+}
+
+function escC(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function populateCrewExpBoatSelect(boats) {
+  const sel = document.getElementById('crew-exp-boat');
+  if (!sel) return;
+  const val = sel.value;
+  sel.innerHTML = '<option value="">Todos</option>';
+  (boats||[]).forEach(b => {
+    const o = document.createElement('option');
+    o.value = b.id; o.textContent = b.name;
+    sel.appendChild(o);
+  });
+  sel.value = val;
+}
+
 // ── INIT ──────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   await loadBoats();
+  populateCrewExpBoatSelect(allBoats);
   loadCaptainPayments();
   loadCapSummary();
   loadCapProfiles();

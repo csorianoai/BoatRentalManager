@@ -431,8 +431,15 @@
 
         <!-- Tab 1: Boat Expenses -->
         <div class="tab-content active" data-tab-content="expenses">
+            <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:14px 18px;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;gap:12px;">
+              <div>
+                <strong style="color:#1E40AF;font-size:13px;">Gastos Unificados (FASE 19)</strong>
+                <p style="color:#1D4ED8;font-size:12px;margin:2px 0 0;">Los gastos de mantenimiento ahora se registran en el módulo central de Gastos. Esta sección muestra los gastos del sistema legado.</p>
+              </div>
+              <a href="/expenses.html?type=maintenance" style="background:#1E40AF;color:#fff;padding:8px 16px;border-radius:7px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap;" data-testid="link-unified-maintenance-expenses">Ver Gastos Mantenimiento</a>
+            </div>
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h2>Gastos de Barcos</h2>
+                <h2>Gastos de Barcos (Legado)</h2>
                 <button class="btn btn-primary" onclick="openExpenseModal()" data-testid="button-add-expense">+ Nuevo Gasto</button>
             </div>
 

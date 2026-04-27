@@ -896,7 +896,7 @@ function init() {
   $('btn-dismiss-alerts')?.addEventListener('click', () => { $('alerts-section').style.display = 'none'; });
 
   // Load
-  loadBoats().then(() => loadAll());
+  loadBoats().then(() => { loadAll(); loadUnifiedFuelExpenses(); });
 }
 
 // ── Quick Fuel Modal ──────────────────────────────────────────────────
@@ -1050,6 +1050,62 @@ function setupQuickFuelModal() {
       closeQuickFuelModal();
     }
   });
+}
+
+// ── Gastos Combustible Unificados (FASE 19) ─────────────────────────────────
+async function loadUnifiedFuelExpenses() {
+  const tbody = document.getElementById('unified-fuel-tbody');
+  if (!tbody) return;
+  try {
+    const params = new URLSearchParams({ expense_type: 'fuel' });
+    if (S.filters.boat_id) params.set('boat_id', S.filters.boat_id);
+    if (S.filters.from)    params.set('start_date', S.filters.from);
+    if (S.filters.to)      params.set('end_date', S.filters.to);
+    const res = await fetch('/api/expenses?' + params, { credentials: 'include' });
+    if (!res.ok) throw new Error('Error ' + res.status);
+    const items = await res.json();
+    // KPIs
+    const total   = items.reduce((s, e) => s + parseFloat(e.amount||0), 0);
+    const pending = items.filter(e => !e.status || e.status==='pending').reduce((s,e) => s + parseFloat(e.amount||0), 0);
+    const paid    = items.filter(e => e.status==='paid' || e.status==='approved').reduce((s,e) => s + parseFloat(e.amount||0), 0);
+    const fmt = v => '$' + v.toLocaleString('en-US',{minimumFractionDigits:2});
+    const ufTotal = document.getElementById('uf-kpi-total');
+    const ufCount = document.getElementById('uf-kpi-count');
+    const ufPend  = document.getElementById('uf-kpi-pending');
+    const ufPaid  = document.getElementById('uf-kpi-paid');
+    if (ufTotal) ufTotal.textContent = fmt(total);
+    if (ufCount) ufCount.textContent = `${items.length} registro${items.length!==1?'s':''}`;
+    if (ufPend)  ufPend.textContent  = fmt(pending);
+    if (ufPaid)  ufPaid.textContent  = fmt(paid);
+    // Table
+    if (!items.length) {
+      tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#aaa;padding:28px;">Sin gastos combustible en tabla unificada. <a href="/expenses.html?type=fuel" style="color:#f59e0b;">Registrar en Gastos</a></td></tr>`;
+      return;
+    }
+    const ST = { pending:'#856404', paid:'#155724', approved:'#1E40AF', archived:'#6B7280' };
+    const SB = { pending:'#FEF3C7', paid:'#D1FAE5', approved:'#DBEAFE', archived:'#F3F4F6' };
+    const SL = { pending:'Pendiente', paid:'Pagado', approved:'Aprobado', archived:'Archivado' };
+    const escF = s => s ? String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
+    tbody.innerHTML = items.map(e => {
+      const dt  = e.expense_date ? new Date(e.expense_date.length===10 ? e.expense_date+'T12:00:00' : e.expense_date).toLocaleDateString('es-ES',{day:'numeric',month:'short',year:'numeric'}) : '—';
+      const amt = fmt(parseFloat(e.amount||0));
+      const st  = e.status || 'pending';
+      const stBadge = `<span style="background:${SB[st]||SB.pending};color:${ST[st]||ST.pending};padding:2px 7px;border-radius:9px;font-size:11px;font-weight:600;">${SL[st]||st}</span>`;
+      return `<tr data-testid="row-uf-expense-${e.id}" style="border-bottom:1px solid #f5f5f5;">
+        <td style="padding:10px 14px;">${dt}</td>
+        <td style="padding:10px 14px;">${escF(e.boat_name || e.boat_id || '—')}</td>
+        <td style="padding:10px 14px;">${escF(e.description || '')}</td>
+        <td style="padding:10px 14px;">${e.fuel_gallons ? e.fuel_gallons + ' gal' : '—'}</td>
+        <td style="padding:10px 14px;font-weight:700;color:#92400E;">${amt}</td>
+        <td style="padding:10px 14px;">${stBadge}</td>
+        <td style="padding:10px 14px;">${escF(e.vendor || '—')}</td>
+      </tr>`;
+    }).join('');
+  } catch (e) {
+    console.error('loadUnifiedFuelExpenses:', e);
+    const tbody2 = document.getElementById('unified-fuel-tbody');
+    if (tbody2) tbody2.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#dc3545;padding:20px;">Error al cargar: ${e.message}</td></tr>`;
+  }
 }
 
 document.addEventListener('DOMContentLoaded', init);

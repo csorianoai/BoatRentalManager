@@ -30,11 +30,23 @@ let editingId   = null;
 
 // ── Init ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
+  // Pre-apply ?type= URL parameter if present
+  const urlType = new URLSearchParams(window.location.search).get('type');
+  if (urlType && TYPE_LABELS[urlType]) {
+    filters.expense_type = urlType;
+  }
+
   await Promise.all([loadBoats(), loadExpenses(), loadSummary()]);
   setupFilters();
   setupForm();
   renderSummary();
   renderTable();
+
+  // Sync the filter select after load
+  if (filters.expense_type) {
+    const sel = document.getElementById('filter-type');
+    if (sel) sel.value = filters.expense_type;
+  }
 });
 
 async function apiFetch(url, opts = {}) {
@@ -289,6 +301,7 @@ async function handleSubmit(e) {
     fuel_gallons:   document.getElementById('form-fuel-gallons').value || undefined,
     fuel_station:   document.getElementById('form-fuel-station').value || undefined,
     invoice_number: document.getElementById('form-invoice').value || undefined,
+    status:         document.getElementById('form-status').value || 'pending',
   };
 
   try {

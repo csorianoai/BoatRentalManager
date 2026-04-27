@@ -11545,7 +11545,7 @@ const VALID_EXPENSE_TYPES = ['fuel', 'maintenance', 'crew', 'recurring', 'other'
 // GET /api/expenses — filtered list
 app.get('/api/expenses', isAuthenticated, async (req, res) => {
   try {
-    const { expense_type, boat_id, booking_id, start_date, end_date, status } = req.query;
+    const { expense_type, boat_id, booking_id, start_date, end_date, status, payment_method } = req.query;
     let q = `
       SELECT be.*, b.name AS boat_name
       FROM boat_expenses be
@@ -11554,12 +11554,13 @@ app.get('/api/expenses', isAuthenticated, async (req, res) => {
     `;
     const params = [];
     let idx = 1;
-    if (expense_type) { q += ` AND be.expense_type = $${idx++}`; params.push(expense_type); }
-    if (boat_id)      { q += ` AND be.boat_id = $${idx++}`;      params.push(boat_id); }
-    if (booking_id)   { q += ` AND be.booking_id = $${idx++}`;   params.push(booking_id); }
-    if (start_date)   { q += ` AND be.expense_date >= $${idx++}`;params.push(start_date); }
-    if (end_date)     { q += ` AND be.expense_date <= $${idx++}`;params.push(end_date); }
-    if (status)       { q += ` AND be.status = $${idx++}`;        params.push(status); }
+    if (expense_type)   { q += ` AND be.expense_type = $${idx++}`;    params.push(expense_type); }
+    if (boat_id)        { q += ` AND be.boat_id = $${idx++}`;         params.push(boat_id); }
+    if (booking_id)     { q += ` AND be.booking_id = $${idx++}`;      params.push(booking_id); }
+    if (start_date)     { q += ` AND be.expense_date >= $${idx++}`;   params.push(start_date); }
+    if (end_date)       { q += ` AND be.expense_date <= $${idx++}`;   params.push(end_date); }
+    if (status)         { q += ` AND be.status = $${idx++}`;           params.push(status); }
+    if (payment_method) { q += ` AND be.payment_method = $${idx++}`;  params.push(payment_method); }
     q += ' ORDER BY be.expense_date DESC, be.created_at DESC';
     const result = await pool.query(q, params);
     res.json(result.rows);

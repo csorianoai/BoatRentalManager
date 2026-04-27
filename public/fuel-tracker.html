@@ -386,6 +386,51 @@
       </div>
     </section>
 
+    <!-- ── GASTOS COMBUSTIBLE — Tabla Unificada (FASE 19) ───────────── -->
+    <section class="section" id="unified-fuel-expenses-section">
+      <div class="section-header">
+        <h2 class="section-title">Gastos Combustible — Tabla Unificada</h2>
+        <a href="/expenses.html?type=fuel" style="background:#f59e0b;color:#fff;padding:7px 14px;border-radius:7px;font-size:12px;font-weight:600;text-decoration:none;" data-testid="link-unified-fuel-expenses">+ Registrar gasto</a>
+      </div>
+      <div id="unified-fuel-kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px;">
+        <div style="background:#fff;border:1px solid #e8e8e8;border-radius:10px;padding:14px 18px;">
+          <div style="font-size:11px;color:#888;font-weight:700;text-transform:uppercase;">Total Combustible</div>
+          <div id="uf-kpi-total" style="font-size:24px;font-weight:800;color:#f59e0b;margin-top:4px;">$0</div>
+          <div id="uf-kpi-count" style="font-size:11px;color:#aaa;margin-top:2px;">0 registros</div>
+        </div>
+        <div style="background:#fff;border:1px solid #e8e8e8;border-radius:10px;padding:14px 18px;">
+          <div style="font-size:11px;color:#888;font-weight:700;text-transform:uppercase;">Pendiente</div>
+          <div id="uf-kpi-pending" style="font-size:24px;font-weight:800;color:#856404;margin-top:4px;">$0</div>
+          <div style="font-size:11px;color:#aaa;margin-top:2px;">sin pagar</div>
+        </div>
+        <div style="background:#fff;border:1px solid #e8e8e8;border-radius:10px;padding:14px 18px;">
+          <div style="font-size:11px;color:#888;font-weight:700;text-transform:uppercase;">Pagado</div>
+          <div id="uf-kpi-paid" style="font-size:24px;font-weight:800;color:#065F46;margin-top:4px;">$0</div>
+          <div style="font-size:11px;color:#aaa;margin-top:2px;">completado</div>
+        </div>
+      </div>
+      <div style="background:#fff;border:1px solid #e8e8e8;border-radius:10px;overflow:hidden;">
+        <div style="overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;font-size:13px;">
+            <thead>
+              <tr style="background:#f8f9fa;">
+                <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#666;text-transform:uppercase;border-bottom:1px solid #f0f0f0;">Fecha</th>
+                <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#666;text-transform:uppercase;border-bottom:1px solid #f0f0f0;">Barco</th>
+                <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#666;text-transform:uppercase;border-bottom:1px solid #f0f0f0;">Descripción</th>
+                <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#666;text-transform:uppercase;border-bottom:1px solid #f0f0f0;">Galones</th>
+                <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#666;text-transform:uppercase;border-bottom:1px solid #f0f0f0;">Monto</th>
+                <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#666;text-transform:uppercase;border-bottom:1px solid #f0f0f0;">Estado</th>
+                <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#666;text-transform:uppercase;border-bottom:1px solid #f0f0f0;">Proveedor</th>
+              </tr>
+            </thead>
+            <tbody id="unified-fuel-tbody" data-testid="table-unified-fuel-expenses">
+              <tr><td colspan="7" style="text-align:center;color:#aaa;padding:28px;">Cargando...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
   </main>
 
   <!-- ── MODAL: EDIT ENGINE HOURS ─────────────────────────────────── -->
