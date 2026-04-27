@@ -416,6 +416,8 @@ function openEditBooking(id) {
 
   // Fase 5: Cargar documentos/contratos para esta reserva
   calDocuments.load(id);
+  // Fase 6: Cargar pagos de capitán para esta reserva
+  calCaptainPay.load(id);
 }
 
 function closeBookingModal() {
@@ -1934,4 +1936,226 @@ const calDocuments = (function () {
   }
 
   return { load, confirm, unlink, uploadFiles, onDrop };
+}());
+
+/* ══════════════════════════════════════════════════════════════════
+   calCaptainPay — Pago de Capitán vinculado a Booking (Fase 6)
+   ══════════════════════════════════════════════════════════════════ */
+const calCaptainPay = (function () {
+  'use strict';
+
+  let _bookingId = null;
+
+  function _esc(s) {
+    if (s == null) return '';
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  const METHOD_LABELS = {
+    cash: 'Efectivo', bank_transfer: 'Transferencia', zelle: 'Zelle',
+    check: 'Cheque', other: 'Otro'
+  };
+
+  function _statusBadge(status) {
+    const base = 'display:inline-block;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700;';
+    if (status === 'paid')    return `<span style="${base}background:#D1FAE5;color:#065F46;">Pagado</span>`;
+    if (status === 'pending') return `<span style="${base}background:#FEF3C7;color:#92400E;">Pendiente</span>`;
+    return `<span style="${base}background:#F3F4F6;color:#6B7280;">${_esc(status)}</span>`;
+  }
+
+  function _renderPayment(p) {
+    const method = METHOD_LABELS[p.payment_method] || p.payment_method || '';
+    const dateStr = p.work_date ? String(p.work_date).slice(0, 10) : '';
+    const txBadge = p.transaction_id
+      ? `<span style="font-size:10px;color:#0369a1;font-weight:600;">&#10003; Transacción registrada</span>`
+      : '';
+    return `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;
+                padding:10px;border:1px solid #e2e8f0;border-radius:6px;background:#fff;margin-bottom:8px;"
+         data-testid="cap-pay-row-${_esc(p.id)}">
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:600;color:#1e293b;">${_esc(p.captain_name)}</div>
+        <div style="font-size:12px;color:#475569;margin-top:2px;">
+          $${parseFloat(p.amount).toFixed(2)}
+          ${method ? ' · ' + _esc(method) : ''}
+          ${dateStr ? ' · ' + dateStr : ''}
+        </div>
+        ${p.description ? `<div style="font-size:11px;color:#94a3b8;margin-top:2px;">${_esc(p.description)}</div>` : ''}
+        <div style="margin-top:4px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          ${_statusBadge(p.status)}
+          ${txBadge}
+        </div>
+      </div>
+      <button onclick="calCaptainPay.del('${_esc(p.id)}')"
+              style="flex-shrink:0;border:none;background:none;color:#dc2626;cursor:pointer;font-size:11px;padding:2px 0;"
+              data-testid="btn-cap-pay-del-${_esc(p.id)}">Eliminar</button>
+    </div>`;
+  }
+
+  /* ── Load and render ── */
+  async function load(bookingId) {
+    _bookingId = bookingId;
+
+    const sec  = document.getElementById('bk-cap-pay-section');
+    const body = document.getElementById('bk-cap-pay-body');
+    const form = document.getElementById('bk-cap-pay-form');
+
+    if (!sec || !body) return;
+    sec.style.display = 'block';
+    body.innerHTML = '<div style="color:#94a3b8;font-size:13px;padding:6px 0;">Cargando pagos...</div>';
+    if (form) form.style.display = 'none';
+
+    _populateCaptainSelect();
+
+    if (!bookingId) {
+      body.innerHTML = '<div style="color:#94a3b8;font-size:13px;padding:6px 0;">Guarda la reserva primero.</div>';
+      return;
+    }
+
+    try {
+      const r = await fetch(`/api/bookings/${encodeURIComponent(bookingId)}/captain-payments`);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const payments = await r.json();
+      _render(payments);
+    } catch (e) {
+      body.innerHTML = `<div style="color:#dc2626;font-size:12px;padding:6px 0;">Error al cargar pagos.</div>`;
+      console.warn('[calCaptainPay]', e);
+    }
+  }
+
+  function _render(payments) {
+    const body = document.getElementById('bk-cap-pay-body');
+    if (!body) return;
+    if (!payments.length) {
+      body.innerHTML = '<div style="color:#94a3b8;font-size:13px;padding:6px 0;">Sin pagos registrados para este booking.</div>';
+    } else {
+      const total = payments.reduce((s, p) => s + parseFloat(p.amount || 0), 0);
+      const paidTotal = payments.filter(p => p.status === 'paid').reduce((s, p) => s + parseFloat(p.amount || 0), 0);
+      body.innerHTML =
+        `<div style="font-size:11px;color:#475569;margin-bottom:8px;padding:6px 10px;background:#f1f5f9;border-radius:6px;">
+           Total: <strong>$${total.toFixed(2)}</strong>
+           ${paidTotal < total ? ` &nbsp;·&nbsp; Pagado: <strong style="color:#16a34a;">$${paidTotal.toFixed(2)}</strong>` : ''}
+         </div>` +
+        payments.map(_renderPayment).join('');
+    }
+  }
+
+  function _populateCaptainSelect() {
+    const sel = document.getElementById('bk-cpf-captain');
+    if (!sel) return;
+    const list = (typeof captains !== 'undefined') ? captains : [];
+    sel.innerHTML = list.map(c =>
+      `<option value="${_esc(c.id)}">${_esc(c.name)}</option>`
+    ).join('');
+    if (!sel.innerHTML) sel.innerHTML = '<option value="">Sin capitanes cargados</option>';
+  }
+
+  /* ── Form controls ── */
+  function showForm() {
+    const form = document.getElementById('bk-cap-pay-form');
+    const btn  = document.getElementById('bk-cap-pay-add-btn');
+    if (form) form.style.display = 'block';
+    if (btn)  btn.style.display  = 'none';
+    // Default date = today
+    const dateEl = document.getElementById('bk-cpf-date');
+    if (dateEl && !dateEl.value) {
+      dateEl.value = new Date().toISOString().slice(0, 10);
+    }
+    // Pre-fill captain from booking
+    const capEl = document.getElementById('bk-cpf-captain');
+    const bkCap = document.getElementById('bk-captain');
+    if (capEl && bkCap && bkCap.value) capEl.value = bkCap.value;
+  }
+
+  function hideForm() {
+    const form = document.getElementById('bk-cap-pay-form');
+    const btn  = document.getElementById('bk-cap-pay-add-btn');
+    if (form) form.style.display = 'none';
+    if (btn)  btn.style.display  = '';
+    _clearMsg();
+  }
+
+  function _msg(text, isErr) {
+    const el = document.getElementById('bk-cpf-msg');
+    if (!el) return;
+    el.style.display = 'block';
+    el.style.color   = isErr ? '#dc2626' : '#16a34a';
+    el.textContent   = text;
+  }
+
+  function _clearMsg() {
+    const el = document.getElementById('bk-cpf-msg');
+    if (el) el.style.display = 'none';
+  }
+
+  /* ── Submit ── */
+  async function submit() {
+    if (!_bookingId) { _msg('Guarda la reserva primero.', true); return; }
+
+    const capSel   = document.getElementById('bk-cpf-captain');
+    const amtEl    = document.getElementById('bk-cpf-amount');
+    const methodEl = document.getElementById('bk-cpf-method');
+    const dateEl   = document.getElementById('bk-cpf-date');
+    const statusEl = document.getElementById('bk-cpf-status');
+    const descEl   = document.getElementById('bk-cpf-desc');
+    const btn      = document.getElementById('button-cpf-submit') ||
+                     document.querySelector('[data-testid="button-cpf-submit"]');
+
+    const capId   = capSel?.value || '';
+    const capName = capSel?.options[capSel.selectedIndex]?.text || capId;
+    const amount  = parseFloat(amtEl?.value || '0');
+    const method  = methodEl?.value || 'cash';
+    const date    = dateEl?.value || '';
+    const status  = statusEl?.value || 'paid';
+    const desc    = descEl?.value?.trim() || '';
+
+    if (!capName || capName === 'Sin capitanes cargados') { _msg('Selecciona un capitán.', true); return; }
+    if (!amount || amount <= 0) { _msg('Ingresa un monto válido.', true); return; }
+    if (!date) { _msg('La fecha es obligatoria.', true); return; }
+
+    if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
+
+    try {
+      const r = await fetch(`/api/bookings/${encodeURIComponent(_bookingId)}/captain-payments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          captain_id: capId, captain_name: capName,
+          amount, payment_method: method,
+          work_date: date, status, description: desc
+        })
+      });
+
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Error al registrar');
+
+      const txNote = data.transaction ? ' — transacción contable creada' : '';
+      _msg(`Pago registrado${ txNote}`, false);
+
+      // Reset form fields
+      if (amtEl) amtEl.value = '';
+      if (descEl) descEl.value = '';
+
+      setTimeout(() => hideForm(), 1200);
+      await load(_bookingId);
+    } catch (e) {
+      _msg(e.message || 'Error al registrar el pago.', true);
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = 'Registrar pago'; }
+    }
+  }
+
+  /* ── Delete ── */
+  async function del(paymentId) {
+    if (!confirm('¿Eliminar este pago? Esta acción no se puede deshacer.')) return;
+    try {
+      const r = await fetch(`/api/captain-payments/${encodeURIComponent(paymentId)}`, { method: 'DELETE' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      await load(_bookingId);
+    } catch (e) {
+      console.warn('[calCaptainPay] delete error', e);
+    }
+  }
+
+  return { load, showForm, hideForm, submit, del };
 }());

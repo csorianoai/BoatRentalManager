@@ -1273,6 +1273,13 @@ async function initializeDatabase() {
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_cap_pay_boat ON captain_payments(boat_id)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_cap_pay_captain ON captain_payments(captain_id)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_cap_pay_date ON captain_payments(work_date DESC)`);
+    await pool.query(`ALTER TABLE captain_payments ADD COLUMN IF NOT EXISTS booking_id TEXT`);
+    await pool.query(`ALTER TABLE captain_payments ADD COLUMN IF NOT EXISTS payment_method TEXT DEFAULT 'cash'`);
+    await pool.query(`ALTER TABLE captain_payments ADD COLUMN IF NOT EXISTS transaction_id TEXT`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_cap_pay_booking ON captain_payments(booking_id)`);
+    // Extend reference_type constraint to include captain_payment
+    await pool.query(`ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_reference_type_check`);
+    await pool.query(`ALTER TABLE transactions ADD CONSTRAINT transactions_reference_type_check CHECK (reference_type IN ('booking','commission','fuel','maintenance','manual','bank_transfer','other','asset','captain_payment'))`);
 
     // Stew payments (parallel to captain payments)
     await pool.query(`
@@ -1664,7 +1671,7 @@ async function initializeDatabase() {
       ON CONFLICT (id) DO NOTHING
     `);
 
-    // Extend transactions reference_type constraint to include 'asset'
+    // Extend transactions reference_type constraint to include 'asset' and 'captain_payment'
     await pool.query(`
       ALTER TABLE transactions
         DROP CONSTRAINT IF EXISTS transactions_reference_type_check
@@ -1672,7 +1679,7 @@ async function initializeDatabase() {
     await pool.query(`
       ALTER TABLE transactions
         ADD CONSTRAINT transactions_reference_type_check
-        CHECK (reference_type IN ('booking','commission','fuel','maintenance','manual','bank_transfer','other','asset'))
+        CHECK (reference_type IN ('booking','commission','fuel','maintenance','manual','bank_transfer','other','asset','captain_payment'))
     `);
     
     // AUTHENTICATION: Create sessions table (required for Replit Auth)
@@ -13803,6 +13810,77 @@ app.delete('/api/captain-payments/:id', isAuthenticated, async (req, res) => {
     const result = await pool.query('DELETE FROM captain_payments WHERE id=$1 RETURNING id', [req.params.id]);
     if (result.rows.length === 0) return res.status(404).json({ error: 'No encontrado' });
     res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── Captain Payments: booking-scoped ─────────────────────────────────────
+app.get('/api/bookings/:id/captain-payments', isAuthenticated, async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT * FROM captain_payments WHERE booking_id=$1 ORDER BY work_date DESC, created_at DESC`,
+      [req.params.id]
+    );
+    res.json(r.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/bookings/:id/captain-payments', isAuthenticated, async (req, res) => {
+  try {
+    const bookingId = req.params.id;
+    const { captain_id, captain_name, amount, payment_method, work_date, status, description } = req.body;
+
+    if (!captain_name || !amount || !work_date) {
+      return res.status(400).json({ error: 'captain_name, amount y work_date son obligatorios' });
+    }
+
+    const bkRes = await pool.query('SELECT * FROM bookings WHERE id=$1', [bookingId]);
+    if (!bkRes.rows.length) return res.status(404).json({ error: 'Booking no encontrado' });
+    const bk = bkRes.rows[0];
+
+    const boatRes = await pool.query('SELECT name FROM boats WHERE id=$1', [bk.boat_id]);
+    const boat_name = boatRes.rows[0]?.name || bk.boat_id || '';
+
+    const { nanoid } = await import('nanoid');
+    const cpId = 'cpay_' + nanoid(10);
+    const pstatus = (status === 'pending') ? 'pending' : 'paid';
+    const desc = description || `Pago capitán — booking ${bookingId}`;
+
+    // Create captain_payment
+    const cpResult = await pool.query(
+      `INSERT INTO captain_payments
+         (id, captain_id, captain_name, boat_id, boat_name, work_date, description,
+          amount, status, payment_method, booking_id, registered_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+      [cpId, captain_id||null, captain_name, bk.boat_id||'', boat_name, work_date,
+       desc, amount, pstatus, payment_method||'cash', bookingId,
+       req.user?.name || req.user?.email || 'sistema']
+    );
+
+    // Accounting: create expense transaction only when paid
+    let transaction = null;
+    if (pstatus === 'paid') {
+      const CAPTAIN_WAGES_ACCOUNT = '5KJNrPSdUdRURn8148W1E';
+      const txId = 'tx_' + nanoid(10);
+      try {
+        const txRes = await pool.query(
+          `INSERT INTO transactions
+             (id, transaction_date, transaction_type, account_id, amount, description,
+              reference_id, reference_type, boat_id, captain_id, booking_id, notes)
+           VALUES ($1,$2,'expense',$3,$4,$5,$6,'captain_payment',$7,$8,$9,$10) RETURNING *`,
+          [txId, work_date, CAPTAIN_WAGES_ACCOUNT, amount,
+           `Pago capitán: ${captain_name}`, cpId,
+           bk.boat_id||null, captain_id||null, bookingId, desc]
+        );
+        transaction = txRes.rows[0];
+        // Link transaction back to captain_payment record
+        await pool.query(`UPDATE captain_payments SET transaction_id=$1 WHERE id=$2`, [txId, cpId]);
+        cpResult.rows[0].transaction_id = txId;
+      } catch (txErr) {
+        console.error('[captain-pay] accounting entry error:', txErr.message);
+      }
+    }
+
+    res.status(201).json({ payment: cpResult.rows[0], transaction });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
