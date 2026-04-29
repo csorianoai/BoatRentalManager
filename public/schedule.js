@@ -1299,7 +1299,7 @@ window.NadakiCalendar = (function () {
   }
 
   // ── Date Scrubber ─────────────────────────────────────────────
-  const DS_CELL_W  = 42;   // px per day cell
+  const DS_CELL_W  = 50;   // px per day cell (46px + 2px gap + 2px border)
   const DS_TOTAL   = 63;   // total days in strip (9 weeks)
   const DS_BACK_WK = 3;    // weeks behind current week to start
 
@@ -1372,9 +1372,11 @@ window.NadakiCalendar = (function () {
     for (let i = 0; i < DS_TOTAL; i++) {
       const d = new Date(start); d.setDate(start.getDate() + i);
       const ds = fmtDate(d);
-      const isToday = ds === today;
-      const isWend  = [0, 6].includes(d.getDay());
-      const inRange = ds >= df && ds <= dt;
+      const isToday  = ds === today;
+      const isWend   = [0, 6].includes(d.getDay());
+      const inRange  = ds >= df && ds <= dt;
+      const isStart  = ds === df;
+      const isEnd    = ds === dt;
       const dow = d.toLocaleDateString('es-ES', { weekday: 'short' }).slice(0, 2).toUpperCase();
       if (d.getMonth() !== lastMonth) {
         if (lastMonth !== -1) html += `<div class="cal2-dbar-sep"></div>`;
@@ -1382,7 +1384,14 @@ window.NadakiCalendar = (function () {
         html += `<div class="cal2-dbar-month-label">${mLabel}</div>`;
         lastMonth = d.getMonth();
       }
-      const cls = ['cal2-dbar-day', isToday?'cal2-dbar-today':'', isWend?'cal2-dbar-wend':'', inRange?'cal2-dbar-inrange':''].filter(Boolean).join(' ');
+      const cls = [
+        'cal2-dbar-day',
+        isToday ? 'cal2-dbar-today' : '',
+        isWend  ? 'cal2-dbar-wend' : '',
+        inRange ? 'cal2-dbar-inrange' : '',
+        isStart ? 'cal2-dbar-range-start' : '',
+        isEnd   ? 'cal2-dbar-range-end' : ''
+      ].filter(Boolean).join(' ');
       html += `<div class="${cls}" data-date="${ds}" data-testid="dbar-${ds}"
         onclick="if(!window._dsClickGuard) _dsClickDay('${ds}')">
         <span class="cal2-dbar-dow">${dow}</span>

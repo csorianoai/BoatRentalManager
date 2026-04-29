@@ -537,8 +537,8 @@
 
     /* ── Date Scrubber ── */
     .cal2-dbar-wrap {
-      background: #1a2535;
-      border-bottom: 1px solid #2d3f55;
+      background: #0f172a;
+      border-bottom: 2px solid #1e3a5f;
       overflow: hidden;
       position: relative;
     }
@@ -550,98 +550,119 @@
       cursor: grab;
       user-select: none;
       touch-action: pan-x;
+      padding: 6px 32px;
     }
     .cal2-dbar:active { cursor: grabbing; }
     .cal2-dbar::-webkit-scrollbar { display: none; }
     .cal2-dbar-track {
       display: flex;
-      align-items: stretch;
-      padding: 0 8px;
+      align-items: center;
+      gap: 2px;
     }
     .cal2-dbar-month-label {
-      display: flex;
-      align-items: center;
-      justify-content: flex-start;
-      font-size: 9px;
-      font-weight: 800;
+      font-size: 10px;
+      font-weight: 900;
       text-transform: uppercase;
-      letter-spacing: 0.1em;
-      color: #475569;
+      letter-spacing: 0.12em;
+      color: #3b82f6;
       white-space: nowrap;
-      padding: 4px 6px 0 2px;
-      align-self: flex-start;
-      padding-top: 6px;
+      padding: 0 8px 0 4px;
       flex-shrink: 0;
+      align-self: center;
     }
     .cal2-dbar-day {
-      min-width: 42px;
-      width: 42px;
-      padding: 5px 2px 6px;
+      min-width: 46px;
+      width: 46px;
+      padding: 6px 2px 7px;
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 3px;
+      gap: 4px;
       cursor: pointer;
-      border-radius: 6px;
-      transition: background 0.12s;
+      border-radius: 8px;
+      transition: background 0.13s, transform 0.1s;
       flex-shrink: 0;
+      border: 1px solid transparent;
     }
-    .cal2-dbar-day:hover { background: #293548; }
+    .cal2-dbar-day:hover {
+      background: #1e3a5f;
+      border-color: #2563eb44;
+      transform: translateY(-1px);
+    }
     .cal2-dbar-dow {
-      font-size: 9px;
+      font-size: 10px;
       font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: 0.04em;
+      letter-spacing: 0.06em;
       color: #475569;
     }
     .cal2-dbar-dn {
-      font-size: 13px;
-      font-weight: 700;
+      font-size: 15px;
+      font-weight: 800;
       color: #64748b;
-      width: 28px;
-      height: 28px;
+      width: 32px;
+      height: 32px;
       display: flex;
       align-items: center;
       justify-content: center;
       border-radius: 50%;
       line-height: 1;
     }
-    .cal2-dbar-day.cal2-dbar-inrange { background: rgba(0,102,204,0.12); }
-    .cal2-dbar-day.cal2-dbar-inrange .cal2-dbar-dn { color: #93c5fd; }
-    .cal2-dbar-day.cal2-dbar-inrange .cal2-dbar-dow { color: #64748b; }
+    /* IN-RANGE (selected week) */
+    .cal2-dbar-day.cal2-dbar-inrange {
+      background: #1e3a5f;
+      border-color: #2563eb66;
+    }
+    .cal2-dbar-day.cal2-dbar-inrange .cal2-dbar-dn {
+      color: #bfdbfe;
+      background: rgba(37,99,235,0.25);
+    }
+    .cal2-dbar-day.cal2-dbar-inrange .cal2-dbar-dow { color: #7dd3fc; }
+    /* Range edges — rounded pill shape */
+    .cal2-dbar-day.cal2-dbar-range-start {
+      border-left-color: #2563eb;
+      border-radius: 20px 8px 8px 20px;
+    }
+    .cal2-dbar-day.cal2-dbar-range-end {
+      border-right-color: #2563eb;
+      border-radius: 8px 20px 20px 8px;
+    }
+    /* TODAY */
     .cal2-dbar-day.cal2-dbar-today .cal2-dbar-dn {
-      background: #0066cc;
+      background: #2563eb;
       color: #fff;
+      box-shadow: 0 0 0 3px rgba(37,99,235,0.35);
     }
-    .cal2-dbar-day.cal2-dbar-today.cal2-dbar-inrange .cal2-dbar-dn {
-      background: #0066cc;
-      color: #fff;
-    }
-    .cal2-dbar-day.cal2-dbar-wend .cal2-dbar-dow { color: #334155; }
+    .cal2-dbar-day.cal2-dbar-today .cal2-dbar-dow { color: #93c5fd; font-weight: 900; }
+    /* Weekends dimmed */
+    .cal2-dbar-day.cal2-dbar-wend:not(.cal2-dbar-inrange) .cal2-dbar-dn { color: #334155; }
+    .cal2-dbar-day.cal2-dbar-wend:not(.cal2-dbar-inrange) .cal2-dbar-dow { color: #2d3f55; }
+    /* Month separator */
     .cal2-dbar-sep {
       width: 1px;
-      background: #2d3f55;
-      margin: 6px 2px;
+      min-width: 1px;
+      height: 36px;
+      background: #1e3a5f;
       flex-shrink: 0;
-      align-self: stretch;
+      align-self: center;
+      margin: 0 4px;
     }
-    /* Swipe hint arrows */
+    /* Fade edges */
     .cal2-dbar-hint {
       position: absolute;
-      top: 50%;
-      transform: translateY(-50%);
-      width: 24px;
-      height: 100%;
+      top: 0; bottom: 0;
+      width: 36px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 14px;
-      color: #334155;
+      font-size: 18px;
+      font-weight: 700;
+      color: #475569;
       pointer-events: none;
       z-index: 2;
     }
-    .cal2-dbar-hint-l { left: 0; background: linear-gradient(to right, #1a2535 60%, transparent); }
-    .cal2-dbar-hint-r { right: 0; background: linear-gradient(to left, #1a2535 60%, transparent); }
+    .cal2-dbar-hint-l { left: 0; background: linear-gradient(to right, #0f172a 55%, transparent); }
+    .cal2-dbar-hint-r { right: 0; background: linear-gradient(to left, #0f172a 55%, transparent); }
 
     /* ── Responsive ── */
     @media (max-width: 768px) {
