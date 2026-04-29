@@ -999,7 +999,8 @@ window.NadakiCalendar = (function () {
           const dow=d.toLocaleDateString('es-ES',{weekday:'short'}).toUpperCase();
           return `<div class="cal2-wv-dh ${isT?'cal2-istoday':''} ${isW?'cal2-isweekend':''}"
             data-date="${ds}" data-testid="col-header-${ds}"
-            onclick="openBookingModal('${ds}','10:00')">
+            title="Ver día ${ds}"
+            onclick="NadakiCalendar.setDayView('${ds}')" style="cursor:pointer">
             <span class="cal2-wv-dow">${dow}</span>
             <span class="cal2-wv-dn ${isT?'cal2-today-pill':''}">${d.getDate()}</span>
           </div>`;
@@ -1066,8 +1067,10 @@ window.NadakiCalendar = (function () {
 
     let html = `<div class="cal2-dv">
       <div class="cal2-dv-daybar">
+        <button class="cal2-dv-back-btn" onclick="NadakiCalendar.switchView('week')" title="Volver a vista semana">&#8592; Semana</button>
         <span class="cal2-dv-dtitle ${isT?'cal2-today-text':''}">${dow.charAt(0).toUpperCase()+dow.slice(1)}</span>
         <span class="cal2-dv-badge">${dayBks.length} reserva${dayBks.length!==1?'s':''}</span>
+        <button class="cal2-btn-primary" style="margin-left:auto;padding:4px 12px;font-size:12px" onclick="openBookingModal('${ds}','10:00')" data-testid="dv-btn-nueva-reserva">+ Nueva Reserva</button>
       </div>
       <div class="cal2-dv-scroll">
         <div class="cal2-dv-inner">
@@ -1149,8 +1152,8 @@ window.NadakiCalendar = (function () {
             const ds=fmtDate(d), isT=ds===today, isW=[0,6].includes(d.getDay());
             const dayBks=rowBks.filter(b=>b.booking_date===ds);
             return `<div class="cal2-tl-cell ${isT?'cal2-tl-today-c':''} ${isW?'cal2-tl-wend-c':''}"
-              style="min-width:${DAY_W}px;width:${DAY_W}px"
-              onclick="if(!event.target.closest('.cal2-bc-compact')) openBookingModal('${ds}','10:00')"
+              style="min-width:${DAY_W}px;width:${DAY_W}px;cursor:pointer"
+              onclick="if(!event.target.closest('.cal2-bc-compact')) NadakiCalendar.setDayView('${ds}')"
               data-testid="tl-cell-${k}-${ds}">
               ${dayBks.map(b=>_card(b,true)).join('')}
             </div>`;
@@ -1232,21 +1235,77 @@ window.NadakiCalendar = (function () {
     if (!lbl) return;
     const df=document.getElementById('date-from')?.value;
     const dt=document.getElementById('date-to')?.value;
-    if (df&&dt) {
-      const fr=new Date(df+'T12:00:00'), to=new Date(dt+'T12:00:00');
-      lbl.textContent=fr.toLocaleDateString('es-ES',{day:'numeric',month:'short'})
-        +' – '+to.toLocaleDateString('es-ES',{day:'numeric',month:'short',year:'numeric'});
-    } else { lbl.textContent='Semana actual'; }
+    if (_view === 'day') {
+      const d = _dayDate || df;
+      if (d) {
+        const dt2 = new Date(d+'T12:00:00');
+        lbl.textContent = dt2.toLocaleDateString('es-ES',{weekday:'short',day:'numeric',month:'long',year:'numeric'});
+      } else { lbl.textContent='Hoy'; }
+    } else if (_view === 'month') {
+      if (df) {
+        const fr=new Date(df+'T12:00:00');
+        lbl.textContent=fr.toLocaleDateString('es-ES',{month:'long',year:'numeric'}).replace(/^\w/,c=>c.toUpperCase());
+      } else { lbl.textContent='Mes actual'; }
+    } else {
+      if (df&&dt) {
+        const fr=new Date(df+'T12:00:00'), to=new Date(dt+'T12:00:00');
+        lbl.textContent=fr.toLocaleDateString('es-ES',{day:'numeric',month:'short'})
+          +' – '+to.toLocaleDateString('es-ES',{day:'numeric',month:'short',year:'numeric'});
+      } else { lbl.textContent='Semana actual'; }
+    }
+  }
+
+  // ── Smart navigation — moves by day/week/month based on active view ──
+  function _smartNav(dir) {
+    if (_view === 'day') {
+      // Move 1 day forward/backward
+      const cur = _dayDate || document.getElementById('date-from')?.value || fmtDate(new Date());
+      const d = new Date(cur + 'T12:00:00');
+      d.setDate(d.getDate() + dir);
+      const ds = fmtDate(d);
+      _dayDate = ds;
+      // Update date range so loadScheduleData fetches the right week
+      document.getElementById('date-from').value = ds;
+      document.getElementById('date-to').value = ds;
+      loadScheduleData().then(()=>{ _render(); renderKPIStrip(); _updateDateLabel(); });
+    } else if (_view === 'month') {
+      // Move 1 month forward/backward
+      const df = document.getElementById('date-from')?.value;
+      const base = df ? new Date(df+'T12:00:00') : new Date();
+      base.setMonth(base.getMonth() + dir, 1);
+      document.getElementById('date-from').value = fmtDate(base);
+      const last = new Date(base.getFullYear(), base.getMonth()+1, 0);
+      document.getElementById('date-to').value = fmtDate(last);
+      weekStart = new Date(base);
+      loadScheduleData().then(()=>{ _render(); renderKPIStrip(); _updateDateLabel(); });
+    } else {
+      // Week / Timeline: move 7 days
+      weekNav(dir);
+      _updateDateLabel();
+      renderKPIStrip();
+    }
+    _updateNavButtons();
+  }
+
+  // ── Update nav button titles based on view ─────────────────────
+  function _updateNavButtons() {
+    const prev = document.getElementById('cal2-prev');
+    const next = document.getElementById('cal2-next');
+    if (!prev || !next) return;
+    const labels = { day: ['Día anterior','Día siguiente'], month: ['Mes anterior','Mes siguiente'], week: ['Semana anterior','Semana siguiente'], timeline: ['Semana anterior','Semana siguiente'] };
+    const [pt, nt] = labels[_view] || labels.week;
+    prev.title = pt; next.title = nt;
   }
 
   // ── Wire toolbar ───────────────────────────────────────────────
   function _wireToolbar() {
     const $=id=>document.getElementById(id);
-    $('cal2-prev')?.addEventListener('click',()=>{weekNav(-1);_updateDateLabel();renderKPIStrip();});
-    $('cal2-next')?.addEventListener('click',()=>{weekNav(1);_updateDateLabel();renderKPIStrip();});
+    $('cal2-prev')?.addEventListener('click',()=>_smartNav(-1));
+    $('cal2-next')?.addEventListener('click',()=>_smartNav(1));
     $('cal2-today')?.addEventListener('click',()=>{
       _dayDate=null; setDefaultDates(); initWeekStart();
-      loadScheduleData().then(()=>{_render();renderKPIStrip();_updateDateLabel();});
+      _view = _view; // keep current view
+      loadScheduleData().then(()=>{_render();renderKPIStrip();_updateDateLabel();_updateNavButtons();});
     });
     $('cal2-btn-nueva-reserva')?.addEventListener('click',()=>openBookingModal());
     $('cal2-btn-add-block')?.addEventListener('click',()=>openAvailabilityModal());
@@ -1310,6 +1369,7 @@ window.NadakiCalendar = (function () {
     renderKPIStrip();
     _render('week');
     _updateDateLabel();
+    _updateNavButtons();
     document.getElementById('cal2-shell').style.display='block';
     requestAnimationFrame(_hideLegacy);
     console.info('[NadakiCalendar] Fase 3B activo — DrawerBridge ON. Rollback: NadakiCalendar.restoreLegacy()');
@@ -1324,12 +1384,47 @@ window.NadakiCalendar = (function () {
     if (ph) ph.style.display='none';
     const gw=document.getElementById('cal2-grid-week');
     if (gw) gw.style.display='block';
+    // When switching to week/timeline view, ensure date range covers a full week
+    if (view === 'week' || view === 'timeline') {
+      const df = document.getElementById('date-from')?.value;
+      if (df) {
+        const d = new Date(df+'T12:00:00');
+        const mon = new Date(d); mon.setDate(d.getDate() - ((d.getDay()+6)%7));
+        const sun = new Date(mon); sun.setDate(mon.getDate()+6);
+        document.getElementById('date-from').value = fmtDate(mon);
+        document.getElementById('date-to').value   = fmtDate(sun);
+        weekStart = new Date(mon);
+        loadScheduleData().then(()=>{ _render(view); renderKPIStrip(); _updateDateLabel(); _updateNavButtons(); });
+        return;
+      }
+    }
+    // When switching to month view, expand the date range to cover the whole month
+    if (view === 'month') {
+      const df = document.getElementById('date-from')?.value;
+      const base = df ? new Date(df+'T12:00:00') : new Date();
+      const first = new Date(base.getFullYear(), base.getMonth(), 1);
+      const last  = new Date(base.getFullYear(), base.getMonth()+1, 0);
+      document.getElementById('date-from').value = fmtDate(first);
+      document.getElementById('date-to').value   = fmtDate(last);
+      weekStart = new Date(first);
+      loadScheduleData().then(()=>{ _render(view); renderKPIStrip(); _updateDateLabel(); _updateNavButtons(); });
+      return;
+    }
     _render(view);
+    _updateDateLabel();
+    _updateNavButtons();
   }
 
   function setDayView(ds) {
     _dayDate=ds;
-    switchView('day');
+    // When going to day view, ensure the date range covers that week for data loading
+    const d = new Date(ds+'T12:00:00');
+    const mon = new Date(d); mon.setDate(d.getDate() - ((d.getDay()+6)%7));
+    const sun = new Date(mon); sun.setDate(mon.getDate()+6);
+    document.getElementById('date-from').value = fmtDate(mon);
+    document.getElementById('date-to').value   = fmtDate(sun);
+    weekStart = new Date(mon);
+    loadScheduleData().then(()=>{ switchView('day'); });
   }
 
   function refresh() {
