@@ -351,6 +351,19 @@
     }
 
     /* ── Toolbar filters ── */
+    .cal2-filter-wrap {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+    }
+    .cal2-fw-icon {
+      position: absolute;
+      left: 8px;
+      pointer-events: none;
+      color: #64748b;
+      flex-shrink: 0;
+      z-index: 1;
+    }
     .cal2-filter-select {
       padding: 6px 10px;
       background: #1e293b;
@@ -360,8 +373,18 @@
       font-size: 12px;
       cursor: pointer;
       max-width: 170px;
+      transition: border-color 0.15s, background 0.15s;
+      appearance: none;
+      -webkit-appearance: none;
     }
-    .cal2-filter-select:focus { outline: none; border-color: #0066cc; }
+    .cal2-filter-select.cal2-filter-padded { padding-left: 28px; }
+    .cal2-filter-select:hover { background: #293548; border-color: #475569; color: #e2e8f0; }
+    .cal2-filter-select:focus { outline: none; border-color: #0066cc; background: #1a2d48; }
+    .cal2-filter-select.cal2-filter-active {
+      border-color: #0066cc;
+      color: #93c5fd;
+      background: rgba(0,102,204,0.15);
+    }
     .cal2-btn-primary {
       padding: 7px 16px;
       background: #0066cc;
@@ -511,6 +534,114 @@
       gap: 8px;
       align-items: center;
     }
+
+    /* ── Date Scrubber ── */
+    .cal2-dbar-wrap {
+      background: #1a2535;
+      border-bottom: 1px solid #2d3f55;
+      overflow: hidden;
+      position: relative;
+    }
+    .cal2-dbar {
+      overflow-x: scroll;
+      overflow-y: hidden;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+      cursor: grab;
+      user-select: none;
+      touch-action: pan-x;
+    }
+    .cal2-dbar:active { cursor: grabbing; }
+    .cal2-dbar::-webkit-scrollbar { display: none; }
+    .cal2-dbar-track {
+      display: flex;
+      align-items: stretch;
+      padding: 0 8px;
+    }
+    .cal2-dbar-month-label {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      font-size: 9px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #475569;
+      white-space: nowrap;
+      padding: 4px 6px 0 2px;
+      align-self: flex-start;
+      padding-top: 6px;
+      flex-shrink: 0;
+    }
+    .cal2-dbar-day {
+      min-width: 42px;
+      width: 42px;
+      padding: 5px 2px 6px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      cursor: pointer;
+      border-radius: 6px;
+      transition: background 0.12s;
+      flex-shrink: 0;
+    }
+    .cal2-dbar-day:hover { background: #293548; }
+    .cal2-dbar-dow {
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #475569;
+    }
+    .cal2-dbar-dn {
+      font-size: 13px;
+      font-weight: 700;
+      color: #64748b;
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      line-height: 1;
+    }
+    .cal2-dbar-day.cal2-dbar-inrange { background: rgba(0,102,204,0.12); }
+    .cal2-dbar-day.cal2-dbar-inrange .cal2-dbar-dn { color: #93c5fd; }
+    .cal2-dbar-day.cal2-dbar-inrange .cal2-dbar-dow { color: #64748b; }
+    .cal2-dbar-day.cal2-dbar-today .cal2-dbar-dn {
+      background: #0066cc;
+      color: #fff;
+    }
+    .cal2-dbar-day.cal2-dbar-today.cal2-dbar-inrange .cal2-dbar-dn {
+      background: #0066cc;
+      color: #fff;
+    }
+    .cal2-dbar-day.cal2-dbar-wend .cal2-dbar-dow { color: #334155; }
+    .cal2-dbar-sep {
+      width: 1px;
+      background: #2d3f55;
+      margin: 6px 2px;
+      flex-shrink: 0;
+      align-self: stretch;
+    }
+    /* Swipe hint arrows */
+    .cal2-dbar-hint {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 24px;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      color: #334155;
+      pointer-events: none;
+      z-index: 2;
+    }
+    .cal2-dbar-hint-l { left: 0; background: linear-gradient(to right, #1a2535 60%, transparent); }
+    .cal2-dbar-hint-r { right: 0; background: linear-gradient(to left, #1a2535 60%, transparent); }
 
     /* ── Responsive ── */
     @media (max-width: 768px) {
@@ -1003,12 +1134,18 @@
       </div>
 
       <div class="cal2-toolbar-right">
-        <select class="cal2-filter-select" id="cal2-captain-filter" data-testid="select-cal2-captain">
-          <option value="">Todos los capitanes</option>
-        </select>
-        <select class="cal2-filter-select" id="cal2-boat-filter" data-testid="select-cal2-boat">
-          <option value="">Todos los barcos</option>
-        </select>
+        <div class="cal2-filter-wrap">
+          <svg class="cal2-fw-icon" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 1 0-16 0"/></svg>
+          <select class="cal2-filter-select cal2-filter-padded" id="cal2-captain-filter" data-testid="select-cal2-captain">
+            <option value="">Todos los capitanes</option>
+          </select>
+        </div>
+        <div class="cal2-filter-wrap">
+          <svg class="cal2-fw-icon" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 21c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1 .6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M19.38 20A11.6 11.6 0 0 0 21 14l-9-4-9 4c0 2.9.94 5.34 2.81 7.76"/><path d="M19 13V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6"/><path d="M12 10v4"/><path d="M12 3v4"/></svg>
+          <select class="cal2-filter-select cal2-filter-padded" id="cal2-boat-filter" data-testid="select-cal2-boat">
+            <option value="">Todos los barcos</option>
+          </select>
+        </div>
         <button class="cal2-btn-filter-bal" id="cal2-btn-filter-bal"
                 data-testid="button-filter-balance" title="Mostrar solo reservas con saldo pendiente">
           Saldo pendiente
@@ -1016,6 +1153,15 @@
         <button class="cal2-btn-outline-dark" id="cal2-btn-add-block" data-testid="button-cal2-add-block">&#128683; Bloquear</button>
         <button class="cal2-btn-primary" id="cal2-btn-nueva-reserva" data-testid="button-cal2-nueva-reserva">+ Nueva Reserva</button>
       </div>
+    </div>
+
+    <!-- ── Date Scrubber ── -->
+    <div class="cal2-dbar-wrap" id="cal2-dbar-wrap" data-testid="cal2-dbar-wrap">
+      <div class="cal2-dbar" id="cal2-dbar" data-testid="cal2-dbar">
+        <div class="cal2-dbar-track" id="cal2-dbar-track"></div>
+      </div>
+      <div class="cal2-dbar-hint cal2-dbar-hint-l">&#8249;</div>
+      <div class="cal2-dbar-hint cal2-dbar-hint-r">&#8250;</div>
     </div>
 
     <!-- ── CalendarKPIStrip ── -->

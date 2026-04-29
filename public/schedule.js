@@ -1267,7 +1267,7 @@ window.NadakiCalendar = (function () {
       // Update date range so loadScheduleData fetches the right week
       document.getElementById('date-from').value = ds;
       document.getElementById('date-to').value = ds;
-      loadScheduleData().then(()=>{ _render(); renderKPIStrip(); _updateDateLabel(); });
+      loadScheduleData().then(()=>{ _render(); renderKPIStrip(); _updateDateLabel(); _renderDateScrubber(); });
     } else if (_view === 'month') {
       // Move 1 month forward/backward
       const df = document.getElementById('date-from')?.value;
@@ -1277,12 +1277,13 @@ window.NadakiCalendar = (function () {
       const last = new Date(base.getFullYear(), base.getMonth()+1, 0);
       document.getElementById('date-to').value = fmtDate(last);
       weekStart = new Date(base);
-      loadScheduleData().then(()=>{ _render(); renderKPIStrip(); _updateDateLabel(); });
+      loadScheduleData().then(()=>{ _render(); renderKPIStrip(); _updateDateLabel(); _renderDateScrubber(); });
     } else {
       // Week / Timeline: move 7 days
       weekNav(dir);
       _updateDateLabel();
       renderKPIStrip();
+      _renderDateScrubber();
     }
     _updateNavButtons();
   }
@@ -1297,6 +1298,130 @@ window.NadakiCalendar = (function () {
     prev.title = pt; next.title = nt;
   }
 
+  // ── Date Scrubber ─────────────────────────────────────────────
+  const DS_CELL_W  = 42;   // px per day cell
+  const DS_TOTAL   = 63;   // total days in strip (9 weeks)
+  const DS_BACK_WK = 3;    // weeks behind current week to start
+
+  function _initDateScrubber() {
+    _renderDateScrubber();
+    const bar = document.getElementById('cal2-dbar');
+    if (!bar) return;
+
+    // Mouse drag
+    let startX = 0, startScroll = 0, isDragging = false, movedPx = 0;
+    bar.addEventListener('mousedown', e => {
+      isDragging = true; movedPx = 0;
+      startX = e.clientX; startScroll = bar.scrollLeft;
+      e.preventDefault();
+    });
+    document.addEventListener('mousemove', e => {
+      if (!isDragging) return;
+      const dx = e.clientX - startX;
+      bar.scrollLeft = startScroll - dx;
+      movedPx = Math.abs(dx);
+    });
+    document.addEventListener('mouseup', e => {
+      if (!isDragging) return;
+      isDragging = false;
+      if (movedPx > 10) {
+        window._dsClickGuard = true;
+        setTimeout(() => { window._dsClickGuard = false; }, 200);
+      }
+      if (movedPx > 90) {
+        const dx = startX - e.clientX;
+        if (dx > 90) { _smartNav(1); setTimeout(_renderDateScrubber, 380); }
+        else if (dx < -90) { _smartNav(-1); setTimeout(_renderDateScrubber, 380); }
+      }
+    });
+
+    // Touch swipe
+    let tStartX = 0, tScrollStart = 0, tMoved = 0;
+    bar.addEventListener('touchstart', e => {
+      tStartX = e.touches[0].clientX; tScrollStart = bar.scrollLeft; tMoved = 0;
+    }, { passive: true });
+    bar.addEventListener('touchmove', e => {
+      const dx = e.touches[0].clientX - tStartX;
+      bar.scrollLeft = tScrollStart - dx;
+      tMoved = Math.abs(dx);
+    }, { passive: true });
+    bar.addEventListener('touchend', e => {
+      if (tMoved > 10) { window._dsClickGuard = true; setTimeout(() => { window._dsClickGuard = false; }, 200); }
+      if (tMoved > 80) {
+        const dx = tStartX - e.changedTouches[0].clientX;
+        if (dx > 80) { _smartNav(1); setTimeout(_renderDateScrubber, 380); }
+        else if (dx < -80) { _smartNav(-1); setTimeout(_renderDateScrubber, 380); }
+      }
+    }, { passive: true });
+  }
+
+  function _renderDateScrubber() {
+    const track = document.getElementById('cal2-dbar-track');
+    if (!track) return;
+    const today = fmtDate(new Date());
+    const df = document.getElementById('date-from')?.value || today;
+    const dt = document.getElementById('date-to')?.value || today;
+    const baseD = new Date(df + 'T12:00:00');
+    const mon = new Date(baseD);
+    mon.setDate(baseD.getDate() - ((baseD.getDay() + 6) % 7));
+    const start = new Date(mon);
+    start.setDate(mon.getDate() - DS_BACK_WK * 7);
+
+    let html = '';
+    let lastMonth = -1;
+    for (let i = 0; i < DS_TOTAL; i++) {
+      const d = new Date(start); d.setDate(start.getDate() + i);
+      const ds = fmtDate(d);
+      const isToday = ds === today;
+      const isWend  = [0, 6].includes(d.getDay());
+      const inRange = ds >= df && ds <= dt;
+      const dow = d.toLocaleDateString('es-ES', { weekday: 'short' }).slice(0, 2).toUpperCase();
+      if (d.getMonth() !== lastMonth) {
+        if (lastMonth !== -1) html += `<div class="cal2-dbar-sep"></div>`;
+        const mLabel = d.toLocaleDateString('es-ES', { month: 'short' }).toUpperCase();
+        html += `<div class="cal2-dbar-month-label">${mLabel}</div>`;
+        lastMonth = d.getMonth();
+      }
+      const cls = ['cal2-dbar-day', isToday?'cal2-dbar-today':'', isWend?'cal2-dbar-wend':'', inRange?'cal2-dbar-inrange':''].filter(Boolean).join(' ');
+      html += `<div class="${cls}" data-date="${ds}" data-testid="dbar-${ds}"
+        onclick="if(!window._dsClickGuard) _dsClickDay('${ds}')">
+        <span class="cal2-dbar-dow">${dow}</span>
+        <span class="cal2-dbar-dn">${d.getDate()}</span>
+      </div>`;
+    }
+    track.innerHTML = html;
+    requestAnimationFrame(() => {
+      const bar = document.getElementById('cal2-dbar');
+      if (!bar) return;
+      const cellIdx = DS_BACK_WK * 7;
+      const barW = bar.clientWidth;
+      bar.scrollLeft = Math.max(0, cellIdx * DS_CELL_W - (barW / 2) + (3.5 * DS_CELL_W));
+    });
+  }
+
+  // Global click handler for date scrubber cells
+  window._dsClickDay = function(ds) {
+    if (window._dsClickGuard) return;
+    const d = new Date(ds + 'T12:00:00');
+    if (_view === 'day') {
+      NadakiCalendar.setDayView(ds);
+    } else if (_view === 'month') {
+      const first = new Date(d.getFullYear(), d.getMonth(), 1);
+      const last  = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+      document.getElementById('date-from').value = fmtDate(first);
+      document.getElementById('date-to').value   = fmtDate(last);
+      weekStart = new Date(first);
+      loadScheduleData().then(() => { _render(); renderKPIStrip(); _updateDateLabel(); _renderDateScrubber(); });
+    } else {
+      const m = new Date(d); m.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+      const s = new Date(m); s.setDate(m.getDate() + 6);
+      document.getElementById('date-from').value = fmtDate(m);
+      document.getElementById('date-to').value   = fmtDate(s);
+      weekStart = new Date(m);
+      loadScheduleData().then(() => { _render(); renderKPIStrip(); _updateDateLabel(); _renderDateScrubber(); });
+    }
+  };
+
   // ── Wire toolbar ───────────────────────────────────────────────
   function _wireToolbar() {
     const $=id=>document.getElementById(id);
@@ -1305,7 +1430,7 @@ window.NadakiCalendar = (function () {
     $('cal2-today')?.addEventListener('click',()=>{
       _dayDate=null; setDefaultDates(); initWeekStart();
       _view = _view; // keep current view
-      loadScheduleData().then(()=>{_render();renderKPIStrip();_updateDateLabel();_updateNavButtons();});
+      loadScheduleData().then(()=>{_render();renderKPIStrip();_updateDateLabel();_updateNavButtons();_renderDateScrubber();});
     });
     $('cal2-btn-nueva-reserva')?.addEventListener('click',()=>openBookingModal());
     $('cal2-btn-add-block')?.addEventListener('click',()=>openAvailabilityModal());
@@ -1316,6 +1441,9 @@ window.NadakiCalendar = (function () {
     $('cal2-boat-filter')?.addEventListener('change',e=>{
       const val=e.target.value;
       const nm=e.target.options[e.target.selectedIndex]?.dataset?.name||'';
+      e.target.classList.toggle('cal2-filter-active', !!val);
+      const icon=e.target.closest('.cal2-filter-wrap')?.querySelector('.cal2-fw-icon');
+      if (icon) icon.style.color = val ? '#93c5fd' : '';
       document.querySelectorAll('.cal2-bc,.cal2-bc-compact').forEach(el=>{
         el.style.opacity=(!val||el.title.includes(nm))?'1':'0.2';
       });
@@ -1366,6 +1494,7 @@ window.NadakiCalendar = (function () {
     _wireViewSwitcher();
     _interceptLegacyRender();
     _initDrawer();          // Fase 3B: activate drawer bridge
+    _initDateScrubber();    // Date scrubber strip
     renderKPIStrip();
     _render('week');
     _updateDateLabel();
