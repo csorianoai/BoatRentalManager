@@ -2029,8 +2029,8 @@ async function initializeDatabase() {
     await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS pricing_integrity_status TEXT DEFAULT 'unknown'`);
     await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS pricing_expected NUMERIC(10,2)`);
     await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS pricing_delta NUMERIC(10,2)`);
-    // Backfill corrected booking
-    await pool.query(`UPDATE bookings SET pricing_integrity_status='valid', pricing_expected=560, pricing_delta=0 WHERE id='book_nk2efafe2d'`);
+    // Backfill corrected booking — only on first run (when pricing_expected is still NULL)
+    await pool.query(`UPDATE bookings SET pricing_integrity_status='valid', pricing_expected=420, pricing_delta=0 WHERE id='book_nk2efafe2d' AND pricing_expected IS NULL`);
     console.log('✅ FASE 18: Revenue integrity columns ready');
     // ── END FASE 18 ──────────────────────────────────────────────────────
 

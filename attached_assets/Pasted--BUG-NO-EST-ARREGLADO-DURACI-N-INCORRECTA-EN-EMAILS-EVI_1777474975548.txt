@@ -1,0 +1,93 @@
+🚨 BUG NO ESTÁ ARREGLADO — DURACIÓN INCORRECTA EN EMAILS
+
+EVIDENCIA:
+Booking NK-49F5BD7C (Estefany Torres):
+- Pagó: $420 (precio de 3 horas)
+- Email "Payment Received" enviado HOY dice:
+  "Time: 1:00 PM – 5:00 PM (4h Miami)"
+- DEBE DECIR: "Time: 1:00 PM – 4:00 PM (3h Miami)"
+
+Antes me dijiste que arreglaste este bug. NO está arreglado.
+El email de Payment Received que se envió HOY (28 abril 10:25 AM) 
+sigue mostrando 4h cuando el cliente pagó 3h.
+
+DIAGNÓSTICO REAL ESTA VEZ:
+
+1. VERIFICAR EL BOOKING EN DB:
+
+SELECT 
+  booking_code,
+  duration_hours,
+  duration,
+  start_time,
+  end_time,
+  total_price,
+  amount_paid,
+  EXTRACT(EPOCH FROM (end_time - start_time))/3600 as calc_duration
+FROM bookings
+WHERE booking_code = 'NK-49F5BD7C';
+
+Dime EXACTAMENTE:
+- ¿duration_hours dice 3 o 4?
+- ¿end_time es 4:00 PM (3h) o 5:00 PM (4h)?
+- ¿calc_duration es 3 o 4?
+
+Si en DB dice 3h pero el email dice 4h → bug en template
+Si en DB dice 4h → el fix nunca se aplicó al booking
+
+2. VERIFICAR EL TEMPLATE DEL EMAIL "Payment Received"
+
+Este es un email DE OWNER (no de cliente). Busca el template/
+función que genera este email específico:
+
+"Code:NK-49F5BD7C
+ Time:1:00 PM – 5:00 PM (4h Miami)"
+
+Muéstrame el código EXACTO que genera la línea "Time:..."
+- ¿De dónde saca las horas?
+- ¿De dónde saca el "4h"?
+- ¿Calcula desde start_time/end_time? 
+- ¿O tiene un default a 4 hardcoded?
+
+3. POSIBLES CAUSAS:
+
+CAUSA A: El fix anterior solo arregló email DEL CLIENTE pero 
+NO el email DEL OWNER. Son templates diferentes.
+
+CAUSA B: El booking de Estefany NK-49F5BD7C tiene duration_hours=4 
+en DB. El fix se aplicó pero a OTROS bookings.
+
+CAUSA C: El template del email del owner usa un cálculo distinto 
+que ignora duration_hours.
+
+Verifica las 3.
+
+4. FIX REAL:
+
+Después del diagnóstico:
+- Si DB tiene 4h cuando debería ser 3h → corregir el booking
+- Si template tiene bug → arreglar EL TEMPLATE DEL OWNER también
+- Si hay default a 4 hardcoded → eliminarlo
+
+5. VERIFICACIÓN:
+
+Después del fix, REENVÍAR manualmente el email de Payment 
+Received de NK-49F5BD7C y mostrarme screenshot que diga:
+"Time: 1:00 PM – 4:00 PM (3h Miami)"
+
+NO DECLARAR ARREGLADO sin esta evidencia visual.
+
+6. AUDITAR OTROS EMAILS DEL OWNER:
+
+Los templates DEL OWNER (no cliente) son:
+- owner_new_booking
+- owner_payment_received  
+- owner_booking_cancelled
+- owner_balance_due_soon
+
+Verificar que TODOS muestren la duración correcta. 
+Pueden tener el mismo bug.
+
+PRIORIDAD: P0 — Sigo recibiendo emails con info incorrecta.
+
+Diagnostica, arregla, y verifica con screenshot real.
