@@ -1032,19 +1032,43 @@ window.NadakiCalendar = (function () {
               ${dBlks.map(a=>`<div class="cal2-avail-block"
                 style="top:0;height:${HOURS.length*SLOT_H}px"
                 title="${esc(a.reason||'Bloqueado')}">&#128683; ${esc(a.reason||'Bloqueado')}</div>`).join('')}
-              ${_layoutEvents(dBks).map(({b,start,end,col,numCols}) => {
-                const top = Math.max(0, start * SLOT_H);
-                const ht  = Math.max(28, (end - start) * SLOT_H - 4);
-                const pct = 100 / numCols;
-                const lft = col * pct;
-                const rgt = 100 - lft - pct;
-                const GAP = numCols > 1 ? 2 : 3;
-                return `<div class="cal2-wv-ev"
-                  style="top:${top}px;height:${ht}px;left:calc(${lft}% + ${GAP}px);right:calc(${rgt}% + ${GAP}px)"
-                  data-id="${b.id}" data-testid="event-${b.id}">
-                  ${_card(b, numCols > 2)}
-                </div>`;
-              }).join('')}
+              ${(()=>{
+                const MAX_WV_COLS = 2; // max side-by-side events in week view
+                const laid = _layoutEvents(dBks);
+                const visible = laid.filter(ev => ev.col < MAX_WV_COLS);
+                const hidden  = laid.filter(ev => ev.col >= MAX_WV_COLS);
+                // Group overflow events by approximate time slot (30-min buckets)
+                const overMap = new Map();
+                hidden.forEach(ev => {
+                  const key = Math.floor(ev.start * 2) / 2;
+                  if (!overMap.has(key)) overMap.set(key, { count: 0, start: ev.start });
+                  overMap.get(key).count++;
+                });
+                const evHtml = visible.map(({b, start, end, col, numCols}) => {
+                  const effCols = Math.min(numCols, MAX_WV_COLS);
+                  const top = Math.max(0, start * SLOT_H);
+                  const ht  = Math.max(36, (end - start) * SLOT_H - 4);
+                  const pct = 100 / effCols;
+                  const lft = col * pct;
+                  const rgt = 100 - lft - pct;
+                  const GAP = effCols > 1 ? 2 : 3;
+                  return `<div class="cal2-wv-ev"
+                    style="top:${top}px;height:${ht}px;left:calc(${lft}% + ${GAP}px);right:calc(${rgt}% + ${GAP}px)"
+                    data-id="${b.id}" data-testid="event-${b.id}">
+                    ${_card(b, false)}
+                  </div>`;
+                });
+                const pillHtml = [...overMap.values()].map(({count, start}) => {
+                  const top = Math.max(0, start * SLOT_H);
+                  return `<div class="cal2-wv-more-pill"
+                    style="top:${top + 4}px"
+                    onclick="NadakiCalendar.setDayView('${ds}')"
+                    title="+${count} reserva${count>1?'s':''} — ver día completo">
+                    +${count}
+                  </div>`;
+                });
+                return [...evHtml, ...pillHtml].join('');
+              })()}
             </div>`;
           }).join('')}
         </div>
@@ -1114,7 +1138,7 @@ window.NadakiCalendar = (function () {
                   return `<div class="cal2-wv-ev"
                     style="top:${top}px;height:${ht}px;left:calc(${lft}% + ${GAP}px);right:calc(${rgt}% + ${GAP}px)"
                     data-testid="event-${b.id}">
-                    ${_card(b, numCols > 2)}
+                    ${_card(b, false)}
                   </div>`;
                 }).join('')}
               </div>
