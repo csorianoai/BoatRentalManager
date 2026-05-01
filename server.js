@@ -5770,6 +5770,24 @@ app.post('/api/sync/jobs/process', isAuthenticated, async (req, res) => {
 // 🚤 FASE 11: FLEET MANAGEMENT ENDPOINTS
 // ========================================
 
+// Fleet color config (public — used by calendar)
+app.get('/api/fleet/colors', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT boat_type, display_name, display_color, short_label
+       FROM fleet_config WHERE is_active = true ORDER BY display_name`
+    );
+    const map = {};
+    result.rows.forEach(r => {
+      map[r.boat_type] = { color: r.display_color, name: r.display_name, label: r.short_label };
+    });
+    res.json(map);
+  } catch (err) {
+    console.error('Error getting fleet colors:', err);
+    res.status(500).json({});
+  }
+});
+
 // Get all boats
 app.get('/api/fleet/boats', async (req, res) => {
   try {

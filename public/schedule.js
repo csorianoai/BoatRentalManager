@@ -721,6 +721,7 @@ window.NadakiCalendar = (function () {
   let _dayDate           = null;       // active date for DayView
   let _origRenderWeek    = null;       // reference to legacy renderWeekView
   let _filterBalance     = false;      // Fase 4B: "saldo pendiente" filter toggle
+  let _boatColors        = {};         // map of boat_type → { color, name, label }
 
   // ── Constants ─────────────────────────────────────────────────
   const H_START = 7, H_END = 20;
@@ -955,24 +956,31 @@ window.NadakiCalendar = (function () {
     const tip  = esc(`${b.customer_name||'?'} | ${b.boat_type||'—'} | ${cap||'sin cap.'} | ${st} | ${tlbl}`);
     const click= `onclick="event.stopPropagation();openEditBooking('${esc(b.id)}')"`;
     const tid  = `data-testid="card-booking-${esc(b.id)}"`;
+    // Boat color
+    const boatColor = _boatColorOf(b.boat_type) || col.bd;
+    const boatLabel = _boatLabelOf(b.boat_type);
+    const boatBg    = boatColor + '1a'; // 10% opacity tint
     // Fase 4B: balance due flag
     const hasDue = bal > 0 && b.payment_status !== 'paid';
     const dueAttr= hasDue ? ' data-due="1"' : '';
     const dueBadge= hasDue ? `<span class="cal2-badge-due" data-testid="badge-due-${esc(b.id)}">DEBE ${fmtMoney(bal)}</span>` : '';
     if (compact) {
-      return `<div class="cal2-bc-compact" style="background:${col.bg};border-color:${col.bd};color:${col.tx};" title="${tip}" ${click} ${tid}${dueAttr}>
-        <span class="cal2-bc-dot" style="background:${col.dot}"></span>
+      return `<div class="cal2-bc-compact" style="background:${col.bg};border-color:${boatColor};color:${col.tx};" title="${tip}" ${click} ${tid}${dueAttr}>
+        <span class="cal2-bc-dot" style="background:${boatColor}"></span>
         <span class="cal2-bc-cname">${cn1}</span>
         <span class="cal2-bc-csep">·</span>
         <span class="cal2-bc-cboat">${boat.split(' ').slice(0,2).join(' ')}</span>
       </div>`;
     }
-    return `<div class="cal2-bc" style="background:${col.bg};border-left:3px solid ${col.bd};color:${col.tx};" title="${tip}" ${click} ${tid}${dueAttr}>
+    return `<div class="cal2-bc" style="background:${boatBg};border-left:4px solid ${boatColor};color:${col.tx};" title="${tip}" ${click} ${tid}${dueAttr}>
       <div class="cal2-bc-header">
         <span class="cal2-bc-name">${cn}</span>
-        <span class="cal2-bc-time">${tlbl}</span>
+        <span class="cal2-bc-time" style="color:${col.tx}">${tlbl}</span>
       </div>
-      <div class="cal2-bc-boat">${boat}</div>
+      <div class="cal2-bc-boat">
+        ${boatLabel ? `<span class="cal2-bc-boat-chip" style="background:${boatColor};color:#fff">${boatLabel}</span>` : ''}
+        ${boat}
+      </div>
       ${cap ? `<div class="cal2-bc-cap">&#9875; ${cap}</div>` : ''}
       <div class="cal2-bc-footer">
         ${plat ? `<span class="cal2-badge">${plat}</span>` : ''}
@@ -1298,6 +1306,38 @@ window.NadakiCalendar = (function () {
     prev.title = pt; next.title = nt;
   }
 
+  // ── Boat color helpers ────────────────────────────────────────
+  async function _loadBoatColors() {
+    try {
+      const r = await authFetch('/api/fleet/colors');
+      _boatColors = (await r.json()) || {};
+    } catch(e) { _boatColors = {}; }
+  }
+
+  function _boatColorOf(boatType) {
+    if (!boatType) return null;
+    if (_boatColors[boatType]) return _boatColors[boatType].color;
+    const bt = boatType.toLowerCase();
+    for (const [key, val] of Object.entries(_boatColors)) {
+      if (key.toLowerCase() === bt) return val.color;
+    }
+    for (const [key, val] of Object.entries(_boatColors)) {
+      const k = key.toLowerCase();
+      if (k.includes(bt) || bt.includes(k)) return val.color;
+    }
+    return null;
+  }
+
+  function _boatLabelOf(boatType) {
+    if (!boatType) return null;
+    if (_boatColors[boatType]) return _boatColors[boatType].label;
+    const bt = boatType.toLowerCase();
+    for (const [key, val] of Object.entries(_boatColors)) {
+      if (key.toLowerCase() === bt) return val.label;
+    }
+    return null;
+  }
+
   // ── Date Scrubber ─────────────────────────────────────────────
   const DS_CELL_W  = 50;   // px per day cell (46px + 2px gap + 2px border)
   const DS_TOTAL   = 63;   // total days in strip (9 weeks)
@@ -1498,6 +1538,7 @@ window.NadakiCalendar = (function () {
   function init() {
     if (_initiated) return;
     _initiated = true;
+    _loadBoatColors().then(() => _render()); // re-render once colors arrive
     _populateFilters();
     _wireToolbar();
     _wireViewSwitcher();
