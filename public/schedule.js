@@ -293,6 +293,18 @@ function renderWeekView() {
 }
 
 // ─── Bookings Table ───────────────────────────────────
+// Day separator accent colors (cycles through 6 palette colors)
+const _DAY_ACCENTS = ['#3B82F6','#10B981','#8B5CF6','#F59E0B','#EC4899','#0EA5E9'];
+function _dayAccent(dateStr) {
+  // stable color per calendar date using sum of digits
+  const n = dateStr.replace(/\D/g,'').split('').reduce((s,c)=>s+Number(c),0);
+  return _DAY_ACCENTS[n % _DAY_ACCENTS.length];
+}
+function _fmtDateLabel(dateStr) {
+  const d = new Date(dateStr + 'T12:00:00');
+  return d.toLocaleDateString('es-ES', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+}
+
 function renderBookingsTable() {
   const tbody = document.getElementById('bookings-table-body');
   document.getElementById('bookings-count').textContent = bookings.length;
@@ -302,31 +314,72 @@ function renderBookingsTable() {
     return;
   }
 
-  tbody.innerHTML = bookings.map(b => {
-    const boatLabel = b.boat_type || b.boat_id || '—';
-    const capLabel = b.assigned_captain_name || '—';
-    const stewLabel = b.stew_name || '—';
-    const brokerLabel = b.broker_name || b.platform || '—';
-    const manualBadge = b.is_manual ? '<span class="badge-manual">Manual</span>' : '';
-    return `<tr data-testid="row-booking-${esc(b.id)}">
-      <td>${esc(b.booking_date)}</td>
-      <td>${esc(b.start_time||'—')}</td>
-      <td>${esc(String(b.duration_hours||'?'))}h</td>
-      <td>${esc(b.customer_name)}${manualBadge}</td>
-      <td>${esc(boatLabel)}</td>
-      <td>${esc(capLabel)}</td>
-      <td>${esc(stewLabel)}</td>
-      <td>${esc(brokerLabel)}</td>
-      <td>${fmtMoney(b.total_amount)}</td>
-      <td><span class="status-badge status-${esc(b.status||'confirmed')}">${esc(b.status||'confirmed')}</span></td>
-      <td>
-        <div class="actions-cell">
-          <button class="btn-sm btn-edit" onclick="openEditBooking('${esc(b.id)}')" data-testid="button-edit-${esc(b.id)}">Editar</button>
-          <button class="btn-sm btn-del" onclick="deleteBooking('${esc(b.id)}','${esc(b.customer_name)}')" data-testid="button-delete-${esc(b.id)}">Cancelar</button>
+  // Group bookings by date (already sorted by date from API)
+  const byDate = new Map();
+  bookings.forEach(b => {
+    const d = b.booking_date;
+    if (!byDate.has(d)) byDate.set(d, []);
+    byDate.get(d).push(b);
+  });
+
+  const rows = [];
+  byDate.forEach((dayBks, date) => {
+    const accent  = _dayAccent(date);
+    const label   = _fmtDateLabel(date);
+    const count   = dayBks.length;
+    const total   = dayBks.reduce((s, b) => s + parseFloat(b.total_amount || 0), 0);
+    const bal     = dayBks.reduce((s, b) => s + parseFloat(b.balance_pending || 0), 0);
+    const balCell = bal > 0
+      ? `<span class="bkt-bal-due">Saldo: ${fmtMoney(bal)}</span>`
+      : `<span class="bkt-bal-ok">Pagado</span>`;
+
+    // Day separator row
+    rows.push(`<tr class="bkt-day-sep" data-testid="day-sep-${date}">
+      <td colspan="11">
+        <div class="bkt-day-inner" style="border-left:4px solid ${accent}">
+          <span class="bkt-day-label" style="color:${accent}">${label.charAt(0).toUpperCase()+label.slice(1)}</span>
+          <span class="bkt-day-pills">
+            <span class="bkt-pill" style="background:${accent}1a;color:${accent};border:1px solid ${accent}40">
+              ${count} reserva${count!==1?'s':''}
+            </span>
+            <span class="bkt-pill bkt-pill-money" style="background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0">
+              ${fmtMoney(total)}
+            </span>
+            ${balCell}
+          </span>
         </div>
       </td>
-    </tr>`;
-  }).join('');
+    </tr>`);
+
+    // Booking rows for this day
+    dayBks.forEach(b => {
+      const boatLabel  = b.boat_type || b.boat_id || '—';
+      const capLabel   = b.assigned_captain_name || '—';
+      const stewLabel  = b.stew_name || '—';
+      const brokerLabel= b.broker_name || b.platform || '—';
+      const manualBadge= b.is_manual ? '<span class="badge-manual">Manual</span>' : '';
+      rows.push(`<tr class="bkt-row" style="border-left:3px solid ${accent}40" data-testid="row-booking-${esc(b.id)}">
+        <td></td>
+        <td>${esc(b.start_time||'—')}</td>
+        <td>${esc(String(b.duration_hours||'?'))}h</td>
+        <td>${esc(b.customer_name)}${manualBadge}</td>
+        <td>${esc(boatLabel)}</td>
+        <td>${esc(capLabel)}</td>
+        <td>${esc(stewLabel)}</td>
+        <td>${esc(brokerLabel)}</td>
+        <td>${fmtMoney(b.total_amount)}</td>
+        <td><span class="status-badge status-${esc(b.status||'confirmed')}">${esc(b.status||'confirmed')}</span></td>
+        <td>
+          <div class="actions-cell">
+            <button class="btn-sm btn-edit" onclick="openEditBooking('${esc(b.id)}')" data-testid="button-edit-${esc(b.id)}">Editar</button>
+            <button class="btn-sm btn-del" onclick="deleteBooking('${esc(b.id)}','${esc(b.customer_name)}')" data-testid="button-delete-${esc(b.id)}">Cancelar</button>
+          </div>
+        </td>
+      </tr>`);
+    });
+  });
+
+  tbody.innerHTML = rows.join('');
 }
 
 // ─── Availability Table ───────────────────────────────

@@ -153,6 +153,42 @@
     .btn-sm:hover { opacity: 0.8; }
     .loading-row td { text-align: center; color: #94a3b8; padding: 32px; font-size: 14px; }
 
+    /* ── Day grouping in booking table ── */
+    .bkt-day-sep td { padding: 0; border-bottom: none !important; }
+    .bkt-day-sep:hover td { background: transparent !important; }
+    .bkt-day-inner {
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+      padding: 10px 16px 6px;
+      background: #f8fafc;
+      border-top: 1px solid #e2e8f0;
+      margin-top: 2px;
+    }
+    .bkt-day-label {
+      font-size: 12.5px; font-weight: 800; letter-spacing: 0.01em;
+      white-space: nowrap; flex-shrink: 0;
+    }
+    .bkt-day-pills { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .bkt-pill {
+      display: inline-flex; align-items: center;
+      padding: 2px 9px; border-radius: 10px;
+      font-size: 11px; font-weight: 700; white-space: nowrap;
+    }
+    .bkt-bal-due {
+      display: inline-flex; align-items: center;
+      padding: 2px 9px; border-radius: 10px;
+      font-size: 11px; font-weight: 700;
+      background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa;
+    }
+    .bkt-bal-ok {
+      display: inline-flex; align-items: center;
+      padding: 2px 9px; border-radius: 10px;
+      font-size: 11px; font-weight: 700;
+      background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0;
+    }
+    .bkt-row td:first-child { width: 6px; padding: 0; }
+    .schedule-table .bkt-day-sep + .bkt-row td { border-top: none; }
+    .schedule-table .bkt-row:hover td { background: #f8faff; }
+
     /* ── Modal ── */
     .modal {
       display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.48);
