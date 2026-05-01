@@ -1032,14 +1032,17 @@ window.NadakiCalendar = (function () {
               ${dBlks.map(a=>`<div class="cal2-avail-block"
                 style="top:0;height:${HOURS.length*SLOT_H}px"
                 title="${esc(a.reason||'Bloqueado')}">&#128683; ${esc(a.reason||'Bloqueado')}</div>`).join('')}
-              ${dBks.map(b => {
-                const {h:sH,m:sM}=_hm(b.start_time);
-                const top=Math.max(0,((sH-H_START)+sM/60)*SLOT_H);
-                const ht =Math.max(28,(b.duration_hours||4)*SLOT_H-4);
+              ${_layoutEvents(dBks).map(({b,start,end,col,numCols}) => {
+                const top = Math.max(0, start * SLOT_H);
+                const ht  = Math.max(28, (end - start) * SLOT_H - 4);
+                const pct = 100 / numCols;
+                const lft = col * pct;
+                const rgt = 100 - lft - pct;
+                const GAP = numCols > 1 ? 2 : 3;
                 return `<div class="cal2-wv-ev"
-                  style="top:${top}px;height:${ht}px"
+                  style="top:${top}px;height:${ht}px;left:calc(${lft}% + ${GAP}px);right:calc(${rgt}% + ${GAP}px)"
                   data-id="${b.id}" data-testid="event-${b.id}">
-                  ${_card(b,false)}
+                  ${_card(b, numCols > 2)}
                 </div>`;
               }).join('')}
             </div>`;
@@ -1101,14 +1104,17 @@ window.NadakiCalendar = (function () {
                 ${dayBlks.map(a=>`<div class="cal2-avail-block"
                   style="top:0;height:${HOURS.length*SLOT_H}px"
                   title="${esc(a.reason||'Bloqueado')}">&#128683; ${esc(a.reason||'Bloqueado')}</div>`).join('')}
-                ${colBks.map(b => {
-                  const {h:sH,m:sM}=_hm(b.start_time);
-                  const top=Math.max(0,((sH-H_START)+sM/60)*SLOT_H);
-                  const ht =Math.max(36,(b.duration_hours||4)*SLOT_H-4);
+                ${_layoutEvents(colBks).map(({b,start,end,col,numCols}) => {
+                  const top = Math.max(0, start * SLOT_H);
+                  const ht  = Math.max(36, (end - start) * SLOT_H - 4);
+                  const pct = 100 / numCols;
+                  const lft = col * pct;
+                  const rgt = 100 - lft - pct;
+                  const GAP = numCols > 1 ? 2 : 3;
                   return `<div class="cal2-wv-ev"
-                    style="top:${top}px;height:${ht}px"
+                    style="top:${top}px;height:${ht}px;left:calc(${lft}% + ${GAP}px);right:calc(${rgt}% + ${GAP}px)"
                     data-testid="event-${b.id}">
-                    ${_card(b,false)}
+                    ${_card(b, numCols > 2)}
                   </div>`;
                 }).join('')}
               </div>
@@ -1336,6 +1342,41 @@ window.NadakiCalendar = (function () {
       if (key.toLowerCase() === bt) return val.label;
     }
     return null;
+  }
+
+  // ── Layout algorithm: assign non-overlapping columns to events ──
+  function _layoutEvents(bkgs) {
+    if (!bkgs.length) return [];
+    const events = bkgs.map(b => {
+      const {h, m} = _hm(b.start_time);
+      const start = (h - H_START) + m / 60;
+      const dur   = Math.max(0.5, b.duration_hours || 4);
+      return { b, start, end: start + dur, col: 0, numCols: 1 };
+    });
+    // Sort by start time asc, duration desc
+    events.sort((a, b) => a.start - b.start || (b.end - b.start) - (a.end - a.start));
+    // Greedy column assignment
+    const colEnds = [];
+    events.forEach(ev => {
+      let placed = false;
+      for (let c = 0; c < colEnds.length; c++) {
+        if (colEnds[c] <= ev.start + 0.01) {
+          ev.col = c; colEnds[c] = ev.end; placed = true; break;
+        }
+      }
+      if (!placed) { ev.col = colEnds.length; colEnds.push(ev.end); }
+    });
+    // For each event determine its overlap group width
+    events.forEach(ev => {
+      let maxCol = ev.col;
+      events.forEach(other => {
+        if (other !== ev && other.start < ev.end - 0.01 && other.end > ev.start + 0.01) {
+          maxCol = Math.max(maxCol, other.col);
+        }
+      });
+      ev.numCols = maxCol + 1;
+    });
+    return events;
   }
 
   // ── Date Scrubber ─────────────────────────────────────────────
