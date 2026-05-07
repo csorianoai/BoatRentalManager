@@ -1,0 +1,265 @@
+Actúa como Principal Accounting Systems Engineer + Backend Architect.
+
+Estás trabajando sobre un sistema existente de bookings y contabilidad para una empresa de renta de botes (gestion.nadakiexcursions).
+
+IMPORTANTE:
+- NO puedes romper funcionalidades existentes.
+- NO puedes eliminar endpoints actuales.
+- SOLO puedes extender, corregir y reforzar la lógica contable.
+- Todo debe ser backward compatible.
+
+OBJETIVO:
+Llevar el sistema a un estado contable correcto donde:
+1. Todos los bookings cuadren perfectamente
+2. Se soporte flujo híbrido (bank + cash + gastos directos)
+3. Se mantenga contabilidad de devengo
+4. Se permita ajuste manual de asientos (fase implementación)
+5. Se pueda auditar todo
+
+--------------------------------------------------
+FASE 1 — CREAR CUENTA CONTABLE CRÍTICA
+--------------------------------------------------
+
+Crear nueva cuenta en el plan contable:
+
+code: 1015
+name: "Cash Clearing / Operating Cash"
+type: "asset"
+
+Propósito:
+- Registrar efectivo recibido de clientes
+- Permitir que ese efectivo luego se use para gastos operativos
+- Evitar descuadres cuando el dinero no pasa por banco
+
+--------------------------------------------------
+FASE 2 — NUEVO CONCEPTO: BOOKING LEDGER
+--------------------------------------------------
+
+Crear estructura lógica (no necesariamente nueva tabla si ya existe equivalente):
+
+booking_ledger:
+- booking_id
+- total_revenue
+- total_collected
+- total_expenses
+- profit
+- accounting_status (enum):
+    - not_started
+    - in_progress
+    - partially_reconciled
+    - reconciled
+    - locked
+- discrepancy_flag (boolean)
+- discrepancy_amount
+
+Este ledger debe poder calcularse dinámicamente desde transactions si ya existe esa data.
+
+--------------------------------------------------
+FASE 3 — NUEVO ENDPOINT (CRÍTICO)
+--------------------------------------------------
+
+POST /api/booking-cash-payment
+
+Body:
+{
+  "booking_id": string,
+  "amount": number,
+  "date": date,
+  "notes": string
+}
+
+Lógica:
+
+1. VALIDAR booking existe
+2. INSERT en transactions:
+
+   Dr 1015 (Cash Clearing)
+   Cr booking_receivable o deferred_account (según corresponda)
+
+3. Marcar booking:
+   payment_status = 'partial' o 'paid'
+
+4. Guardar referencia:
+   reference_type = 'booking'
+   reference_id = booking_id
+
+--------------------------------------------------
+FASE 4 — CORREGIR createRevenueFromBooking()
+--------------------------------------------------
+
+Modificar lógica:
+
+ANTES:
+→ Siempre crea revenue automáticamente
+
+AHORA:
+
+IF booking.has_deposit OR booking.has_receivable OR booking.has_cash_payment:
+    DO NOT auto-create revenue
+
+EL revenue SOLO debe reconocerse cuando:
+→ booking.status = 'completed'
+
+--------------------------------------------------
+FASE 5 — CORREGIR RECEIVABLES
+--------------------------------------------------
+
+CAMBIO CRÍTICO:
+
+Cuando se cobra una cuenta por cobrar:
+
+ANTES:
+→ crea revenue
+
+AHORA:
+
+Dr Bank / Cash
+Cr Accounts Receivable
+
+NO tocar revenue aquí.
+
+--------------------------------------------------
+FASE 6 — ENDPOINT PARA COMPLETAR BOOKING
+--------------------------------------------------
+
+POST /api/bookings/:id/complete
+
+Lógica:
+
+1. Calcular total esperado del booking
+2. Crear asiento:
+
+   Dr Deferred + AR
+   Cr Revenue (4010 o 4020 según tipo)
+
+3. Marcar booking:
+   status = completed
+
+--------------------------------------------------
+FASE 7 — REGISTRO DE GASTOS OPERATIVOS
+--------------------------------------------------
+
+Crear o validar endpoint:
+
+POST /api/booking-expense
+
+Body:
+{
+  "booking_id": string,
+  "account_code": string,
+  "amount": number,
+  "payment_method": "cash" | "bank",
+  "notes": string
+}
+
+Lógica:
+
+IF payment_method = "cash":
+   Cr 1015 (Cash Clearing)
+
+IF payment_method = "bank":
+   Cr Bank Account
+
+Dr Expense Account
+
+--------------------------------------------------
+FASE 8 — SOPORTE DE ASIENTOS MANUALES (CRÍTICO)
+--------------------------------------------------
+
+Crear endpoint:
+
+POST /api/accounting/manual-entry
+
+Body:
+{
+  "entries": [
+    { "account": "code", "type": "debit", "amount": number },
+    { "account": "code", "type": "credit", "amount": number }
+  ],
+  "notes": string,
+  "reference_type": "manual_adjustment",
+  "booking_id": optional
+}
+
+VALIDACIONES:
+- Debits = Credits obligatorio
+- Guardar:
+  created_by
+  timestamp
+
+IMPORTANTE:
+Estos asientos NO deben romper balances existentes, solo ajustar.
+
+--------------------------------------------------
+FASE 9 — DETECCIÓN DE DESCALCES AUTOMÁTICOS
+--------------------------------------------------
+
+Crear función:
+
+checkBookingIntegrity(booking_id)
+
+Debe validar:
+
+1. total revenue = total payments registrados
+2. cash inflow = cash outflow
+3. gastos asignados correctamente
+4. pagos a capitán no excedan lo esperado
+
+Si falla:
+- discrepancy_flag = true
+- guardar discrepancy_amount
+
+--------------------------------------------------
+FASE 10 — EJEMPLO REAL (MATEJ)
+--------------------------------------------------
+
+Implementar test automático con:
+
+booking_id: Matej-2026-04-27
+total: 700
+
+Deposito banco: 250
+Cash recibido: 450
+Gastos:
+- fuel: 300
+- ice: 6
+- captain: 144 cash + 111 zelle
+
+Resultado esperado:
+
+Revenue: 700
+Expenses: 561
+Profit: 139
+
+Discrepancy detectada:
+Captain overpayment: 5
+
+booking_status:
+partially_reconciled
+
+--------------------------------------------------
+FASE 11 — UI / CONTROL (SI APLICA)
+--------------------------------------------------
+
+Agregar en dashboard:
+
+- Estado contable por booking
+- Botón: "Reconciliar"
+- Botón: "Ajuste manual"
+- Indicador de alerta
+
+--------------------------------------------------
+REGLAS FINALES
+--------------------------------------------------
+
+- NO eliminar tablas existentes
+- NO cambiar nombres de endpoints existentes
+- TODO debe ser compatible con sistema actual
+- Priorizar claridad contable sobre complejidad técnica
+- El sistema debe reflejar la realidad del dinero, no supuestos
+
+SALIDA ESPERADA:
+- Código implementado
+- Endpoints funcionando
+- Validaciones activas
+- Test del caso Matej pasando

@@ -380,6 +380,9 @@
             <button class="tab" data-tab="cuadre-booking" data-testid="tab-cuadre-booking">
                 📋 Cuadre por Booking
             </button>
+            <button class="tab" data-tab="ledger-contable" data-testid="tab-ledger-contable">
+                Ledger Contable
+            </button>
         </div>
     </div>
 
@@ -1801,6 +1804,175 @@
         </div>
 
         <!-- Cuadre por Booking Tab -->
+        <!-- ========== LEDGER CONTABLE TAB ========== -->
+        <div class="tab-content" id="ledger-contable" data-testid="tab-content-ledger-contable">
+            <div style="max-width:1100px;margin:0 auto;">
+                <!-- Header & Stats -->
+                <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px 24px;margin-bottom:20px;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+                        <div>
+                            <h2 style="margin:0 0 4px;font-size:18px;font-weight:800;color:#1a1a2e;">Ledger Contable por Booking</h2>
+                            <p style="margin:0;font-size:13px;color:#64748b;">Integridad contable, reconocimiento de revenue y registro de pagos/gastos por reserva.</p>
+                        </div>
+                        <button onclick="loadLedgerBookingList()" data-testid="button-ledger-refresh"
+                                style="padding:8px 18px;background:#0ea5e9;color:#fff;border:none;border-radius:7px;font-size:14px;font-weight:600;cursor:pointer;">
+                            Actualizar lista
+                        </button>
+                    </div>
+                    <!-- Stat pills -->
+                    <div id="ledger-stats" style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;"></div>
+                </div>
+
+                <!-- Booking search + filters -->
+                <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:16px 20px;margin-bottom:20px;">
+                    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;">
+                        <div style="flex:1;min-width:200px;">
+                            <label style="display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:5px;">Booking ID o cliente</label>
+                            <input type="text" id="ledger-search" data-testid="input-ledger-search"
+                                   placeholder="Ej: book_xxx o nombre cliente..."
+                                   style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:7px;font-size:14px;box-sizing:border-box;">
+                        </div>
+                        <div style="min-width:160px;">
+                            <label style="display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:5px;">Estado contable</label>
+                            <select id="ledger-filter-status" data-testid="select-ledger-filter-status"
+                                    style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;">
+                                <option value="">Todos</option>
+                                <option value="not_started">Sin iniciar</option>
+                                <option value="in_progress">En progreso</option>
+                                <option value="partially_reconciled">Parcial</option>
+                                <option value="reconciled">Conciliado</option>
+                                <option value="locked">Bloqueado</option>
+                            </select>
+                        </div>
+                        <button onclick="loadLedgerBookingList()" data-testid="button-ledger-search"
+                                style="padding:8px 18px;background:#1a1a2e;color:#fff;border:none;border-radius:7px;font-size:14px;font-weight:600;cursor:pointer;">
+                            Buscar
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Booking list table -->
+                <div id="ledger-booking-list" style="margin-bottom:24px;"></div>
+
+                <!-- Detail panel -->
+                <div id="ledger-detail-panel" style="display:none;">
+                    <!-- Integrity summary -->
+                    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px 24px;margin-bottom:16px;">
+                        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+                            <h3 style="margin:0;font-size:16px;font-weight:800;color:#1a1a2e;" id="ledger-detail-title">Detalle contable</h3>
+                            <span id="ledger-detail-status-badge" style="padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;text-transform:uppercase;"></span>
+                        </div>
+                        <div id="ledger-integrity-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;"></div>
+                        <div id="ledger-discrepancy-alert" style="display:none;margin-top:14px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:12px 16px;color:#991b1b;font-size:13px;font-weight:600;"></div>
+                    </div>
+
+                    <!-- Action panel -->
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;" id="ledger-action-grid">
+                        <!-- Cash payment -->
+                        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:18px 20px;">
+                            <h4 style="margin:0 0 12px;font-size:14px;font-weight:700;color:#1a1a2e;">Registrar Pago en Efectivo</h4>
+                            <div style="display:flex;flex-direction:column;gap:8px;">
+                                <input type="number" id="ledger-cash-amount" step="0.01" placeholder="Monto USD" data-testid="input-ledger-cash-amount"
+                                       style="padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+                                <input type="date" id="ledger-cash-date" data-testid="input-ledger-cash-date"
+                                       style="padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+                                <input type="text" id="ledger-cash-notes" placeholder="Notas (opcional)" data-testid="input-ledger-cash-notes"
+                                       style="padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+                                <button onclick="registerCashPayment()" data-testid="button-register-cash-payment"
+                                        style="padding:8px 14px;background:#16a34a;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;">
+                                    Registrar Pago en Efectivo
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Expense -->
+                        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:18px 20px;">
+                            <h4 style="margin:0 0 12px;font-size:14px;font-weight:700;color:#1a1a2e;">Registrar Gasto del Booking</h4>
+                            <div style="display:flex;flex-direction:column;gap:8px;">
+                                <input type="number" id="ledger-exp-amount" step="0.01" placeholder="Monto USD" data-testid="input-ledger-exp-amount"
+                                       style="padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+                                <select id="ledger-exp-category" data-testid="select-ledger-exp-category"
+                                        style="padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+                                    <option value="fuel">Combustible</option>
+                                    <option value="crew">Capitán / Tripulación</option>
+                                    <option value="supplies">Suministros</option>
+                                    <option value="maintenance">Mantenimiento</option>
+                                    <option value="operational">Operacional</option>
+                                    <option value="other">Otro</option>
+                                </select>
+                                <select id="ledger-exp-payment" data-testid="select-ledger-exp-payment"
+                                        style="padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+                                    <option value="cash">Efectivo (Cash Clearing 1015)</option>
+                                    <option value="bank">Banco (1010)</option>
+                                </select>
+                                <input type="text" id="ledger-exp-notes" placeholder="Descripción del gasto" data-testid="input-ledger-exp-notes"
+                                       style="padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+                                <button onclick="registerBookingExpense()" data-testid="button-register-booking-expense"
+                                        style="padding:8px 14px;background:#dc2626;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;">
+                                    Registrar Gasto
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Complete booking / recognize revenue -->
+                    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:18px 20px;margin-bottom:16px;" id="ledger-complete-panel">
+                        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+                            <div>
+                                <h4 style="margin:0 0 4px;font-size:14px;font-weight:700;color:#1a1a2e;">Reconocer Revenue (Completar Booking)</h4>
+                                <p style="margin:0;font-size:12px;color:#64748b;">Dr 2500 Depósitos + AR → Cr 4010/4020 Revenue. Marca el booking como completado.</p>
+                            </div>
+                            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                                <select id="ledger-rev-account" data-testid="select-ledger-rev-account"
+                                        style="padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+                                    <option value="4010">4010 — Revenue Tours</option>
+                                    <option value="4020">4020 — Revenue Rentals</option>
+                                </select>
+                                <button onclick="completeBookingRevenue()" data-testid="button-complete-booking-revenue"
+                                        style="padding:8px 18px;background:#7c3aed;color:#fff;border:none;border-radius:7px;font-size:14px;font-weight:700;cursor:pointer;">
+                                    Reconocer Revenue
+                                </button>
+                                <button onclick="runIntegrityCheck()" data-testid="button-run-integrity"
+                                        style="padding:8px 14px;background:#0ea5e9;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;">
+                                    Verificar Integridad
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Manual entry -->
+                    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:18px 20px;margin-bottom:16px;">
+                        <h4 style="margin:0 0 12px;font-size:14px;font-weight:700;color:#1a1a2e;">Asiento Manual (Débito = Crédito)</h4>
+                        <div id="manual-entries-container"></div>
+                        <div style="display:flex;gap:8px;margin-top:10px;">
+                            <button onclick="addManualEntryRow('debit')" data-testid="button-add-debit"
+                                    style="padding:6px 14px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;cursor:pointer;background:#fef3c7;color:#92400e;font-weight:600;">
+                                + Débito
+                            </button>
+                            <button onclick="addManualEntryRow('credit')" data-testid="button-add-credit"
+                                    style="padding:6px 14px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;cursor:pointer;background:#dbeafe;color:#1e40af;font-weight:600;">
+                                + Crédito
+                            </button>
+                            <input type="text" id="manual-entry-notes" placeholder="Notas del asiento..." data-testid="input-manual-entry-notes"
+                                   style="flex:1;padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;">
+                            <button onclick="submitManualEntry()" data-testid="button-submit-manual-entry"
+                                    style="padding:6px 16px;background:#1a1a2e;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;">
+                                Guardar Asiento
+                            </button>
+                        </div>
+                        <div id="manual-entry-balance-check" style="margin-top:8px;font-size:12px;font-weight:600;color:#64748b;"></div>
+                    </div>
+
+                    <!-- Transactions list -->
+                    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:18px 20px;">
+                        <h4 style="margin:0 0 12px;font-size:14px;font-weight:700;color:#1a1a2e;">Transacciones vinculadas</h4>
+                        <div id="ledger-tx-list" style="font-size:13px;"></div>
+                    </div>
+                </div><!-- /ledger-detail-panel -->
+            </div>
+        </div>
+        <!-- ========== END LEDGER CONTABLE TAB ========== -->
+
         <div class="tab-content" id="cuadre-booking" data-testid="tab-content-cuadre-booking">
             <div style="max-width:900px;margin:0 auto;">
                 <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px 24px;margin-bottom:20px;">
@@ -4117,6 +4289,374 @@
       </div>
     </div>
     <script src="/assets/js/components/global-nav.js"></script>
+<script>
+// ========== LEDGER CONTABLE TAB — JavaScript ==========
+let ledgerCurrentBookingId = null;
+let manualEntryRows = [];
+
+const ACCT_STATUS_LABELS = {
+  not_started:          { label: 'Sin iniciar',  color: '#64748b', bg: '#f1f5f9' },
+  in_progress:          { label: 'En progreso',  color: '#d97706', bg: '#fef3c7' },
+  partially_reconciled: { label: 'Parcial',       color: '#0369a1', bg: '#dbeafe' },
+  reconciled:           { label: 'Conciliado',    color: '#15803d', bg: '#dcfce7' },
+  locked:               { label: 'Bloqueado',     color: '#7c3aed', bg: '#ede9fe' },
+};
+
+function ledgerStatusBadge(status) {
+  const s = ACCT_STATUS_LABELS[status] || ACCT_STATUS_LABELS.not_started;
+  return `<span style="padding:2px 10px;border-radius:20px;font-size:10px;font-weight:700;text-transform:uppercase;background:${s.bg};color:${s.color};">${s.label}</span>`;
+}
+
+async function loadLedgerBookingList() {
+  const search   = (document.getElementById('ledger-search')?.value || '').trim();
+  const acctStat = document.getElementById('ledger-filter-status')?.value || '';
+  const container = document.getElementById('ledger-booking-list');
+  if (!container) return;
+  container.innerHTML = '<div style="padding:24px;text-align:center;color:#94a3b8;font-size:13px;">Cargando...</div>';
+  try {
+    let url = `/api/accounting/bookings-ledger-list?limit=60`;
+    if (acctStat) url += `&accounting_status=${encodeURIComponent(acctStat)}`;
+    const res  = await fetch(url, { credentials: 'include' });
+    let rows   = await res.json();
+
+    // Client-side filter by search
+    if (search) {
+      const q = search.toLowerCase();
+      rows = rows.filter(r =>
+        (r.id || '').toLowerCase().includes(q) ||
+        (r.customer_name || '').toLowerCase().includes(q)
+      );
+    }
+
+    // Stats
+    const stats = document.getElementById('ledger-stats');
+    if (stats) {
+      const total       = rows.length;
+      const reconciled  = rows.filter(r => r.accounting_status === 'reconciled').length;
+      const pending     = rows.filter(r => !r.accounting_status || r.accounting_status === 'not_started').length;
+      const discrepant  = rows.filter(r => r.discrepancy_flag).length;
+      stats.innerHTML = [
+        ['Total bookings', total, '#1a1a2e', '#f1f5f9'],
+        ['Conciliados',    reconciled, '#15803d', '#dcfce7'],
+        ['Sin iniciar',    pending, '#64748b', '#f8fafc'],
+        ['Con discrepancia', discrepant, '#dc2626', '#fef2f2'],
+      ].map(([l, v, c, bg]) =>
+        `<div style="background:${bg};border-radius:8px;padding:8px 14px;display:flex;align-items:center;gap:8px;">
+          <span style="font-size:11px;color:${c};font-weight:600;">${l}</span>
+          <span style="font-size:18px;font-weight:800;color:${c};">${v}</span>
+        </div>`
+      ).join('');
+    }
+
+    if (!rows.length) {
+      container.innerHTML = '<div style="padding:24px;text-align:center;color:#94a3b8;font-size:13px;">No se encontraron bookings.</div>';
+      return;
+    }
+
+    container.innerHTML = `
+      <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead style="background:#f8fafc;">
+            <tr>
+              <th style="padding:10px 14px;text-align:left;font-weight:700;color:#475569;border-bottom:1px solid #e5e7eb;">Cliente</th>
+              <th style="padding:10px 14px;text-align:left;font-weight:700;color:#475569;border-bottom:1px solid #e5e7eb;">Fecha</th>
+              <th style="padding:10px 14px;text-align:right;font-weight:700;color:#475569;border-bottom:1px solid #e5e7eb;">Total</th>
+              <th style="padding:10px 14px;text-align:center;font-weight:700;color:#475569;border-bottom:1px solid #e5e7eb;">Estado contable</th>
+              <th style="padding:10px 14px;text-align:center;font-weight:700;color:#475569;border-bottom:1px solid #e5e7eb;">Revenue</th>
+              <th style="padding:10px 14px;text-align:center;font-weight:700;color:#475569;border-bottom:1px solid #e5e7eb;">Acción</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map((r, i) => `
+              <tr style="border-bottom:1px solid #f1f5f9;cursor:pointer;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''"
+                  onclick="openLedgerDetail('${r.id}')" data-testid="row-ledger-${r.id}">
+                <td style="padding:10px 14px;font-weight:600;color:#1a1a2e;">${r.customer_name || '—'}</td>
+                <td style="padding:10px 14px;color:#475569;">${r.booking_date ? String(r.booking_date).slice(0,10) : '—'}</td>
+                <td style="padding:10px 14px;text-align:right;font-weight:700;color:#1a1a2e;">$${parseFloat(r.total_amount||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+                <td style="padding:10px 14px;text-align:center;">${ledgerStatusBadge(r.accounting_status)}</td>
+                <td style="padding:10px 14px;text-align:center;">
+                  ${r.revenue_recognized
+                    ? '<span style="color:#15803d;font-weight:700;font-size:11px;">Reconocido</span>'
+                    : '<span style="color:#94a3b8;font-size:11px;">Pendiente</span>'}
+                </td>
+                <td style="padding:10px 14px;text-align:center;">
+                  <button onclick="event.stopPropagation();openLedgerDetail('${r.id}')" data-testid="button-ledger-detail-${r.id}"
+                          style="padding:4px 12px;background:#0ea5e9;color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;">
+                    Ver
+                  </button>
+                </td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  } catch(e) {
+    container.innerHTML = `<div style="padding:24px;color:#dc2626;font-size:13px;">Error: ${e.message}</div>`;
+  }
+}
+
+async function openLedgerDetail(bookingId) {
+  ledgerCurrentBookingId = bookingId;
+  const panel = document.getElementById('ledger-detail-panel');
+  if (panel) panel.style.display = 'block';
+  panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  document.getElementById('ledger-integrity-grid').innerHTML =
+    '<div style="color:#94a3b8;font-size:12px;padding:8px;">Cargando datos...</div>';
+  document.getElementById('ledger-tx-list').innerHTML = '';
+  manualEntryRows = [];
+  renderManualEntryRows();
+  await runIntegrityCheck();
+}
+
+async function runIntegrityCheck() {
+  if (!ledgerCurrentBookingId) return;
+  try {
+    const res  = await fetch(`/api/bookings/${ledgerCurrentBookingId}/ledger-summary`, { credentials: 'include' });
+    const data = await res.json();
+    if (!res.ok) { alert('Error: ' + (data.error || 'Unknown')); return; }
+    renderLedgerDetail(data);
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+function renderLedgerDetail(d) {
+  // Title
+  const title = document.getElementById('ledger-detail-title');
+  if (title) title.textContent = `${d.customer_name || d.booking_id} — Ledger`;
+  const badge = document.getElementById('ledger-detail-status-badge');
+  if (badge) {
+    const s = ACCT_STATUS_LABELS[d.accounting_status] || ACCT_STATUS_LABELS.not_started;
+    badge.style.cssText = `padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;text-transform:uppercase;background:${s.bg};color:${s.color};`;
+    badge.textContent = s.label;
+  }
+
+  // Integrity grid
+  const grid = document.getElementById('ledger-integrity-grid');
+  if (grid) {
+    const fmt = v => `$${parseFloat(v||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+    const cards = [
+      ['Revenue esperado',   d.expected_revenue,   '#1a1a2e'],
+      ['Depósitos',          d.total_deposits,      '#0369a1'],
+      ['Efectivo recibido',  d.total_cash,          '#0369a1'],
+      ['AR cobrada',         d.total_ar_paid,       '#0369a1'],
+      ['Total cobrado',      d.total_collected,     d.discrepancy_flag ? '#dc2626' : '#15803d'],
+      ['Gastos del booking', d.total_expenses,      '#dc2626'],
+      ['Profit esperado',    d.expected_profit,     '#7c3aed'],
+      ['Revenue reconocido', d.revenue_recognized_amount, '#15803d'],
+    ];
+    grid.innerHTML = cards.map(([l, v, c]) =>
+      `<div style="background:#f8fafc;border-radius:8px;padding:10px 14px;">
+        <div style="font-size:11px;color:#64748b;font-weight:600;margin-bottom:3px;">${l}</div>
+        <div style="font-size:18px;font-weight:800;color:${c};">${fmt(v)}</div>
+      </div>`
+    ).join('');
+  }
+
+  // Discrepancy alert
+  const alert = document.getElementById('ledger-discrepancy-alert');
+  if (alert) {
+    if (d.discrepancy_flag) {
+      alert.style.display = 'block';
+      const dir = d.discrepancy_amount > 0 ? 'faltan' : 'sobran';
+      alert.textContent = `Discrepancia detectada: ${dir} $${Math.abs(d.discrepancy_amount).toFixed(2)} (cobrado $${parseFloat(d.total_collected||0).toFixed(2)} vs esperado $${parseFloat(d.expected_revenue||0).toFixed(2)})`;
+    } else {
+      alert.style.display = 'none';
+    }
+  }
+
+  // Complete panel visibility
+  const completePanel = document.getElementById('ledger-complete-panel');
+  if (completePanel) {
+    completePanel.style.opacity = d.revenue_recognized ? '0.5' : '1';
+    const btn = document.getElementById('button-complete-booking-revenue') || completePanel.querySelector('button[onclick="completeBookingRevenue()"]');
+    if (btn) btn.disabled = !!d.revenue_recognized;
+  }
+
+  // Transactions list
+  const txList = document.getElementById('ledger-tx-list');
+  if (txList) {
+    const txs = d.transactions || [];
+    if (!txs.length) {
+      txList.innerHTML = '<div style="color:#94a3b8;font-size:12px;padding:8px;">Sin transacciones vinculadas.</div>';
+    } else {
+      txList.innerHTML = `<table style="width:100%;border-collapse:collapse;">
+        <thead><tr style="background:#f8fafc;">
+          <th style="padding:7px 10px;text-align:left;font-size:11px;color:#64748b;font-weight:700;">Fecha</th>
+          <th style="padding:7px 10px;text-align:left;font-size:11px;color:#64748b;font-weight:700;">Cuenta</th>
+          <th style="padding:7px 10px;text-align:left;font-size:11px;color:#64748b;font-weight:700;">Tipo</th>
+          <th style="padding:7px 10px;text-align:right;font-size:11px;color:#64748b;font-weight:700;">Monto</th>
+          <th style="padding:7px 10px;text-align:left;font-size:11px;color:#64748b;font-weight:700;">Descripción</th>
+        </tr></thead>
+        <tbody>
+          ${txs.map(t => {
+            const c = t.transaction_type === 'income' ? '#15803d' : '#dc2626';
+            const sign = t.transaction_type === 'income' ? '+' : '-';
+            return `<tr style="border-bottom:1px solid #f1f5f9;">
+              <td style="padding:6px 10px;font-size:12px;color:#475569;">${String(t.transaction_date||'').slice(0,10)}</td>
+              <td style="padding:6px 10px;font-size:11px;font-family:monospace;color:#0369a1;">${t.account_code||''} ${t.account_name||''}</td>
+              <td style="padding:6px 10px;font-size:11px;color:#64748b;">${t.reference_type||''}</td>
+              <td style="padding:6px 10px;text-align:right;font-size:12px;font-weight:700;color:${c};">${sign}$${parseFloat(t.amount||0).toFixed(2)}</td>
+              <td style="padding:6px 10px;font-size:11px;color:#475569;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${(t.description||'').replace(/"/g,'&quot;')}">${t.description||''}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>`;
+    }
+  }
+}
+
+async function registerCashPayment() {
+  if (!ledgerCurrentBookingId) { alert('Selecciona un booking primero'); return; }
+  const amount = parseFloat(document.getElementById('ledger-cash-amount')?.value || 0);
+  const date   = document.getElementById('ledger-cash-date')?.value || '';
+  const notes  = document.getElementById('ledger-cash-notes')?.value || '';
+  if (!amount || amount <= 0) { alert('Ingresa un monto válido'); return; }
+  try {
+    const res = await fetch('/api/booking-cash-payment', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ booking_id: ledgerCurrentBookingId, amount, date, notes })
+    });
+    const data = await res.json();
+    if (!res.ok) { alert('Error: ' + (data.error || 'Unknown')); return; }
+    alert(`Pago registrado: $${data.amount} — Estado: ${data.payment_status}`);
+    document.getElementById('ledger-cash-amount').value = '';
+    document.getElementById('ledger-cash-notes').value  = '';
+    await runIntegrityCheck();
+    loadLedgerBookingList();
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function registerBookingExpense() {
+  if (!ledgerCurrentBookingId) { alert('Selecciona un booking primero'); return; }
+  const amount   = parseFloat(document.getElementById('ledger-exp-amount')?.value || 0);
+  const category = document.getElementById('ledger-exp-category')?.value || 'other';
+  const payment  = document.getElementById('ledger-exp-payment')?.value || 'cash';
+  const notes    = document.getElementById('ledger-exp-notes')?.value || '';
+  if (!amount || amount <= 0) { alert('Ingresa un monto válido'); return; }
+  try {
+    const res = await fetch('/api/booking-expense', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ booking_id: ledgerCurrentBookingId, amount, category, payment_method: payment, notes })
+    });
+    const data = await res.json();
+    if (!res.ok) { alert('Error: ' + (data.error || 'Unknown')); return; }
+    alert(`Gasto registrado: $${data.amount}`);
+    document.getElementById('ledger-exp-amount').value = '';
+    document.getElementById('ledger-exp-notes').value  = '';
+    await runIntegrityCheck();
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function completeBookingRevenue() {
+  if (!ledgerCurrentBookingId) { alert('Selecciona un booking primero'); return; }
+  const accCode = document.getElementById('ledger-rev-account')?.value || '4010';
+  if (!confirm(`¿Reconocer revenue del booking ${ledgerCurrentBookingId}? Esto marcará el booking como completado y creará las transacciones contables.`)) return;
+  try {
+    const res = await fetch(`/api/bookings/${ledgerCurrentBookingId}/complete`, {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ revenue_account_code: accCode })
+    });
+    const data = await res.json();
+    if (!res.ok) { alert('Error: ' + (data.error || 'Unknown')); return; }
+    alert(`Revenue reconocido: $${data.amount}`);
+    await runIntegrityCheck();
+    loadLedgerBookingList();
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+// Manual Entry
+function addManualEntryRow(type) {
+  const id = Date.now();
+  manualEntryRows.push({ id, type, account: '', amount: '' });
+  renderManualEntryRows();
+}
+function removeManualEntryRow(id) {
+  manualEntryRows = manualEntryRows.filter(r => r.id !== id);
+  renderManualEntryRows();
+}
+function renderManualEntryRows() {
+  const c = document.getElementById('manual-entries-container');
+  if (!c) return;
+  if (!manualEntryRows.length) {
+    c.innerHTML = '<div style="color:#94a3b8;font-size:12px;padding:6px;">Agrega filas de débito y crédito.</div>';
+    updateManualBalance();
+    return;
+  }
+  c.innerHTML = manualEntryRows.map(row => `
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;" data-row="${row.id}">
+      <span style="padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;${row.type==='debit'?'background:#fef3c7;color:#92400e':'background:#dbeafe;color:#1e40af'};">
+        ${row.type === 'debit' ? 'DÉBITO' : 'CRÉDITO'}
+      </span>
+      <input type="text" value="${row.account}" placeholder="Código de cuenta (ej: 1010)"
+             oninput="updateManualRow(${row.id},'account',this.value)"
+             style="width:130px;padding:5px 8px;border:1px solid #d1d5db;border-radius:5px;font-size:12px;font-family:monospace;">
+      <input type="number" value="${row.amount}" placeholder="0.00" step="0.01"
+             oninput="updateManualRow(${row.id},'amount',this.value)"
+             style="width:100px;padding:5px 8px;border:1px solid #d1d5db;border-radius:5px;font-size:12px;">
+      <button onclick="removeManualEntryRow(${row.id})"
+              style="padding:3px 8px;border:none;border-radius:4px;background:#fef2f2;color:#dc2626;font-size:11px;cursor:pointer;font-weight:600;">x</button>
+    </div>`).join('');
+  updateManualBalance();
+}
+function updateManualRow(id, field, value) {
+  const row = manualEntryRows.find(r => r.id === id);
+  if (row) row[field] = value;
+  updateManualBalance();
+}
+function updateManualBalance() {
+  const el = document.getElementById('manual-entry-balance-check');
+  if (!el) return;
+  const debits  = manualEntryRows.filter(r=>r.type==='debit').reduce((s,r)=>s+parseFloat(r.amount||0),0);
+  const credits = manualEntryRows.filter(r=>r.type==='credit').reduce((s,r)=>s+parseFloat(r.amount||0),0);
+  const diff    = Math.abs(debits - credits);
+  if (!manualEntryRows.length) { el.textContent = ''; return; }
+  el.style.color = diff <= 0.01 ? '#15803d' : '#dc2626';
+  el.textContent = diff <= 0.01
+    ? `Asiento cuadrado: Débitos $${debits.toFixed(2)} = Créditos $${credits.toFixed(2)}`
+    : `Débitos $${debits.toFixed(2)} — Créditos $${credits.toFixed(2)} — Diferencia: $${diff.toFixed(2)}`;
+}
+
+async function submitManualEntry() {
+  if (!manualEntryRows.length) { alert('Agrega al menos 2 filas'); return; }
+  const debits  = manualEntryRows.filter(r=>r.type==='debit').reduce((s,r)=>s+parseFloat(r.amount||0),0);
+  const credits = manualEntryRows.filter(r=>r.type==='credit').reduce((s,r)=>s+parseFloat(r.amount||0),0);
+  if (Math.abs(debits - credits) > 0.01) { alert(`El asiento no cuadra: Débitos $${debits.toFixed(2)} ≠ Créditos $${credits.toFixed(2)}`); return; }
+  const notes   = document.getElementById('manual-entry-notes')?.value || '';
+  const entries = manualEntryRows.map(r => ({ type: r.type, account: r.account, amount: parseFloat(r.amount||0) }));
+  try {
+    const res = await fetch('/api/accounting/manual-entry', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entries, notes, booking_id: ledgerCurrentBookingId })
+    });
+    const data = await res.json();
+    if (!res.ok) { alert('Error: ' + (data.error || 'Unknown')); return; }
+    alert(`Asiento guardado — Batch ID: ${data.batch_id}`);
+    manualEntryRows = [];
+    renderManualEntryRows();
+    document.getElementById('manual-entry-notes').value = '';
+    if (ledgerCurrentBookingId) await runIntegrityCheck();
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+// Auto-load when tab is activated
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.tab[data-tab="ledger-contable"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      setTimeout(() => {
+        loadLedgerBookingList();
+        manualEntryRows = [];
+        renderManualEntryRows();
+      }, 50);
+    });
+  });
+  // Set today's date default for cash payment input
+  const cashDate = document.getElementById('ledger-cash-date');
+  if (cashDate) cashDate.value = new Date().toISOString().slice(0, 10);
+});
+// ========== END LEDGER CONTABLE TAB ==========
+</script>
 <script>
 (async function loadAcctAlerts() {
     const bar = document.getElementById('acct-alert-bar');

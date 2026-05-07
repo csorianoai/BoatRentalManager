@@ -2056,6 +2056,36 @@ async function initializeDatabase() {
     console.log('✅ FASE 19: Unified expenses architecture ready');
     // ── END FASE 19 ───────────────────────────────────────────────────────
 
+    // ── FASE 20: Accounting Integrity Engine ─────────────────────────────
+    // F20-01: Cash Clearing / Operating Cash account (1015)
+    await pool.query(`
+      INSERT INTO chart_of_accounts (id, account_code, account_name, account_type, description)
+      VALUES ('acc_cash_clearing_1015', '1015', 'Cash Clearing / Operating Cash', 'asset',
+              'Efectivo operativo recibido de clientes — puede usarse para gastos directos sin pasar por banco')
+      ON CONFLICT (id) DO NOTHING
+    `);
+
+    // F20-02: Bookings ledger accounting columns
+    await pool.query(`ALTER TABLE bookings_ledger ADD COLUMN IF NOT EXISTS accounting_status TEXT DEFAULT 'not_started'`).catch(() => {});
+    await pool.query(`ALTER TABLE bookings_ledger ADD COLUMN IF NOT EXISTS discrepancy_flag BOOLEAN DEFAULT false`).catch(() => {});
+    await pool.query(`ALTER TABLE bookings_ledger ADD COLUMN IF NOT EXISTS discrepancy_amount NUMERIC(12,2) DEFAULT 0`).catch(() => {});
+    await pool.query(`ALTER TABLE bookings_ledger ADD COLUMN IF NOT EXISTS revenue_recognized BOOLEAN DEFAULT false`).catch(() => {});
+
+    // F20-03: Revenue tracking + cash payment flag on bookings
+    await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS revenue_recognized BOOLEAN DEFAULT false`).catch(() => {});
+    await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS has_cash_payment BOOLEAN DEFAULT false`).catch(() => {});
+
+    // F20-04: Extended reference_type constraint (backward compatible)
+    await pool.query(`ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_reference_type_check`).catch(() => {});
+    await pool.query(`ALTER TABLE transactions ADD CONSTRAINT transactions_reference_type_check CHECK (reference_type IN ('booking','commission','fuel','maintenance','manual','bank_transfer','other','asset','captain_payment','cash_clearing','booking_complete','booking_expense','manual_adjustment'))`).catch(() => {});
+
+    // F20-05: Indexes for integrity queries
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_transactions_ref_type_booking ON transactions(booking_id, reference_type)`).catch(() => {});
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_boat_expenses_booking ON boat_expenses(booking_id)`).catch(() => {});
+
+    console.log('✅ FASE 20: Accounting integrity engine ready');
+    // ── END FASE 20 ──────────────────────────────────────────────────────
+
     console.log('✅ Database schema initialized successfully (all 10 phases + authentication)');
     
     // Insert default message templates if they don't exist
@@ -6225,7 +6255,46 @@ async function createRevenueFromBooking(bookingId, platform, amount, bookingDate
       console.log(`⚠️ Skipping revenue transaction for booking ${bookingId} - amount is zero or invalid`);
       return null;
     }
-    
+
+    // FASE 20: Skip if revenue already recognized (duplicate prevention)
+    const { rows: bkRows } = await pool.query(
+      `SELECT revenue_recognized, has_cash_payment FROM bookings WHERE id = $1`,
+      [bookingId]
+    ).catch(() => ({ rows: [] }));
+    if (bkRows.length > 0 && bkRows[0].revenue_recognized === true) {
+      console.log(`⚠️ Revenue already recognized for booking ${bookingId} — skipping auto-revenue`);
+      return null;
+    }
+
+    // FASE 20: Skip if structured payment flow exists (deposits or cash payments)
+    // Revenue will be recognized via POST /api/bookings/:id/complete instead
+    const { rows: depRows } = await pool.query(
+      `SELECT id FROM booking_deposits WHERE linked_receivable_id IN (
+         SELECT id FROM booking_receivables WHERE booking_id = $1
+       ) OR booking_ledger_id IN (
+         SELECT id FROM bookings_ledger WHERE notes LIKE 'booking:' || $1 || '%'
+       ) LIMIT 1`,
+      [bookingId]
+    ).catch(() => ({ rows: [] }));
+    if (depRows.length > 0) {
+      console.log(`⚠️ Deposit flow detected for booking ${bookingId} — skipping auto-revenue; use /complete endpoint`);
+      return null;
+    }
+    if (bkRows.length > 0 && bkRows[0].has_cash_payment === true) {
+      console.log(`⚠️ Cash payment detected for booking ${bookingId} — skipping auto-revenue`);
+      return null;
+    }
+
+    // FASE 20: Also skip if a revenue transaction already exists
+    const { rows: existingTx } = await pool.query(
+      `SELECT id FROM transactions WHERE booking_id = $1 AND transaction_type IN ('income','credit') LIMIT 1`,
+      [bookingId]
+    ).catch(() => ({ rows: [] }));
+    if (existingTx.length > 0) {
+      console.log(`⚠️ Revenue transaction already exists for booking ${bookingId} — skipping`);
+      return null;
+    }
+
     // Find revenue account for tours
     const accountResult = await pool.query(
       `SELECT id FROM chart_of_accounts 
@@ -13423,28 +13492,54 @@ app.patch('/api/booking-receivables/:id/mark-paid', isAuthenticated, async (req,
       return res.json({ ...existing.rows[0], already_paid: true });
     }
 
-    // ── Create income transaction (account 4010 Revenue-Tours, fallback 1010 Cash) ──
+    // FASE 20: Determine if revenue was already recognized (via /complete endpoint)
+    // If yes: this collection is Dr Cash / Cr AR (balance sheet only, no new revenue)
+    // If no:  backward-compat — create income transaction as before
     const { nanoid } = await import('nanoid');
     const txId = 'tx_ar_' + nanoid(8);
     const desc = `Saldo cobrado — ${ar.client_name || ar.party_name}${ar.boat_name ? ' / ' + ar.boat_name : ''}`;
-    const revenueAccRes = await pg.query(`SELECT id FROM chart_of_accounts WHERE account_code='4010' LIMIT 1`);
-    const cashAccRes    = await pg.query(`SELECT id FROM chart_of_accounts WHERE account_code='1010' LIMIT 1`);
-    const accountId = revenueAccRes.rows.length
-      ? revenueAccRes.rows[0].id
-      : cashAccRes.rows.length
-        ? cashAccRes.rows[0].id
-        : 'acc_booking_deposits_2500';
+
+    // Check if revenue was already recognized for linked booking/ledger
+    let alreadyRecognized = false;
+    if (ar.booking_id) {
+      const revChk = await pg.query(
+        `SELECT revenue_recognized FROM bookings_ledger WHERE id = $1`,
+        [ar.booking_id]
+      ).catch(() => ({ rows: [] }));
+      if (revChk.rows.length && revChk.rows[0].revenue_recognized === true) {
+        alreadyRecognized = true;
+      }
+    }
+
+    let accountId;
+    let txType;
+    if (alreadyRecognized) {
+      // Dr Cash (1010) — collection of already-recognized AR (balance sheet movement only)
+      const cashRes2 = await pg.query(`SELECT id FROM chart_of_accounts WHERE account_code='1010' LIMIT 1`);
+      accountId = cashRes2.rows.length ? cashRes2.rows[0].id : 'acc_cash_clearing_1015';
+      txType = 'income';
+    } else {
+      // Backward compat: recognize revenue now (old behavior)
+      const revenueAccRes = await pg.query(`SELECT id FROM chart_of_accounts WHERE account_code='4010' LIMIT 1`);
+      const cashAccRes    = await pg.query(`SELECT id FROM chart_of_accounts WHERE account_code='1010' LIMIT 1`);
+      accountId = revenueAccRes.rows.length
+        ? revenueAccRes.rows[0].id
+        : cashAccRes.rows.length
+          ? cashAccRes.rows[0].id
+          : 'acc_booking_deposits_2500';
+      txType = 'income';
+    }
 
     await pg.query(
       `INSERT INTO transactions
          (id, transaction_date, account_id, amount, transaction_type,
           description, reference_id, boat_id, notes, reference_type, booking_id, ledger_id)
-       VALUES ($1, CURRENT_DATE, $2, $3, 'income', $4, $5, $6, $7, 'booking', $8, $9)`,
+       VALUES ($1, CURRENT_DATE, $2, $3, $4, $5, $6, $7, $8, 'booking', $9, $10)`,
       [
-        txId, accountId, parseFloat(ar.amount), desc,
+        txId, accountId, parseFloat(ar.amount), txType, desc,
         ar.id, ar.boat_id || null, notes || null,
-        null,           // booking_id — resolved below if ledger link exists
-        ar.booking_id || null,  // booking_id here is actually the ledger id (AR schema quirk)
+        null,
+        ar.booking_id || null,
       ]
     );
 
@@ -13616,6 +13711,556 @@ app.post('/api/accounting/repair-deposits', isAuthenticated, async (req, res) =>
     console.error('Repair deposits error:', err);
     res.status(500).json({ error: err.message });
   } finally { pg.release(); }
+});
+
+// ========== FASE 20: ACCOUNTING INTEGRITY ENGINE ==========
+
+// ── checkBookingIntegrity — standalone audit function ─────────────────────
+async function checkBookingIntegrity(bookingId) {
+  // 1. Core booking data
+  const { rows: bkRows } = await pool.query(
+    `SELECT b.id, b.customer_name, b.booking_date, b.total_amount,
+            b.status, b.platform, b.revenue_recognized, b.has_cash_payment,
+            bl.id as ledger_id, bl.accounting_status, bl.revenue_recognized as ledger_rev,
+            bl.discrepancy_flag, bl.discrepancy_amount
+     FROM bookings b
+     LEFT JOIN bookings_ledger bl ON bl.notes LIKE 'booking:' || b.id || '%'
+     WHERE b.id = $1`,
+    [bookingId]
+  );
+  if (!bkRows.length) return null;
+  const bk = bkRows[0];
+  const ledgerId = bk.ledger_id;
+  const expectedRevenue = parseFloat(bk.total_amount || 0);
+
+  // 2. Deposits
+  let depSql = `SELECT COALESCE(SUM(amount),0) as total, COUNT(*) as cnt FROM booking_deposits WHERE 1=0`;
+  let depTotal = 0, depCnt = 0;
+  if (ledgerId) {
+    const d = await pool.query(
+      `SELECT COALESCE(SUM(amount),0) as total, COUNT(*) as cnt FROM booking_deposits WHERE booking_ledger_id = $1`,
+      [ledgerId]
+    );
+    depTotal = parseFloat(d.rows[0].total);
+    depCnt   = parseInt(d.rows[0].cnt);
+  }
+
+  // 3. Cash payments (reference_type='cash_clearing' linked to booking)
+  const { rows: cashRows } = await pool.query(
+    `SELECT COALESCE(SUM(amount),0) as total FROM transactions
+     WHERE booking_id = $1 AND reference_type = 'cash_clearing'`,
+    [bookingId]
+  );
+  const cashTotal = parseFloat(cashRows[0].total);
+
+  // 4. AR collected
+  const { rows: arRows } = await pool.query(
+    `SELECT COALESCE(SUM(br.amount),0) as total, COUNT(*) as paid_cnt
+     FROM booking_receivables br
+     WHERE (br.booking_id = $1 OR (br.booking_id IS NULL AND br.deposit_id IN (
+       SELECT id FROM booking_deposits WHERE booking_ledger_id = $2
+     ))) AND br.status = 'paid'`,
+    [ledgerId || '__none__', ledgerId || '__none__']
+  );
+  const arPaid = parseFloat(arRows[0].total);
+
+  // 5. Pending AR
+  const { rows: arPendRows } = await pool.query(
+    `SELECT COALESCE(SUM(br.amount),0) as total
+     FROM booking_receivables br
+     WHERE (br.booking_id = $1 OR br.deposit_id IN (
+       SELECT id FROM booking_deposits WHERE booking_ledger_id = $2
+     )) AND br.status = 'pending'`,
+    [ledgerId || '__none__', ledgerId || '__none__']
+  );
+  const arPending = parseFloat(arPendRows[0].total);
+
+  // 6. Expenses from boat_expenses table
+  const { rows: expRows } = await pool.query(
+    `SELECT COALESCE(SUM(amount),0) as total FROM boat_expenses
+     WHERE booking_id = $1 AND (status IS NULL OR status != 'cancelled')`,
+    [bookingId]
+  );
+  const expensesTable = parseFloat(expRows[0].total);
+
+  // 7. Expenses from transactions (booking_expense reference type)
+  const { rows: expTxRows } = await pool.query(
+    `SELECT COALESCE(SUM(amount),0) as total FROM transactions
+     WHERE booking_id = $1 AND reference_type = 'booking_expense'`,
+    [bookingId]
+  );
+  const expensesTx = parseFloat(expTxRows[0].total);
+  const totalExpenses = expensesTable + expensesTx;
+
+  // 8. Revenue transactions
+  const { rows: revRows } = await pool.query(
+    `SELECT COALESCE(SUM(amount),0) as total FROM transactions
+     WHERE booking_id = $1 AND reference_type IN ('booking_complete','booking')
+       AND transaction_type = 'income'`,
+    [bookingId]
+  );
+  const revenueRecognized = parseFloat(revRows[0].total);
+
+  // 9. Calculations
+  const totalCollected   = depTotal + cashTotal + arPaid;
+  const totalExpected    = expectedRevenue;
+  const discrepancy      = totalExpected - totalCollected;
+  const discrepancyFlag  = Math.abs(discrepancy) > 0.01;
+  const expectedProfit   = totalExpected - totalExpenses;
+
+  let accountingStatus = bk.accounting_status || 'not_started';
+  if (totalCollected <= 0 && revenueRecognized <= 0) {
+    accountingStatus = 'not_started';
+  } else if (revenueRecognized > 0 && !discrepancyFlag && totalExpenses >= 0) {
+    accountingStatus = 'reconciled';
+  } else if (totalCollected >= totalExpected - 0.01) {
+    accountingStatus = discrepancyFlag ? 'partially_reconciled' : 'reconciled';
+  } else if (totalCollected > 0 || revenueRecognized > 0) {
+    accountingStatus = 'in_progress';
+  }
+
+  const result = {
+    booking_id:             bookingId,
+    customer_name:          bk.customer_name,
+    booking_date:           bk.booking_date,
+    status:                 bk.status,
+    platform:               bk.platform,
+    ledger_id:              ledgerId,
+    expected_revenue:       expectedRevenue,
+    total_deposits:         depTotal,
+    deposit_count:          depCnt,
+    total_cash:             cashTotal,
+    total_ar_paid:          arPaid,
+    total_ar_pending:       arPending,
+    total_collected:        totalCollected,
+    total_expenses:         totalExpenses,
+    expected_profit:        expectedProfit,
+    actual_profit:          revenueRecognized - totalExpenses,
+    revenue_recognized_amount: revenueRecognized,
+    revenue_recognized:     bk.revenue_recognized || bk.ledger_rev || revenueRecognized > 0,
+    discrepancy_flag:       discrepancyFlag,
+    discrepancy_amount:     discrepancy,
+    accounting_status:      accountingStatus,
+  };
+
+  // Persist computed status back to bookings_ledger if changed
+  if (ledgerId && accountingStatus !== bk.accounting_status) {
+    await pool.query(
+      `UPDATE bookings_ledger
+       SET accounting_status = $1, discrepancy_flag = $2, discrepancy_amount = $3
+       WHERE id = $4`,
+      [accountingStatus, discrepancyFlag, discrepancy, ledgerId]
+    ).catch(() => {});
+  }
+
+  return result;
+}
+
+// ── FASE 3: POST /api/booking-cash-payment ────────────────────────────────
+app.post('/api/booking-cash-payment', isAuthenticated, async (req, res) => {
+  const pg = await pool.connect();
+  try {
+    await pg.query('BEGIN');
+    const { nanoid } = await import('nanoid');
+    const { booking_id, amount, date, notes } = req.body;
+    if (!booking_id || !amount || amount <= 0) {
+      return res.status(400).json({ error: 'booking_id y amount son requeridos' });
+    }
+
+    // Validate booking
+    const { rows: bkRows } = await pg.query(`SELECT * FROM bookings WHERE id = $1`, [booking_id]);
+    if (!bkRows.length) { await pg.query('ROLLBACK'); return res.status(404).json({ error: 'Booking no encontrado' }); }
+    const bk = bkRows[0];
+
+    const payDate = date || new Date().toISOString().slice(0, 10);
+    const txId = 'tx_cash_' + nanoid(8);
+    const desc = `Pago en efectivo recibido — ${bk.customer_name}${notes ? ' / ' + notes : ''}`;
+
+    // Dr 1015 (Cash Clearing) — efectivo recibido del cliente
+    await pg.query(
+      `INSERT INTO transactions
+         (id, transaction_date, account_id, amount, transaction_type,
+          description, reference_id, reference_type, boat_id, notes, booking_id)
+       VALUES ($1, $2, 'acc_cash_clearing_1015', $3, 'income', $4, $5, 'cash_clearing', $6, $7, $8)`,
+      [txId, payDate, parseFloat(amount), desc, booking_id, bk.boat_id || null, notes || null, booking_id]
+    );
+
+    // Update booking flags
+    const currentTotal    = parseFloat(bk.total_amount || 0);
+    const prevBalance     = parseFloat(bk.balance_pending || currentTotal);
+    const newBalance      = Math.max(0, prevBalance - parseFloat(amount));
+    const newPayStatus    = newBalance <= 0.01 ? 'paid' : 'partial';
+    await pg.query(
+      `UPDATE bookings SET has_cash_payment = true, payment_status = $1,
+       balance_pending = $2, updated_at = NOW() WHERE id = $3`,
+      [newPayStatus, newBalance, booking_id]
+    );
+
+    await pg.query('COMMIT');
+    res.status(201).json({
+      success: true, transaction_id: txId, amount: parseFloat(amount),
+      payment_status: newPayStatus, balance_pending: newBalance
+    });
+  } catch (err) {
+    await pg.query('ROLLBACK');
+    console.error('Error booking-cash-payment:', err);
+    res.status(500).json({ error: err.message });
+  } finally { pg.release(); }
+});
+
+// ── FASE 6: POST /api/bookings/:id/complete — reconoce revenue ───────────
+app.post('/api/bookings/:id/complete', isAuthenticated, async (req, res) => {
+  const pg = await pool.connect();
+  try {
+    await pg.query('BEGIN');
+    const { nanoid } = await import('nanoid');
+    const { id: bookingId } = req.params;
+    const { revenue_account_code, notes } = req.body;
+
+    // Fetch booking
+    const { rows: bkRows } = await pg.query(`SELECT * FROM bookings WHERE id = $1`, [bookingId]);
+    if (!bkRows.length) { await pg.query('ROLLBACK'); return res.status(404).json({ error: 'Booking no encontrado' }); }
+    const bk = bkRows[0];
+    if (bk.revenue_recognized === true) {
+      await pg.query('ROLLBACK');
+      return res.status(400).json({ error: 'Revenue ya fue reconocido para este booking' });
+    }
+
+    // Determine revenue account (4010 tours default, 4020 rentals)
+    const accCode = revenue_account_code || (bk.boat_type?.toLowerCase().includes('rental') ? '4020' : '4010');
+    const { rows: accRows } = await pg.query(
+      `SELECT id, account_name FROM chart_of_accounts WHERE account_code = $1 AND is_active = true LIMIT 1`,
+      [accCode]
+    );
+    if (!accRows.length) { await pg.query('ROLLBACK'); return res.status(400).json({ error: `Cuenta ${accCode} no encontrada` }); }
+    const revenueAccId = accRows[0].id;
+
+    const totalAmount = parseFloat(bk.total_amount || 0);
+    const completeDate = new Date().toISOString().slice(0, 10);
+    const txId = 'tx_cmp_' + nanoid(8);
+    const desc = `Booking completado — Revenue reconocido — ${bk.customer_name}${notes ? ' / ' + notes : ''}`;
+
+    // Dr Deferred/AR → Cr Revenue (4010/4020)
+    await pg.query(
+      `INSERT INTO transactions
+         (id, transaction_date, account_id, amount, transaction_type,
+          description, reference_id, reference_type, boat_id, notes, booking_id)
+       VALUES ($1, $2, $3, $4, 'income', $5, $6, 'booking_complete', $7, $8, $9)`,
+      [txId, completeDate, revenueAccId, totalAmount, desc, bookingId,
+       bk.boat_id || null, notes || null, bookingId]
+    );
+
+    // Reversal of deferred if deposits exist
+    const { rows: depRows } = await pg.query(
+      `SELECT SUM(amount) as total FROM booking_deposits
+       WHERE booking_ledger_id IN (SELECT id FROM bookings_ledger WHERE notes LIKE 'booking:' || $1 || '%')
+         AND status IN ('applied','pending')`,
+      [bookingId]
+    );
+    const depTotal = parseFloat(depRows[0]?.total || 0);
+    if (depTotal > 0) {
+      const txRevId = 'tx_rev_' + nanoid(8);
+      await pg.query(
+        `INSERT INTO transactions
+           (id, transaction_date, account_id, amount, transaction_type,
+            description, reference_id, reference_type, boat_id, notes, booking_id)
+         VALUES ($1, $2, 'acc_booking_deposits_2500', $3, 'expense',
+                 $4, $5, 'booking_complete', $6, $7, $8)`,
+        [txRevId, completeDate, depTotal,
+         `Reclasificación: Deferred Deposits → Revenue — ${bk.customer_name}`,
+         bookingId, bk.boat_id || null, notes || null, bookingId]
+      );
+    }
+
+    // Mark booking as completed + revenue_recognized
+    await pg.query(
+      `UPDATE bookings SET status = 'completed', revenue_recognized = true,
+       payment_status = COALESCE(payment_status, 'paid'), updated_at = NOW()
+       WHERE id = $1`,
+      [bookingId]
+    );
+
+    // Update bookings_ledger
+    await pg.query(
+      `UPDATE bookings_ledger SET status = 'completed', revenue_recognized = true,
+       accounting_status = 'reconciled'
+       WHERE notes LIKE 'booking:' || $1 || '%'`,
+      [bookingId]
+    );
+
+    await pg.query('COMMIT');
+    const integrity = await checkBookingIntegrity(bookingId).catch(() => null);
+    res.json({ success: true, transaction_id: txId, amount: totalAmount, integrity });
+  } catch (err) {
+    await pg.query('ROLLBACK');
+    console.error('Error completing booking:', err);
+    res.status(500).json({ error: err.message });
+  } finally { pg.release(); }
+});
+
+// ── FASE 7: POST /api/booking-expense ─────────────────────────────────────
+app.post('/api/booking-expense', isAuthenticated, async (req, res) => {
+  const pg = await pool.connect();
+  try {
+    await pg.query('BEGIN');
+    const { nanoid } = await import('nanoid');
+    const { booking_id, account_code, amount, payment_method, notes, category, description } = req.body;
+    if (!booking_id || !amount || amount <= 0) {
+      return res.status(400).json({ error: 'booking_id y amount son requeridos' });
+    }
+
+    // Validate booking
+    const { rows: bkRows } = await pg.query(`SELECT * FROM bookings WHERE id = $1`, [booking_id]);
+    if (!bkRows.length) { await pg.query('ROLLBACK'); return res.status(404).json({ error: 'Booking no encontrado' }); }
+    const bk = bkRows[0];
+
+    // Resolve expense account
+    const expAccCode = account_code || '5080';
+    const { rows: accRows } = await pg.query(
+      `SELECT id FROM chart_of_accounts WHERE account_code = $1 LIMIT 1`, [expAccCode]
+    );
+    if (!accRows.length) { await pg.query('ROLLBACK'); return res.status(400).json({ error: `Cuenta ${expAccCode} no encontrada` }); }
+    const expAccId = accRows[0].id;
+
+    // Resolve credit account based on payment_method
+    let creditAccId;
+    if (payment_method === 'cash') {
+      creditAccId = 'acc_cash_clearing_1015'; // Cr Cash Clearing
+    } else {
+      const { rows: bankRows } = await pg.query(
+        `SELECT id FROM chart_of_accounts WHERE account_code = '1010' LIMIT 1`
+      );
+      creditAccId = bankRows.length ? bankRows[0].id : 'acc_cash_clearing_1015'; // Cr Bank
+    }
+
+    const expDate = new Date().toISOString().slice(0, 10);
+    const txId = 'tx_bkexp_' + nanoid(8);
+    const desc = description || notes || `Gasto del booking — ${bk.customer_name}`;
+
+    // Dr Expense account
+    await pg.query(
+      `INSERT INTO transactions
+         (id, transaction_date, account_id, amount, transaction_type,
+          description, reference_id, reference_type, boat_id, notes, booking_id)
+       VALUES ($1, $2, $3, $4, 'expense', $5, $6, 'booking_expense', $7, $8, $9)`,
+      [txId, expDate, expAccId, parseFloat(amount), desc, booking_id,
+       bk.boat_id || null, notes || null, booking_id]
+    );
+
+    // Also create a boat_expense record for traceability
+    const expId = 'bkexp_' + nanoid(8);
+    await pg.query(
+      `INSERT INTO boat_expenses
+         (id, boat_id, category, amount, expense_date, description,
+          payment_method, booking_id, expense_type, notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'other', $9)`,
+      [expId, bk.boat_id || null, category || 'operational', parseFloat(amount),
+       expDate, desc, payment_method || 'cash', booking_id, notes || null]
+    ).catch(() => {}); // non-critical
+
+    await pg.query('COMMIT');
+    res.status(201).json({ success: true, transaction_id: txId, expense_id: expId, amount: parseFloat(amount) });
+  } catch (err) {
+    await pg.query('ROLLBACK');
+    console.error('Error booking-expense:', err);
+    res.status(500).json({ error: err.message });
+  } finally { pg.release(); }
+});
+
+// ── FASE 8: POST /api/accounting/manual-entry ─────────────────────────────
+app.post('/api/accounting/manual-entry', isAuthenticated, async (req, res) => {
+  const pg = await pool.connect();
+  try {
+    await pg.query('BEGIN');
+    const { nanoid } = await import('nanoid');
+    const { entries, notes, booking_id } = req.body;
+    if (!Array.isArray(entries) || entries.length < 2) {
+      return res.status(400).json({ error: 'Se requieren al menos 2 asientos (débito y crédito)' });
+    }
+
+    // Validate: debits = credits
+    const totalDebits  = entries.filter(e => e.type === 'debit').reduce((s, e) => s + parseFloat(e.amount || 0), 0);
+    const totalCredits = entries.filter(e => e.type === 'credit').reduce((s, e) => s + parseFloat(e.amount || 0), 0);
+    if (Math.abs(totalDebits - totalCredits) > 0.01) {
+      await pg.query('ROLLBACK');
+      return res.status(400).json({
+        error: `Los asientos no cuadran: débitos ($${totalDebits.toFixed(2)}) ≠ créditos ($${totalCredits.toFixed(2)})`
+      });
+    }
+
+    const createdBy = req.user?.id || req.user?.name || 'system';
+    const entryDate = new Date().toISOString().slice(0, 10);
+    const batchId = 'me_' + nanoid(8);
+    const txIds = [];
+
+    for (const entry of entries) {
+      // Resolve account by code
+      const { rows: accRows } = await pg.query(
+        `SELECT id FROM chart_of_accounts WHERE account_code = $1 OR id = $1 LIMIT 1`,
+        [entry.account]
+      );
+      if (!accRows.length) {
+        await pg.query('ROLLBACK');
+        return res.status(400).json({ error: `Cuenta '${entry.account}' no encontrada` });
+      }
+      const accId = accRows[0].id;
+      const txType = entry.type === 'debit' ? 'expense' : 'income';
+      const txId = 'tx_me_' + nanoid(8);
+
+      await pg.query(
+        `INSERT INTO transactions
+           (id, transaction_date, account_id, amount, transaction_type,
+            description, reference_id, reference_type, notes, booking_id, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'manual_adjustment', $8, $9, $10)`,
+        [txId, entryDate, accId, parseFloat(entry.amount), txType,
+         notes || `Asiento manual — ${entry.type} ${entry.account}`,
+         batchId, notes || null, booking_id || null, createdBy]
+      );
+      txIds.push(txId);
+    }
+
+    await pg.query('COMMIT');
+    res.status(201).json({
+      success: true, batch_id: batchId, transaction_ids: txIds,
+      total_debits: totalDebits, total_credits: totalCredits
+    });
+  } catch (err) {
+    await pg.query('ROLLBACK');
+    console.error('Error manual-entry:', err);
+    res.status(500).json({ error: err.message });
+  } finally { pg.release(); }
+});
+
+// ── FASE 9: GET /api/bookings/:id/integrity ───────────────────────────────
+app.get('/api/bookings/:id/integrity', isAuthenticated, async (req, res) => {
+  try {
+    const result = await checkBookingIntegrity(req.params.id);
+    if (!result) return res.status(404).json({ error: 'Booking no encontrado' });
+    res.json(result);
+  } catch (err) {
+    console.error('Error integrity check:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /api/bookings/:id/ledger-summary ─────────────────────────────────
+app.get('/api/bookings/:id/ledger-summary', isAuthenticated, async (req, res) => {
+  try {
+    const integrity = await checkBookingIntegrity(req.params.id);
+    if (!integrity) return res.status(404).json({ error: 'Booking no encontrado' });
+
+    // Get all transactions linked to this booking
+    const { rows: txRows } = await pool.query(
+      `SELECT t.*, ca.account_name, ca.account_code
+       FROM transactions t
+       JOIN chart_of_accounts ca ON t.account_id = ca.id
+       WHERE t.booking_id = $1
+       ORDER BY t.transaction_date ASC, t.created_at ASC`,
+      [req.params.id]
+    );
+
+    // Get deposits
+    const { rows: depRows } = await pool.query(
+      `SELECT bd.*, b.name as boat_name
+       FROM booking_deposits bd
+       LEFT JOIN boats b ON bd.boat_id = b.id
+       WHERE bd.booking_ledger_id IN (
+         SELECT id FROM bookings_ledger WHERE notes LIKE 'booking:' || $1 || '%'
+       )`,
+      [req.params.id]
+    );
+
+    // Get expenses
+    const { rows: expRows } = await pool.query(
+      `SELECT * FROM boat_expenses WHERE booking_id = $1 AND (status IS NULL OR status != 'cancelled') ORDER BY expense_date ASC`,
+      [req.params.id]
+    );
+
+    res.json({ ...integrity, transactions: txRows, deposits: depRows, expenses: expRows });
+  } catch (err) {
+    console.error('Error ledger-summary:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── FASE 10: GET /api/accounting/test-matej — verifica caso de prueba ─────
+app.get('/api/accounting/test-matej', isAuthenticated, async (req, res) => {
+  try {
+    const bookingId = req.query.booking_id || 'book_matej_apr27_2026';
+
+    // Find booking by ID or customer name 'Matej' on Apr 27
+    const { rows: bkRows } = await pool.query(
+      `SELECT * FROM bookings
+       WHERE id = $1 OR (customer_name ILIKE '%Matej%' AND booking_date::text LIKE '2026-04-27%')
+       ORDER BY created_at DESC LIMIT 1`,
+      [bookingId]
+    );
+    if (!bkRows.length) {
+      return res.json({
+        found: false,
+        message: 'Booking Matej Apr 27 no encontrado en el sistema',
+        tip: 'Crea el booking primero con POST /api/bookings, luego ejecuta este test'
+      });
+    }
+    const bk = bkRows[0];
+    const integrity = await checkBookingIntegrity(bk.id);
+
+    // Expected results for Matej $700 booking
+    const expected = {
+      total_revenue:    700.00,
+      total_expenses:   561.00,  // fuel 300 + ice 6 + captain 144+111
+      expected_profit:  139.00,
+      deposit_bank:     250.00,
+      cash_received:    450.00,
+      captain_expected: 255.00,  // 144+111
+      discrepancy_note: 'Captain overpayment: $5 (paid $255 vs expected $250)'
+    };
+
+    const assertions = [
+      { check: 'expected_revenue == 700',     pass: Math.abs((integrity?.expected_revenue || 0) - 700) < 0.01 },
+      { check: 'total_expenses ~= 561',       pass: Math.abs((integrity?.total_expenses || 0) - 561) < 1 },
+      { check: 'expected_profit ~= 139',      pass: Math.abs((integrity?.expected_profit || 0) - 139) < 1 },
+      { check: 'accounting_status != locked', pass: integrity?.accounting_status !== 'locked' },
+    ];
+
+    res.json({
+      found: true,
+      booking_id: bk.id,
+      customer: bk.customer_name,
+      booking_date: bk.booking_date,
+      integrity,
+      expected,
+      assertions,
+      all_passed: assertions.every(a => a.pass),
+    });
+  } catch (err) {
+    console.error('Error test-matej:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /api/accounting/bookings-ledger-list — lista con estado contable ──
+app.get('/api/accounting/bookings-ledger-list', isAuthenticated, async (req, res) => {
+  try {
+    const { limit = 50, status, accounting_status } = req.query;
+    let sql = `
+      SELECT b.id, b.customer_name, b.booking_date, b.total_amount, b.status,
+             b.platform, b.revenue_recognized, b.payment_status,
+             bl.accounting_status, bl.discrepancy_flag, bl.discrepancy_amount,
+             bl.id as ledger_id
+      FROM bookings b
+      LEFT JOIN bookings_ledger bl ON bl.notes LIKE 'booking:' || b.id || '%'
+      WHERE 1=1`;
+    const params = [];
+    if (status) { params.push(status); sql += ` AND b.status = $${params.length}`; }
+    if (accounting_status) { params.push(accounting_status); sql += ` AND bl.accounting_status = $${params.length}`; }
+    sql += ` ORDER BY b.booking_date DESC LIMIT $${params.length + 1}`;
+    params.push(parseInt(limit));
+    const { rows } = await pool.query(sql, params);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.patch('/api/booking-receivables/:id/cancel', isAuthenticated, async (req, res) => {
