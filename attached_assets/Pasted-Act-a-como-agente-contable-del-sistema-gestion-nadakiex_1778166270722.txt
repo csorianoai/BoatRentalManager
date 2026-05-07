@@ -1,0 +1,67 @@
+Actúa como agente contable del sistema gestion.nadakiexcursions.com.
+
+Necesito registrar y cuadrar el booking del cliente Matej.
+
+Datos del booking:
+- Cliente: Matej
+- Fecha del servicio: 2026-04-27
+- Total de la renta: 700.00
+- Booking registrado en el portal administrativo gestion.nadakiexcursions
+- Depósito recibido: 250.00
+- Fecha del depósito: 2026-04-23
+- Cuenta: Wells Fargo Checking
+- Método: Bank Deposit
+
+Balance restante:
+- Cliente pagó 450.00 en efectivo el día 2026-04-27
+- Ese efectivo fue entregado al capitán Pablo y distribuido así:
+  - Fuel Expense: 300.00
+  - Ice / Supplies Expense: 6.00
+  - Captain Labor Payment cash: 144.00
+
+Pago adicional:
+- Capitán: Pablo
+- Fecha: 2026-04-30
+- Método: Zelle
+- Monto pagado: 111.00
+
+Validación obligatoria:
+- El ingreso total del booking debe cuadrar a 700.00
+- El depósito bancario debe aplicarse contra el booking por 250.00
+- El efectivo de 450.00 debe registrarse primero como ingreso recibido del cliente y luego aplicarse contra los gastos correspondientes.
+- El costo del capitán debe calcularse como 5 horas × 50.00 = 250.00
+- Detectar que el total pagado al capitán fue 144.00 + 111.00 = 255.00
+- Marcar una alerta contable de diferencia / overpayment por 5.00, porque el pago correcto al capitán debió ser 250.00.
+- No cerrar el booking como fully reconciled hasta que el usuario confirme si los 5.00 son propina, error, ajuste autorizado o crédito a favor de la empresa.
+
+Asientos esperados:
+
+1. Registrar depósito bancario:
+Dr Wells Fargo Checking 250.00
+Cr Customer Deposits / Unearned Revenue 250.00
+
+2. Reconocer ingreso al completarse el booking:
+Dr Customer Deposits / Unearned Revenue 250.00
+Dr Cash Received from Customer 450.00
+Cr Boat Rental Revenue 700.00
+
+3. Registrar gastos pagados con efectivo:
+Dr Fuel Expense 300.00
+Dr Ice / Supplies Expense 6.00
+Dr Captain Labor Expense 144.00
+Cr Cash Received from Customer 450.00
+
+4. Registrar pago Zelle al capitán:
+Dr Captain Labor Expense 111.00
+Cr Wells Fargo / Zelle Payment 111.00
+
+Resultado:
+- Revenue: 700.00
+- Expenses: 561.00
+- Net Profit: 139.00
+- Accounting alert: Captain overpayment 5.00
+
+Crea o actualiza los registros necesarios en el sistema para que este booking quede reconciliado parcialmente con alerta pendiente de aprobación por la diferencia de 5.00.
+No inventes datos.
+No modifiques otros bookings.
+No cierres el cuadre general hasta que este booking quede validado.
