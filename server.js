@@ -12571,6 +12571,24 @@ app.patch('/api/work-orders/:id', async (req, res) => {
   }
 });
 
+// Delete work order
+app.delete('/api/work-orders/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(
+      'DELETE FROM work_orders WHERE id = $1 RETURNING id',
+      [id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Work order not found' });
+    }
+    res.json({ success: true, id });
+  } catch (error) {
+    console.error('Error deleting work order:', error);
+    res.status(500).json({ error: 'Failed to delete work order' });
+  }
+});
+
 // Complete work order
 app.post('/api/work-orders/:id/complete', async (req, res) => {
   try {

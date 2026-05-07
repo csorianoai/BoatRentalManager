@@ -14,6 +14,7 @@ let charts = {};
 let editingExpenseId = null;
 let editingScheduledExpenseId = null;
 let editingMechanicId = null;
+let editingWorkOrderId = null;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
@@ -442,6 +443,7 @@ function renderWorkOrders() {
         ${order.status !== 'completed' && order.status !== 'cancelled' ? `
           <button class="btn btn-success btn-sm" onclick="completeWorkOrder('${order.id}')" data-testid="button-complete-${order.id}">Completar</button>
         ` : ''}
+        <button class="btn btn-primary btn-sm" onclick="editWorkOrder('${order.id}')" data-testid="button-edit-work-order-${order.id}">Editar</button>
         <button class="btn btn-danger btn-sm" onclick="deleteWorkOrder('${order.id}')" data-testid="button-delete-work-order-${order.id}">Eliminar</button>
       </div>
     </div>
@@ -768,12 +770,36 @@ function closeMaintenanceModal() {
 }
 
 function openWorkOrderModal() {
+  editingWorkOrderId = null;
   document.getElementById('modal-work-order').classList.add('active');
   document.getElementById('form-work-order').reset();
+  document.getElementById('work-order-status').value = 'pending';
+  document.querySelector('#modal-work-order .modal-title').textContent = 'Nueva Orden de Trabajo';
 }
 
 function closeWorkOrderModal() {
+  editingWorkOrderId = null;
   document.getElementById('modal-work-order').classList.remove('active');
+}
+
+function editWorkOrder(id) {
+  const order = workOrders.find(o => String(o.id) === String(id));
+  if (!order) { showBmToast('Orden no encontrada', false); return; }
+
+  editingWorkOrderId = id;
+  document.getElementById('modal-work-order').classList.add('active');
+  document.querySelector('#modal-work-order .modal-title').textContent = 'Editar Orden de Trabajo';
+
+  document.getElementById('work-order-boat').value = order.boat_id || '';
+  document.getElementById('work-order-title').value = order.title || '';
+  document.getElementById('work-order-description').value = order.description || '';
+  document.getElementById('work-order-priority').value = order.priority || 'medium';
+  document.getElementById('work-order-status').value = order.status || 'pending';
+  document.getElementById('work-order-mechanic').value = order.mechanic_id || '';
+  const rawDate = order.scheduled_date || '';
+  document.getElementById('work-order-scheduled-date').value = rawDate.includes('T') ? rawDate.split('T')[0] : rawDate;
+  document.getElementById('work-order-estimated-cost').value = order.estimated_cost || '';
+  document.getElementById('work-order-estimated-hours').value = order.estimated_hours || '';
 }
 
 function openPartModal() {
@@ -927,36 +953,43 @@ async function saveMaintenanceRecord(event) {
 
 async function saveWorkOrder(event) {
   event.preventDefault();
-  
+
+  const isEditing = editingWorkOrderId !== null;
+
   const data = {
     boat_id: document.getElementById('work-order-boat').value,
     title: document.getElementById('work-order-title').value,
     description: document.getElementById('work-order-description').value,
     priority: document.getElementById('work-order-priority').value,
+    status: document.getElementById('work-order-status').value,
     mechanic_id: document.getElementById('work-order-mechanic').value || null,
     scheduled_date: document.getElementById('work-order-scheduled-date').value || null,
     estimated_cost: parseFloat(document.getElementById('work-order-estimated-cost').value) || null,
     estimated_hours: parseFloat(document.getElementById('work-order-estimated-hours').value) || null
   };
-  
+
+  const url = isEditing ? `/api/work-orders/${editingWorkOrderId}` : '/api/work-orders';
+  const method = isEditing ? 'PATCH' : 'POST';
+
   try {
-    const response = await fetch('/api/work-orders', {
-      method: 'POST',
+    const response = await fetch(url, {
+      method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
     });
-    
+
     if (response.ok) {
       closeWorkOrderModal();
       await loadWorkOrders();
       await loadAnalytics();
-      alert('Orden de trabajo creada exitosamente');
+      showBmToast(isEditing ? 'Orden actualizada exitosamente' : 'Orden de trabajo creada exitosamente', true);
     } else {
-      alert('Error al crear la orden');
+      const err = await response.json().catch(() => ({}));
+      showBmToast('Error al guardar la orden: ' + (err.error || 'Error desconocido'), false);
     }
   } catch (error) {
     console.error('Error saving work order:', error);
-    alert('Error al crear la orden');
+    showBmToast('Error de red al guardar la orden', false);
   }
 }
 
