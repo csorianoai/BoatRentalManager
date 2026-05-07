@@ -1,0 +1,89 @@
+Actúa como Accounting Systems Architect para gestion.nadakiexcursions.
+
+Necesito implementar un corte contable oficial para aislar meses anteriores y asegurar que desde el 2026-04-27 todo se procese bajo el nuevo sistema contable.
+
+Objetivo:
+- Todo booking anterior al 2026-04-27 debe quedar como legacy/histórico.
+- Nada anterior al 2026-04-27 puede inflar, duplicar o interferir con ingresos, gastos, cash clearing, profit o reportes desde el 2026-04-27 en adelante.
+- Desde el 2026-04-27 todos los bookings deben usar el nuevo Booking Reconciliation Wizard.
+
+Implementar:
+
+1. Crear configuración global:
+ACCOUNTING_CUTOVER_DATE = 2026-04-27
+
+2. Agregar estados:
+accounting_status:
+- legacy_locked
+- not_started
+- in_progress
+- partially_reconciled
+- reconciled
+- locked
+
+3. Para todo booking con service_date < 2026-04-27:
+- marcar accounting_status = legacy_locked
+- no permitir auto revenue generation
+- no permitir recalcular booking ledger dentro del nuevo sistema
+- permitir solo ajustes manuales tipo prior_period_adjustment
+
+4. Crear/verificar cuentas:
+- 2999 Legacy Booking Balancing Account
+- 1999 Legacy Cash / Prior Period Clearing
+- 3999 Prior Period Adjustment
+
+5. Modificar reportes contables:
+Todos los reportes nuevos deben filtrar por accounting_date >= 2026-04-27, salvo que el usuario active explícitamente “Include Legacy Period”.
+
+6. Modificar Booking Reconciliation Wizard:
+Si booking.service_date < 2026-04-27:
+- mostrar badge: Legacy Locked
+- bloquear botón Close/Reconcile
+- permitir solo “View Historical Record” y “Prior Period Manual Adjustment”
+
+Si booking.service_date >= 2026-04-27:
+- usar flujo nuevo completo.
+
+7. Modificar transactions:
+Asegurar que cada transaction tenga:
+- transaction_date
+- accounting_date
+- service_date opcional
+- booking_id opcional
+- period_type: legacy | current
+- source_system: legacy | booking_wizard | webhook | manual_entry
+
+8. Reglas:
+- Nunca mezclar legacy cash con Cash Clearing 1015 del nuevo periodo.
+- Cash Clearing 1015 solo debe usarse para bookings desde 2026-04-27.
+- Los ajustes anteriores al 2026-04-27 deben ir contra cuentas legacy.
+- Los reportes actuales no deben incluir legacy por defecto.
+
+9. Crear pantalla:
+Accounting → Period Control
+
+Debe mostrar:
+- Cutover Date: 2026-04-27
+- Legacy Period: Locked
+- Current Period: Active
+- Include Legacy toggle
+- Legacy adjustment log
+
+10. Crear validación:
+checkCurrentPeriodIntegrity()
+
+Debe validar:
+- Solo transacciones >= 2026-04-27
+- No revenue duplicado
+- No cash clearing viejo mezclado
+- Todos los bookings desde 2026-04-27 tienen accounting_status correcto
+- Reporte de warnings
+
+11. Caso de prueba:
+Booking Matej del 2026-04-27 debe quedar dentro del nuevo sistema.
+Bookings anteriores al 2026-04-27 deben quedar legacy_locked y no afectar el reporte actual.
+
+No borrar data histórica.
+No modificar bookings antiguos salvo para marcarlos legacy_locked.
+No romper endpoints existentes.
+Implementar backward compatible.

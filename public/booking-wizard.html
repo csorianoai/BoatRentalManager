@@ -146,6 +146,68 @@
     <span id="wiz-breadcrumb">Cuadrar Booking</span>
   </div>
 
+  <!-- Legacy Booking Banner (hidden by default, shown if booking < cutover date) -->
+  <div id="legacy-banner" style="display:none;align-items:center;gap:14px;background:#fef3c7;border:1px solid #fcd34d;border-radius:10px;padding:14px 18px;margin-bottom:18px;">
+    <div style="font-size:22px;">🔒</div>
+    <div style="flex:1;">
+      <div style="font-weight:800;font-size:14px;color:#92400e;">Booking Legacy — Periodo Anterior al Corte Contable</div>
+      <div style="font-size:12px;color:#78350f;margin-top:3px;">
+        Este booking es anterior al <strong>2026-04-27</strong> y está bloqueado en el sistema nuevo.
+        No se puede reconciliar ni cerrar con el wizard actual.
+        Usa <strong>Ajuste de Periodo Anterior (3999)</strong> si necesitas registrar una corrección.
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;flex-shrink:0;">
+      <span style="background:#f59e0b;color:#fff;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:800;">LEGACY LOCKED</span>
+      <a href="/accounting.html?tab=period-control" target="_blank"
+         style="background:#fff;border:1px solid #fcd34d;color:#92400e;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700;text-decoration:none;">
+        Ver Control de Periodo
+      </a>
+    </div>
+  </div>
+
+  <!-- Prior Period Adjustment panel (shown for legacy bookings) -->
+  <div id="legacy-adj-panel" style="display:none;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px 24px;margin-bottom:18px;">
+    <h3 style="margin:0 0 12px;font-size:15px;font-weight:800;color:#1a1a2e;">Ajuste de Periodo Anterior (Prior Period Adjustment)</h3>
+    <p style="margin:0 0 14px;font-size:12px;color:#64748b;">Solo se pueden registrar ajustes contra cuentas legacy. No afectan el periodo actual.</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+      <div>
+        <label style="font-size:11px;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Tipo de ajuste</label>
+        <select id="ladj-type" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+          <option value="prior_period_correction">Corrección de periodo anterior</option>
+          <option value="reclassification">Reclasificación</option>
+          <option value="write_off">Write-off / baja contable</option>
+          <option value="other">Otro</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Cuenta legacy</label>
+        <select id="ladj-account" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+          <option value="3999">3999 — Prior Period Adjustment</option>
+          <option value="2999">2999 — Legacy Booking Balancing</option>
+          <option value="1999">1999 — Legacy Cash / Prior Period</option>
+        </select>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:120px 1fr;gap:10px;margin-bottom:12px;">
+      <div>
+        <label style="font-size:11px;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Monto ($)</label>
+        <input type="number" id="ladj-amount" min="0" step="0.01" placeholder="0.00"
+               style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Notas / motivo (requerido)</label>
+        <input type="text" id="ladj-notes" placeholder="Describe el ajuste..."
+               style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+      </div>
+    </div>
+    <button onclick="saveLegacyAdjustment()" data-testid="button-save-legacy-adj"
+            style="padding:8px 20px;background:#f59e0b;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;">
+      Registrar Ajuste Legacy
+    </button>
+    <div id="ladj-result" style="margin-top:10px;font-size:12px;"></div>
+  </div>
+
   <!-- Progress tabs -->
   <div class="wiz-progress" role="tablist">
     <button class="wiz-step-tab active" data-step="1" onclick="goStep(1)">
@@ -461,17 +523,81 @@ async function loadAll() {
   renderStep1();
 }
 
+const CUTOVER_DATE = new Date('2026-04-27');
+let isLegacyBooking = false;
+
 async function loadWizData() {
   try {
-    // Use the full reconciliation endpoint which includes audit_trail
     const r = await apiFetch(`/api/bookings/${BOOKING_ID}/reconciliation`).catch(
       () => apiFetch(`/api/bookings/${BOOKING_ID}/ledger-summary`)
     );
     wizData = r;
     integrity = r;
+    // Detect legacy booking
+    const bkDate = r?.booking_date || r?.service_date || r?.booking?.booking_date;
+    isLegacyBooking = bkDate ? new Date(bkDate) < CUTOVER_DATE : false;
+    applyLegacyState();
   } catch(e) {
     console.error(e);
   }
+}
+
+function applyLegacyState() {
+  const banner = document.getElementById('legacy-banner');
+  if (!banner) return;
+  if (isLegacyBooking) {
+    banner.style.display = 'flex';
+    // Show legacy adjustment panel
+    const adjPanel = document.getElementById('legacy-adj-panel');
+    if (adjPanel) adjPanel.style.display = 'block';
+    // Disable reconcile/lock/payment buttons
+    ['btn-lock-booking','btn-recognize-rev','btn-add-payment','btn-save-expense'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) { el.disabled = true; el.title = 'Booking legacy — solo ajustes de periodo anterior permitidos'; }
+    });
+    // Disable step tabs 2-5
+    document.querySelectorAll('.wiz-step-tab[data-step]').forEach(tab => {
+      const step = parseInt(tab.dataset.step);
+      if (step >= 2 && step <= 5) {
+        tab.style.opacity = '0.4';
+        tab.style.cursor = 'not-allowed';
+        tab.onclick = (e) => { e.stopImmediatePropagation(); showLegacyWarning(); };
+      }
+    });
+  } else {
+    banner.style.display = 'none';
+    const adjPanel = document.getElementById('legacy-adj-panel');
+    if (adjPanel) adjPanel.style.display = 'none';
+  }
+}
+
+function showLegacyWarning() {
+  alert('Este booking está marcado como LEGACY (anterior al corte contable 2026-04-27).\n\nNo se puede modificar con el nuevo sistema.\nUsa "Ajuste de Periodo Anterior" si necesitas corregir algo.');
+}
+
+async function saveLegacyAdjustment() {
+  const type    = document.getElementById('ladj-type')?.value;
+  const account = document.getElementById('ladj-account')?.value;
+  const amount  = document.getElementById('ladj-amount')?.value;
+  const notes   = document.getElementById('ladj-notes')?.value;
+  const resultEl = document.getElementById('ladj-result');
+  if (!notes) { alert('El campo "Notas" es requerido.'); return; }
+  try {
+    const r = await apiFetch('/api/accounting/period-control/legacy-adjustment', {
+      method: 'POST',
+      body: JSON.stringify({
+        adjustment_type: type, account_code: account,
+        amount: parseFloat(amount || 0), booking_id: BOOKING_ID, notes
+      })
+    });
+    if (r.error) { alert('Error: ' + r.error); return; }
+    if (resultEl) {
+      resultEl.style.color = '#15803d';
+      resultEl.textContent = 'Ajuste registrado: ' + r.adjustment_id;
+    }
+    document.getElementById('ladj-notes').value = '';
+    document.getElementById('ladj-amount').value = '';
+  } catch(e) { alert('Error: ' + e.message); }
 }
 
 async function loadIntegrity() {

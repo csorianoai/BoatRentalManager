@@ -2103,6 +2103,103 @@ async function initializeDatabase() {
     console.log('✅ FASE 20: Accounting integrity engine ready');
     // ── END FASE 20 ──────────────────────────────────────────────────────
 
+    // ── FASE 21: Accounting Period Cutover Control ────────────────────────
+    const ACCOUNTING_CUTOVER_DATE = '2026-04-27';
+
+    // F21-01: Period config table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS accounting_period_config (
+        key         TEXT PRIMARY KEY,
+        value       TEXT NOT NULL,
+        description TEXT,
+        updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `).catch(() => {});
+    await pool.query(`
+      INSERT INTO accounting_period_config(key, value, description)
+      VALUES
+        ('ACCOUNTING_CUTOVER_DATE', '2026-04-27', 'Date from which new accounting system is active'),
+        ('LEGACY_PERIOD_STATUS',    'locked',     'Legacy period lock status'),
+        ('CURRENT_PERIOD_STATUS',   'active',     'Current period status'),
+        ('INCLUDE_LEGACY_DEFAULT',  'false',      'Include legacy data in reports by default')
+      ON CONFLICT (key) DO NOTHING
+    `).catch(() => {});
+
+    // F21-02: Legacy balancing accounts
+    await pool.query(`
+      INSERT INTO chart_of_accounts(id, account_code, account_name, account_type, description)
+      VALUES
+        ('acc_legacy_2999', '2999', 'Legacy Booking Balancing Account', 'liability',
+         'Contrapartida contable para bookings anteriores al corte 2026-04-27'),
+        ('acc_legacy_1999', '1999', 'Legacy Cash / Prior Period Clearing', 'asset',
+         'Caja legacy — pagos en efectivo de periodos anteriores al corte'),
+        ('acc_legacy_3999', '3999', 'Prior Period Adjustment', 'equity',
+         'Ajustes manuales a períodos anteriores al corte contable')
+      ON CONFLICT (id) DO NOTHING
+    `).catch(() => {});
+
+    // F21-03: Extend transactions table with period-aware columns
+    await pool.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS accounting_date DATE`).catch(() => {});
+    await pool.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS period_type TEXT DEFAULT 'current' CHECK (period_type IN ('legacy','current'))`).catch(() => {});
+    await pool.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS source_system TEXT DEFAULT 'manual_entry' CHECK (source_system IN ('legacy','booking_wizard','webhook','manual_entry','system'))`).catch(() => {});
+    // Backfill accounting_date from transaction_date where null
+    await pool.query(`UPDATE transactions SET accounting_date = transaction_date::DATE WHERE accounting_date IS NULL`).catch(() => {});
+    // Mark pre-cutover transactions as legacy
+    await pool.query(`
+      UPDATE transactions SET period_type='legacy'
+      WHERE transaction_date::DATE < '${ACCOUNTING_CUTOVER_DATE}'
+        AND period_type IS DISTINCT FROM 'legacy'
+    `).catch(() => {});
+    // Create index for period-filtered queries
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_tx_period_type ON transactions(period_type, accounting_date)`).catch(() => {});
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_tx_accounting_date ON transactions(accounting_date)`).catch(() => {});
+
+    // F21-04: Add service_date to bookings (alias of booking_date if not present)
+    await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS service_date DATE`).catch(() => {});
+    await pool.query(`UPDATE bookings SET service_date = booking_date::DATE WHERE service_date IS NULL AND booking_date IS NOT NULL`).catch(() => {});
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_bookings_service_date ON bookings(service_date)`).catch(() => {});
+
+    // F21-05: Extend accounting_status to support legacy_locked
+    await pool.query(`ALTER TABLE bookings_ledger DROP CONSTRAINT IF EXISTS bookings_ledger_accounting_status_check`).catch(() => {});
+    await pool.query(`
+      ALTER TABLE bookings_ledger ADD CONSTRAINT bookings_ledger_accounting_status_check
+      CHECK (accounting_status IN ('not_started','in_progress','partially_reconciled','reconciled','locked','legacy_locked'))
+    `).catch(() => {});
+
+    // F21-06: Mark all pre-cutover bookings as legacy_locked
+    // This is idempotent — only updates if not already locked/legacy_locked
+    await pool.query(`
+      UPDATE bookings_ledger bl
+      SET accounting_status = 'legacy_locked'
+      FROM bookings b
+      WHERE bl.notes LIKE 'booking:' || b.id || '%'
+        AND b.booking_date::DATE < '${ACCOUNTING_CUTOVER_DATE}'
+        AND bl.accounting_status NOT IN ('locked','legacy_locked')
+    `).catch(() => {});
+    // Also mark in bookings table via a flag column
+    await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS is_legacy BOOLEAN DEFAULT false`).catch(() => {});
+    await pool.query(`
+      UPDATE bookings SET is_legacy = true
+      WHERE booking_date::DATE < '${ACCOUNTING_CUTOVER_DATE}' AND is_legacy IS DISTINCT FROM true
+    `).catch(() => {});
+
+    // F21-07: Audit log for legacy adjustments
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS legacy_adjustment_log (
+        id            TEXT PRIMARY KEY,
+        booking_id    TEXT,
+        adjustment_type TEXT NOT NULL,
+        amount        NUMERIC(12,2) DEFAULT 0,
+        account_code  TEXT,
+        notes         TEXT,
+        created_by    TEXT DEFAULT 'system',
+        created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `).catch(() => {});
+
+    console.log('✅ FASE 21: Accounting period cutover control ready');
+    // ── END FASE 21 ──────────────────────────────────────────────────────
+
     console.log('✅ Database schema initialized successfully (all 10 phases + authentication)');
     
     // Insert default message templates if they don't exist
@@ -13728,6 +13825,216 @@ app.post('/api/accounting/repair-deposits', isAuthenticated, async (req, res) =>
     console.error('Repair deposits error:', err);
     res.status(500).json({ error: err.message });
   } finally { pg.release(); }
+});
+
+// ========== FASE 21: PERIOD CONTROL ENGINE ==========
+const ACCOUNTING_CUTOVER_DATE = '2026-04-27';
+
+// ── Helper: is a date within the current (non-legacy) period? ─────────────
+function isCurrentPeriod(date) {
+  if (!date) return true;
+  const d = new Date(date);
+  const cutover = new Date(ACCOUNTING_CUTOVER_DATE);
+  return d >= cutover;
+}
+
+// ── checkCurrentPeriodIntegrity ─────────────────────────────────────────────
+async function checkCurrentPeriodIntegrity() {
+  const warnings = [];
+  const stats = {};
+
+  // 1. Count total vs legacy bookings
+  const { rows: bkStats } = await pool.query(`
+    SELECT
+      COUNT(*) FILTER (WHERE booking_date::DATE >= $1) AS current_bookings,
+      COUNT(*) FILTER (WHERE booking_date::DATE < $1)  AS legacy_bookings,
+      COUNT(*) FILTER (WHERE is_legacy = true)         AS flagged_legacy,
+      COUNT(*) AS total
+    FROM bookings`, [ACCOUNTING_CUTOVER_DATE]);
+  Object.assign(stats, bkStats[0]);
+
+  // 2. Verify all legacy bookings are flagged
+  const { rows: unflagged } = await pool.query(`
+    SELECT COUNT(*) as cnt FROM bookings
+    WHERE booking_date::DATE < $1 AND (is_legacy IS DISTINCT FROM true)`,
+    [ACCOUNTING_CUTOVER_DATE]);
+  if (parseInt(unflagged[0].cnt) > 0) {
+    warnings.push({ code:'LEGACY_NOT_FLAGGED', message:`${unflagged[0].cnt} bookings pre-corte sin is_legacy=true`, severity:'warn' });
+  }
+
+  // 3. Check no legacy transactions in current period accounts (1015 used with legacy booking)
+  const { rows: ccLegacy } = await pool.query(`
+    SELECT COUNT(*) as cnt FROM transactions
+    WHERE account_id = 'acc_cash_clearing_1015'
+      AND transaction_date::DATE < $1`, [ACCOUNTING_CUTOVER_DATE]);
+  if (parseInt(ccLegacy[0].cnt) > 0) {
+    warnings.push({ code:'LEGACY_IN_CASH_CLEARING', message:`${ccLegacy[0].cnt} transacciones legacy en cuenta Cash Clearing 1015 (solo para periodo actual)`, severity:'error' });
+  }
+  stats.legacy_in_cash_clearing = parseInt(ccLegacy[0].cnt);
+
+  // 4. Current period revenue integrity
+  const { rows: revStats } = await pool.query(`
+    SELECT
+      COALESCE(SUM(amount),0) FILTER (WHERE transaction_type='income' AND period_type='current') AS current_revenue,
+      COALESCE(SUM(amount),0) FILTER (WHERE transaction_type='income' AND period_type='legacy')  AS legacy_revenue,
+      COALESCE(SUM(amount),0) FILTER (WHERE transaction_type='expense' AND period_type='current') AS current_expenses
+    FROM transactions WHERE accounting_date IS NOT NULL`);
+  Object.assign(stats, revStats[0]);
+
+  // 5. Check bookings >= cutover without proper accounting_status
+  const { rows: unstarted } = await pool.query(`
+    SELECT COUNT(*) as cnt
+    FROM bookings b
+    LEFT JOIN bookings_ledger bl ON bl.notes LIKE 'booking:' || b.id || '%'
+    WHERE b.booking_date::DATE >= $1
+      AND b.status NOT IN ('cancelled','pending')
+      AND (bl.accounting_status IS NULL OR bl.accounting_status = 'not_started')`,
+    [ACCOUNTING_CUTOVER_DATE]);
+  stats.current_unstarted = parseInt(unstarted[0].cnt);
+  if (stats.current_unstarted > 0) {
+    warnings.push({ code:'CURRENT_UNRECONCILED', message:`${stats.current_unstarted} bookings del periodo actual sin iniciar reconciliación`, severity:'info' });
+  }
+
+  // 6. Duplicate revenue detection in current period
+  const { rows: dupRev } = await pool.query(`
+    SELECT booking_id, COUNT(*) as cnt
+    FROM transactions
+    WHERE period_type='current'
+      AND reference_type IN ('booking_complete','booking')
+      AND transaction_type='income'
+    GROUP BY booking_id HAVING COUNT(*) > 1`);
+  if (dupRev.length > 0) {
+    warnings.push({ code:'DUPLICATE_REVENUE', message:`${dupRev.length} booking(s) con revenue duplicado en periodo actual`, severity:'error', details: dupRev });
+  }
+  stats.duplicate_revenue_count = dupRev.length;
+
+  // 7. Legacy bookings_ledger status check
+  const { rows: legacyStatus } = await pool.query(`
+    SELECT bl.accounting_status, COUNT(*) as cnt
+    FROM bookings_ledger bl
+    JOIN bookings b ON bl.notes LIKE 'booking:' || b.id || '%'
+    WHERE b.booking_date::DATE < $1
+    GROUP BY bl.accounting_status`, [ACCOUNTING_CUTOVER_DATE]);
+  stats.legacy_by_status = legacyStatus.reduce((acc, r) => { acc[r.accounting_status] = parseInt(r.cnt); return acc; }, {});
+
+  const allPass = !warnings.some(w => w.severity === 'error');
+  return { ok: allPass, cutover_date: ACCOUNTING_CUTOVER_DATE, stats, warnings };
+}
+
+// ── GET /api/accounting/period-control ─────────────────────────────────────
+app.get('/api/accounting/period-control', isAuthenticated, async (req, res) => {
+  try {
+    const { rows: config } = await pool.query(`SELECT key, value, description FROM accounting_period_config ORDER BY key`);
+    const cfg = config.reduce((a, r) => { a[r.key] = r.value; return a; }, {});
+
+    // Stats
+    const { rows: bkStats } = await pool.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE booking_date::DATE >= $1) AS current_bookings,
+        COUNT(*) FILTER (WHERE booking_date::DATE < $1)  AS legacy_bookings,
+        COUNT(*) FILTER (WHERE is_legacy = true)         AS flagged_legacy
+      FROM bookings`, [ACCOUNTING_CUTOVER_DATE]);
+
+    const { rows: txStats } = await pool.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE period_type='current')  AS current_tx,
+        COUNT(*) FILTER (WHERE period_type='legacy')   AS legacy_tx,
+        COUNT(*) FILTER (WHERE period_type IS NULL)    AS null_period
+      FROM transactions`);
+
+    const { rows: legAdj } = await pool.query(
+      `SELECT id, booking_id, adjustment_type, amount, account_code, notes, created_by, created_at
+       FROM legacy_adjustment_log ORDER BY created_at DESC LIMIT 50`
+    ).catch(() => ({ rows: [] }));
+
+    res.json({
+      config: cfg,
+      cutover_date: ACCOUNTING_CUTOVER_DATE,
+      legacy_period: { status: cfg.LEGACY_PERIOD_STATUS || 'locked', locked: true },
+      current_period: { status: cfg.CURRENT_PERIOD_STATUS || 'active', active: true },
+      stats: { ...bkStats[0], ...txStats[0] },
+      legacy_adjustment_log: legAdj
+    });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── POST /api/accounting/period-control/legacy-lockdown ────────────────────
+app.post('/api/accounting/period-control/legacy-lockdown', isAuthenticated, async (req, res) => {
+  const pg = await pool.connect();
+  try {
+    await pg.query('BEGIN');
+    // Mark all pre-cutover bookings is_legacy=true
+    const { rowCount: bkUpdated } = await pg.query(
+      `UPDATE bookings SET is_legacy=true WHERE booking_date::DATE < $1 AND is_legacy IS DISTINCT FROM true`,
+      [ACCOUNTING_CUTOVER_DATE]);
+    // Mark bookings_ledger legacy_locked
+    const { rowCount: blUpdated } = await pg.query(`
+      UPDATE bookings_ledger bl SET accounting_status='legacy_locked'
+      FROM bookings b
+      WHERE bl.notes LIKE 'booking:' || b.id || '%'
+        AND b.booking_date::DATE < $1
+        AND bl.accounting_status NOT IN ('locked','legacy_locked')`,
+      [ACCOUNTING_CUTOVER_DATE]);
+    // Mark pre-cutover transactions as legacy period
+    const { rowCount: txUpdated } = await pg.query(
+      `UPDATE transactions SET period_type='legacy' WHERE transaction_date::DATE < $1 AND period_type IS DISTINCT FROM 'legacy'`,
+      [ACCOUNTING_CUTOVER_DATE]);
+    await pg.query('COMMIT');
+    res.json({ success: true, bookings_updated: bkUpdated, ledger_entries_updated: blUpdated, transactions_updated: txUpdated });
+  } catch(err) { await pg.query('ROLLBACK'); res.status(500).json({ error: err.message }); }
+  finally { pg.release(); }
+});
+
+// ── GET /api/accounting/period-control/integrity ───────────────────────────
+app.get('/api/accounting/period-control/integrity', isAuthenticated, async (req, res) => {
+  try {
+    const result = await checkCurrentPeriodIntegrity();
+    res.json(result);
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── POST /api/accounting/period-control/config ─────────────────────────────
+app.post('/api/accounting/period-control/config', isAuthenticated, async (req, res) => {
+  try {
+    const { include_legacy } = req.body;
+    if (include_legacy !== undefined) {
+      await pool.query(
+        `UPDATE accounting_period_config SET value=$1, updated_at=NOW() WHERE key='INCLUDE_LEGACY_DEFAULT'`,
+        [include_legacy ? 'true' : 'false']);
+    }
+    res.json({ success: true, include_legacy_default: include_legacy });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── POST /api/accounting/period-control/legacy-adjustment ──────────────────
+app.post('/api/accounting/period-control/legacy-adjustment', isAuthenticated, async (req, res) => {
+  const pg = await pool.connect();
+  try {
+    await pg.query('BEGIN');
+    const { nanoid } = await import('nanoid');
+    const { booking_id, adjustment_type, amount, account_code, notes } = req.body;
+    if (!adjustment_type || !notes) return res.status(400).json({ error:'adjustment_type y notes son requeridos' });
+    // Only allowed account for legacy adjustments: 3999
+    const acctId = account_code === '1999' ? 'acc_legacy_1999'
+                 : account_code === '2999' ? 'acc_legacy_2999'
+                 : 'acc_legacy_3999';
+    const adjId = 'ladj_' + nanoid(8);
+    await pg.query(
+      `INSERT INTO legacy_adjustment_log(id,booking_id,adjustment_type,amount,account_code,notes,created_by,created_at)
+       VALUES($1,$2,$3,$4,$5,$6,$7,NOW())`,
+      [adjId, booking_id||null, adjustment_type, parseFloat(amount||0), account_code||'3999', notes, req.user?.id||'system']
+    );
+    if (amount && parseFloat(amount) > 0) {
+      await pg.query(
+        `INSERT INTO transactions(id,transaction_date,accounting_date,account_id,amount,transaction_type,description,reference_type,notes,period_type,source_system)
+         VALUES($1,NOW()::DATE,NOW()::DATE,$2,$3,'income',$4,'manual_adjustment',$5,'legacy','manual_entry')`,
+        ['tx_ladj_'+nanoid(8), acctId, parseFloat(amount), `Prior period adjustment: ${adjustment_type}`, notes]
+      );
+    }
+    await pg.query('COMMIT');
+    res.status(201).json({ success: true, adjustment_id: adjId });
+  } catch(err) { await pg.query('ROLLBACK'); res.status(500).json({ error: err.message }); }
+  finally { pg.release(); }
 });
 
 // ========== FASE 20: ACCOUNTING INTEGRITY ENGINE ==========

@@ -383,6 +383,9 @@
             <button class="tab" data-tab="ledger-contable" data-testid="tab-ledger-contable">
                 Ledger Contable
             </button>
+            <button class="tab" data-tab="period-control" data-testid="tab-period-control">
+                Control de Periodo
+            </button>
         </div>
     </div>
 
@@ -1972,6 +1975,151 @@
             </div>
         </div>
         <!-- ========== END LEDGER CONTABLE TAB ========== -->
+
+        <!-- ========== PERIOD CONTROL TAB ========== -->
+        <div class="tab-content" id="period-control" data-testid="tab-content-period-control">
+            <div style="max-width:900px;margin:0 auto;">
+
+                <!-- Header -->
+                <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px 24px;margin-bottom:20px;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+                        <div>
+                            <h2 style="margin:0 0 4px;font-size:18px;font-weight:800;color:#1a1a2e;">Control de Periodo Contable</h2>
+                            <p style="margin:0;font-size:13px;color:#64748b;">Corte contable oficial — aísla periodos legacy del sistema nuevo.</p>
+                        </div>
+                        <div style="display:flex;gap:8px;">
+                            <button onclick="loadPeriodControl()" data-testid="button-period-refresh"
+                                    style="padding:8px 16px;background:#0ea5e9;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;">
+                                Actualizar
+                            </button>
+                            <button onclick="runPeriodIntegrity()" data-testid="button-period-integrity"
+                                    style="padding:8px 16px;background:#7c3aed;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;">
+                                Verificar Integridad
+                            </button>
+                            <button onclick="runLegacyLockdown()" data-testid="button-legacy-lockdown"
+                                    style="padding:8px 16px;background:#dc2626;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;">
+                                Ejecutar Legacy Lockdown
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Status cards -->
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:20px;">
+                    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px 20px;">
+                        <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:6px;">Fecha de Corte</div>
+                        <div style="font-size:20px;font-weight:800;color:#1a1a2e;">2026-04-27</div>
+                        <div style="font-size:11px;color:#94a3b8;margin-top:3px;">ACCOUNTING_CUTOVER_DATE</div>
+                    </div>
+                    <div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:10px;padding:16px 20px;">
+                        <div style="font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;margin-bottom:6px;">Periodo Legacy</div>
+                        <div style="font-size:16px;font-weight:800;color:#92400e;">BLOQUEADO</div>
+                        <div style="font-size:11px;color:#78350f;margin-top:3px;">Anterior al 2026-04-27</div>
+                    </div>
+                    <div style="background:#dcfce7;border:1px solid #86efac;border-radius:10px;padding:16px 20px;">
+                        <div style="font-size:11px;font-weight:700;color:#15803d;text-transform:uppercase;margin-bottom:6px;">Periodo Actual</div>
+                        <div style="font-size:16px;font-weight:800;color:#15803d;">ACTIVO</div>
+                        <div style="font-size:11px;color:#166534;margin-top:3px;">Desde 2026-04-27</div>
+                    </div>
+                    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px 20px;">
+                        <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:6px;">Incluir Legacy</div>
+                        <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
+                            <label class="toggle-switch" style="position:relative;display:inline-block;width:38px;height:20px;">
+                                <input type="checkbox" id="pc-include-legacy" onchange="toggleIncludeLegacy(this.checked)"
+                                       style="opacity:0;width:0;height:0;">
+                                <span style="position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#cbd5e1;border-radius:20px;transition:.2s;"
+                                      id="pc-toggle-track"></span>
+                            </label>
+                            <span id="pc-legacy-label" style="font-size:12px;color:#64748b;">Desactivado</span>
+                        </div>
+                        <div style="font-size:11px;color:#94a3b8;margin-top:4px;">Activa para ver datos históricos en reportes</div>
+                    </div>
+                </div>
+
+                <!-- Stats grid -->
+                <div id="pc-stats" style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:18px 22px;margin-bottom:20px;">
+                    <div style="color:#94a3b8;text-align:center;padding:24px;">Cargando estadísticas...</div>
+                </div>
+
+                <!-- Integrity report -->
+                <div id="pc-integrity" style="display:none;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:18px 22px;margin-bottom:20px;">
+                    <h3 style="margin:0 0 14px;font-size:15px;font-weight:700;color:#1a1a2e;">Reporte de Integridad del Periodo Actual</h3>
+                    <div id="pc-integrity-content"></div>
+                </div>
+
+                <!-- Legacy accounts reference -->
+                <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:18px 22px;margin-bottom:20px;">
+                    <h3 style="margin:0 0 12px;font-size:15px;font-weight:700;color:#1a1a2e;">Cuentas Legacy Asignadas</h3>
+                    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                        <thead><tr style="background:#f8fafc;">
+                            <th style="padding:8px 12px;text-align:left;font-weight:700;color:#475569;font-size:11px;text-transform:uppercase;">Código</th>
+                            <th style="padding:8px 12px;text-align:left;font-weight:700;color:#475569;font-size:11px;text-transform:uppercase;">Nombre</th>
+                            <th style="padding:8px 12px;text-align:left;font-weight:700;color:#475569;font-size:11px;text-transform:uppercase;">Tipo</th>
+                            <th style="padding:8px 12px;text-align:left;font-weight:700;color:#475569;font-size:11px;text-transform:uppercase;">Uso</th>
+                        </tr></thead>
+                        <tbody>
+                            <tr style="border-top:1px solid #f1f5f9;"><td style="padding:10px 12px;font-family:monospace;font-weight:700;">1999</td><td style="padding:10px 12px;">Legacy Cash / Prior Period Clearing</td><td style="padding:10px 12px;"><span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:10px;font-size:11px;">Activo</span></td><td style="padding:10px 12px;color:#64748b;font-size:12px;">Caja legacy — nunca mezclar con 1015</td></tr>
+                            <tr style="border-top:1px solid #f1f5f9;"><td style="padding:10px 12px;font-family:monospace;font-weight:700;">2999</td><td style="padding:10px 12px;">Legacy Booking Balancing Account</td><td style="padding:10px 12px;"><span style="background:#ede9fe;color:#7c3aed;padding:2px 8px;border-radius:10px;font-size:11px;">Pasivo</span></td><td style="padding:10px 12px;color:#64748b;font-size:12px;">Contrapartida para bookings legacy</td></tr>
+                            <tr style="border-top:1px solid #f1f5f9;"><td style="padding:10px 12px;font-family:monospace;font-weight:700;">3999</td><td style="padding:10px 12px;">Prior Period Adjustment</td><td style="padding:10px 12px;"><span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:10px;font-size:11px;">Patrimonio</span></td><td style="padding:10px 12px;color:#64748b;font-size:12px;">Ajustes manuales de periodo anterior</td></tr>
+                            <tr style="border-top:1px solid #f1f5f9;"><td style="padding:10px 12px;font-family:monospace;font-weight:700;">1015</td><td style="padding:10px 12px;">Cash Clearing / Operating Cash</td><td style="padding:10px 12px;"><span style="background:#dcfce7;color:#15803d;padding:2px 8px;border-radius:10px;font-size:11px;">Activo</span></td><td style="padding:10px 12px;color:#64748b;font-size:12px;">Solo periodo actual (>= 2026-04-27)</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Prior Period Adjustment form -->
+                <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:18px 22px;margin-bottom:20px;">
+                    <h3 style="margin:0 0 12px;font-size:15px;font-weight:700;color:#1a1a2e;">Registrar Ajuste de Periodo Anterior</h3>
+                    <div style="display:grid;grid-template-columns:1fr 1fr 120px;gap:10px;margin-bottom:10px;">
+                        <div>
+                            <label style="font-size:11px;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Tipo de ajuste</label>
+                            <select id="pc-adj-type" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+                                <option value="prior_period_correction">Corrección de periodo anterior</option>
+                                <option value="reclassification">Reclasificación</option>
+                                <option value="write_off">Write-off / baja contable</option>
+                                <option value="other">Otro</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-size:11px;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Cuenta</label>
+                            <select id="pc-adj-account" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+                                <option value="3999">3999 — Prior Period Adjustment</option>
+                                <option value="2999">2999 — Legacy Booking Balancing</option>
+                                <option value="1999">1999 — Legacy Cash / Prior Period</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-size:11px;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Monto ($)</label>
+                            <input type="number" id="pc-adj-amount" min="0" step="0.01" placeholder="0.00"
+                                   style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+                        </div>
+                    </div>
+                    <div style="margin-bottom:10px;">
+                        <label style="font-size:11px;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Booking ID (opcional)</label>
+                        <input type="text" id="pc-adj-booking" placeholder="book_xxx (si aplica)"
+                               style="width:280px;padding:8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+                    </div>
+                    <div style="margin-bottom:12px;">
+                        <label style="font-size:11px;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Notas / motivo (requerido)</label>
+                        <input type="text" id="pc-adj-notes" placeholder="Describe el ajuste de periodo anterior..."
+                               style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+                    </div>
+                    <button onclick="savePeriodAdjustment()" data-testid="button-save-period-adj"
+                            style="padding:8px 20px;background:#7c3aed;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;">
+                        Registrar Ajuste
+                    </button>
+                    <div id="pc-adj-result" style="margin-top:10px;font-size:12px;color:#15803d;"></div>
+                </div>
+
+                <!-- Legacy adjustment log -->
+                <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:18px 22px;">
+                    <h3 style="margin:0 0 12px;font-size:15px;font-weight:700;color:#1a1a2e;">Log de Ajustes Legacy</h3>
+                    <div id="pc-adj-log">
+                        <div style="color:#94a3b8;text-align:center;padding:24px;">Cargando...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- ========== END PERIOD CONTROL TAB ========== -->
 
         <div class="tab-content" id="cuadre-booking" data-testid="tab-content-cuadre-booking">
             <div style="max-width:900px;margin:0 auto;">
@@ -4706,8 +4854,177 @@ document.addEventListener('DOMContentLoaded', () => {
   // Set today's date default for cash payment input
   const cashDate = document.getElementById('ledger-cash-date');
   if (cashDate) cashDate.value = new Date().toISOString().slice(0, 10);
+
+  // ── Deep-link support: ?tab=<tab-id> ──────────────────────────────────
+  const urlTab = new URLSearchParams(window.location.search).get('tab');
+  if (urlTab) {
+    const target = document.querySelector(`.tab[data-tab="${urlTab}"]`);
+    if (target) {
+      setTimeout(() => target.click(), 100);
+    }
+  }
 });
 // ========== END LEDGER CONTABLE TAB ==========
+
+// ========== PERIOD CONTROL TAB ==========
+async function loadPeriodControl() {
+  try {
+    const r = await fetch('/api/accounting/period-control', { credentials:'include' });
+    const data = await r.json();
+    renderPeriodStats(data);
+    renderPeriodAdjLog(data.legacy_adjustment_log || []);
+    // Set toggle
+    const toggle = document.getElementById('pc-include-legacy');
+    if (toggle) toggle.checked = data.config?.INCLUDE_LEGACY_DEFAULT === 'true';
+    const label = document.getElementById('pc-legacy-label');
+    if (label) label.textContent = toggle?.checked ? 'Activado' : 'Desactivado';
+    const track = document.getElementById('pc-toggle-track');
+    if (track) track.style.background = toggle?.checked ? '#7c3aed' : '#cbd5e1';
+  } catch(e) {
+    document.getElementById('pc-stats').innerHTML = `<div style="color:#dc2626;padding:16px;">Error: ${e.message}</div>`;
+  }
+}
+
+function renderPeriodStats(data) {
+  const s = data.stats || {};
+  const el = document.getElementById('pc-stats');
+  if (!el) return;
+  el.innerHTML = `
+    <h3 style="margin:0 0 14px;font-size:15px;font-weight:700;color:#1a1a2e;">Estadísticas del Sistema</h3>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;">
+      ${[
+        ['Bookings actuales', s.current_bookings||0, '#dcfce7','#15803d'],
+        ['Bookings legacy', s.legacy_bookings||0, '#fef3c7','#92400e'],
+        ['Marcados legacy', s.flagged_legacy||0, '#fef9c3','#78350f'],
+        ['TX periodo actual', s.current_tx||0, '#dbeafe','#1e40af'],
+        ['TX legacy', s.legacy_tx||0, '#fef3c7','#92400e'],
+        ['TX sin periodo', s.null_period||0, s.null_period>0?'#fee2e2':'#f8fafc', s.null_period>0?'#dc2626':'#475569'],
+      ].map(([label,val,bg,color]) => `
+        <div style="background:${bg};border-radius:8px;padding:12px 14px;">
+          <div style="font-size:11px;font-weight:700;color:${color};margin-bottom:4px;">${label}</div>
+          <div style="font-size:20px;font-weight:800;color:${color};">${parseInt(val).toLocaleString()}</div>
+        </div>`).join('')}
+    </div>`;
+}
+
+function renderPeriodAdjLog(log) {
+  const el = document.getElementById('pc-adj-log');
+  if (!el) return;
+  if (!log.length) {
+    el.innerHTML = '<div style="color:#94a3b8;text-align:center;padding:24px;">Sin ajustes registrados.</div>';
+    return;
+  }
+  el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px;">
+    <thead><tr style="background:#f8fafc;">
+      <th style="padding:8px 10px;text-align:left;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;">Fecha</th>
+      <th style="padding:8px 10px;text-align:left;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;">Tipo</th>
+      <th style="padding:8px 10px;text-align:left;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;">Booking</th>
+      <th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;">Monto</th>
+      <th style="padding:8px 10px;text-align:left;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;">Cuenta</th>
+      <th style="padding:8px 10px;text-align:left;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;">Notas</th>
+      <th style="padding:8px 10px;text-align:left;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;">Usuario</th>
+    </tr></thead>
+    <tbody>${log.map(a => `<tr style="border-top:1px solid #f1f5f9;">
+      <td style="padding:9px 10px;white-space:nowrap;">${String(a.created_at||'').slice(0,16).replace('T',' ')}</td>
+      <td style="padding:9px 10px;"><span style="background:#ede9fe;color:#7c3aed;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;">${a.adjustment_type||'—'}</span></td>
+      <td style="padding:9px 10px;font-size:11px;font-family:monospace;">${a.booking_id||'—'}</td>
+      <td style="padding:9px 10px;text-align:right;font-weight:700;">${parseFloat(a.amount||0)>0?'$'+parseFloat(a.amount).toFixed(2):'—'}</td>
+      <td style="padding:9px 10px;font-family:monospace;">${a.account_code||'3999'}</td>
+      <td style="padding:9px 10px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${a.notes||'—'}</td>
+      <td style="padding:9px 10px;font-size:11px;">${a.created_by||'system'}</td>
+    </tr>`).join('')}</tbody></table>`;
+}
+
+async function runPeriodIntegrity() {
+  const el = document.getElementById('pc-integrity');
+  const content = document.getElementById('pc-integrity-content');
+  if (!el || !content) return;
+  el.style.display = 'block';
+  content.innerHTML = '<div style="color:#94a3b8;padding:16px;">Verificando integridad...</div>';
+  try {
+    const r = await fetch('/api/accounting/period-control/integrity', { credentials:'include' });
+    const data = await r.json();
+    const allOk = data.ok;
+    content.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+        <span style="font-size:24px;">${allOk ? '✅' : '⚠️'}</span>
+        <span style="font-size:15px;font-weight:700;color:${allOk?'#15803d':'#dc2626'};">
+          ${allOk ? 'Integridad OK — sin errores críticos' : 'Se encontraron issues críticos'}
+        </span>
+      </div>
+      ${data.warnings.length ? `
+        <div style="margin-bottom:14px;">
+          ${data.warnings.map(w => `
+            <div style="display:flex;gap:10px;align-items:flex-start;padding:10px 14px;border-radius:8px;margin-bottom:6px;background:${w.severity==='error'?'#fee2e2':w.severity==='warn'?'#fef3c7':'#eff6ff'};">
+              <span style="font-size:14px;">${w.severity==='error'?'🔴':w.severity==='warn'?'🟡':'🔵'}</span>
+              <div>
+                <div style="font-size:11px;font-weight:700;font-family:monospace;color:#374151;">${w.code}</div>
+                <div style="font-size:13px;color:#374151;">${w.message}</div>
+              </div>
+            </div>`).join('')}
+        </div>` : '<div style="color:#15803d;font-size:13px;padding:10px;">Sin warnings detectados.</div>'}
+      <details style="margin-top:12px;">
+        <summary style="cursor:pointer;font-size:12px;font-weight:700;color:#475569;">Ver estadísticas detalladas</summary>
+        <pre style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px;font-size:11px;margin-top:8px;overflow:auto;">${JSON.stringify(data.stats, null, 2)}</pre>
+      </details>`;
+  } catch(e) { content.innerHTML = `<div style="color:#dc2626;">Error: ${e.message}</div>`; }
+}
+
+async function runLegacyLockdown() {
+  if (!confirm('¿Ejecutar Legacy Lockdown?\n\nEsto marcará como is_legacy=true todos los bookings anteriores al 2026-04-27 y sus transacciones como period_type="legacy".\n\nEs idempotente — no borrará datos.')) return;
+  try {
+    const r = await fetch('/api/accounting/period-control/legacy-lockdown', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      credentials:'include', body:JSON.stringify({})
+    });
+    const data = await r.json();
+    if (!r.ok) { alert('Error: ' + data.error); return; }
+    alert(`Legacy Lockdown completado:\n- Bookings marcados: ${data.bookings_updated}\n- Ledger entries: ${data.ledger_entries_updated}\n- Transacciones: ${data.transactions_updated}`);
+    loadPeriodControl();
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function toggleIncludeLegacy(checked) {
+  const label = document.getElementById('pc-legacy-label');
+  const track = document.getElementById('pc-toggle-track');
+  if (label) label.textContent = checked ? 'Activado' : 'Desactivado';
+  if (track) track.style.background = checked ? '#7c3aed' : '#cbd5e1';
+  try {
+    await fetch('/api/accounting/period-control/config', {
+      method:'POST', credentials:'include',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ include_legacy: checked })
+    });
+  } catch(e) { console.error(e); }
+}
+
+async function savePeriodAdjustment() {
+  const type    = document.getElementById('pc-adj-type')?.value;
+  const account = document.getElementById('pc-adj-account')?.value;
+  const amount  = document.getElementById('pc-adj-amount')?.value;
+  const booking = document.getElementById('pc-adj-booking')?.value;
+  const notes   = document.getElementById('pc-adj-notes')?.value;
+  if (!notes) { alert('El campo "Notas" es requerido.'); return; }
+  try {
+    const r = await fetch('/api/accounting/period-control/legacy-adjustment', {
+      method:'POST', credentials:'include',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ adjustment_type:type, account_code:account, amount:parseFloat(amount||0), booking_id:booking||null, notes })
+    });
+    const data = await r.json();
+    if (!r.ok) { alert('Error: ' + data.error); return; }
+    document.getElementById('pc-adj-result').textContent = `Ajuste registrado: ${data.adjustment_id}`;
+    document.getElementById('pc-adj-notes').value = '';
+    document.getElementById('pc-adj-amount').value = '';
+    document.getElementById('pc-adj-booking').value = '';
+    loadPeriodControl();
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+document.querySelectorAll('.tab[data-tab="period-control"]').forEach(btn => {
+  btn.addEventListener('click', () => setTimeout(loadPeriodControl, 50));
+});
+// ========== END PERIOD CONTROL TAB ==========
 </script>
 <script>
 (async function loadAcctAlerts() {
