@@ -377,6 +377,9 @@
             <button class="tab" data-tab="deposits" data-testid="tab-deposits">
                 🔐 Depósitos de Reservas
             </button>
+            <button class="tab" data-tab="cuadre-booking" data-testid="tab-cuadre-booking">
+                📋 Cuadre por Booking
+            </button>
         </div>
     </div>
 
@@ -1793,6 +1796,56 @@
                 <div style="padding: 20px;">
                     <h2 id="reportTitle"></h2>
                     <div id="reportContent"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Cuadre por Booking Tab -->
+        <div class="tab-content" id="cuadre-booking" data-testid="tab-content-cuadre-booking">
+            <div style="max-width:900px;margin:0 auto;">
+                <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px 24px;margin-bottom:20px;">
+                    <h2 style="margin:0 0 6px;font-size:18px;font-weight:800;color:#1a1a2e;">Cuadre Completo por Booking</h2>
+                    <p style="margin:0 0 18px;font-size:13px;color:#64748b;">Busca por nombre del cliente o ID de booking para ver todos los asientos contables, el P&amp;L y las alertas asociadas.</p>
+
+                    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;">
+                        <div style="flex:1;min-width:200px;">
+                            <label style="display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:5px;">Nombre del cliente</label>
+                            <input type="text" id="bkrec-search" data-testid="input-bkrec-search"
+                                   placeholder="Ej: Matej, John..."
+                                   style="width:100%;padding:9px 12px;border:1px solid #d1d5db;border-radius:7px;font-size:14px;box-sizing:border-box;"
+                                   onkeydown="if(event.key==='Enter') loadBookingReconciliation()">
+                        </div>
+                        <div style="display:flex;align-items:center;padding-bottom:1px;color:#94a3b8;font-size:13px;font-weight:600;">ó</div>
+                        <div style="flex:1;min-width:220px;">
+                            <label style="display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:5px;">Booking ID</label>
+                            <input type="text" id="bkrec-booking-id" data-testid="input-bkrec-booking-id"
+                                   placeholder="Ej: book_matej_apr27_2026"
+                                   style="width:100%;padding:9px 12px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;font-family:monospace;box-sizing:border-box;"
+                                   onkeydown="if(event.key==='Enter') loadBookingReconciliation()">
+                        </div>
+                        <button onclick="loadBookingReconciliation()" data-testid="button-bkrec-search"
+                                style="padding:9px 22px;background:#0ea5e9;color:#fff;border:none;border-radius:7px;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap;">
+                            Buscar
+                        </button>
+                    </div>
+
+                    <!-- Quick access -->
+                    <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
+                        <span style="font-size:11px;color:#94a3b8;font-weight:600;">Acceso rápido:</span>
+                        <button onclick="document.getElementById('bkrec-search').value='Matej';loadBookingReconciliation()"
+                                style="padding:3px 10px;border:1px solid #d1d5db;border-radius:20px;font-size:11px;cursor:pointer;background:#f8fafc;color:#475569;">
+                            Matej (Abr 27)
+                        </button>
+                        <button onclick="document.getElementById('bkrec-booking-id').value='book_matej_apr27_2026';document.getElementById('bkrec-search').value='';loadBookingReconciliation()"
+                                style="padding:3px 10px;border:1px solid #d1d5db;border-radius:20px;font-size:11px;cursor:pointer;background:#f8fafc;color:#475569;">
+                            Por Booking ID
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Results panel -->
+                <div id="bkrec-results" data-testid="panel-bkrec-results">
+                    <p style="color:#94a3b8;text-align:center;padding:40px;">Ingresa el nombre del cliente o el ID del booking para ver el cuadre completo.</p>
                 </div>
             </div>
         </div>

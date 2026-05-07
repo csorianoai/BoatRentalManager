@@ -6703,6 +6703,120 @@ app.get('/api/accounting/transactions', isAuthenticated, async (req, res) => {
   }
 });
 
+// GET /api/accounting/booking-reconciliation?q=customer&booking_id=book_xxx
+// Returns full P&L cuadre for a booking: all journal lines + summary
+app.get('/api/accounting/booking-reconciliation', isAuthenticated, async (req, res) => {
+  try {
+    const { q, booking_id } = req.query;
+    if (!q && !booking_id) {
+      return res.status(400).json({ error: 'Se requiere q (nombre cliente) o booking_id' });
+    }
+
+    let txRows;
+    if (booking_id) {
+      const r = await pool.query(`
+        SELECT t.id, t.transaction_date, t.transaction_type, t.amount, t.description,
+               t.reference_id, t.reference_type, t.notes, t.reconciled,
+               ca.account_code, ca.account_name, ca.account_type
+        FROM transactions t
+        JOIN chart_of_accounts ca ON ca.id = t.account_id
+        WHERE t.reference_id = $1
+           OR t.id IN (
+             SELECT id FROM transactions WHERE reference_id = $1
+           )
+        ORDER BY t.transaction_date, t.id
+      `, [booking_id]);
+      txRows = r.rows;
+    } else {
+      const r = await pool.query(`
+        SELECT t.id, t.transaction_date, t.transaction_type, t.amount, t.description,
+               t.reference_id, t.reference_type, t.notes, t.reconciled,
+               ca.account_code, ca.account_name, ca.account_type
+        FROM transactions t
+        JOIN chart_of_accounts ca ON ca.id = t.account_id
+        WHERE t.description ILIKE $1
+           OR t.notes ILIKE $1
+           OR t.reference_id ILIKE $1
+        ORDER BY t.transaction_date, t.id
+      `, [`%${q}%`]);
+      txRows = r.rows;
+    }
+
+    // P&L calculation — proper double-entry interpretation
+    // Revenue = ABS of negative amounts on revenue/income accounts (credits)
+    // Expenses = positive amounts on expense accounts (debits)
+    let revenue = 0, expenses = 0;
+    const journalLines = txRows.map(t => {
+      const amt = parseFloat(t.amount);
+      let plRole = null;
+      if (t.account_type === 'revenue' || t.account_type === 'income') {
+        revenue += Math.abs(amt);
+        plRole = 'revenue';
+      } else if (t.account_type === 'expense' && amt > 0) {
+        expenses += amt;
+        plRole = 'expense';
+      } else if (t.account_type === 'asset' || t.account_type === 'liability') {
+        plRole = amt > 0 ? 'debit' : 'credit';
+      }
+      return { ...t, amount: amt, pl_role: plRole };
+    });
+
+    const net = revenue - expenses;
+
+    // Find booking info from reference_ids in the journal lines
+    const refIds = [...new Set(txRows.map(t => t.reference_id).filter(r => r && r.startsWith('book_')))];
+    let bookingInfo = null;
+    if (refIds.length > 0) {
+      try {
+        const bk = await pool.query(
+          `SELECT id, customer_name, customer_email, booking_date,
+                  total_amount, platform, status, boat_type
+           FROM bookings WHERE id = ANY($1) LIMIT 1`,
+          [refIds]
+        );
+        if (bk.rows.length) bookingInfo = bk.rows[0];
+      } catch(_) {}
+    }
+    // Fallback: search bookings by customer name if q provided and no booking found
+    if (!bookingInfo && q) {
+      try {
+        const bk2 = await pool.query(
+          `SELECT id, customer_name, customer_email, booking_date,
+                  total_amount, platform, status, boat_type
+           FROM bookings WHERE customer_name ILIKE $1 ORDER BY created_at DESC LIMIT 1`,
+          [`%${q}%`]
+        );
+        if (bk2.rows.length) bookingInfo = bk2.rows[0];
+      } catch(_) {}
+    }
+
+    // Alerts for this booking/customer
+    let alerts = [];
+    try {
+      const alertSearch = booking_id || q;
+      const al = await pool.query(
+        `SELECT id, alert_type, severity, title, message, threshold_value, actual_value, is_resolved, created_at
+         FROM accounting_alerts
+         WHERE message ILIKE $1 OR title ILIKE $1
+         ORDER BY created_at DESC LIMIT 10`,
+        [`%${alertSearch}%`]
+      );
+      alerts = al.rows;
+    } catch(_) {}
+
+    res.json({
+      booking: bookingInfo,
+      journal_lines: journalLines,
+      summary: { revenue, expenses, net, line_count: txRows.length },
+      alerts,
+      search: { q, booking_id }
+    });
+  } catch (err) {
+    console.error('booking-reconciliation error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Get single transaction
 app.get('/api/accounting/transactions/:id', isAuthenticated, async (req, res) => {
   try {

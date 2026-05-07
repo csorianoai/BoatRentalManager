@@ -1343,3 +1343,182 @@ document.addEventListener('DOMContentLoaded', () => {
 function editRule(id) {
     alert('Función de edición próximamente');
 }
+
+// ═══════════════════════════════════════════════════════════════
+// CUADRE POR BOOKING — Booking Reconciliation Panel
+// ═══════════════════════════════════════════════════════════════
+async function loadBookingReconciliation() {
+    const q = (document.getElementById('bkrec-search')?.value || '').trim();
+    const bookingId = (document.getElementById('bkrec-booking-id')?.value || '').trim();
+    if (!q && !bookingId) {
+        document.getElementById('bkrec-results').innerHTML =
+            '<p style="color:#94a3b8;text-align:center;padding:30px;">Ingresa el nombre del cliente o el ID del booking para buscar.</p>';
+        return;
+    }
+    const panel = document.getElementById('bkrec-results');
+    panel.innerHTML = '<p style="color:#64748b;text-align:center;padding:30px;">Cargando...</p>';
+
+    const params = new URLSearchParams();
+    if (bookingId) params.set('booking_id', bookingId);
+    else params.set('q', q);
+
+    try {
+        const res = await fetch('/api/accounting/booking-reconciliation?' + params.toString());
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Error al cargar');
+        renderBookingReconciliation(data);
+    } catch (err) {
+        panel.innerHTML = `<p style="color:#dc2626;text-align:center;padding:20px;">Error: ${err.message}</p>`;
+    }
+}
+
+function renderBookingReconciliation(data) {
+    const panel = document.getElementById('bkrec-results');
+    const { booking, journal_lines, summary, alerts } = data;
+
+    if (!journal_lines || journal_lines.length === 0) {
+        panel.innerHTML = '<p style="color:#94a3b8;text-align:center;padding:30px;">No se encontraron transacciones para este criterio de búsqueda.</p>';
+        return;
+    }
+
+    const fmt = (n) => `$${Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const fmtDate = (d) => d ? new Date(d).toLocaleDateString('es-DO', { year: 'numeric', month: 'short', day: '2-digit', timeZone: 'UTC' }) : '—';
+    const netColor = summary.net >= 0 ? '#16a34a' : '#dc2626';
+
+    // Booking header
+    let bookingHtml = '';
+    if (booking) {
+        bookingHtml = `
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px 18px;margin-bottom:16px;display:flex;flex-wrap:wrap;gap:16px;align-items:center;">
+            <div>
+                <div style="font-size:11px;text-transform:uppercase;font-weight:700;color:#64748b;letter-spacing:.5px;">Cliente</div>
+                <div style="font-size:16px;font-weight:800;color:#1a1a2e;">${booking.customer_name || '—'}</div>
+            </div>
+            <div>
+                <div style="font-size:11px;text-transform:uppercase;font-weight:700;color:#64748b;letter-spacing:.5px;">Fecha</div>
+                <div style="font-size:14px;font-weight:600;color:#1a1a2e;">${fmtDate(booking.booking_date)}</div>
+            </div>
+            <div>
+                <div style="font-size:11px;text-transform:uppercase;font-weight:700;color:#64748b;letter-spacing:.5px;">Total Reserva</div>
+                <div style="font-size:14px;font-weight:700;color:#059669;">${fmt(booking.total_amount || 0)}</div>
+            </div>
+            <div>
+                <div style="font-size:11px;text-transform:uppercase;font-weight:700;color:#64748b;letter-spacing:.5px;">Plataforma</div>
+                <div style="font-size:13px;color:#475569;">${booking.platform || booking.boat_type || '—'}</div>
+            </div>
+            <div>
+                <div style="font-size:11px;text-transform:uppercase;font-weight:700;color:#64748b;letter-spacing:.5px;">Estado</div>
+                <div style="font-size:13px;color:#475569;">${booking.status || '—'}</div>
+            </div>
+            <div>
+                <div style="font-size:11px;text-transform:uppercase;font-weight:700;color:#64748b;letter-spacing:.5px;">ID</div>
+                <div style="font-size:11px;color:#94a3b8;font-family:monospace;">${booking.id}</div>
+            </div>
+        </div>`;
+    }
+
+    // P&L summary
+    const summaryHtml = `
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px;">
+        <div style="background:#f0fdf4;border:2px solid #86efac;border-radius:10px;padding:14px 16px;text-align:center;">
+            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Ingresos</div>
+            <div style="font-size:24px;font-weight:900;color:#16a34a;">${fmt(summary.revenue)}</div>
+        </div>
+        <div style="background:#fef2f2;border:2px solid #fca5a5;border-radius:10px;padding:14px 16px;text-align:center;">
+            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Gastos</div>
+            <div style="font-size:24px;font-weight:900;color:#dc2626;">${fmt(summary.expenses)}</div>
+        </div>
+        <div style="background:#f8fafc;border:2px solid #cbd5e1;border-radius:10px;padding:14px 16px;text-align:center;">
+            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Resultado Neto</div>
+            <div style="font-size:24px;font-weight:900;color:${netColor};">${fmt(summary.net)}</div>
+        </div>
+    </div>`;
+
+    // Alerts
+    let alertsHtml = '';
+    if (alerts && alerts.length > 0) {
+        alertsHtml = `
+        <div style="background:#fffbeb;border:1px solid #fde047;border-radius:10px;padding:12px 16px;margin-bottom:16px;">
+            <div style="font-size:12px;font-weight:700;color:#854d0e;margin-bottom:8px;">Alertas Contables</div>
+            ${alerts.map(a => `
+            <div style="display:flex;gap:8px;align-items:flex-start;padding:8px 0;border-top:1px solid #fef08a;">
+                <span style="font-size:16px;">${a.alert_type === 'unusual_spending' ? '⚠️' : 'ℹ️'}</span>
+                <div style="flex:1;">
+                    <div style="font-size:13px;font-weight:700;color:#92400e;">${a.title || a.alert_type}</div>
+                    <div style="font-size:12px;color:#78350f;margin-top:3px;line-height:1.5;">${a.message || ''}</div>
+                    <div style="font-size:11px;color:#64748b;margin-top:4px;">
+                        Umbral: ${fmt(a.threshold_value || 0)} · Real: ${fmt(a.actual_value || 0)} · Estado: ${a.is_resolved ? 'Resuelto' : 'Pendiente'}
+                    </div>
+                </div>
+            </div>`).join('')}
+        </div>`;
+    }
+
+    // Role colors and labels
+    const roleStyle = {
+        revenue:  { bg: '#f0fdf4', border: '#86efac', label: 'Ingreso', color: '#16a34a' },
+        expense:  { bg: '#fef2f2', border: '#fca5a5', label: 'Gasto',   color: '#dc2626' },
+        debit:    { bg: '#f0f9ff', border: '#7dd3fc', label: 'Dr',      color: '#0284c7' },
+        credit:   { bg: '#faf5ff', border: '#d8b4fe', label: 'Cr',      color: '#7c3aed' },
+    };
+
+    // Journal lines table
+    const journalHtml = `
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
+        <div style="padding:12px 16px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;">
+            <div style="font-size:13px;font-weight:700;color:#1a1a2e;">Asientos Contables (${summary.line_count} líneas)</div>
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead>
+                <tr style="background:#f8fafc;border-bottom:2px solid #e5e7eb;">
+                    <th style="padding:9px 12px;text-align:left;color:#64748b;font-weight:600;">Fecha</th>
+                    <th style="padding:9px 12px;text-align:left;color:#64748b;font-weight:600;">Cuenta</th>
+                    <th style="padding:9px 12px;text-align:left;color:#64748b;font-weight:600;">Descripción</th>
+                    <th style="padding:9px 12px;text-align:center;color:#64748b;font-weight:600;">Rol P&L</th>
+                    <th style="padding:9px 12px;text-align:right;color:#64748b;font-weight:600;">Monto</th>
+                    <th style="padding:9px 12px;text-align:center;color:#64748b;font-weight:600;">Reconciliado</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${journal_lines.map((line, i) => {
+                    const rs = roleStyle[line.pl_role] || { bg: '#fff', border: '#e5e7eb', label: '—', color: '#64748b' };
+                    const amtSign = line.amount < 0 ? '-' : '';
+                    return `<tr style="border-bottom:1px solid #f1f5f9;background:${i % 2 === 0 ? '#fff' : '#fafafa'};">
+                        <td style="padding:8px 12px;color:#475569;white-space:nowrap;">${fmtDate(line.transaction_date)}</td>
+                        <td style="padding:8px 12px;">
+                            <span style="font-family:monospace;font-size:11px;color:#64748b;">${line.account_code}</span>
+                            <span style="color:#1e293b;margin-left:4px;">${line.account_name}</span>
+                        </td>
+                        <td style="padding:8px 12px;color:#475569;max-width:280px;">${line.description || '—'}</td>
+                        <td style="padding:8px 12px;text-align:center;">
+                            <span style="display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700;
+                                         background:${rs.bg};border:1px solid ${rs.border};color:${rs.color};">
+                                ${rs.label}
+                            </span>
+                        </td>
+                        <td style="padding:8px 12px;text-align:right;font-weight:600;color:${line.amount < 0 ? '#7c3aed' : '#0284c7'};">
+                            ${amtSign}${fmt(line.amount)}
+                        </td>
+                        <td style="padding:8px 12px;text-align:center;">
+                            ${line.reconciled ? '<span style="color:#16a34a;font-size:13px;">✅</span>' : '<span style="color:#94a3b8;font-size:11px;">Pendiente</span>'}
+                        </td>
+                    </tr>`;
+                }).join('')}
+            </tbody>
+        </table>
+    </div>`;
+
+    panel.innerHTML = bookingHtml + summaryHtml + alertsHtml + journalHtml;
+}
+
+// Init cuadre-booking tab
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.tab[data-tab="cuadre-booking"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const panel = document.getElementById('bkrec-results');
+            if (panel && panel.innerHTML.trim() === '') {
+                panel.innerHTML = '<p style="color:#94a3b8;text-align:center;padding:30px;">Ingresa el nombre del cliente o el ID del booking para buscar.</p>';
+            }
+        });
+    });
+});
