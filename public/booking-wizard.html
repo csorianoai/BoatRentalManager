@@ -326,6 +326,23 @@
       <p class="sub">Análisis automático de pagos, gastos, discrepancias y balances de Cash Clearing.</p>
       <div id="s4-content"><div style="color:#94a3b8;text-align:center;padding:32px;">Cargando...</div></div>
     </div>
+      <!-- Resolver Discrepancias Panel -->
+      <div id="s4-resolve-panel" style="display:none;margin-top:16px;">
+        <div class="wiz-card" style="border:1px solid #fcd34d;background:#fffbeb;">
+          <h2 style="color:#92400e;font-size:16px;margin:0 0 6px;">Resolver Discrepancias</h2>
+          <p class="sub" style="margin-bottom:14px;">Clasifica cada diferencia detectada para poder cerrar el booking.</p>
+          <div id="s4-discrepancy-items"></div>
+        </div>
+      </div>
+
+      <!-- Audit Trail -->
+      <div style="margin-top:16px;">
+        <div style="font-size:12px;font-weight:700;color:#475569;text-transform:uppercase;margin-bottom:8px;">
+          Audit Trail
+        </div>
+        <div id="s4-audit-trail"><div style="color:#94a3b8;font-size:12px;padding:8px;">Sin registros de auditoría.</div></div>
+      </div>
+    </div>
     <div class="wiz-nav">
       <div class="nav-left"><button class="btn btn-ghost" onclick="goStep(3)">← Atrás</button></div>
       <div class="nav-right">
@@ -446,9 +463,12 @@ async function loadAll() {
 
 async function loadWizData() {
   try {
-    const r = await apiFetch(`/api/bookings/${BOOKING_ID}/ledger-summary`);
+    // Use the full reconciliation endpoint which includes audit_trail
+    const r = await apiFetch(`/api/bookings/${BOOKING_ID}/reconciliation`).catch(
+      () => apiFetch(`/api/bookings/${BOOKING_ID}/ledger-summary`)
+    );
     wizData = r;
-    integrity = r; // ledger-summary already includes integrity
+    integrity = r;
   } catch(e) {
     console.error(e);
   }
@@ -459,6 +479,8 @@ async function loadIntegrity() {
     const r = await apiFetch(`/api/bookings/${BOOKING_ID}/integrity`);
     integrity = { ...wizData, ...r };
     renderStep4();
+    renderResolvePanel();
+    renderAuditTrail();
   } catch(e) {
     document.getElementById('s4-content').innerHTML = `<div style="color:#dc2626;">Error: ${e.message}</div>`;
   }
@@ -897,6 +919,96 @@ async function lockBooking() {
     renderStep6();
     goStep(1);
   } catch(e) { alert('Error: ' + e.message); }
+}
+
+// ========= RESOLVER DISCREPANCIAS =========
+const RESOLUTION_LABELS = {
+  tip_authorized:    { label: 'Propina Autorizada',   style: 'background:#dcfce7;color:#15803d;' },
+  payment_error:     { label: 'Error de Pago',        style: 'background:#fef3c7;color:#92400e;' },
+  manual_adjustment: { label: 'Ajuste Manual',        style: 'background:#dbeafe;color:#1e40af;' },
+  company_credit:    { label: 'Crédito a Empresa',    style: 'background:#ede9fe;color:#7c3aed;' },
+  review_later:      { label: 'Revisar Después',      style: 'background:#f1f5f9;color:#475569;' },
+};
+
+function renderResolvePanel() {
+  const panel = document.getElementById('s4-resolve-panel');
+  const items = document.getElementById('s4-discrepancy-items');
+  if (!panel || !items || !integrity) return;
+  const alerts = (integrity.alerts || []).filter(a => ['PAYMENT_GAP','CAPTAIN_PAY_MISMATCH','CASH_CLEARING_OPEN'].includes(a.code));
+  if (!alerts.length) { panel.style.display = 'none'; return; }
+  panel.style.display = 'block';
+  items.innerHTML = alerts.map(alert => `
+    <div style="border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:10px;background:#fff;">
+      <div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:10px;">
+        <span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;margin-right:8px;">${alert.code}</span>
+        ${alert.message}
+      </div>
+      <div style="font-size:11px;color:#64748b;margin-bottom:10px;">Clasifica esta diferencia:</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        ${Object.entries(RESOLUTION_LABELS).map(([type, cfg]) => `
+          <button onclick="resolveDiscrepancy('${alert.code}','${type}',${alert.captain_diff||0})"
+                  data-testid="button-resolve-${type}"
+                  style="padding:5px 12px;border:none;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;${cfg.style}">
+            ${cfg.label}
+          </button>`).join('')}
+      </div>
+      <div style="margin-top:8px;">
+        <input type="text" id="resolve-reason-${alert.code}" placeholder="Motivo / notas (recomendado)..."
+               style="width:100%;padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;font-family:inherit;">
+      </div>
+    </div>`).join('');
+}
+
+async function resolveDiscrepancy(discrepancyCode, resolutionType, amount) {
+  const reasonEl = document.getElementById(`resolve-reason-${discrepancyCode}`);
+  const reason = reasonEl?.value || `Clasificado como: ${resolutionType}`;
+  if (resolutionType === 'manual_adjustment') {
+    goStep(5); // redirect to manual adjustment step
+    const r = document.getElementById('me-reason');
+    if (r) r.value = `Ajuste para ${discrepancyCode}: ${reason}`;
+    return;
+  }
+  try {
+    const r = await apiFetch(`/api/bookings/${BOOKING_ID}/reconcile/resolve-discrepancy`, {
+      method: 'POST',
+      body: JSON.stringify({ discrepancy_code: discrepancyCode, resolution_type: resolutionType,
+        amount: Math.abs(amount || 0), reason })
+    });
+    if (r.error) { alert('Error: ' + r.error); return; }
+    alert(`Discrepancia clasificada como "${RESOLUTION_LABELS[resolutionType]?.label}". El wizard se ha actualizado.`);
+    await loadWizData();
+    await loadIntegrity();
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+// ========= AUDIT TRAIL =========
+function renderAuditTrail() {
+  const el = document.getElementById('s4-audit-trail');
+  if (!el) return;
+  const trail = (integrity?.audit_trail || wizData?.audit_trail || []);
+  if (!trail.length) {
+    el.innerHTML = '<div style="color:#94a3b8;font-size:12px;padding:8px;">Sin registros de auditoría para este booking.</div>';
+    return;
+  }
+  const actionLabels = {
+    payment_registered: 'Pago registrado',
+    expense_registered: 'Gasto registrado',
+    discrepancy_resolved: 'Discrepancia resuelta',
+    booking_locked: 'Booking bloqueado',
+    revenue_recognized: 'Revenue reconocido',
+    manual_entry: 'Asiento manual',
+  };
+  el.innerHTML = `<table class="mini-table">
+    <thead><tr><th>Fecha</th><th>Acción</th><th>Monto</th><th>Cuenta</th><th>Notas</th><th>Usuario</th></tr></thead>
+    <tbody>${trail.map(a => `<tr>
+      <td style="white-space:nowrap;">${String(a.created_at||'').slice(0,16).replace('T',' ')}</td>
+      <td><span style="background:#f1f5f9;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;">
+        ${actionLabels[a.action_type]||a.action_type}</span></td>
+      <td>${parseFloat(a.amount||0)>0?'$'+parseFloat(a.amount).toFixed(2):'—'}</td>
+      <td style="font-family:monospace;font-size:11px;">${a.account_code||'—'}</td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${a.notes||'—'}</td>
+      <td style="font-size:11px;">${a.created_by||'system'}</td>
+    </tr>`).join('')}</tbody></table>`;
 }
 
 // ========= HELPERS =========

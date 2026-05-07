@@ -1,0 +1,412 @@
+Actúa como Principal Full-Stack Engineer, Accounting Systems Architect y Product Engineer para gestion.nadakiexcursions.
+
+OBJETIVO:
+Implementar en el dashboard administrativo un módulo interactivo llamado:
+
+BOOKING RECONCILIATION WIZARD
+“Asistente de Cuadre de Booking”
+
+Este módulo debe guiar al usuario de contabilidad paso a paso para cuadrar cualquier booking según su estado real: depósito, cash, Zelle, banco, plataforma, gastos, balance pendiente, cuentas por cobrar, pagos al capitán y ajustes manuales.
+
+REGLA PRINCIPAL:
+NO romper nada existente.
+NO eliminar endpoints actuales.
+NO cambiar nombres de tablas existentes sin migración segura.
+Extender el sistema actual de forma backward compatible.
+
+==================================================
+1. UBICACIÓN EN EL DASHBOARD
+==================================================
+
+Agregar acceso al wizard en dos lugares:
+
+A) Dentro de cada booking/reservation:
+Botón visible:
+“Cuadrar Booking”
+
+Ruta sugerida:
+Bookings / Reservations → View Booking → Cuadrar Booking
+
+B) En contabilidad:
+Agregar nueva sección:
+Accounting → Booking Reconciliation
+
+Debe mostrar lista de bookings con:
+- booking_id
+- customer_name
+- service_date
+- booking_total
+- payment_status
+- accounting_status
+- discrepancy_flag
+- suggested_next_action
+- botón “Open Wizard”
+
+==================================================
+2. ESTADOS CONTABLES DEL BOOKING
+==================================================
+
+Agregar o calcular estos estados:
+
+accounting_status:
+- not_started
+- in_progress
+- partially_reconciled
+- reconciled
+- locked
+
+Reglas:
+- not_started: booking sin movimientos contables
+- in_progress: tiene pagos o gastos parciales
+- partially_reconciled: pagos cuadran parcialmente o hay alertas
+- reconciled: pagos, revenue, cash y gastos cuadran
+- locked: booking reconciled y cerrado contra edición
+
+==================================================
+3. CUENTA NUEVA OBLIGATORIA
+==================================================
+
+Crear/verificar cuenta contable:
+
+code: 1015
+name: Cash Clearing / Operating Cash
+type: asset
+
+Uso:
+Todo efectivo recibido de clientes debe entrar primero a esta cuenta.
+Todo gasto pagado con ese efectivo debe salir de esta cuenta.
+
+==================================================
+4. WIZARD UI — PASOS
+==================================================
+
+Crear wizard interactivo con progress bar y semáforo.
+
+PASO 1 — Booking Overview
+Mostrar:
+- Cliente
+- Fecha del servicio
+- Total booking
+- Boat
+- Captain
+- Booking status
+- Payment status
+- Accounting status
+- Alertas existentes
+
+PASO 2 — Payment Registration
+Permitir registrar pagos:
+- Bank
+- Zelle
+- Cash
+- Platform
+- Mixed Payment
+
+Campos:
+- amount
+- date
+- payment_method
+- account
+- notes
+- reference_number opcional
+
+Reglas:
+- Si payment_method = cash:
+  Dr 1015 Cash Clearing
+  Cr Deferred Deposits o Accounts Receivable según estado
+- Si payment_method = bank/zelle:
+  Dr Bank Account
+  Cr Deferred Deposits o Accounts Receivable según estado
+- Si el servicio aún no se ha completado:
+  usar 2500 Deferred Booking Deposits
+- Si el servicio ya se completó y falta cobrar:
+  usar Accounts Receivable
+- No reconocer revenue al cobrar; revenue se reconoce al completar servicio.
+
+PASO 3 — Complete Service / Recognize Revenue
+Botón:
+“Mark Service Completed & Recognize Revenue”
+
+Regla:
+Cuando booking.status pase a completed:
+Dr Deferred Deposits / Accounts Receivable
+Cr 4010 Revenue - Tours o 4020 Revenue - Rentals
+
+Debe evitar duplicar revenue si ya existe transacción de revenue para ese booking.
+
+PASO 4 — Expense Registration
+Permitir registrar gastos del booking:
+- Fuel
+- Ice
+- Captain
+- Cleaning
+- Commission
+- Other
+
+Campos:
+- amount
+- date
+- expense_account
+- payment_method
+- notes
+- vendor/person
+- captain_hours opcional
+- captain_rate opcional
+
+Reglas:
+- Si payment_method = cash:
+  Dr Expense Account
+  Cr 1015 Cash Clearing
+- Si payment_method = bank/zelle/card:
+  Dr Expense Account
+  Cr Bank/Card Account
+
+PASO 5 — Auto Integrity Check
+Crear función:
+checkBookingIntegrity(booking_id)
+
+Debe calcular:
+- booking_total
+- total_payments
+- total_revenue_recognized
+- total_expenses
+- cash_in
+- cash_out
+- cash_clearing_balance
+- net_profit
+- outstanding_balance
+- overpayment_amount
+- discrepancies[]
+- suggested_next_action
+
+Validaciones:
+- total_payments debe igualar booking_total para marcar paid
+- revenue reconocido debe igualar booking_total si booking está completed
+- cash_in debe igualar cash_out o quedar explicado
+- expenses deben estar ligados al booking
+- si hay captain_hours y captain_rate, comparar expected captain pay vs actual captain payments
+- detectar overpayment o underpayment
+
+PASO 6 — Manual Adjustment
+Agregar sección para asientos manuales controlados.
+
+Endpoint:
+POST /api/accounting/manual-entry
+
+Body:
+{
+  "booking_id": "optional",
+  "reference_type": "manual_adjustment",
+  "reason": "required",
+  "entries": [
+    {
+      "account_code": "string",
+      "type": "debit",
+      "amount": number
+    },
+    {
+      "account_code": "string",
+      "type": "credit",
+      "amount": number
+    }
+  ]
+}
+
+Validaciones:
+- total debits = total credits
+- reason obligatorio
+- booking_id opcional pero recomendado
+- guardar created_by y timestamp
+- mostrar estos ajustes en el audit trail del booking
+
+PASO 7 — Final Close
+Botón:
+“Close & Lock Booking”
+
+Solo habilitar si:
+- total_payments = booking_total
+- revenue reconocido = booking_total
+- cash_clearing_balance = 0 o diferencia aprobada
+- expenses registrados
+- discrepancies resueltas o aprobadas con razón
+- accounting_status = reconciled
+
+Al cerrar:
+accounting_status = locked
+bloquear edición contable salvo usuario admin o manual override auditado.
+
+==================================================
+5. ENDPOINTS A CREAR O VALIDAR
+==================================================
+
+Crear o reutilizar:
+
+GET /api/bookings/:id/reconciliation
+Devuelve resumen completo del booking ledger.
+
+POST /api/bookings/:id/payments
+Registra pago bank/zelle/cash/platform.
+
+POST /api/bookings/:id/complete
+Marca servicio completado y reconoce revenue.
+
+POST /api/bookings/:id/expenses
+Registra gasto ligado al booking.
+
+POST /api/bookings/:id/reconcile/check
+Ejecuta checkBookingIntegrity.
+
+POST /api/bookings/:id/reconcile/resolve-discrepancy
+Permite clasificar diferencia:
+- tip_authorized
+- payment_error
+- manual_adjustment
+- company_credit
+- review_later
+
+POST /api/bookings/:id/reconcile/lock
+Cierra y bloquea booking.
+
+POST /api/accounting/manual-entry
+Crea asiento manual balanceado.
+
+==================================================
+6. BOOKINGS LEDGER
+==================================================
+
+Crear lógica ledger por booking. Puede ser tabla nueva o vista calculada desde transactions.
+
+Campos:
+- booking_id
+- booking_total
+- total_payments
+- total_revenue
+- total_expenses
+- cash_in
+- cash_out
+- cash_clearing_balance
+- net_profit
+- outstanding_balance
+- accounting_status
+- discrepancy_flag
+- discrepancy_amount
+- suggested_next_action
+- updated_at
+
+==================================================
+7. AUDIT TRAIL
+==================================================
+
+Cada acción contable debe guardar:
+- booking_id
+- action_type
+- before_state
+- after_state
+- amount
+- account_code
+- user
+- timestamp
+- notes
+
+Mostrar en el wizard:
+“Accounting Activity / Audit Trail”
+
+==================================================
+8. CASO DE PRUEBA OBLIGATORIO — MATEJ
+==================================================
+
+Crear test o seed controlado, sin duplicar si ya existe:
+
+Booking:
+- customer_name: Matej
+- service_date: 2026-04-27
+- booking_total: 700.00
+
+Pagos:
+1. Bank deposit:
+- amount: 250.00
+- date: 2026-04-23
+- account: Wells Fargo Checking
+- treatment: Deferred Deposit
+
+2. Cash payment:
+- amount: 450.00
+- date: 2026-04-27
+- account: 1015 Cash Clearing
+
+Gastos:
+- Fuel: 300.00 paid from cash
+- Ice: 6.00 paid from cash
+- Captain Pablo cash payment: 144.00 paid from cash
+- Captain Pablo Zelle payment: 111.00 paid from bank/zelle on 2026-04-30
+
+Captain expected:
+- hours: 5
+- rate: 50.00
+- expected_pay: 250.00
+
+Expected system result:
+- total revenue: 700.00
+- total payments: 700.00
+- total expenses: 561.00
+- net profit: 139.00
+- actual captain paid: 255.00
+- captain overpayment alert: 5.00
+- accounting_status: partially_reconciled
+- suggested_next_action:
+  “Classify $5 difference as tip, error, adjustment, company credit, or review later.”
+
+==================================================
+9. UI REQUIREMENTS
+==================================================
+
+El wizard debe mostrar:
+- Progress bar
+- Status badges: green/yellow/red
+- Current step
+- Next recommended action
+- Ledger summary card
+- Payments card
+- Expenses card
+- Discrepancies card
+- Manual adjustment panel
+- Audit trail
+
+Colores:
+- Green: reconciled
+- Yellow: partially_reconciled / warning
+- Red: not_reconciled / discrepancy
+- Gray: not_started / locked
+
+==================================================
+10. SAFETY RULES
+==================================================
+
+- No duplicar revenue.
+- No permitir cerrar booking si hay cash clearing balance sin explicación.
+- No permitir manual entry desbalanceado.
+- No permitir borrar transacciones locked.
+- No registrar ingresos cash directamente como revenue sin pasar por cash clearing/deferred según corresponda.
+- No reconocer revenue antes de completar el servicio.
+- Mantener backward compatibility con:
+  - booking_deposits
+  - booking_receivables
+  - transactions
+  - existing accounting.html
+  - existing webhook bookings
+
+==================================================
+11. DELIVERABLES
+==================================================
+
+Al terminar, reportar:
+1. Archivos modificados
+2. Endpoints creados
+3. Componentes UI creados
+4. Cuentas contables creadas
+5. Cómo probar el caso Matej
+6. Cómo abrirlo en el dashboard
+7. Resultado esperado del integrity check
+8. Riesgos o limitaciones pendientes
+
+Implementa todo de forma incremental, con validaciones y sin romper producción.

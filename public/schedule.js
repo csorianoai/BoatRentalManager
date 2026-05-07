@@ -373,6 +373,7 @@ function renderBookingsTable() {
           <div class="actions-cell">
             <button class="btn-sm btn-edit" onclick="openEditBooking('${esc(b.id)}')" data-testid="button-edit-${esc(b.id)}">Editar</button>
             <button class="btn-sm btn-del" onclick="deleteBooking('${esc(b.id)}','${esc(b.customer_name)}')" data-testid="button-delete-${esc(b.id)}">Cancelar</button>
+            <button class="btn-sm" onclick="event.stopPropagation();window.open('/booking-wizard.html?booking_id='+encodeURIComponent('${esc(b.id)}'),'_blank')" data-testid="button-wizard-${esc(b.id)}" style="background:#7c3aed;color:#fff;border:none;">Cuadrar</button>
           </div>
         </td>
       </tr>`);

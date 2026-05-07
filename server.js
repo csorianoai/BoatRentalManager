@@ -2083,6 +2083,23 @@ async function initializeDatabase() {
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_transactions_ref_type_booking ON transactions(booking_id, reference_type)`).catch(() => {});
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_boat_expenses_booking ON boat_expenses(booking_id)`).catch(() => {});
 
+    // F20-06: Booking audit log table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS booking_audit_log (
+        id            TEXT PRIMARY KEY,
+        booking_id    TEXT NOT NULL,
+        action_type   TEXT NOT NULL,
+        amount        NUMERIC(12,2) DEFAULT 0,
+        account_code  TEXT,
+        notes         TEXT,
+        created_by    TEXT DEFAULT 'system',
+        before_state  JSONB,
+        after_state   JSONB,
+        created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `).catch(() => {});
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_audit_booking ON booking_audit_log(booking_id, created_at DESC)`).catch(() => {});
+
     console.log('✅ FASE 20: Accounting integrity engine ready');
     // ── END FASE 20 ──────────────────────────────────────────────────────
 
@@ -14479,6 +14496,376 @@ app.post('/api/bookings/:id/lock', isAuthenticated, async (req, res) => {
   } catch (err) {
     await pg.query('ROLLBACK');
     console.error('Error locking booking:', err);
+    res.status(500).json({ error: err.message });
+  } finally { pg.release(); }
+});
+
+// ── ALIAS ENDPOINTS — spec-compliant per-booking routes ───────────────────
+
+// GET /api/bookings/:id/reconciliation — alias for ledger-summary
+app.get('/api/bookings/:id/reconciliation', isAuthenticated, async (req, res) => {
+  try {
+    const integrity = await checkBookingIntegrity(req.params.id);
+    if (!integrity) return res.status(404).json({ error: 'Booking no encontrado' });
+    // Merge transactions list
+    const { rows: txs } = await pool.query(
+      `SELECT t.id, t.transaction_date, t.amount, t.transaction_type, t.description,
+              t.reference_type, t.notes, t.account_id,
+              c.account_code, c.name as account_name
+       FROM transactions t
+       LEFT JOIN chart_of_accounts c ON c.id = t.account_id
+       WHERE t.booking_id = $1 ORDER BY t.transaction_date DESC, t.id DESC LIMIT 100`,
+      [req.params.id]
+    );
+    const { rows: deps } = await pool.query(
+      `SELECT * FROM booking_deposits WHERE booking_ledger_id IN (
+         SELECT id FROM bookings_ledger WHERE notes LIKE 'booking:' || $1 || '%'
+       ) ORDER BY deposit_date DESC`, [req.params.id]
+    );
+    const { rows: auditRows } = await pool.query(
+      `SELECT * FROM booking_audit_log WHERE booking_id=$1 ORDER BY created_at DESC LIMIT 50`,
+      [req.params.id]
+    ).catch(() => ({ rows: [] }));
+    res.json({ ...integrity, transactions: txs, deposits: deps, audit_trail: auditRows });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/bookings/:id/payments — register a payment (alias for /api/booking-payment)
+app.post('/api/bookings/:id/payments', isAuthenticated, async (req, res) => {
+  req.body.booking_id = req.params.id;
+  // delegate to booking-payment handler logic inline
+  const pg = await pool.connect();
+  try {
+    await pg.query('BEGIN');
+    const { nanoid } = await import('nanoid');
+    const { booking_id, amount, date, notes, payment_type = 'cash',
+            reference_number, payment_method } = req.body;
+    const pType = payment_type || payment_method || 'cash';
+    if (!amount || parseFloat(amount) <= 0) return res.status(400).json({ error: 'amount requerido' });
+    const { rows: bkRows } = await pg.query(`SELECT * FROM bookings WHERE id=$1`, [booking_id]);
+    if (!bkRows.length) { await pg.query('ROLLBACK'); return res.status(404).json({ error: 'Booking no encontrado' }); }
+    const bk = bkRows[0];
+    const payDate = date || new Date().toISOString().slice(0,10);
+    const amt = parseFloat(amount);
+    let accountId, refType, txDesc;
+    if (pType === 'cash') {
+      accountId = 'acc_cash_clearing_1015'; refType = 'cash_clearing';
+      txDesc = `Pago efectivo — ${bk.customer_name}${notes?' / '+notes:''}`;
+    } else {
+      const { rows: bkAcc } = await pg.query(`SELECT id FROM chart_of_accounts WHERE account_code='1010' LIMIT 1`);
+      accountId = bkAcc.length ? bkAcc[0].id : 'acc_cash_clearing_1015';
+      refType = 'cash_clearing';
+      txDesc = `Pago ${pType} — ${bk.customer_name}${notes?' / '+notes:''}${reference_number?' ref:'+reference_number:''}`;
+    }
+    const txId = 'tx_pay_' + nanoid(8);
+    await pg.query(
+      `INSERT INTO transactions(id,transaction_date,account_id,amount,transaction_type,description,reference_id,reference_type,boat_id,notes,booking_id)
+       VALUES($1,$2,$3,$4,'income',$5,$6,$7,$8,$9,$10)`,
+      [txId,payDate,accountId,amt,txDesc,booking_id,refType,bk.boat_id||null,notes||null,booking_id]
+    );
+    const prevBal = parseFloat(bk.balance_pending||bk.total_amount||0);
+    const newBal  = Math.max(0, prevBal - amt);
+    await pg.query(
+      `UPDATE bookings SET ${['cash','zelle'].includes(pType)?'has_cash_payment=true,':''} payment_status=$1,balance_pending=$2,updated_at=NOW() WHERE id=$3`,
+      [newBal<=0.01?'paid':'partial',newBal,booking_id]
+    );
+    await logBookingAudit(pg,{ booking_id, action_type:'payment_registered', amount:amt,
+      account_code:pType, notes:`${pType}: ${txDesc}`, user: req.user?.id||'system' });
+    await pg.query('COMMIT');
+    res.status(201).json({ success:true, transaction_id:txId, payment_type:pType, amount:amt, balance_pending:newBal });
+  } catch(err) { await pg.query('ROLLBACK'); res.status(500).json({ error:err.message }); }
+  finally { pg.release(); }
+});
+
+// POST /api/bookings/:id/expenses — register an expense (alias for /api/booking-expense)
+app.post('/api/bookings/:id/expenses', isAuthenticated, async (req, res) => {
+  req.body.booking_id = req.params.id;
+  const pg = await pool.connect();
+  try {
+    await pg.query('BEGIN');
+    const { nanoid } = await import('nanoid');
+    const { booking_id, amount, date, category, payment_method='cash', notes,
+            vendor, captain_hours, captain_rate, expense_account } = req.body;
+    if (!amount||parseFloat(amount)<=0) return res.status(400).json({ error:'amount requerido' });
+    const { rows:bkRows } = await pg.query(`SELECT * FROM bookings WHERE id=$1`,[booking_id]);
+    if (!bkRows.length) { await pg.query('ROLLBACK'); return res.status(404).json({ error:'Booking no encontrado' }); }
+    const bk=bkRows[0], amt=parseFloat(amount);
+    const expDate=date||new Date().toISOString().slice(0,10);
+    const catMap={fuel:'5100',crew:'5200',ice:'5300',cleaning:'5400',commission:'5500',supplies:'5600',other:'5990'};
+    const expCode = expense_account || catMap[category]||'5990';
+    const { rows:expAcc } = await pg.query(`SELECT id FROM chart_of_accounts WHERE account_code=$1 LIMIT 1`,[expCode]);
+    const expAccId = expAcc.length?expAcc[0].id:null;
+    const crAccId = ['bank','zelle','card'].includes(payment_method)
+      ? (await pg.query(`SELECT id FROM chart_of_accounts WHERE account_code='1010' LIMIT 1`).then(r=>r.rows[0]?.id))
+      : 'acc_cash_clearing_1015';
+    const expId='tx_exp_'+nanoid(8), crId='tx_cr_'+nanoid(8);
+    const desc=`Gasto ${category||'otro'} — ${notes||''}${vendor?' ('+vendor+')':''}`;
+    if (expAccId) await pg.query(
+      `INSERT INTO transactions(id,transaction_date,account_id,amount,transaction_type,description,reference_id,reference_type,boat_id,notes,booking_id)
+       VALUES($1,$2,$3,$4,'expense',$5,$6,'booking_expense',$7,$8,$9)`,
+      [expId,expDate,expAccId,amt,desc,booking_id,bk.boat_id||null,notes||null,booking_id]
+    );
+    await pg.query(
+      `INSERT INTO transactions(id,transaction_date,account_id,amount,transaction_type,description,reference_id,reference_type,boat_id,notes,booking_id)
+       VALUES($1,$2,$3,$4,'expense',$5,$6,'booking_expense',$7,$8,$9)`,
+      [crId,expDate,crAccId,amt,'Cr '+desc,booking_id,bk.boat_id||null,notes||null,booking_id]
+    );
+    if (captain_hours&&captain_rate) {
+      await pg.query(`INSERT INTO captain_payments(id,captain_name,boat_id,boat_name,hours,work_date,description,amount,status,booking_id,payment_method)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,'paid',$9,$10) ON CONFLICT DO NOTHING`,
+        ['cp_'+nanoid(8),vendor||'Captain',bk.boat_id||'unknown',bk.boat_id||'',
+         parseFloat(captain_hours),expDate,desc,amt,booking_id,payment_method]
+      ).catch(()=>{});
+    }
+    await logBookingAudit(pg,{ booking_id, action_type:'expense_registered', amount:amt,
+      account_code:expCode, notes:desc, user:req.user?.id||'system' });
+    await pg.query('COMMIT');
+    res.status(201).json({ success:true, expense_tx_id:expId, credit_tx_id:crId, amount:amt, category });
+  } catch(err) { await pg.query('ROLLBACK'); res.status(500).json({ error:err.message }); }
+  finally { pg.release(); }
+});
+
+// POST /api/bookings/:id/reconcile/check — run integrity check
+app.post('/api/bookings/:id/reconcile/check', isAuthenticated, async (req, res) => {
+  try {
+    const integrity = await checkBookingIntegrity(req.params.id);
+    if (!integrity) return res.status(404).json({ error:'Booking no encontrado' });
+    res.json(integrity);
+  } catch(err) { res.status(500).json({ error:err.message }); }
+});
+
+// POST /api/bookings/:id/reconcile/resolve-discrepancy — classify a discrepancy
+app.post('/api/bookings/:id/reconcile/resolve-discrepancy', isAuthenticated, async (req, res) => {
+  const pg = await pool.connect();
+  try {
+    await pg.query('BEGIN');
+    const { nanoid } = await import('nanoid');
+    const bookingId = req.params.id;
+    const { discrepancy_code, resolution_type, amount, notes, reason } = req.body;
+    // resolution_type: tip_authorized | payment_error | manual_adjustment | company_credit | review_later
+    const validResolutions = ['tip_authorized','payment_error','manual_adjustment','company_credit','review_later'];
+    if (!resolution_type || !validResolutions.includes(resolution_type)) {
+      return res.status(400).json({ error: `resolution_type debe ser uno de: ${validResolutions.join(', ')}` });
+    }
+    const resNotes = reason || notes || `Discrepancia clasificada como: ${resolution_type}`;
+
+    // For approved resolutions, create a balancing transaction
+    if (['tip_authorized','payment_error','company_credit'].includes(resolution_type) && amount) {
+      const amt = parseFloat(amount);
+      // Dr Cash Clearing / Cr Revenue (or appropriate account)
+      const txId = 'tx_res_' + nanoid(8);
+      await pg.query(
+        `INSERT INTO transactions(id,transaction_date,account_id,amount,transaction_type,description,reference_id,reference_type,notes,booking_id)
+         VALUES($1,CURRENT_DATE,'acc_cash_clearing_1015',$2,'income',$3,$4,'manual_adjustment',$5,$6)`,
+        [txId, amt, `Resolución: ${resolution_type} — ${resNotes}`, bookingId, resNotes, bookingId]
+      );
+    }
+
+    // Update bookings_ledger discrepancy_flag if resolved
+    if (resolution_type !== 'review_later') {
+      await pg.query(
+        `UPDATE bookings_ledger SET discrepancy_flag=false, accounting_status='partially_reconciled'
+         WHERE notes LIKE 'booking:' || $1 || '%'`, [bookingId]
+      );
+    }
+
+    // Log audit entry
+    await logBookingAudit(pg, {
+      booking_id: bookingId, action_type: 'discrepancy_resolved',
+      amount: amount || 0, account_code: discrepancy_code || 'DISCREPANCY',
+      notes: `${resolution_type}: ${resNotes}`, user: req.user?.id || 'system'
+    });
+
+    await pg.query('COMMIT');
+    const integrity = await checkBookingIntegrity(bookingId);
+    res.json({ success:true, resolution_type, discrepancy_code, notes:resNotes, integrity });
+  } catch(err) { await pg.query('ROLLBACK'); res.status(500).json({ error:err.message }); }
+  finally { pg.release(); }
+});
+
+// POST /api/bookings/:id/reconcile/lock — alias for /api/bookings/:id/lock
+app.post('/api/bookings/:id/reconcile/lock', isAuthenticated, async (req, res) => {
+  req.url = `/api/bookings/${req.params.id}/lock`;
+  // Inline implementation (avoid re-routing complexity)
+  const pg = await pool.connect();
+  try {
+    await pg.query('BEGIN');
+    const bookingId = req.params.id;
+    const integrity = await checkBookingIntegrity(bookingId);
+    if (!integrity) { await pg.query('ROLLBACK'); return res.status(404).json({ error:'Booking no encontrado' }); }
+    if (integrity.accounting_status==='locked') { await pg.query('ROLLBACK'); return res.status(400).json({ error:'Ya bloqueado' }); }
+    const errors=[];
+    if (integrity.discrepancy_flag) errors.push('Discrepancia de pago pendiente');
+    if (!integrity.revenue_recognized) errors.push('Revenue no reconocido');
+    if (parseFloat(integrity.total_collected||0)<parseFloat(integrity.expected_revenue||0)-0.01) errors.push('Pagos incompletos');
+    if (errors.length&&!req.body?.force) { await pg.query('ROLLBACK'); return res.status(400).json({ error:'Checks pendientes', errors }); }
+    await pg.query(`UPDATE bookings SET status=CASE WHEN status!='completed' THEN 'completed' ELSE status END,updated_at=NOW() WHERE id=$1`,[bookingId]);
+    await pg.query(`UPDATE bookings_ledger SET accounting_status='locked',status='completed' WHERE notes LIKE 'booking:'||$1||'%'`,[bookingId]);
+    const { nanoid } = await import('nanoid');
+    await logBookingAudit(pg,{ booking_id:bookingId, action_type:'booking_locked', amount:integrity.expected_revenue||0,
+      account_code:'LOCK', notes:`Booking bloqueado. Warnings: ${errors.join(';')||'ninguna'}`, user:req.user?.id||'system' });
+    await pg.query('COMMIT');
+    res.json({ success:true, accounting_status:'locked', warnings:errors });
+  } catch(err) { await pg.query('ROLLBACK'); res.status(500).json({ error:err.message }); }
+  finally { pg.release(); }
+});
+
+// ── Audit log helper + table ───────────────────────────────────────────────
+async function logBookingAudit(pgClient, { booking_id, action_type, amount=0, account_code='', notes='', user='system', before_state=null, after_state=null }) {
+  try {
+    const { nanoid } = await import('nanoid');
+    await pgClient.query(
+      `INSERT INTO booking_audit_log(id,booking_id,action_type,amount,account_code,notes,created_by,before_state,after_state)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING`,
+      ['al_'+nanoid(8), booking_id, action_type, amount, account_code, notes, user,
+       before_state ? JSON.stringify(before_state) : null,
+       after_state  ? JSON.stringify(after_state)  : null]
+    );
+  } catch(e) { /* non-blocking */ }
+}
+
+// ── POST /api/accounting/test-matej/seed — create Matej $700 test booking ─
+app.post('/api/accounting/test-matej/seed', isAuthenticated, async (req, res) => {
+  const pg = await pool.connect();
+  try {
+    await pg.query('BEGIN');
+    const { nanoid } = await import('nanoid');
+    const MATEJ_ID = 'book_matej_apr27_2026';
+    const force    = req.body?.force === true;
+
+    // Check if already exists
+    const { rows:existing } = await pg.query(`SELECT id FROM bookings WHERE id=$1`,[MATEJ_ID]);
+    if (existing.length && !force) {
+      await pg.query('ROLLBACK');
+      const integrity = await checkBookingIntegrity(MATEJ_ID);
+      return res.json({ exists:true, booking_id:MATEJ_ID, message:'Booking Matej ya existe. Envía force:true para recrear.',integrity });
+    }
+
+    // Delete existing records if force
+    if (existing.length && force) {
+      await pg.query(`DELETE FROM transactions WHERE booking_id=$1`,[MATEJ_ID]);
+      await pg.query(`DELETE FROM booking_deposits WHERE booking_ledger_id IN (SELECT id FROM bookings_ledger WHERE notes LIKE 'booking:'||$1||'%')`,[MATEJ_ID]);
+      await pg.query(`DELETE FROM bookings_ledger WHERE notes LIKE 'booking:'||$1||'%'`,[MATEJ_ID]);
+      await pg.query(`DELETE FROM captain_payments WHERE booking_id=$1`,[MATEJ_ID]);
+      await pg.query(`DELETE FROM booking_audit_log WHERE booking_id=$1`,[MATEJ_ID]).catch(()=>{});
+      await pg.query(`DELETE FROM bookings WHERE id=$1`,[MATEJ_ID]);
+    }
+
+    // 1. Create booking
+    await pg.query(
+      `INSERT INTO bookings(id,customer_name,booking_date,total_amount,status,payment_status,platform,balance_pending,has_cash_payment,created_at)
+       VALUES($1,'Matej','2026-04-27',700.00,'confirmed','pending','direct',700.00,false,NOW())`,
+      [MATEJ_ID]
+    );
+
+    // 2. Create bookings_ledger entry
+    const ledgerId = 'bl_matej_' + nanoid(6);
+    await pg.query(
+      `INSERT INTO bookings_ledger(id,status,notes,created_at)
+       VALUES($1,'pending','booking:'+$2+' Matej test case',NOW())`,
+      [ledgerId, MATEJ_ID]
+    ).catch(async () => {
+      // Alternate insert if concatenation fails
+      await pg.query(
+        `INSERT INTO bookings_ledger(id,status,notes,created_at)
+         VALUES($1,'pending',$2,NOW())`,
+        [ledgerId, `booking:${MATEJ_ID} Matej test case`]
+      );
+    });
+
+    // 3. Bank deposit $250 — 2026-04-23 Wells Fargo (Deferred Deposit)
+    const depId = 'dep_matej_' + nanoid(6);
+    await pg.query(
+      `INSERT INTO booking_deposits(id,booking_ledger_id,client_name,amount,deposit_date,booking_reference,status,notes,created_at)
+       VALUES($1,$2,'Matej',250.00,'2026-04-23',$3,'confirmed','Wells Fargo — bank deposit',NOW())`,
+      [depId, ledgerId, MATEJ_ID]
+    );
+    // Dr 1010 Bank / Cr 2500 Deferred
+    const { rows:bankAcc } = await pg.query(`SELECT id FROM chart_of_accounts WHERE account_code='1010' LIMIT 1`);
+    const bankAccId = bankAcc.length ? bankAcc[0].id : null;
+    if (bankAccId) {
+      await pg.query(
+        `INSERT INTO transactions(id,transaction_date,account_id,amount,transaction_type,description,reference_id,reference_type,notes,booking_id)
+         VALUES('tx_mat_dep1','2026-04-23',$1,250.00,'income','Depósito bancario — Matej $250 Wells Fargo',$2,'booking',$3,$4)`,
+        [bankAccId, depId, 'Wells Fargo check-in deposit', MATEJ_ID]
+      );
+    }
+    // Update booking balance
+    await pg.query(`UPDATE bookings SET balance_pending=450.00 WHERE id=$1`,[MATEJ_ID]);
+
+    // 4. Cash payment $450 — 2026-04-27 (Dr 1015 Cash Clearing)
+    await pg.query(
+      `INSERT INTO transactions(id,transaction_date,account_id,amount,transaction_type,description,reference_id,reference_type,notes,booking_id)
+       VALUES('tx_mat_cash1','2026-04-27','acc_cash_clearing_1015',450.00,'income','Pago efectivo — Matej $450 day of service','${MATEJ_ID}','cash_clearing','Cash recibido en muelle',$$${MATEJ_ID}$$)`
+    );
+    await pg.query(`UPDATE bookings SET has_cash_payment=true,payment_status='paid',balance_pending=0.00 WHERE id=$1`,[MATEJ_ID]);
+
+    // Resolve expense account IDs with safe COALESCE fallback to Cash Clearing
+    const { rows: acc5100r } = await pg.query(`SELECT id FROM chart_of_accounts WHERE account_code='5100' LIMIT 1`);
+    const { rows: acc5200r } = await pg.query(`SELECT id FROM chart_of_accounts WHERE account_code='5200' LIMIT 1`);
+    const { rows: acc5300r } = await pg.query(`SELECT id FROM chart_of_accounts WHERE account_code='5300' LIMIT 1`);
+    const acc5100 = acc5100r[0]?.id || 'acc_cash_clearing_1015';
+    const acc5200 = acc5200r[0]?.id || 'acc_cash_clearing_1015';
+    const acc5300 = acc5300r[0]?.id || 'acc_cash_clearing_1015';
+
+    // 5. Expenses — fuel $300 cash
+    await pg.query(
+      `INSERT INTO transactions(id,transaction_date,account_id,amount,transaction_type,description,reference_id,reference_type,notes,booking_id)
+       VALUES('tx_mat_fuel_dr','2026-04-27',$1,300.00,'expense','Combustible — Matej trip',$2,'booking_expense','12 gallons fuel',$3),
+             ('tx_mat_fuel_cr','2026-04-27','acc_cash_clearing_1015',300.00,'expense','Cr Combustible — desde Cash Clearing',$4,'booking_expense','fuel cash',$5)`,
+      [acc5100, MATEJ_ID, MATEJ_ID, MATEJ_ID, MATEJ_ID]
+    );
+    // 6. Ice $6 cash
+    await pg.query(
+      `INSERT INTO transactions(id,transaction_date,account_id,amount,transaction_type,description,reference_id,reference_type,notes,booking_id)
+       VALUES('tx_mat_ice_dr','2026-04-27',$1,6.00,'expense','Hielo/Bebidas — Matej',$2,'booking_expense','ice bags',$3),
+             ('tx_mat_ice_cr','2026-04-27','acc_cash_clearing_1015',6.00,'expense','Cr Hielo — desde Cash Clearing',$4,'booking_expense','ice cash',$5)`,
+      [acc5300, MATEJ_ID, MATEJ_ID, MATEJ_ID, MATEJ_ID]
+    );
+    // 7. Captain Pablo cash $144
+    await pg.query(
+      `INSERT INTO transactions(id,transaction_date,account_id,amount,transaction_type,description,reference_id,reference_type,notes,booking_id)
+       VALUES('tx_mat_cap_dr','2026-04-27',$1,144.00,'expense','Capitán Pablo — efectivo $144',$2,'booking_expense','Pablo cash',$3),
+             ('tx_mat_cap_cr','2026-04-27','acc_cash_clearing_1015',144.00,'expense','Cr Capitán Pablo — desde Cash Clearing',$4,'booking_expense','captain cash',$5)`,
+      [acc5200, MATEJ_ID, MATEJ_ID, MATEJ_ID, MATEJ_ID]
+    );
+    // 8. Captain Pablo Zelle $111 — 2026-04-30
+    await pg.query(
+      `INSERT INTO transactions(id,transaction_date,account_id,amount,transaction_type,description,reference_id,reference_type,notes,booking_id)
+       VALUES('tx_mat_zel_dr','2026-04-30',$1,111.00,'expense','Capitán Pablo — Zelle $111',$2,'booking_expense','Pablo Zelle',$3),
+             ('tx_mat_zel_cr','2026-04-30',$4,111.00,'expense','Cr Capitán Pablo Zelle — banco',$5,'booking_expense','captain zelle',$6)`,
+      [acc5200, MATEJ_ID, MATEJ_ID, bankAccId || 'acc_cash_clearing_1015', MATEJ_ID, MATEJ_ID]
+    );
+
+    // 9. Captain payment record (for overpayment detection)
+    await pg.query(
+      `INSERT INTO captain_payments(id,captain_name,boat_id,boat_name,hours,work_date,description,amount,status,booking_id,payment_method)
+       VALUES('cp_mat_cash','Pablo','boat_main','Cranchi 51',5.00,'2026-04-27','Pago en efectivo — Matej trip',144.00,'paid','${MATEJ_ID}','cash'),
+             ('cp_mat_zel','Pablo','boat_main','Cranchi 51',0,'2026-04-30','Zelle — Matej trip balance',111.00,'paid','${MATEJ_ID}','zelle')`
+    );
+
+    await pg.query('COMMIT');
+
+    // Run integrity check to return results
+    const integrity = await checkBookingIntegrity(MATEJ_ID);
+
+    res.status(201).json({
+      success: true,
+      booking_id: MATEJ_ID,
+      message: 'Booking Matej creado con todos los registros de prueba',
+      expected: {
+        booking_total: 700, payments: 700, expenses: 561,
+        net_profit: 139, captain_paid: 255, captain_expected: 250,
+        captain_overpayment_alert: 5,
+        accounting_status: 'partially_reconciled',
+        suggested_action: 'Classify $5 difference as tip, error, adjustment, company credit, or review later'
+      },
+      integrity,
+      wizard_url: `/booking-wizard.html?booking_id=${MATEJ_ID}`
+    });
+  } catch(err) {
+    await pg.query('ROLLBACK');
+    console.error('Error test-matej/seed:', err);
     res.status(500).json({ error: err.message });
   } finally { pg.release(); }
 });

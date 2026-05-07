@@ -557,6 +557,7 @@ function updateBookingsTable(bookings) {
             <td>${esc(booking.start_time || '—')}</td>
             <td><strong>$${amount}</strong></td>
             <td><span class="status-badge ${esc(booking.status || 'confirmed')}">${esc(booking.status || 'confirmed')}</span></td>
+            <td><button onclick="event.stopPropagation();window.open('/booking-wizard.html?booking_id='+encodeURIComponent('${esc(booking.id)}'),'_blank')" data-testid="button-wizard-${esc(booking.id)}" style="padding:3px 10px;background:#7c3aed;color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;">Cuadrar</button></td>
         `;
         tbody.appendChild(tr);
     });

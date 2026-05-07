@@ -2005,12 +2005,23 @@
                     <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
                         <span style="font-size:11px;color:#94a3b8;font-weight:600;">Acceso rápido:</span>
                         <button onclick="document.getElementById('bkrec-search').value='Matej';loadBookingReconciliation()"
+                                data-testid="button-quickload-matej"
                                 style="padding:3px 10px;border:1px solid #d1d5db;border-radius:20px;font-size:11px;cursor:pointer;background:#f8fafc;color:#475569;">
                             Matej (Abr 27)
                         </button>
                         <button onclick="document.getElementById('bkrec-booking-id').value='book_matej_apr27_2026';document.getElementById('bkrec-search').value='';loadBookingReconciliation()"
+                                data-testid="button-quickload-matej-id"
                                 style="padding:3px 10px;border:1px solid #d1d5db;border-radius:20px;font-size:11px;cursor:pointer;background:#f8fafc;color:#475569;">
                             Por Booking ID
+                        </button>
+                        <span style="width:1px;height:16px;background:#e2e8f0;display:inline-block;"></span>
+                        <button onclick="seedMatejTest(false)" data-testid="button-seed-matej"
+                                style="padding:3px 12px;border:1px solid #6366f1;border-radius:20px;font-size:11px;cursor:pointer;background:#ede9fe;color:#4f46e5;font-weight:700;">
+                            + Crear datos Matej
+                        </button>
+                        <button onclick="seedMatejTest(true)" data-testid="button-seed-matej-force"
+                                style="padding:3px 12px;border:1px solid #dc2626;border-radius:20px;font-size:11px;cursor:pointer;background:#fef2f2;color:#dc2626;font-weight:700;">
+                            Recrear (force)
                         </button>
                     </div>
                 </div>
@@ -4402,6 +4413,37 @@ async function loadLedgerBookingList() {
 
 function openWizard(bookingId) {
   window.open(`/booking-wizard.html?booking_id=${encodeURIComponent(bookingId)}`, '_blank');
+}
+
+async function seedMatejTest(force = false) {
+  const msg = force
+    ? '¿Recrear el caso de prueba Matej? Esto eliminará y volverá a crear todos los datos.'
+    : '¿Crear el caso de prueba Matej ($700 booking con pagos y gastos)?';
+  if (!confirm(msg)) return;
+  try {
+    const r = await fetch('/api/accounting/test-matej/seed', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ force })
+    });
+    const data = await r.json();
+    if (!r.ok) { alert('Error: ' + (data.error || r.statusText)); return; }
+    if (data.exists && !force) {
+      if (confirm('El booking Matej ya existe. ¿Abrir el wizard directamente?')) {
+        openWizard(data.booking_id);
+      }
+      return;
+    }
+    alert(`Booking Matej creado.\n\nTotal: $700 | Pagos: $700 | Gastos: $561\nProfit neto: $139 | Capitán: $255 (esperado $250)\n\nSe detectará una discrepancia de $5 para clasificar.`);
+    // Auto-load in the cuadre section
+    document.getElementById('bkrec-booking-id').value = data.booking_id;
+    document.getElementById('bkrec-search').value = '';
+    if (typeof loadBookingReconciliation === 'function') loadBookingReconciliation();
+    // Also offer to open the wizard
+    if (confirm('¿Abrir el Booking Reconciliation Wizard para Matej?')) {
+      openWizard(data.booking_id);
+    }
+  } catch(e) { alert('Error: ' + e.message); }
 }
 
 async function openLedgerDetail(bookingId) {
