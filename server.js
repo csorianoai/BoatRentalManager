@@ -6826,6 +6826,9 @@ app.get('/api/accounting/transactions', isAuthenticated, async (req, res) => {
   try {
     const { start_date, end_date, account_id, type, status, booking_id, limit } = req.query;
     
+    // R-3 fix: include_legacy real enforcement
+    const includeLegacy = await shouldIncludeLegacy(req);
+
     let query = `
       SELECT t.*, a.account_name, a.account_code 
       FROM transactions t
@@ -6834,6 +6837,14 @@ app.get('/api/accounting/transactions', isAuthenticated, async (req, res) => {
     `;
     const params = [];
     let paramCount = 1;
+
+    // Period filter: exclude legacy by default unless explicitly requested
+    if (!includeLegacy) {
+      query += ` AND (t.period_type = 'current' OR t.period_type IS NULL AND t.transaction_date::DATE >= '${ACCOUNTING_CUTOVER_DATE}')`;
+    } else if (req.query.include_legacy === 'legacy_only') {
+      query += ` AND (t.period_type = 'legacy' OR t.period_type IS NULL AND t.transaction_date::DATE < '${ACCOUNTING_CUTOVER_DATE}')`;
+    }
+    // include_legacy=true → no extra filter, include all
     
     if (start_date) {
       query += ` AND t.transaction_date >= $${paramCount}`;
@@ -9269,6 +9280,11 @@ app.get('/api/accounting/expenses/analysis', isAuthenticated, async (req, res) =
     if (!to)   to   = new Date().toISOString().slice(0,10);
     const params = [from, to];
 
+    // R-3 fix: include_legacy real enforcement
+    const includeLegacy = await shouldIncludeLegacy(req);
+    const legacyClause = includeLegacy ? '' :
+      `AND (t.period_type = 'current' OR t.period_type IS NULL AND t.transaction_date::DATE >= '${ACCOUNTING_CUTOVER_DATE}') `;
+
     // 1. Grand total (real operational expenses only)
     const totals = await pool.query(`
       SELECT COUNT(*) AS count, COALESCE(SUM(t.amount), 0) AS total
@@ -9277,6 +9293,7 @@ app.get('/api/accounting/expenses/analysis', isAuthenticated, async (req, res) =
       WHERE t.transaction_type = 'expense'
         AND ca.account_type = 'expense'
         AND t.transaction_date BETWEEN $1 AND $2
+        ${legacyClause}
     `, params);
 
     // 2. Grouped by canonical category key (CASE WHEN on account_code)
@@ -9291,6 +9308,7 @@ app.get('/api/accounting/expenses/analysis', isAuthenticated, async (req, res) =
       WHERE t.transaction_type = 'expense'
         AND ca.account_type = 'expense'
         AND t.transaction_date BETWEEN $1 AND $2
+        ${legacyClause}
       GROUP BY category_key
       ORDER BY total DESC
     `, params);
@@ -9305,6 +9323,7 @@ app.get('/api/accounting/expenses/analysis', isAuthenticated, async (req, res) =
       WHERE t.transaction_type = 'expense'
         AND ca.account_type = 'expense'
         AND t.transaction_date >= (CURRENT_DATE - INTERVAL '5 months')::date
+        ${legacyClause}
       GROUP BY DATE_TRUNC('month', t.transaction_date)
       ORDER BY month
     `);
@@ -9317,6 +9336,7 @@ app.get('/api/accounting/expenses/analysis', isAuthenticated, async (req, res) =
       WHERE t.transaction_type = 'income'
         AND ca.account_type IN ('revenue','income')
         AND t.transaction_date BETWEEN $1 AND $2
+        ${legacyClause}
     `, params);
 
     const totalExpenses = parseFloat(totals.rows[0].total) || 0;
@@ -9602,12 +9622,18 @@ app.get('/api/accounting/balance-sheet', isAuthenticated, async (req, res) => {
     const { as_of_date } = req.query;
     const date = as_of_date || new Date().toISOString().split('T')[0];
     
+    // R-3 fix: include_legacy real enforcement
+    const includeLegacyBS = await shouldIncludeLegacy(req);
+    const legacyClauseBS = includeLegacyBS ? '' :
+      `AND (t.period_type = 'current' OR t.period_type IS NULL AND t.transaction_date::DATE >= '${ACCOUNTING_CUTOVER_DATE}') `;
+
     // Get assets
     const assetsResult = await pool.query(
       `SELECT a.account_name, a.account_code, 
               COALESCE(SUM(CASE WHEN t.transaction_type = 'debit' THEN t.amount ELSE -t.amount END), 0) as balance
        FROM chart_of_accounts a
        LEFT JOIN transactions t ON a.id = t.account_id AND t.transaction_date <= $1
+         ${legacyClauseBS}
        WHERE a.account_type = 'asset' AND a.is_active = 1
        GROUP BY a.id, a.account_name, a.account_code
        ORDER BY a.account_code`,
@@ -9620,6 +9646,7 @@ app.get('/api/accounting/balance-sheet', isAuthenticated, async (req, res) => {
               COALESCE(SUM(CASE WHEN t.transaction_type = 'credit' THEN t.amount ELSE -t.amount END), 0) as balance
        FROM chart_of_accounts a
        LEFT JOIN transactions t ON a.id = t.account_id AND t.transaction_date <= $1
+         ${legacyClauseBS}
        WHERE a.account_type = 'liability' AND a.is_active = 1
        GROUP BY a.id, a.account_name, a.account_code
        ORDER BY a.account_code`,
@@ -9632,6 +9659,7 @@ app.get('/api/accounting/balance-sheet', isAuthenticated, async (req, res) => {
               COALESCE(SUM(CASE WHEN t.transaction_type = 'credit' THEN t.amount ELSE -t.amount END), 0) as balance
        FROM chart_of_accounts a
        LEFT JOIN transactions t ON a.id = t.account_id AND t.transaction_date <= $1
+         ${legacyClauseBS}
        WHERE a.account_type = 'equity' AND a.is_active = 1
        GROUP BY a.id, a.account_name, a.account_code
        ORDER BY a.account_code`,
@@ -9668,6 +9696,11 @@ app.get('/api/accounting/cash-flow', isAuthenticated, async (req, res) => {
     if (!start_date || !end_date) {
       return res.status(400).json({ error: 'start_date and end_date are required' });
     }
+
+    // R-3 fix: include_legacy real enforcement
+    const includeLegacy = await shouldIncludeLegacy(req);
+    const legacyClause = includeLegacy ? '' :
+      `AND (t.period_type = 'current' OR t.period_type IS NULL AND t.transaction_date::DATE >= '${ACCOUNTING_CUTOVER_DATE}') `;
     
     // Operating activities (revenue and expenses)
     const operatingResult = await pool.query(
@@ -9677,7 +9710,8 @@ app.get('/api/accounting/cash-flow', isAuthenticated, async (req, res) => {
        FROM transactions t
        JOIN chart_of_accounts a ON t.account_id = a.id
        WHERE t.transaction_date >= $1 AND t.transaction_date <= $2
-       AND a.account_type IN ('revenue', 'expense')`,
+       AND a.account_type IN ('revenue', 'expense')
+       ${legacyClause}`,
       [start_date, end_date]
     );
     
@@ -13838,6 +13872,50 @@ function isCurrentPeriod(date) {
   return d >= cutover;
 }
 
+// ── R-1 fix: assertBookingIsCurrentPeriod — rejects legacy bookings in current accounting endpoints
+// Returns null if OK, or an error object { status, error } to return immediately
+async function assertBookingIsCurrentPeriod(bookingId, pgClient) {
+  const db = pgClient || pool;
+  const { rows } = await db.query(
+    `SELECT id, booking_date, is_legacy FROM bookings WHERE id = $1 LIMIT 1`,
+    [bookingId]
+  );
+  if (!rows.length) return { status: 404, error: 'Booking no encontrado' };
+  const bk = rows[0];
+  const bookingDate = bk.booking_date ? String(bk.booking_date).slice(0, 10) : null;
+  // Rule: booking_date < 2026-04-27 → legacy. booking_date >= 2026-04-27 → current.
+  // Matej 2026-04-27 must ALWAYS be current (strict < not <=)
+  const isLegacy = bk.is_legacy === true ||
+    (bookingDate && bookingDate < ACCOUNTING_CUTOVER_DATE);
+  if (isLegacy) {
+    return {
+      status: 409,
+      error: `Booking legacy (${bookingDate}) — no se pueden registrar operaciones del periodo actual. Usa "Ajuste de Periodo Anterior".`,
+      booking_date: bookingDate,
+      cutover_date: ACCOUNTING_CUTOVER_DATE,
+      hint: 'POST /api/accounting/period-control/legacy-adjustment'
+    };
+  }
+  return null; // OK
+}
+
+// ── R-3 fix: shouldIncludeLegacy — reads query param or DB config ──────────
+async function shouldIncludeLegacy(req) {
+  // Query param takes priority: ?include_legacy=true|false
+  if (req.query.include_legacy !== undefined) {
+    return req.query.include_legacy === 'true' || req.query.include_legacy === '1';
+  }
+  // DB config default
+  try {
+    const { rows } = await pool.query(
+      `SELECT value FROM accounting_period_config WHERE key='include_legacy_in_reports' LIMIT 1`
+    );
+    return rows.length ? rows[0].value === 'true' : false;
+  } catch {
+    return false; // safe default: exclude legacy
+  }
+}
+
 // ── checkCurrentPeriodIntegrity ─────────────────────────────────────────────
 async function checkCurrentPeriodIntegrity() {
   const warnings = [];
@@ -13846,9 +13924,9 @@ async function checkCurrentPeriodIntegrity() {
   // 1. Count total vs legacy bookings
   const { rows: bkStats } = await pool.query(`
     SELECT
-      COUNT(*) FILTER (WHERE booking_date::DATE >= $1) AS current_bookings,
-      COUNT(*) FILTER (WHERE booking_date::DATE < $1)  AS legacy_bookings,
-      COUNT(*) FILTER (WHERE is_legacy = true)         AS flagged_legacy,
+      COUNT(CASE WHEN booking_date::DATE >= $1 THEN 1 END) AS current_bookings,
+      COUNT(CASE WHEN booking_date::DATE < $1  THEN 1 END) AS legacy_bookings,
+      COUNT(CASE WHEN is_legacy = true         THEN 1 END) AS flagged_legacy,
       COUNT(*) AS total
     FROM bookings`, [ACCOUNTING_CUTOVER_DATE]);
   Object.assign(stats, bkStats[0]);
@@ -13875,9 +13953,9 @@ async function checkCurrentPeriodIntegrity() {
   // 4. Current period revenue integrity
   const { rows: revStats } = await pool.query(`
     SELECT
-      COALESCE(SUM(amount),0) FILTER (WHERE transaction_type='income' AND period_type='current') AS current_revenue,
-      COALESCE(SUM(amount),0) FILTER (WHERE transaction_type='income' AND period_type='legacy')  AS legacy_revenue,
-      COALESCE(SUM(amount),0) FILTER (WHERE transaction_type='expense' AND period_type='current') AS current_expenses
+      COALESCE(SUM(CASE WHEN transaction_type='income'  AND period_type='current' THEN amount END),0) AS current_revenue,
+      COALESCE(SUM(CASE WHEN transaction_type='income'  AND period_type='legacy'  THEN amount END),0) AS legacy_revenue,
+      COALESCE(SUM(CASE WHEN transaction_type='expense' AND period_type='current' THEN amount END),0) AS current_expenses
     FROM transactions WHERE accounting_date IS NOT NULL`);
   Object.assign(stats, revStats[0]);
 
@@ -13917,8 +13995,45 @@ async function checkCurrentPeriodIntegrity() {
     GROUP BY bl.accounting_status`, [ACCOUNTING_CUTOVER_DATE]);
   stats.legacy_by_status = legacyStatus.reduce((acc, r) => { acc[r.accounting_status] = parseInt(r.cnt); return acc; }, {});
 
+  // 8. Check current-period transactions linked to legacy bookings (data inconsistency)
+  const { rows: txLegacyBk } = await pool.query(`
+    SELECT COUNT(*) as cnt FROM transactions t
+    JOIN bookings b ON t.booking_id = b.id
+    WHERE b.is_legacy = true
+      AND t.period_type = 'current'`);
+  const txLegacyBkCnt = parseInt(txLegacyBk[0].cnt);
+  if (txLegacyBkCnt > 0) {
+    warnings.push({ code:'CURRENT_TX_LEGACY_BOOKING', message:`${txLegacyBkCnt} transacciones period_type='current' vinculadas a bookings legacy`, severity:'error' });
+  }
+  stats.current_tx_on_legacy_bookings = txLegacyBkCnt;
+
+  // 9. Manual entries without reason/notes (audit risk)
+  const { rows: noReason } = await pool.query(`
+    SELECT COUNT(*) as cnt FROM transactions
+    WHERE reference_type = 'manual_adjustment'
+      AND period_type = 'current'
+      AND (notes IS NULL OR notes = '')`);
+  const noReasonCnt = parseInt(noReason[0].cnt);
+  if (noReasonCnt > 0) {
+    warnings.push({ code:'MANUAL_ENTRY_NO_REASON', message:`${noReasonCnt} asientos manuales actuales sin notas/razón (audit risk)`, severity:'warn' });
+  }
+  stats.manual_entries_without_reason = noReasonCnt;
+
+  // 10. Transactions using acc_cash_clearing_1015 linked to legacy bookings (1015 protection)
+  const { rows: cc1015Legacy } = await pool.query(`
+    SELECT COUNT(*) as cnt FROM transactions t
+    JOIN bookings b ON t.booking_id = b.id
+    WHERE t.account_id = 'acc_cash_clearing_1015'
+      AND b.is_legacy = true`);
+  const cc1015LegacyCnt = parseInt(cc1015Legacy[0].cnt);
+  if (cc1015LegacyCnt > 0) {
+    warnings.push({ code:'CASH_CLEARING_1015_LEGACY_BOOKING', message:`${cc1015LegacyCnt} transacciones en cuenta 1015 vinculadas a bookings legacy — debe ser solo para periodo actual`, severity:'error' });
+  }
+  stats.cash_clearing_1015_on_legacy_bookings = cc1015LegacyCnt;
+
   const allPass = !warnings.some(w => w.severity === 'error');
-  return { ok: allPass, cutover_date: ACCOUNTING_CUTOVER_DATE, stats, warnings };
+  return { ok: allPass, cutover_date: ACCOUNTING_CUTOVER_DATE, stats, warnings,
+           checks_run: 10, passed: warnings.filter(w=>w.severity==='error').length === 0 };
 }
 
 // ── GET /api/accounting/period-control ─────────────────────────────────────
@@ -14025,10 +14140,14 @@ app.post('/api/accounting/period-control/legacy-adjustment', isAuthenticated, as
       [adjId, booking_id||null, adjustment_type, parseFloat(amount||0), account_code||'3999', notes, req.user?.id||'system']
     );
     if (amount && parseFloat(amount) > 0) {
+      // R-2 fix: transaction_type derived from adjustment_type (not hardcoded 'income')
+      const txType = adjustment_type === 'write_off' ? 'expense'
+                   : adjustment_type === 'revenue_correction' ? 'income'
+                   : 'adjustment';
       await pg.query(
         `INSERT INTO transactions(id,transaction_date,accounting_date,account_id,amount,transaction_type,description,reference_type,notes,period_type,source_system)
-         VALUES($1,NOW()::DATE,NOW()::DATE,$2,$3,'income',$4,'manual_adjustment',$5,'legacy','manual_entry')`,
-        ['tx_ladj_'+nanoid(8), acctId, parseFloat(amount), `Prior period adjustment: ${adjustment_type}`, notes]
+         VALUES($1,NOW()::DATE,NOW()::DATE,$2,$3,$4,$5,'manual_adjustment',$6,'legacy','manual_entry')`,
+        ['tx_ladj_'+nanoid(8), acctId, parseFloat(amount), txType, `Prior period adjustment: ${adjustment_type}`, notes]
       );
     }
     await pg.query('COMMIT');
@@ -14288,6 +14407,10 @@ app.post('/api/booking-cash-payment', isAuthenticated, async (req, res) => {
       return res.status(400).json({ error: 'booking_id y amount son requeridos' });
     }
 
+    // R-1 fix: block legacy bookings
+    const legacyErr = await assertBookingIsCurrentPeriod(booking_id, pg);
+    if (legacyErr) { await pg.query('ROLLBACK'); return res.status(legacyErr.status).json(legacyErr); }
+
     // Validate booking
     const { rows: bkRows } = await pg.query(`SELECT * FROM bookings WHERE id = $1`, [booking_id]);
     if (!bkRows.length) { await pg.query('ROLLBACK'); return res.status(404).json({ error: 'Booking no encontrado' }); }
@@ -14337,6 +14460,10 @@ app.post('/api/bookings/:id/complete', isAuthenticated, async (req, res) => {
     const { nanoid } = await import('nanoid');
     const { id: bookingId } = req.params;
     const { revenue_account_code, notes } = req.body;
+
+    // R-1 fix: block legacy bookings
+    const legacyErr = await assertBookingIsCurrentPeriod(bookingId, pg);
+    if (legacyErr) { await pg.query('ROLLBACK'); return res.status(legacyErr.status).json(legacyErr); }
 
     // Fetch booking
     const { rows: bkRows } = await pg.query(`SELECT * FROM bookings WHERE id = $1`, [bookingId]);
@@ -14430,6 +14557,10 @@ app.post('/api/booking-expense', isAuthenticated, async (req, res) => {
       return res.status(400).json({ error: 'booking_id y amount son requeridos' });
     }
 
+    // R-1 fix: block legacy bookings
+    const legacyErr = await assertBookingIsCurrentPeriod(booking_id, pg);
+    if (legacyErr) { await pg.query('ROLLBACK'); return res.status(legacyErr.status).json(legacyErr); }
+
     // Validate booking
     const { rows: bkRows } = await pg.query(`SELECT * FROM bookings WHERE id = $1`, [booking_id]);
     if (!bkRows.length) { await pg.query('ROLLBACK'); return res.status(404).json({ error: 'Booking no encontrado' }); }
@@ -14494,9 +14625,16 @@ app.post('/api/accounting/manual-entry', isAuthenticated, async (req, res) => {
   try {
     await pg.query('BEGIN');
     const { nanoid } = await import('nanoid');
-    const { entries, notes, booking_id } = req.body;
+    const { entries, notes, reason, booking_id, source_type } = req.body;
     if (!Array.isArray(entries) || entries.length < 2) {
       return res.status(400).json({ error: 'Se requieren al menos 2 asientos (débito y crédito)' });
+    }
+
+    // M spec: notes/reason are required for audit trail
+    const auditReason = reason || notes;
+    if (!auditReason || auditReason.trim().length < 3) {
+      await pg.query('ROLLBACK');
+      return res.status(400).json({ error: 'Se requiere "reason" o "notes" para el audit trail del asiento manual (mínimo 3 caracteres)' });
     }
 
     // Validate: debits = credits
@@ -14509,10 +14647,17 @@ app.post('/api/accounting/manual-entry', isAuthenticated, async (req, res) => {
       });
     }
 
+    // M spec: if booking_id provided, block legacy bookings
+    if (booking_id) {
+      const legacyErr = await assertBookingIsCurrentPeriod(booking_id, pg);
+      if (legacyErr) { await pg.query('ROLLBACK'); return res.status(legacyErr.status).json(legacyErr); }
+    }
+
     const createdBy = req.user?.id || req.user?.name || 'system';
     const entryDate = new Date().toISOString().slice(0, 10);
     const batchId = 'me_' + nanoid(8);
     const txIds = [];
+    const srcType = source_type || 'manual_entry';
 
     for (const entry of entries) {
       // Resolve account by code
@@ -14530,12 +14675,13 @@ app.post('/api/accounting/manual-entry', isAuthenticated, async (req, res) => {
 
       await pg.query(
         `INSERT INTO transactions
-           (id, transaction_date, account_id, amount, transaction_type,
-            description, reference_id, reference_type, notes, booking_id, created_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 'manual_adjustment', $8, $9, $10)`,
+           (id, transaction_date, accounting_date, account_id, amount, transaction_type,
+            description, reference_id, reference_type, notes, booking_id, created_by,
+            period_type, source_system)
+         VALUES ($1, $2, $2, $3, $4, $5, $6, $7, 'manual_adjustment', $8, $9, $10, 'current', $11)`,
         [txId, entryDate, accId, parseFloat(entry.amount), txType,
-         notes || `Asiento manual — ${entry.type} ${entry.account}`,
-         batchId, notes || null, booking_id || null, createdBy]
+         auditReason + (entry.description ? ` — ${entry.description}` : '') + ` [${entry.type} ${entry.account}]`,
+         batchId, auditReason, booking_id || null, createdBy, srcType]
       );
       txIds.push(txId);
     }
@@ -14543,7 +14689,8 @@ app.post('/api/accounting/manual-entry', isAuthenticated, async (req, res) => {
     await pg.query('COMMIT');
     res.status(201).json({
       success: true, batch_id: batchId, transaction_ids: txIds,
-      total_debits: totalDebits, total_credits: totalCredits
+      total_debits: totalDebits, total_credits: totalCredits,
+      created_by: createdBy, reason: auditReason
     });
   } catch (err) {
     await pg.query('ROLLBACK');
@@ -14670,6 +14817,9 @@ app.post('/api/booking-payment', isAuthenticated, async (req, res) => {
     if (!booking_id || !amount || parseFloat(amount) <= 0) {
       return res.status(400).json({ error: 'booking_id y amount son requeridos' });
     }
+    // R-1 fix: block legacy bookings
+    const legacyErr = await assertBookingIsCurrentPeriod(booking_id, pg);
+    if (legacyErr) { await pg.query('ROLLBACK'); return res.status(legacyErr.status).json(legacyErr); }
     const { rows: bkRows } = await pg.query(`SELECT * FROM bookings WHERE id = $1`, [booking_id]);
     if (!bkRows.length) { await pg.query('ROLLBACK'); return res.status(404).json({ error: 'Booking no encontrado' }); }
     const bk = bkRows[0];
@@ -14740,6 +14890,10 @@ app.post('/api/bookings/:id/lock', isAuthenticated, async (req, res) => {
   try {
     await pg.query('BEGIN');
     const bookingId = req.params.id;
+
+    // R-1 fix: block legacy bookings
+    const legacyErr = await assertBookingIsCurrentPeriod(bookingId, pg);
+    if (legacyErr) { await pg.query('ROLLBACK'); return res.status(legacyErr.status).json(legacyErr); }
 
     // Run full integrity check first
     const integrity = await checkBookingIntegrity(bookingId);
@@ -14849,6 +15003,9 @@ app.post('/api/bookings/:id/payments', isAuthenticated, async (req, res) => {
             reference_number, payment_method } = req.body;
     const pType = payment_type || payment_method || 'cash';
     if (!amount || parseFloat(amount) <= 0) return res.status(400).json({ error: 'amount requerido' });
+    // R-1 fix: block legacy bookings
+    const legacyErr = await assertBookingIsCurrentPeriod(booking_id, pg);
+    if (legacyErr) { await pg.query('ROLLBACK'); return res.status(legacyErr.status).json(legacyErr); }
     const { rows: bkRows } = await pg.query(`SELECT * FROM bookings WHERE id=$1`, [booking_id]);
     if (!bkRows.length) { await pg.query('ROLLBACK'); return res.status(404).json({ error: 'Booking no encontrado' }); }
     const bk = bkRows[0];
@@ -14894,6 +15051,9 @@ app.post('/api/bookings/:id/expenses', isAuthenticated, async (req, res) => {
     const { booking_id, amount, date, category, payment_method='cash', notes,
             vendor, captain_hours, captain_rate, expense_account } = req.body;
     if (!amount||parseFloat(amount)<=0) return res.status(400).json({ error:'amount requerido' });
+    // R-1 fix: block legacy bookings
+    const legacyErr = await assertBookingIsCurrentPeriod(booking_id, pg);
+    if (legacyErr) { await pg.query('ROLLBACK'); return res.status(legacyErr.status).json(legacyErr); }
     const { rows:bkRows } = await pg.query(`SELECT * FROM bookings WHERE id=$1`,[booking_id]);
     if (!bkRows.length) { await pg.query('ROLLBACK'); return res.status(404).json({ error:'Booking no encontrado' }); }
     const bk=bkRows[0], amt=parseFloat(amount);
@@ -14949,6 +15109,9 @@ app.post('/api/bookings/:id/reconcile/resolve-discrepancy', isAuthenticated, asy
     const { nanoid } = await import('nanoid');
     const bookingId = req.params.id;
     const { discrepancy_code, resolution_type, amount, notes, reason } = req.body;
+    // R-1 fix: block legacy bookings
+    const legacyErr = await assertBookingIsCurrentPeriod(bookingId, pg);
+    if (legacyErr) { await pg.query('ROLLBACK'); return res.status(legacyErr.status).json(legacyErr); }
     // resolution_type: tip_authorized | payment_error | manual_adjustment | company_credit | review_later
     const validResolutions = ['tip_authorized','payment_error','manual_adjustment','company_credit','review_later'];
     if (!resolution_type || !validResolutions.includes(resolution_type)) {
@@ -14998,6 +15161,9 @@ app.post('/api/bookings/:id/reconcile/lock', isAuthenticated, async (req, res) =
   try {
     await pg.query('BEGIN');
     const bookingId = req.params.id;
+    // R-1 fix: block legacy bookings
+    const legacyErr = await assertBookingIsCurrentPeriod(bookingId, pg);
+    if (legacyErr) { await pg.query('ROLLBACK'); return res.status(legacyErr.status).json(legacyErr); }
     const integrity = await checkBookingIntegrity(bookingId);
     if (!integrity) { await pg.query('ROLLBACK'); return res.status(404).json({ error:'Booking no encontrado' }); }
     if (integrity.accounting_status==='locked') { await pg.query('ROLLBACK'); return res.status(400).json({ error:'Ya bloqueado' }); }

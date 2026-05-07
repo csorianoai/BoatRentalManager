@@ -1,0 +1,595 @@
+Actúa como Principal Staff Engineer, Accounting Systems Architect, CPA Systems Auditor y IRS Audit-Readiness Engineer para gestion.nadakiexcursions.
+
+MISIÓN:
+Corregir quirúrgicamente todos los bugs y riesgos detectados en FASE 21 — Control de Periodo Contable, para que el sistema contable quede blindado, audit-ready, IRS-ready, y pueda pasar revisión de una firma contable profesional en USA.
+
+NO hagas rediseño completo.
+NO rompas funcionalidades existentes.
+NO elimines datos.
+NO cambies la arquitectura base.
+Solo corrige los bugs, agrega controles preventivos, refuerza auditoría, y entrega evidencia verificable.
+
+==================================================
+A. OBJETIVO PRINCIPAL
+==================================================
+
+El sistema debe garantizar:
+
+1. Todo booking anterior al 2026-04-27 queda legacy_locked.
+2. Todo booking desde 2026-04-27 en adelante queda current.
+3. Ningún booking legacy puede:
+   - registrar pagos normales
+   - registrar cash payments
+   - registrar expenses normales
+   - reconocer revenue
+   - cerrarse/reconciliarse como current
+   - contaminar Cash Clearing 1015
+4. Los reportes actuales deben excluir legacy por defecto.
+5. El toggle include_legacy debe tener efecto real en queries.
+6. Los ajustes legacy deben clasificarse correctamente, no como income hardcoded.
+7. Todo ajuste manual debe ser balanceado, auditado, trazable y reversible solo con entry contrario.
+8. El caso Matej 2026-04-27 debe permanecer CURRENT, nunca legacy.
+9. El sistema debe producir evidencia de auditoría.
+
+==================================================
+B. CORRECCIONES UI — booking-wizard.html
+==================================================
+
+Revisar booking-wizard.html y corregir applyLegacyState().
+
+1. Corregir ID incorrecto:
+
+Buscar:
+btn-recognize-rev
+
+Reemplazar por:
+btn-recognize-revenue
+
+2. Agregar id faltante al botón de pago.
+
+Buscar el botón que ejecuta:
+onclick="addPayment()"
+
+Debe quedar con:
+id="btn-add-payment"
+
+Ejemplo:
+<button id="btn-add-payment" ... onclick="addPayment()">...</button>
+
+3. Agregar id faltante al botón de gasto.
+
+Buscar el botón que ejecuta guardar/crear gasto:
+onclick="saveExpense()" o equivalente
+
+Debe quedar con:
+id="btn-save-expense"
+
+Si el botón usa otra función como addExpense(), registerExpense(), submitExpense(), identificar el botón real y asignar:
+id="btn-save-expense"
+
+4. Bloquear Step 6 para legacy.
+
+Buscar lógica similar:
+if (step >= 2 && step <= 5)
+
+Cambiar a:
+if (step >= 2 && step <= 6)
+
+5. Añadir defensa doble en funciones críticas del wizard.
+
+Antes de ejecutar estas funciones:
+- addPayment()
+- addCashPayment()
+- saveExpense()
+- recognizeRevenue()
+- completeBooking()
+- closeBooking()
+- reconcileBooking()
+
+Agregar guard:
+
+if (window.IS_LEGACY_BOOKING === true) {
+  showError("This booking is legacy locked. Only prior period adjustments are allowed.");
+  return;
+}
+
+Si no existe window.IS_LEGACY_BOOKING, crearla en applyLegacyState():
+
+window.IS_LEGACY_BOOKING = true;
+
+Para bookings current:
+window.IS_LEGACY_BOOKING = false;
+
+6. Agregar botón View Historical Record si no existe.
+
+Para legacy bookings mostrar:
+- View Historical Record
+- Prior Period Adjustment
+
+El botón View Historical Record debe permitir ver:
+- booking details
+- historical transactions
+- audit trail
+sin permitir modificar pagos/revenue/gastos actuales.
+
+7. UX obligatoria para legacy:
+Cuando booking sea legacy:
+- mostrar banner LEGACY LOCKED
+- bloquear visualmente tabs 2-6
+- deshabilitar botones críticos
+- mostrar panel prior period adjustment
+- mostrar link a Accounting → Period Control
+- mostrar mensaje:
+  "This booking belongs to a locked legacy period before 2026-04-27. Current-period accounting actions are blocked."
+
+==================================================
+C. CORRECCIONES BACKEND — PROTECCIÓN API SERVER-SIDE
+==================================================
+
+IMPORTANTE:
+No basta con bloquear UI.
+Todo endpoint que escriba transacciones debe validar legacy en backend.
+
+Crear helper central en server.js o módulo equivalente:
+
+async function assertBookingCanUseCurrentAccounting(bookingId) {
+  const booking = await getBookingById(bookingId);
+
+  if (!booking) {
+    const err = new Error("Booking not found");
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const cutover = new Date("2026-04-27T00:00:00");
+  const bookingDate = new Date(booking.service_date || booking.booking_date || booking.date);
+
+  const isLegacy =
+    booking.is_legacy === true ||
+    booking.accounting_status === "legacy_locked" ||
+    bookingDate < cutover;
+
+  if (isLegacy) {
+    const err = new Error("Legacy booking is locked. Use prior period adjustment only.");
+    err.statusCode = 409;
+    err.code = "LEGACY_BOOKING_LOCKED";
+    throw err;
+  }
+
+  return booking;
+}
+
+Aplicar este helper ANTES de crear cualquier transacción corriente en:
+
+1. /api/booking-payment
+2. /api/booking-cash-payment
+3. /api/bookings/:id/payments
+4. /api/bookings/:id/expenses
+5. /api/bookings/:id/complete
+6. /api/bookings/:id/reconcile/lock
+7. /api/bookings/:id/reconcile/check si intenta actualizar estado
+8. cualquier endpoint que reconozca revenue
+9. cualquier endpoint que use account 1015 Cash Clearing
+10. cualquier endpoint que cambie accounting_status a reconciled/locked
+
+Respuesta esperada cuando es legacy:
+
+HTTP 409
+{
+  "success": false,
+  "code": "LEGACY_BOOKING_LOCKED",
+  "message": "Legacy booking is locked. Use prior period adjustment only.",
+  "booking_id": "...",
+  "allowed_action": "prior_period_adjustment"
+}
+
+==================================================
+D. PROTEGER CASH CLEARING 1015
+==================================================
+
+Agregar validación global antes de insertar transacciones contra cuenta 1015:
+
+Si account_code = 1015 y booking_id corresponde a booking legacy:
+- bloquear con HTTP 409
+- mensaje: "Cash Clearing 1015 cannot be used for legacy bookings."
+
+Si transaction.accounting_date < 2026-04-27 y account_code = 1015:
+- bloquear salvo que sea migration/internal correction explícitamente marcado como:
+  source_type = "system_correction"
+  approved_by_admin = true
+  reason obligatorio
+
+Regla:
+1015 Cash Clearing solo pertenece al sistema current desde 2026-04-27 en adelante.
+
+==================================================
+E. CORREGIR LEGACY ADJUSTMENTS
+==================================================
+
+Buscar endpoint:
+POST /api/accounting/period-control/legacy-adjustment
+
+Actualmente transaction_type está hardcoded como income.
+
+Corregir:
+
+Si adjustment_type = "write_off":
+  transaction_type = "expense"
+
+Si adjustment_type = "prior_period_correction":
+  transaction_type = "adjustment"
+
+Si adjustment_type = "opening_balance":
+  transaction_type = "adjustment"
+
+Si adjustment_type = "company_credit":
+  transaction_type = "adjustment"
+
+Si adjustment_type = "cash_reclassification":
+  transaction_type = "adjustment"
+
+Si no se reconoce:
+  transaction_type = "adjustment"
+
+Además:
+- reason obligatorio
+- amount > 0 obligatorio
+- account_code debe ser una cuenta legacy permitida:
+  1999
+  2999
+  3999
+- No permitir usar 1015 en legacy adjustment salvo admin override explícito.
+
+Guardar audit trail:
+- adjustment_type
+- transaction_type
+- account_code
+- debit_credit
+- amount
+- reason
+- booking_id
+- created_by
+- created_at
+- source_type = "legacy_adjustment"
+- period_type = "legacy"
+
+==================================================
+F. INCLUDE_LEGACY DEBE FUNCIONAR REALMENTE
+==================================================
+
+Actualmente INCLUDE_LEGACY_DEFAULT se guarda pero no afecta endpoints.
+
+Corregir endpoints para excluir legacy por defecto:
+
+1. GET /api/accounting/transactions
+2. GET /api/dashboard-data
+3. GET /api/accounting/expenses/analysis
+4. GET /api/accounting/reconciliations
+5. cualquier reporte financiero mensual
+6. income statement
+7. balance sheet
+8. cash flow
+9. bookings summary
+10. AR/AP reports
+
+Regla:
+
+Por defecto:
+include_legacy = false
+
+Si query param include_legacy=true:
+incluir legacy
+
+Si no viene query param:
+leer accounting_period_config.INCLUDE_LEGACY_DEFAULT
+
+Pero recomendación segura:
+INCLUDE_LEGACY_DEFAULT debe mantenerse false.
+
+Implementación SQL esperada:
+
+if (!includeLegacy) {
+  WHERE COALESCE(period_type, 'current') = 'current'
+}
+
+Pero cuidado:
+Para transacciones sin period_type, NO asumir current ciegamente si accounting_date < cutover.
+Primero normalizar:
+- accounting_date < 2026-04-27 → legacy
+- accounting_date >= 2026-04-27 → current
+
+Crear helper:
+
+function shouldIncludeLegacy(req) {
+  const param = req.query.include_legacy;
+  if (param === "true") return true;
+  if (param === "false") return false;
+  return getConfig("INCLUDE_LEGACY_DEFAULT") === "true";
+}
+
+Agregar a cada endpoint auditado.
+
+==================================================
+G. NORMALIZAR TRANSACCIONES SIN PERIODO
+==================================================
+
+Crear función/migración segura:
+
+backfillTransactionPeriods()
+
+Para cada transaction:
+- Si period_type IS NULL:
+  - Si accounting_date o transaction_date < 2026-04-27 → legacy
+  - Si accounting_date o transaction_date >= 2026-04-27 → current
+
+También asignar:
+accounting_period = YYYY-MM
+
+No borrar nada.
+Guardar log de cuántas fueron normalizadas.
+
+==================================================
+H. MANUAL ENTRIES — IRS READY
+==================================================
+
+Reforzar endpoint:
+POST /api/accounting/manual-entry
+
+Validaciones obligatorias:
+- total debits = total credits
+- amount > 0
+- reason obligatorio
+- created_by obligatorio o sistema debe asignar current user/system
+- source_type = manual_entry
+- no permitir editar manual entry existente
+- para corregir, crear reversing entry
+- si booking_id legacy:
+  - solo permitir cuentas legacy 1999/2999/3999
+  - period_type = legacy
+- si booking_id current:
+  - period_type = current
+- bloquear uso de 1015 si booking es legacy
+
+Guardar:
+- journal_entry_id único
+- line_number
+- account_code
+- debit
+- credit
+- memo
+- booking_id
+- accounting_date
+- accounting_period
+- period_type
+- created_by
+- created_at
+- locked=false inicialmente
+
+Crear endpoint opcional:
+POST /api/accounting/manual-entry/:id/reverse
+
+Debe crear asiento inverso, no borrar el original.
+
+==================================================
+I. MONTHLY REPORTS — AISLAMIENTO CURRENT
+==================================================
+
+Asegurar que todos los estados financieros mensuales usen:
+
+WHERE accounting_period = :period
+AND period_type = 'current'
+
+salvo include_legacy=true explícito.
+
+Reportes obligatorios:
+- Income Statement
+- Balance Sheet
+- Cash Flow
+- Bookings Summary
+- AR Aging
+- AP Aging
+- Reconciliation Report
+
+Agregar advertencia visible si include_legacy=true:
+"Warning: Legacy period is included. These reports are not current-period-only."
+
+==================================================
+J. CHECK CURRENT PERIOD INTEGRITY — AMPLIAR
+==================================================
+
+Extender checkCurrentPeriodIntegrity() para validar:
+
+1. LEGACY_IN_CASH_CLEARING
+- transacciones period_type='legacy' con account_code=1015
+
+2. CURRENT_REPORT_LEGACY_LEAK
+- reportes current que incluyen period_type='legacy'
+
+3. NULL_PERIOD_TYPE
+- transacciones sin period_type
+
+4. DUPLICATE_REVENUE
+- más de una revenue transaction para mismo booking, salvo reversals/adjustments
+
+5. LEGACY_BOOKING_UNLOCKED
+- booking antes de 2026-04-27 sin accounting_status='legacy_locked'
+
+6. CURRENT_BOOKING_MISCLASSIFIED
+- booking desde 2026-04-27 marcado como legacy_locked
+- esto debe detectar especialmente Matej
+
+7. CASH_CLEARING_UNEXPLAINED_BALANCE
+- cash_in != cash_out por booking sin reason aprobada
+
+8. MANUAL_ENTRY_UNBALANCED
+- journal_entry_id donde debits != credits
+
+9. LEGACY_ADJUSTMENT_BAD_TYPE
+- legacy adjustment con transaction_type='income' sin justificación autorizada
+
+10. CLOSED_PERIOD_MUTATION
+- transacciones modificadas después de cierre mensual sin reversing entry
+
+Cada issue debe devolver:
+- code
+- severity: error | warn | info
+- description
+- affected_records
+- suggested_fix
+
+==================================================
+K. CASO MATEJ — TEST DE REGRESIÓN OBLIGATORIO
+==================================================
+
+Crear o actualizar test:
+
+Matej:
+- service_date = 2026-04-27
+- booking_total = 700
+- NO legacy
+- period_type = current
+- accounting_period = 2026-04
+
+Validar:
+- no banner legacy
+- wizard completo habilitado
+- puede reconciliarse
+- overpayment captain = 5
+- status partially_reconciled hasta clasificar diferencia
+- no usa legacy accounts
+- no entra en legacy lockdown
+
+Regla exacta:
+booking_date < 2026-04-27 = legacy
+booking_date >= 2026-04-27 = current
+
+NUNCA usar <= para legacy.
+
+==================================================
+L. TESTS AUTOMATIZADOS OBLIGATORIOS
+==================================================
+
+Crear pruebas mínimas:
+
+1. legacy booking cannot add payment
+Expected HTTP 409
+
+2. legacy booking cannot add cash payment
+Expected HTTP 409
+
+3. legacy booking cannot recognize revenue
+Expected HTTP 409
+
+4. legacy booking cannot close/reconcile
+Expected HTTP 409
+
+5. current booking on 2026-04-27 is allowed
+Expected success
+
+6. cash clearing 1015 rejects legacy booking
+Expected HTTP 409
+
+7. include_legacy=false excludes legacy transactions
+Expected no legacy rows
+
+8. include_legacy=true includes legacy transactions
+Expected legacy rows included
+
+9. manual entry unbalanced rejected
+Expected HTTP 400
+
+10. legacy adjustment write_off is expense, not income
+Expected transaction_type='expense'
+
+11. checkCurrentPeriodIntegrity returns no critical errors after fixes
+
+12. Matej test returns:
+- current period
+- overpayment alert $5
+- no legacy flag
+
+==================================================
+M. AUDIT-READY REQUIREMENTS
+==================================================
+
+Agregar o verificar:
+
+1. No hard delete de accounting transactions.
+2. Correcciones se hacen con reversing entries.
+3. Todo asiento manual tiene reason.
+4. Todo asiento tiene:
+   - date
+   - account
+   - debit/credit
+   - source_type
+   - user/system
+   - reference_id
+5. Periodos cerrados quedan locked.
+6. Cambios posteriores al cierre requieren adjustment en periodo abierto.
+7. Exportable audit trail por booking y por periodo.
+8. Cada booking tiene ledger completo:
+   - payments
+   - revenue
+   - expenses
+   - adjustments
+   - discrepancies
+   - final status
+
+==================================================
+N. UI ACCOUNTING — AVISOS Y BLOQUEOS
+==================================================
+
+En Accounting → Period Control:
+
+Mostrar:
+- Cutover Date
+- Legacy Locked status
+- Current Period Active
+- Include Legacy toggle
+
+Si include_legacy=true mostrar banner rojo/amarillo:
+"Legacy transactions are currently included in reports."
+
+En Accounting → Transactions:
+Agregar filtro:
+- Current Only default
+- Include Legacy
+- Legacy Only
+
+En Accounting → Financial Statements:
+Agregar aviso:
+- Current-period reports exclude legacy by default
+- Include legacy only for historical analysis, not current month close
+
+==================================================
+O. DELIVERABLES FINALES
+==================================================
+
+Al terminar, reportar:
+
+1. Archivos modificados
+2. Bugs corregidos:
+   - B-1
+   - B-2
+   - B-3
+   - B-4
+   - R-1
+   - R-2
+   - R-3
+3. Endpoints protegidos
+4. Queries actualizados con include_legacy real
+5. Tests creados y resultados
+6. Evidencia de que Matej 2026-04-27 sigue current
+7. Evidencia de que legacy no puede tocar 1015
+8. Evidencia de que reportes actuales excluyen legacy
+9. Riesgos pendientes si alguno queda
+
+NO declares terminado si:
+- Hay botones legacy activos
+- APIs permiten pagos legacy
+- 1015 acepta legacy
+- reportes incluyen legacy por defecto
+- Matej queda legacy
+- manual entries pueden quedar desbalanceados
+
+Implementa este patch de forma quirúrgica, incremental y segura.

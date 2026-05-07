@@ -295,7 +295,7 @@
           <input type="text" id="pay-notes" placeholder="Notas adicionales..." data-testid="input-pay-notes">
         </div>
       </div>
-      <button class="btn btn-success" onclick="addPayment()" data-testid="button-add-payment">
+      <button id="btn-add-payment" class="btn btn-success" onclick="addPayment()" data-testid="button-add-payment">
         + Registrar Pago
       </button>
 
@@ -361,7 +361,7 @@
           <input type="text" id="exp-notes" placeholder="Ej: Combustible 12 gallons — $300" data-testid="input-exp-notes">
         </div>
       </div>
-      <button class="btn btn-danger" onclick="addExpense()" data-testid="button-add-expense">
+      <button id="btn-save-expense" class="btn btn-danger" onclick="addExpense()" data-testid="button-add-expense">
         + Registrar Gasto
       </button>
 
@@ -543,6 +543,8 @@ async function loadWizData() {
 }
 
 function applyLegacyState() {
+  // Expose global so guards can reference it without closure issues
+  window.IS_LEGACY_BOOKING = !!isLegacyBooking;
   const banner = document.getElementById('legacy-banner');
   if (!banner) return;
   if (isLegacyBooking) {
@@ -550,21 +552,22 @@ function applyLegacyState() {
     // Show legacy adjustment panel
     const adjPanel = document.getElementById('legacy-adj-panel');
     if (adjPanel) adjPanel.style.display = 'block';
-    // Disable reconcile/lock/payment buttons
-    ['btn-lock-booking','btn-recognize-rev','btn-add-payment','btn-save-expense'].forEach(id => {
+    // Disable reconcile/lock/payment/expense buttons (B-1 fix: btn-recognize-revenue not btn-recognize-rev)
+    ['btn-lock-booking','btn-recognize-revenue','btn-add-payment','btn-save-expense'].forEach(id => {
       const el = document.getElementById(id);
       if (el) { el.disabled = true; el.title = 'Booking legacy — solo ajustes de periodo anterior permitidos'; }
     });
-    // Disable step tabs 2-5
+    // Disable step tabs 2-6 (B-4 fix: was only 2-5, step 6 must also be blocked)
     document.querySelectorAll('.wiz-step-tab[data-step]').forEach(tab => {
       const step = parseInt(tab.dataset.step);
-      if (step >= 2 && step <= 5) {
+      if (step >= 2 && step <= 6) {
         tab.style.opacity = '0.4';
         tab.style.cursor = 'not-allowed';
         tab.onclick = (e) => { e.stopImmediatePropagation(); showLegacyWarning(); };
       }
     });
   } else {
+    window.IS_LEGACY_BOOKING = false;
     banner.style.display = 'none';
     const adjPanel = document.getElementById('legacy-adj-panel');
     if (adjPanel) adjPanel.style.display = 'none';
@@ -733,6 +736,8 @@ function renderStep2() {
 }
 
 async function addPayment() {
+  // R-1 UI guard: block legacy bookings at client side too
+  if (window.IS_LEGACY_BOOKING) { showLegacyWarning(); return; }
   const amount = parseFloat(document.getElementById('pay-amount').value || 0);
   const date   = document.getElementById('pay-date').value;
   const ref    = document.getElementById('pay-ref').value;
@@ -779,6 +784,8 @@ function renderStep3() {
 }
 
 async function addExpense() {
+  // R-1 UI guard: block legacy bookings at client side too
+  if (window.IS_LEGACY_BOOKING) { showLegacyWarning(); return; }
   const amount   = parseFloat(document.getElementById('exp-amount').value || 0);
   const category = document.getElementById('exp-category').value;
   const payment  = document.getElementById('exp-payment').value;
@@ -1019,6 +1026,8 @@ async function renderStep6() {
 }
 
 async function recognizeRevenue() {
+  // R-1 UI guard: block legacy bookings at client side too
+  if (window.IS_LEGACY_BOOKING) { showLegacyWarning(); return; }
   if (!confirm('¿Reconocer revenue del booking? Esto creará las transacciones contables (Dr 2500/AR → Cr 4010/4020).')) return;
   const accCode = prompt('Código de cuenta de revenue (default: 4010 Tours, 4020 Rentals):', '4010') || '4010';
   try {
@@ -1035,6 +1044,8 @@ async function recognizeRevenue() {
 }
 
 async function lockBooking() {
+  // R-1 UI guard: block legacy bookings at client side too
+  if (window.IS_LEGACY_BOOKING) { showLegacyWarning(); return; }
   if (!confirm('¿Bloquear definitivamente el booking? No se podrán hacer cambios adicionales.')) return;
   try {
     const r = await apiFetch(`/api/bookings/${BOOKING_ID}/lock`, { method: 'POST', body: JSON.stringify({}) });
