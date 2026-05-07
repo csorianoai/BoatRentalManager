@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cuadrar Booking — Nadaki Excursions</title>
+  <link rel="stylesheet" href="/assets/css/global-nav.css">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+           background: #f1f5f9; color: #1e293b; }
+    .wiz-wrapper { max-width: 860px; margin: 0 auto; padding: 24px 16px 60px; }
+
+    /* Progress bar */
+    .wiz-progress { display: flex; gap: 0; margin-bottom: 28px; background: #fff;
+                    border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; }
+    .wiz-step-tab { flex: 1; padding: 12px 8px; text-align: center; font-size: 11px;
+                    font-weight: 600; color: #94a3b8; cursor: pointer; border: none;
+                    background: transparent; transition: all .2s; line-height: 1.3;
+                    border-right: 1px solid #e2e8f0; }
+    .wiz-step-tab:last-child { border-right: none; }
+    .wiz-step-tab.done    { background: #f0fdf4; color: #15803d; }
+    .wiz-step-tab.active  { background: #1a1a2e; color: #fff; }
+    .wiz-step-tab .step-num { display: block; font-size: 18px; font-weight: 800;
+                               margin-bottom: 2px; }
+
+    /* Cards */
+    .wiz-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+                padding: 24px; margin-bottom: 16px; }
+    .wiz-card h2 { margin: 0 0 4px; font-size: 18px; font-weight: 800; color: #1a1a2e; }
+    .wiz-card p.sub { margin: 0 0 20px; font-size: 13px; color: #64748b; }
+
+    /* Status badge */
+    .acct-badge { display: inline-block; padding: 3px 12px; border-radius: 20px;
+                  font-size: 11px; font-weight: 700; text-transform: uppercase; }
+    .acct-not_started          { background: #f1f5f9; color: #64748b; }
+    .acct-in_progress          { background: #fef3c7; color: #d97706; }
+    .acct-partially_reconciled { background: #dbeafe; color: #1e40af; }
+    .acct-reconciled           { background: #dcfce7; color: #15803d; }
+    .acct-locked               { background: #ede9fe; color: #7c3aed; }
+
+    /* KPI grid */
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px,1fr)); gap: 10px; }
+    .kpi { background: #f8fafc; border-radius: 8px; padding: 12px 14px; }
+    .kpi-label { font-size: 11px; color: #64748b; font-weight: 600; margin-bottom: 3px; }
+    .kpi-val   { font-size: 20px; font-weight: 800; color: #1a1a2e; }
+    .kpi-val.green { color: #15803d; }
+    .kpi-val.red   { color: #dc2626; }
+    .kpi-val.blue  { color: #0369a1; }
+    .kpi-val.purple{ color: #7c3aed; }
+
+    /* Forms */
+    .form-row  { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+    .form-row.tri { grid-template-columns: 1fr 1fr 1fr; }
+    .form-row.full { grid-template-columns: 1fr; }
+    .fg { display: flex; flex-direction: column; gap: 4px; }
+    .fg label { font-size: 12px; font-weight: 600; color: #475569; }
+    .fg input, .fg select, .fg textarea {
+      padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 7px;
+      font-size: 13px; font-family: inherit; background: #fff; }
+    .fg input:focus, .fg select:focus { outline: none; border-color: #0ea5e9; }
+
+    /* Buttons */
+    .btn { padding: 9px 20px; border: none; border-radius: 7px; font-size: 14px;
+           font-weight: 600; cursor: pointer; transition: opacity .15s; }
+    .btn:hover { opacity: .85; }
+    .btn-primary { background: #0ea5e9; color: #fff; }
+    .btn-success { background: #16a34a; color: #fff; }
+    .btn-danger  { background: #dc2626; color: #fff; }
+    .btn-purple  { background: #7c3aed; color: #fff; }
+    .btn-dark    { background: #1a1a2e; color: #fff; }
+    .btn-ghost   { background: #f1f5f9; color: #475569; }
+    .btn:disabled { opacity: .4; cursor: not-allowed; }
+
+    /* Tables */
+    .mini-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 10px; }
+    .mini-table th { padding: 7px 10px; text-align: left; font-weight: 700; color: #475569;
+                     background: #f8fafc; border-bottom: 1px solid #e2e8f0; }
+    .mini-table td { padding: 7px 10px; border-bottom: 1px solid #f1f5f9; color: #374151; }
+    .mini-table tr:last-child td { border-bottom: none; }
+
+    /* Alerts */
+    .alert-box { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px;
+                 border-radius: 8px; margin-bottom: 10px; font-size: 13px; }
+    .alert-high   { background: #fef2f2; border: 1px solid #fca5a5; color: #991b1b; }
+    .alert-medium { background: #fffbeb; border: 1px solid #fcd34d; color: #92400e; }
+    .alert-info   { background: #f0f9ff; border: 1px solid #7dd3fc; color: #0369a1; }
+    .alert-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; }
+    .dot-high   { background: #dc2626; }
+    .dot-medium { background: #d97706; }
+    .dot-info   { background: #0284c7; }
+
+    /* Navigation */
+    .wiz-nav { display: flex; justify-content: space-between; align-items: center;
+               margin-top: 20px; flex-wrap: wrap; gap: 10px; }
+    .nav-left, .nav-right { display: flex; gap: 8px; }
+
+    /* Step panels */
+    .step-panel { display: none; }
+    .step-panel.active { display: block; }
+
+    /* Payment type buttons */
+    .pay-type-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px;
+                     margin-bottom: 16px; }
+    .pay-type-btn { padding: 10px 6px; border: 2px solid #e2e8f0; border-radius: 8px;
+                    font-size: 11px; font-weight: 700; cursor: pointer; background: #fff;
+                    text-align: center; transition: all .15s; color: #475569; }
+    .pay-type-btn.selected { border-color: #0ea5e9; background: #f0f9ff; color: #0369a1; }
+    .pay-type-icon { font-size: 20px; display: block; margin-bottom: 4px; }
+
+    /* Manual entry rows */
+    .me-row { display: grid; grid-template-columns: 90px 140px 100px 1fr 32px; gap: 6px;
+              align-items: center; margin-bottom: 6px; }
+    .me-badge { padding: 3px 8px; border-radius: 20px; font-size: 10px; font-weight: 700;
+                text-align: center; }
+    .me-debit  { background: #fef3c7; color: #92400e; }
+    .me-credit { background: #dbeafe; color: #1e40af; }
+
+    /* Integrity meter */
+    .integrity-bar { height: 10px; border-radius: 5px; background: #e2e8f0; overflow: hidden;
+                     margin: 8px 0; }
+    .integrity-fill { height: 100%; border-radius: 5px; transition: width .5s; }
+
+    /* Suggested action box */
+    .next-action { background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px;
+                   padding: 14px 18px; margin-top: 14px; }
+    .next-action-label { font-size: 11px; font-weight: 700; color: #15803d;
+                         text-transform: uppercase; margin-bottom: 4px; }
+    .next-action-text  { font-size: 14px; font-weight: 600; color: #14532d; }
+
+    @media (max-width: 600px) {
+      .form-row, .form-row.tri { grid-template-columns: 1fr; }
+      .pay-type-grid { grid-template-columns: repeat(3, 1fr); }
+      .me-row { grid-template-columns: 80px 120px 90px 1fr 28px; }
+    }
+  </style>
+</head>
+<body>
+<script src="/assets/js/components/global-nav.js" defer></script>
+
+<div class="wiz-wrapper">
+  <!-- Breadcrumb -->
+  <div style="margin-bottom:16px;font-size:13px;color:#64748b;">
+    <a href="/accounting.html" style="color:#0ea5e9;text-decoration:none;">Contabilidad</a>
+    <span style="margin:0 6px;">›</span>
+    <span id="wiz-breadcrumb">Cuadrar Booking</span>
+  </div>
+
+  <!-- Progress tabs -->
+  <div class="wiz-progress" role="tablist">
+    <button class="wiz-step-tab active" data-step="1" onclick="goStep(1)">
+      <span class="step-num">1</span>Resumen
+    </button>
+    <button class="wiz-step-tab" data-step="2" onclick="goStep(2)">
+      <span class="step-num">2</span>Pagos
+    </button>
+    <button class="wiz-step-tab" data-step="3" onclick="goStep(3)">
+      <span class="step-num">3</span>Gastos
+    </button>
+    <button class="wiz-step-tab" data-step="4" onclick="goStep(4)">
+      <span class="step-num">4</span>Reconciliación
+    </button>
+    <button class="wiz-step-tab" data-step="5" onclick="goStep(5)">
+      <span class="step-num">5</span>Ajuste Manual
+    </button>
+    <button class="wiz-step-tab" data-step="6" onclick="goStep(6)">
+      <span class="step-num">6</span>Cierre
+    </button>
+  </div>
+
+  <!-- ========== STEP 1: OVERVIEW ========== -->
+  <div class="step-panel active" id="step-1">
+    <div class="wiz-card">
+      <h2>Resumen del Booking</h2>
+      <p class="sub">Estado actual del booking y métricas contables consolidadas.</p>
+      <div id="s1-content"><div style="color:#94a3b8;text-align:center;padding:32px;">Cargando...</div></div>
+    </div>
+    <div class="wiz-nav">
+      <div class="nav-left"></div>
+      <div class="nav-right">
+        <button class="btn btn-primary" onclick="goStep(2)">Siguiente: Pagos →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== STEP 2: PAYMENT DETECTION ========== -->
+  <div class="step-panel" id="step-2">
+    <div class="wiz-card">
+      <h2>Detección de Pagos</h2>
+      <p class="sub">Registra todos los pagos recibidos del cliente. Usa el tipo correcto para cada método.</p>
+
+      <!-- Payment type selector -->
+      <div class="pay-type-grid">
+        <button class="pay-type-btn selected" data-type="cash" onclick="selectPayType('cash')">
+          <span class="pay-type-icon">💵</span>Cash
+        </button>
+        <button class="pay-type-btn" data-type="zelle" onclick="selectPayType('zelle')">
+          <span class="pay-type-icon">📱</span>Zelle
+        </button>
+        <button class="pay-type-btn" data-type="bank" onclick="selectPayType('bank')">
+          <span class="pay-type-icon">🏦</span>Banco
+        </button>
+        <button class="pay-type-btn" data-type="platform" onclick="selectPayType('platform')">
+          <span class="pay-type-icon">🌐</span>Plataforma
+        </button>
+        <button class="pay-type-btn" data-type="mixed" onclick="selectPayType('mixed')">
+          <span class="pay-type-icon">🔀</span>Mixto
+        </button>
+      </div>
+
+      <!-- Payment hint -->
+      <div id="pay-type-hint" style="font-size:12px;color:#0369a1;background:#f0f9ff;border:1px solid #bae6fd;
+           border-radius:6px;padding:8px 12px;margin-bottom:14px;"></div>
+
+      <!-- Payment form -->
+      <div class="form-row tri">
+        <div class="fg">
+          <label>Monto (USD) *</label>
+          <input type="number" id="pay-amount" step="0.01" min="0.01" placeholder="0.00" data-testid="input-pay-amount">
+        </div>
+        <div class="fg">
+          <label>Fecha *</label>
+          <input type="date" id="pay-date" data-testid="input-pay-date">
+        </div>
+        <div class="fg">
+          <label>Referencia / Banco</label>
+          <input type="text" id="pay-ref" placeholder="Wells Fargo, conf #..." data-testid="input-pay-ref">
+        </div>
+      </div>
+      <div class="form-row full" style="margin-bottom:14px;">
+        <div class="fg">
+          <label>Notas</label>
+          <input type="text" id="pay-notes" placeholder="Notas adicionales..." data-testid="input-pay-notes">
+        </div>
+      </div>
+      <button class="btn btn-success" onclick="addPayment()" data-testid="button-add-payment">
+        + Registrar Pago
+      </button>
+
+      <!-- Existing payments list -->
+      <div style="margin-top:20px;">
+        <div style="font-size:12px;font-weight:700;color:#475569;text-transform:uppercase;margin-bottom:8px;">
+          Pagos registrados
+        </div>
+        <div id="s2-payments-list"><div style="color:#94a3b8;font-size:12px;padding:8px;">Cargando...</div></div>
+      </div>
+    </div>
+    <div class="wiz-nav">
+      <div class="nav-left"><button class="btn btn-ghost" onclick="goStep(1)">← Atrás</button></div>
+      <div class="nav-right"><button class="btn btn-primary" onclick="goStep(3)">Siguiente: Gastos →</button></div>
+    </div>
+  </div>
+
+  <!-- ========== STEP 3: EXPENSE REGISTRATION ========== -->
+  <div class="step-panel" id="step-3">
+    <div class="wiz-card">
+      <h2>Registro de Gastos</h2>
+      <p class="sub">Registra todos los gastos asociados a este booking: combustible, capitán, hielo, limpieza, etc.</p>
+
+      <div class="form-row">
+        <div class="fg">
+          <label>Categoría *</label>
+          <select id="exp-category" data-testid="select-exp-category">
+            <option value="fuel">Combustible (Fuel)</option>
+            <option value="crew">Capitán / Tripulación</option>
+            <option value="ice">Hielo / Bebidas (Ice)</option>
+            <option value="cleaning">Limpieza</option>
+            <option value="commission">Comisión de Plataforma</option>
+            <option value="supplies">Suministros</option>
+            <option value="other">Otro</option>
+          </select>
+        </div>
+        <div class="fg">
+          <label>Método de pago *</label>
+          <select id="exp-payment" data-testid="select-exp-payment">
+            <option value="cash">Efectivo → Dr Gasto / Cr 1015 Cash Clearing</option>
+            <option value="zelle">Zelle → Dr Gasto / Cr Banco (1010)</option>
+            <option value="bank">Banco → Dr Gasto / Cr Banco (1010)</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row tri">
+        <div class="fg">
+          <label>Monto (USD) *</label>
+          <input type="number" id="exp-amount" step="0.01" min="0.01" placeholder="0.00" data-testid="input-exp-amount">
+        </div>
+        <div class="fg">
+          <label>Fecha</label>
+          <input type="date" id="exp-date" data-testid="input-exp-date">
+        </div>
+        <div class="fg">
+          <label>Responsable / A nombre de</label>
+          <input type="text" id="exp-person" placeholder="Ej: Pablo (Capitán)" data-testid="input-exp-person">
+        </div>
+      </div>
+      <div class="form-row full" style="margin-bottom:14px;">
+        <div class="fg">
+          <label>Descripción del gasto *</label>
+          <input type="text" id="exp-notes" placeholder="Ej: Combustible 12 gallons — $300" data-testid="input-exp-notes">
+        </div>
+      </div>
+      <button class="btn btn-danger" onclick="addExpense()" data-testid="button-add-expense">
+        + Registrar Gasto
+      </button>
+
+      <!-- Existing expenses list -->
+      <div style="margin-top:20px;">
+        <div style="font-size:12px;font-weight:700;color:#475569;text-transform:uppercase;margin-bottom:8px;">
+          Gastos registrados
+        </div>
+        <div id="s3-expenses-list"><div style="color:#94a3b8;font-size:12px;padding:8px;">Cargando...</div></div>
+      </div>
+    </div>
+    <div class="wiz-nav">
+      <div class="nav-left"><button class="btn btn-ghost" onclick="goStep(2)">← Atrás</button></div>
+      <div class="nav-right">
+        <button class="btn btn-primary" onclick="goStep(4)">Siguiente: Reconciliación →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== STEP 4: AUTO RECONCILIATION ========== -->
+  <div class="step-panel" id="step-4">
+    <div class="wiz-card">
+      <h2>Verificación de Integridad</h2>
+      <p class="sub">Análisis automático de pagos, gastos, discrepancias y balances de Cash Clearing.</p>
+      <div id="s4-content"><div style="color:#94a3b8;text-align:center;padding:32px;">Cargando...</div></div>
+    </div>
+    <div class="wiz-nav">
+      <div class="nav-left"><button class="btn btn-ghost" onclick="goStep(3)">← Atrás</button></div>
+      <div class="nav-right">
+        <button class="btn btn-ghost" onclick="loadIntegrity()" data-testid="button-recheck">Volver a verificar</button>
+        <button class="btn btn-primary" onclick="goStep(5)">Siguiente: Ajuste Manual →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== STEP 5: MANUAL ADJUSTMENT ========== -->
+  <div class="step-panel" id="step-5">
+    <div class="wiz-card">
+      <h2>Asiento Manual</h2>
+      <p class="sub">Crea asientos de doble entrada para ajustes contables. Débitos = Créditos obligatorio.</p>
+
+      <div id="me-rows-container"></div>
+
+      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+        <button class="btn btn-ghost" onclick="addMERow('debit')" style="font-size:12px;padding:6px 14px;background:#fef3c7;color:#92400e;" data-testid="button-me-add-debit">
+          + Débito
+        </button>
+        <button class="btn btn-ghost" onclick="addMERow('credit')" style="font-size:12px;padding:6px 14px;background:#dbeafe;color:#1e40af;" data-testid="button-me-add-credit">
+          + Crédito
+        </button>
+      </div>
+
+      <div class="form-row full" style="margin-bottom:8px;">
+        <div class="fg">
+          <label>Motivo del ajuste * (obligatorio para cerrar)</label>
+          <input type="text" id="me-reason" placeholder="Ej: Clasificar $5 de sobrepago capitán como propina..." data-testid="input-me-reason">
+        </div>
+      </div>
+
+      <div id="me-balance-line" style="font-size:13px;font-weight:700;color:#64748b;margin-bottom:14px;"></div>
+
+      <button class="btn btn-dark" onclick="submitManualEntry()" data-testid="button-submit-me">
+        Guardar Asiento Manual
+      </button>
+
+      <!-- Audit trail -->
+      <div style="margin-top:24px;">
+        <div style="font-size:12px;font-weight:700;color:#475569;text-transform:uppercase;margin-bottom:8px;">
+          Historial de asientos manuales
+        </div>
+        <div id="s5-me-history"><div style="color:#94a3b8;font-size:12px;padding:8px;">Cargando...</div></div>
+      </div>
+    </div>
+    <div class="wiz-nav">
+      <div class="nav-left"><button class="btn btn-ghost" onclick="goStep(4)">← Atrás</button></div>
+      <div class="nav-right"><button class="btn btn-primary" onclick="goStep(6)">Siguiente: Cierre Final →</button></div>
+    </div>
+  </div>
+
+  <!-- ========== STEP 6: FINAL CLOSE ========== -->
+  <div class="step-panel" id="step-6">
+    <div class="wiz-card">
+      <h2>Cierre Final del Booking</h2>
+      <p class="sub">Revisa el resumen final antes de bloquear. Solo puedes cerrar si todos los checks pasan.</p>
+      <div id="s6-content"><div style="color:#94a3b8;text-align:center;padding:32px;">Cargando...</div></div>
+    </div>
+    <div class="wiz-nav">
+      <div class="nav-left"><button class="btn btn-ghost" onclick="goStep(5)">← Atrás</button></div>
+      <div class="nav-right">
+        <button class="btn btn-success" id="btn-recognize-revenue" onclick="recognizeRevenue()" data-testid="button-recognize-revenue" style="display:none;">
+          Reconocer Revenue (Completar)
+        </button>
+        <button class="btn btn-purple" id="btn-lock-booking" onclick="lockBooking()" data-testid="button-lock-booking" disabled>
+          Bloquear Booking (Cierre Definitivo)
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ========= STATE =========
+let BOOKING_ID = null;
+let wizData    = null;   // ledger-summary data
+let integrity  = null;   // integrity result
+let payType    = 'cash';
+let meRows     = [];
+
+const PAY_HINTS = {
+  cash:     'Dr 1015 Cash Clearing / Operating Cash — efectivo recibido físicamente del cliente.',
+  zelle:    'Dr 1010 Banco — transferencia Zelle; igual que banco pero se etiqueta por separado.',
+  bank:     'Dr 1010 Banco (Operating Account) — transferencia bancaria, ACH, wire.',
+  platform: 'El pago llega a través de la plataforma (Airbnb, GetMyBoat…). Se registra en 2500 Depósito Deferido hasta aplicar.',
+  mixed:    'Pago en múltiples métodos — divide usando los botones anteriores para cada parte.',
+};
+
+// ========= INIT =========
+document.addEventListener('DOMContentLoaded', async () => {
+  const params = new URLSearchParams(location.search);
+  BOOKING_ID = params.get('booking_id') || params.get('id');
+  if (!BOOKING_ID) {
+    document.querySelector('.wiz-wrapper').innerHTML =
+      '<div style="padding:40px;text-align:center;color:#dc2626;font-size:16px;">Error: booking_id no especificado en la URL. Abre el wizard con <code>?booking_id=xxx</code></div>';
+    return;
+  }
+  document.getElementById('wiz-breadcrumb').textContent = 'Cuadrar: ' + BOOKING_ID;
+
+  // Init default date
+  const today = new Date().toISOString().slice(0, 10);
+  document.getElementById('pay-date').value  = today;
+  document.getElementById('exp-date').value  = today;
+
+  selectPayType('cash');
+  addMERow('debit');
+  addMERow('credit');
+
+  await loadAll();
+});
+
+async function loadAll() {
+  await loadWizData();
+  renderStep1();
+}
+
+async function loadWizData() {
+  try {
+    const r = await apiFetch(`/api/bookings/${BOOKING_ID}/ledger-summary`);
+    wizData = r;
+    integrity = r; // ledger-summary already includes integrity
+  } catch(e) {
+    console.error(e);
+  }
+}
+
+async function loadIntegrity() {
+  try {
+    const r = await apiFetch(`/api/bookings/${BOOKING_ID}/integrity`);
+    integrity = { ...wizData, ...r };
+    renderStep4();
+  } catch(e) {
+    document.getElementById('s4-content').innerHTML = `<div style="color:#dc2626;">Error: ${e.message}</div>`;
+  }
+}
+
+// ========= NAVIGATION =========
+let currentStep = 1;
+function goStep(n) {
+  document.querySelectorAll('.step-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.wiz-step-tab').forEach(t => {
+    const s = parseInt(t.dataset.step);
+    t.classList.toggle('active', s === n);
+    t.classList.toggle('done', s < n);
+  });
+  document.getElementById('step-' + n).classList.add('active');
+  currentStep = n;
+
+  if (n === 1) renderStep1();
+  if (n === 2) renderStep2();
+  if (n === 3) renderStep3();
+  if (n === 4) { loadIntegrity(); }
+  if (n === 5) renderStep5();
+  if (n === 6) { loadIntegrity().then(renderStep6); }
+
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ========= STEP 1 RENDER =========
+function renderStep1() {
+  const el = document.getElementById('s1-content');
+  if (!wizData) { el.innerHTML = '<div style="color:#94a3b8;padding:8px;">Sin datos.</div>'; return; }
+  const d = wizData;
+  const fmt = v => '$' + parseFloat(v||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const as = d.accounting_status || 'not_started';
+  el.innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
+      <div>
+        <div style="font-size:22px;font-weight:900;color:#1a1a2e;">${d.customer_name || '—'}</div>
+        <div style="font-size:13px;color:#64748b;margin-top:2px;">
+          ID: <code style="background:#f1f5f9;padding:1px 6px;border-radius:4px;font-size:12px;">${d.booking_id}</code>
+          &nbsp;·&nbsp; Fecha: ${d.booking_date ? String(d.booking_date).slice(0,10) : '—'}
+          &nbsp;·&nbsp; Plataforma: ${d.platform || 'Directa'}
+        </div>
+      </div>
+      <span class="acct-badge acct-${as}">${acctLabel(as)}</span>
+    </div>
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-label">Revenue esperado</div>
+        <div class="kpi-val">${fmt(d.expected_revenue)}</div></div>
+      <div class="kpi"><div class="kpi-label">Total cobrado</div>
+        <div class="kpi-val ${parseFloat(d.total_collected||0) >= parseFloat(d.expected_revenue||0)-0.01 ? 'green' : 'red'}">${fmt(d.total_collected)}</div></div>
+      <div class="kpi"><div class="kpi-label">Total gastos</div>
+        <div class="kpi-val red">${fmt(d.total_expenses)}</div></div>
+      <div class="kpi"><div class="kpi-label">Profit esperado</div>
+        <div class="kpi-val purple">${fmt(d.expected_profit)}</div></div>
+      <div class="kpi"><div class="kpi-label">Revenue reconocido</div>
+        <div class="kpi-val ${parseFloat(d.revenue_recognized_amount||0)>0?'green':''}">
+          ${parseFloat(d.revenue_recognized_amount||0)>0 ? fmt(d.revenue_recognized_amount) : 'Pendiente'}</div></div>
+      <div class="kpi"><div class="kpi-label">Cash Clearing (1015)</div>
+        <div class="kpi-val ${Math.abs(parseFloat(d.cash_clearing_balance||0))>0.01?'red':'green'}">
+          ${fmt(d.cash_clearing_balance)}</div></div>
+      <div class="kpi"><div class="kpi-label">Status booking</div>
+        <div class="kpi-val" style="font-size:14px;">${d.status || '—'}</div></div>
+      <div class="kpi"><div class="kpi-label">AR pendiente</div>
+        <div class="kpi-val ${parseFloat(d.total_ar_pending||0)>0?'red':'green'}">
+          ${parseFloat(d.total_ar_pending||0)>0?fmt(d.total_ar_pending):'$0.00'}</div></div>
+    </div>
+    ${(d.alerts||[]).length ? `
+    <div style="margin-top:16px;">
+      ${(d.alerts||[]).map(a=>`
+        <div class="alert-box alert-${a.severity}">
+          <div class="alert-dot dot-${a.severity}"></div>
+          <div>${a.message}</div>
+        </div>`).join('')}
+    </div>` : ''}
+    ${d.suggested_next_action ? `
+    <div class="next-action">
+      <div class="next-action-label">Acción recomendada</div>
+      <div class="next-action-text">${d.suggested_next_action}</div>
+    </div>` : ''}`;
+}
+
+// ========= STEP 2: PAYMENTS =========
+function selectPayType(type) {
+  payType = type;
+  document.querySelectorAll('.pay-type-btn').forEach(b => {
+    b.classList.toggle('selected', b.dataset.type === type);
+  });
+  document.getElementById('pay-type-hint').textContent = PAY_HINTS[type] || '';
+}
+
+function renderStep2() {
+  if (!wizData) return;
+  const list = document.getElementById('s2-payments-list');
+  const payments = [
+    ...(wizData.deposits || []).map(d => ({
+      date: d.deposit_date, type: 'Depósito', amount: d.amount,
+      notes: d.notes || d.client_name, ref: d.booking_reference || ''
+    })),
+    ...(wizData.transactions || [])
+      .filter(t => ['cash_clearing','booking'].includes(t.reference_type) && t.transaction_type === 'income')
+      .map(t => ({
+        date: t.transaction_date, type: t.reference_type === 'cash_clearing' ? 'Efectivo/Zelle' : 'Plataforma',
+        amount: t.amount, notes: t.description, ref: t.account_code + ' ' + t.account_name
+      }))
+  ];
+  if (!payments.length) {
+    list.innerHTML = '<div style="color:#94a3b8;font-size:12px;padding:8px;">Sin pagos registrados aún.</div>';
+    return;
+  }
+  list.innerHTML = `<table class="mini-table">
+    <thead><tr>
+      <th>Fecha</th><th>Tipo</th><th>Monto</th><th>Referencia / Notas</th>
+    </tr></thead>
+    <tbody>
+      ${payments.map(p=>`<tr>
+        <td>${String(p.date||'').slice(0,10)}</td>
+        <td><span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:12px;font-size:10px;font-weight:700;">${p.type}</span></td>
+        <td><strong>$${parseFloat(p.amount||0).toFixed(2)}</strong></td>
+        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.notes||'—'}</td>
+      </tr>`).join('')}
+    </tbody>
+  </table>`;
+}
+
+async function addPayment() {
+  const amount = parseFloat(document.getElementById('pay-amount').value || 0);
+  const date   = document.getElementById('pay-date').value;
+  const ref    = document.getElementById('pay-ref').value;
+  const notes  = document.getElementById('pay-notes').value;
+  if (!amount || amount <= 0) { alert('Ingresa un monto válido'); return; }
+  if (payType === 'mixed') { alert('Para pago mixto, usa los otros tipos por separado (Cash + Zelle, etc.)'); return; }
+  if (payType === 'platform') { alert('Los pagos de plataforma se registran como depósitos en el tab de Depósitos de Reservas.'); return; }
+
+  try {
+    const r = await apiFetch('/api/booking-payment', {
+      method: 'POST',
+      body: JSON.stringify({ booking_id: BOOKING_ID, amount, date, notes: [ref, notes].filter(Boolean).join(' / '), payment_type: payType })
+    });
+    if (r.error) { alert('Error: ' + r.error); return; }
+    alert(`Pago registrado: $${amount.toFixed(2)} (${payType})`);
+    document.getElementById('pay-amount').value = '';
+    document.getElementById('pay-ref').value    = '';
+    document.getElementById('pay-notes').value  = '';
+    await loadWizData();
+    renderStep2();
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+// ========= STEP 3: EXPENSES =========
+function renderStep3() {
+  if (!wizData) return;
+  const list = document.getElementById('s3-expenses-list');
+  const exps = wizData.expenses || [];
+  if (!exps.length) {
+    list.innerHTML = '<div style="color:#94a3b8;font-size:12px;padding:8px;">Sin gastos registrados aún.</div>';
+    return;
+  }
+  const catLabels = { fuel:'Combustible', crew:'Capitán/Tripulación', ice:'Hielo', cleaning:'Limpieza',
+    commission:'Comisión', supplies:'Suministros', operational:'Operacional', other:'Otro' };
+  list.innerHTML = `<table class="mini-table">
+    <thead><tr><th>Fecha</th><th>Categoría</th><th>Monto</th><th>Método</th><th>Descripción</th></tr></thead>
+    <tbody>${exps.map(e=>`<tr>
+      <td>${String(e.expense_date||'').slice(0,10)}</td>
+      <td><span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:12px;font-size:10px;font-weight:700;">${catLabels[e.category]||e.category||'—'}</span></td>
+      <td><strong style="color:#dc2626;">-$${parseFloat(e.amount||0).toFixed(2)}</strong></td>
+      <td style="font-size:11px;">${e.payment_method||'—'}</td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${e.description||e.notes||'—'}</td>
+    </tr>`).join('')}</tbody></table>`;
+}
+
+async function addExpense() {
+  const amount   = parseFloat(document.getElementById('exp-amount').value || 0);
+  const category = document.getElementById('exp-category').value;
+  const payment  = document.getElementById('exp-payment').value;
+  const notes    = document.getElementById('exp-notes').value;
+  const person   = document.getElementById('exp-person').value;
+  if (!amount || amount <= 0) { alert('Ingresa un monto válido'); return; }
+  if (!notes) { alert('Ingresa una descripción del gasto'); return; }
+  const desc = [notes, person ? '(' + person + ')' : ''].filter(Boolean).join(' ');
+  try {
+    const r = await apiFetch('/api/booking-expense', {
+      method: 'POST',
+      body: JSON.stringify({ booking_id: BOOKING_ID, amount, category, payment_method: payment, notes: desc })
+    });
+    if (r.error) { alert('Error: ' + r.error); return; }
+    alert(`Gasto registrado: $${amount.toFixed(2)} — ${category}`);
+    document.getElementById('exp-amount').value = '';
+    document.getElementById('exp-notes').value  = '';
+    document.getElementById('exp-person').value = '';
+    await loadWizData();
+    renderStep3();
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+// ========= STEP 4: RECONCILIATION =========
+function renderStep4() {
+  const el = document.getElementById('s4-content');
+  if (!integrity) { el.innerHTML = '<div style="color:#94a3b8;padding:8px;">Sin datos de integridad.</div>'; return; }
+  const d = integrity;
+  const fmt = v => '$' + parseFloat(v||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const pct = d.expected_revenue > 0
+    ? Math.min(100, Math.round(parseFloat(d.total_collected||0) / parseFloat(d.expected_revenue) * 100))
+    : 0;
+  const barColor = pct >= 100 ? '#16a34a' : pct >= 50 ? '#d97706' : '#dc2626';
+  const as = d.accounting_status || 'not_started';
+
+  el.innerHTML = `
+    <!-- Status + integrity bar -->
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+      <span class="acct-badge acct-${as}" style="font-size:12px;padding:5px 14px;">${acctLabel(as)}</span>
+      <div style="flex:1;min-width:180px;">
+        <div style="font-size:11px;color:#64748b;margin-bottom:3px;">Cobrado: ${pct}% del total</div>
+        <div class="integrity-bar">
+          <div class="integrity-fill" style="width:${pct}%;background:${barColor};"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Summary grid -->
+    <div class="kpi-grid" style="margin-bottom:16px;">
+      <div class="kpi"><div class="kpi-label">Revenue esperado</div><div class="kpi-val">${fmt(d.expected_revenue)}</div></div>
+      <div class="kpi"><div class="kpi-label">Total cobrado</div>
+        <div class="kpi-val ${pct>=100?'green':'red'}">${fmt(d.total_collected)}</div></div>
+      <div class="kpi"><div class="kpi-label">Revenue reconocido</div>
+        <div class="kpi-val ${parseFloat(d.revenue_recognized_amount||0)>0?'green':''}">
+          ${parseFloat(d.revenue_recognized_amount||0)>0?fmt(d.revenue_recognized_amount):'Pendiente'}</div></div>
+      <div class="kpi"><div class="kpi-label">Gastos totales</div><div class="kpi-val red">${fmt(d.total_expenses)}</div></div>
+      <div class="kpi"><div class="kpi-label">Profit</div>
+        <div class="kpi-val ${parseFloat(d.expected_profit||0)>0?'green':'red'}">${fmt(d.expected_profit)}</div></div>
+      <div class="kpi"><div class="kpi-label">Cash Clearing (1015)</div>
+        <div class="kpi-val ${Math.abs(parseFloat(d.cash_clearing_balance||0))>0.01?'red':'green'}">
+          ${fmt(d.cash_clearing_balance)}</div></div>
+      <div class="kpi"><div class="kpi-label">Pagos capitán</div>
+        <div class="kpi-val blue">${parseFloat(d.captain_actual||0)>0?fmt(d.captain_actual):'—'}</div></div>
+      <div class="kpi"><div class="kpi-label">Discrepancia</div>
+        <div class="kpi-val ${d.discrepancy_flag?'red':'green'}">
+          ${d.discrepancy_flag?fmt(d.discrepancy_amount):'$0.00 ✓'}</div></div>
+    </div>
+
+    <!-- Alerts -->
+    ${(d.alerts||[]).length ? `
+    <div style="margin-bottom:14px;">
+      <div style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;margin-bottom:8px;">Alertas detectadas</div>
+      ${(d.alerts||[]).map(a=>`
+        <div class="alert-box alert-${a.severity}">
+          <div class="alert-dot dot-${a.severity}"></div>
+          <div><strong>${a.code}</strong>: ${a.message}</div>
+        </div>`).join('')}
+    </div>` : `
+    <div class="alert-box alert-info">
+      <div class="alert-dot dot-info"></div>
+      <div>Sin discrepancias detectadas.</div>
+    </div>`}
+
+    <!-- Suggested action -->
+    ${d.suggested_next_action ? `
+    <div class="next-action">
+      <div class="next-action-label">Acción recomendada</div>
+      <div class="next-action-text">${d.suggested_next_action}</div>
+    </div>` : ''}`;
+}
+
+// ========= STEP 5: MANUAL ENTRY =========
+function addMERow(type) {
+  const id = Date.now() + Math.random();
+  meRows.push({ id, type, account: '', amount: '' });
+  renderMERows();
+}
+function removeMERow(id) {
+  meRows = meRows.filter(r => r.id !== id);
+  renderMERows();
+}
+function updateME(id, field, val) {
+  const r = meRows.find(r => r.id === id);
+  if (r) r[field] = val;
+  updateMEBalance();
+}
+function updateMEBalance() {
+  const debits  = meRows.filter(r=>r.type==='debit').reduce((s,r)=>s+parseFloat(r.amount||0),0);
+  const credits = meRows.filter(r=>r.type==='credit').reduce((s,r)=>s+parseFloat(r.amount||0),0);
+  const diff    = Math.abs(debits - credits);
+  const el = document.getElementById('me-balance-line');
+  if (!el) return;
+  el.style.color = diff <= 0.01 ? '#15803d' : '#dc2626';
+  el.textContent = diff <= 0.01
+    ? `✓ Asiento cuadrado — Débitos $${debits.toFixed(2)} = Créditos $${credits.toFixed(2)}`
+    : `✗ No cuadra — Débitos $${debits.toFixed(2)} | Créditos $${credits.toFixed(2)} | Diferencia $${diff.toFixed(2)}`;
+}
+function renderMERows() {
+  const c = document.getElementById('me-rows-container');
+  if (!c) return;
+  c.innerHTML = meRows.length ? meRows.map(r => `
+    <div class="me-row" data-id="${r.id}">
+      <span class="me-badge ${r.type==='debit'?'me-debit':'me-credit'}">${r.type==='debit'?'DÉBITO':'CRÉDITO'}</span>
+      <input type="text" value="${r.account}" placeholder="Código (ej:1010)"
+             oninput="updateME(${r.id},'account',this.value)"
+             style="padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;font-family:monospace;">
+      <input type="number" value="${r.amount}" placeholder="0.00" step="0.01"
+             oninput="updateME(${r.id},'amount',this.value)"
+             style="padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;">
+      <span style="font-size:11px;color:#94a3b8;">
+        ${r.account === '1015' ? 'Cash Clearing' : r.account === '1010' ? 'Banco' : r.account === '2500' ? 'Deferred Deposits' : r.account.startsWith('4') ? 'Revenue' : ''}
+      </span>
+      <button onclick="removeMERow(${r.id})" style="border:none;background:#fef2f2;color:#dc2626;border-radius:4px;font-size:12px;cursor:pointer;padding:4px 6px;">✕</button>
+    </div>`).join('') : '<div style="color:#94a3b8;font-size:12px;padding:8px;">Agrega filas de débito y crédito.</div>';
+  updateMEBalance();
+}
+async function submitManualEntry() {
+  const reason = document.getElementById('me-reason').value.trim();
+  if (!reason) { alert('El motivo del ajuste es obligatorio'); return; }
+  if (meRows.length < 2) { alert('Se requieren al menos 2 filas'); return; }
+  const debits  = meRows.filter(r=>r.type==='debit').reduce((s,r)=>s+parseFloat(r.amount||0),0);
+  const credits = meRows.filter(r=>r.type==='credit').reduce((s,r)=>s+parseFloat(r.amount||0),0);
+  if (Math.abs(debits - credits) > 0.01) { alert(`El asiento no cuadra: Débitos $${debits.toFixed(2)} ≠ Créditos $${credits.toFixed(2)}`); return; }
+  const entries = meRows.map(r => ({ type: r.type, account: r.account, amount: parseFloat(r.amount||0) }));
+  try {
+    const r = await apiFetch('/api/accounting/manual-entry', {
+      method: 'POST',
+      body: JSON.stringify({ entries, notes: reason, booking_id: BOOKING_ID })
+    });
+    if (r.error) { alert('Error: ' + r.error); return; }
+    alert(`Asiento manual guardado (Batch: ${r.batch_id})`);
+    meRows = [];
+    renderMERows();
+    document.getElementById('me-reason').value = '';
+    await loadWizData();
+    renderStep5();
+  } catch(e) { alert('Error: ' + e.message); }
+}
+function renderStep5() {
+  const hist = document.getElementById('s5-me-history');
+  if (!wizData) return;
+  const txs = (wizData.transactions || []).filter(t => t.reference_type === 'manual_adjustment');
+  if (!txs.length) {
+    hist.innerHTML = '<div style="color:#94a3b8;font-size:12px;padding:8px;">Sin asientos manuales.</div>';
+    return;
+  }
+  hist.innerHTML = `<table class="mini-table">
+    <thead><tr><th>Fecha</th><th>Cuenta</th><th>Tipo</th><th>Monto</th><th>Motivo</th></tr></thead>
+    <tbody>${txs.map(t=>`<tr>
+      <td>${String(t.transaction_date||'').slice(0,10)}</td>
+      <td style="font-family:monospace;font-size:11px;">${t.account_code} ${t.account_name}</td>
+      <td><span class="me-badge ${t.transaction_type==='expense'?'me-debit':'me-credit'}">
+        ${t.transaction_type==='expense'?'DÉBITO':'CRÉDITO'}</span></td>
+      <td>$${parseFloat(t.amount||0).toFixed(2)}</td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${t.description||t.notes||'—'}</td>
+    </tr>`).join('')}</tbody></table>`;
+}
+
+// ========= STEP 6: FINAL CLOSE =========
+async function renderStep6() {
+  const el = document.getElementById('s6-content');
+  if (!integrity) { el.innerHTML = '<div style="color:#94a3b8;">Sin datos. Regresa al paso 4 y verifica.</div>'; return; }
+  const d = integrity;
+  const fmt = v => '$' + parseFloat(v||0).toFixed(2);
+
+  const checks = [
+    { label: 'Pagos igualan el total del booking', pass: parseFloat(d.total_collected||0) >= parseFloat(d.expected_revenue||0) - 0.01 },
+    { label: 'Revenue reconocido', pass: d.revenue_recognized || parseFloat(d.revenue_recognized_amount||0) > 0 },
+    { label: 'Cash Clearing (1015) en cero', pass: Math.abs(parseFloat(d.cash_clearing_balance||0)) <= 0.01 },
+    { label: 'Sin discrepancias de pago', pass: !d.discrepancy_flag },
+    { label: 'Sin AR pendiente', pass: parseFloat(d.total_ar_pending||0) < 0.01 },
+  ];
+  const allPass = checks.every(c => c.pass);
+
+  el.innerHTML = `
+    <div class="kpi-grid" style="margin-bottom:20px;">
+      <div class="kpi"><div class="kpi-label">Revenue total</div><div class="kpi-val">${fmt(d.expected_revenue)}</div></div>
+      <div class="kpi"><div class="kpi-label">Cobrado</div><div class="kpi-val green">${fmt(d.total_collected)}</div></div>
+      <div class="kpi"><div class="kpi-label">Gastos</div><div class="kpi-val red">${fmt(d.total_expenses)}</div></div>
+      <div class="kpi"><div class="kpi-label">Profit neto</div><div class="kpi-val purple">${fmt(d.expected_profit)}</div></div>
+    </div>
+
+    <div style="margin-bottom:20px;">
+      <div style="font-size:12px;font-weight:700;color:#475569;text-transform:uppercase;margin-bottom:10px;">
+        Checks de cierre
+      </div>
+      ${checks.map(c => `
+        <div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:7px;margin-bottom:6px;
+             background:${c.pass?'#f0fdf4':'#fef2f2'};border:1px solid ${c.pass?'#86efac':'#fca5a5'};">
+          <span style="font-size:16px;">${c.pass?'✓':'✗'}</span>
+          <span style="font-size:13px;font-weight:600;color:${c.pass?'#15803d':'#991b1b'};">${c.label}</span>
+        </div>`).join('')}
+    </div>
+
+    ${allPass ? `
+    <div class="alert-box alert-info">
+      <div class="alert-dot dot-info"></div>
+      <div><strong>Todo cuadrado.</strong> Puedes bloquear el booking definitivamente.</div>
+    </div>` : `
+    <div class="alert-box alert-high">
+      <div class="alert-dot dot-high"></div>
+      <div>Hay checks pendientes. Regresa a los pasos anteriores para resolverlos antes de cerrar.</div>
+    </div>`}`;
+
+  // Show/hide revenue button
+  const revBtn = document.getElementById('btn-recognize-revenue');
+  const lockBtn = document.getElementById('btn-lock-booking');
+  if (!d.revenue_recognized && parseFloat(d.revenue_recognized_amount||0) === 0) {
+    revBtn.style.display = 'inline-block';
+  } else {
+    revBtn.style.display = 'none';
+  }
+  lockBtn.disabled = !allPass || d.accounting_status === 'locked';
+  if (d.accounting_status === 'locked') {
+    lockBtn.textContent = 'Booking Bloqueado';
+    lockBtn.style.background = '#7c3aed';
+  }
+}
+
+async function recognizeRevenue() {
+  if (!confirm('¿Reconocer revenue del booking? Esto creará las transacciones contables (Dr 2500/AR → Cr 4010/4020).')) return;
+  const accCode = prompt('Código de cuenta de revenue (default: 4010 Tours, 4020 Rentals):', '4010') || '4010';
+  try {
+    const r = await apiFetch(`/api/bookings/${BOOKING_ID}/complete`, {
+      method: 'POST',
+      body: JSON.stringify({ revenue_account_code: accCode })
+    });
+    if (r.error) { alert('Error: ' + r.error); return; }
+    alert(`Revenue reconocido: $${parseFloat(r.amount||0).toFixed(2)}`);
+    await loadWizData();
+    await loadIntegrity();
+    renderStep6();
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function lockBooking() {
+  if (!confirm('¿Bloquear definitivamente el booking? No se podrán hacer cambios adicionales.')) return;
+  try {
+    const r = await apiFetch(`/api/bookings/${BOOKING_ID}/lock`, { method: 'POST', body: JSON.stringify({}) });
+    if (r.error) { alert('Error: ' + r.error); return; }
+    alert('Booking bloqueado. Cierre contable completado.');
+    await loadWizData();
+    await loadIntegrity();
+    renderStep6();
+    goStep(1);
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+// ========= HELPERS =========
+function acctLabel(s) {
+  return { not_started:'Sin iniciar', in_progress:'En progreso',
+    partially_reconciled:'Parcialmente Reconciliado', reconciled:'Conciliado', locked:'Bloqueado' }[s] || s;
+}
+async function apiFetch(url, opts = {}) {
+  const res = await fetch(url, {
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', ...(opts.headers||{}) },
+    ...opts,
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
+}
+</script>
+</body>
+</html>

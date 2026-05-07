@@ -1,0 +1,159 @@
+Actúa como Principal Full-Stack Engineer y Accounting Systems Architect para gestion.nadakiexcursions.
+
+Necesito implementar un módulo interactivo llamado Booking Reconciliation Wizard.
+
+Objetivo:
+Crear una experiencia guiada para que el personal de contabilidad pueda cuadrar cada booking paso a paso, según el estado actual del booking, pagos, gastos, depósitos, cash, cuentas por cobrar y diferencias detectadas.
+
+Reglas principales:
+- No romper endpoints existentes.
+- No eliminar funcionalidades actuales.
+- Integrar con booking_deposits, booking_receivables, transactions y bookings.
+- Permitir asientos manuales controlados.
+- Todo cambio debe dejar auditoría.
+
+Crear en la UI un botón dentro de cada booking:
+"Cuadrar Booking"
+
+Al hacer clic, abrir wizard con estos pasos:
+
+1. Booking Overview
+Mostrar:
+- booking_id
+- cliente
+- fecha
+- total
+- status
+- payment_status
+- accounting_status
+
+2. Payment Detection
+Permitir registrar pagos:
+- Bank
+- Zelle
+- Cash
+- Platform
+- Mixed Payment
+
+Reglas:
+- Si es cash, usar cuenta 1015 Cash Clearing / Operating Cash.
+- Si es depósito antes del servicio, usar cuenta 2500 Deferred Booking Deposits.
+- Si es balance pendiente, usar Accounts Receivable.
+- No reconocer revenue hasta que el booking esté completed.
+
+3. Expense Registration
+Permitir registrar gastos asociados al booking:
+- Fuel
+- Ice
+- Captain
+- Cleaning
+- Commission
+- Other
+
+Cada gasto debe registrar:
+- amount
+- date
+- payment_method
+- account_code
+- notes
+- booking_id
+
+Reglas:
+- Si payment_method = cash, acreditar 1015 Cash Clearing.
+- Si payment_method = bank o zelle, acreditar banco correspondiente.
+- Debitar la cuenta de gasto correspondiente.
+
+4. Auto Reconciliation Check
+Crear función:
+checkBookingIntegrity(booking_id)
+
+Debe calcular:
+- booking_total
+- total_payments
+- total_revenue_recognized
+- total_expenses
+- cash_in
+- cash_out
+- cash_clearing_balance
+- profit
+- discrepancies
+
+Debe devolver:
+- status: reconciled, partially_reconciled, not_reconciled
+- alerts[]
+- suggested_next_action
+
+Validaciones:
+- total_payments debe igualar booking_total
+- revenue reconocido debe igualar booking_total si servicio completado
+- cash_in debe igualar cash_out o dejar balance explicado
+- gastos deben estar asociados al booking
+- pagos a capitán deben compararse contra horas × tarifa, si existe esa data
+
+5. Manual Adjustment
+Crear pantalla para asiento manual:
+- debit account
+- credit account
+- amount
+- reason
+- booking_id
+- created_by
+- timestamp
+
+Validaciones:
+- total debits = total credits
+- reason obligatorio
+- no permitir cerrar booking sin motivo de ajuste
+
+6. Final Close
+Permitir cerrar booking solo si:
+- total payments = booking total
+- revenue correcto
+- expenses registrados
+- cash clearing balance = 0
+- discrepancies resueltas o aprobadas
+
+Estados:
+- not_started
+- in_progress
+- partially_reconciled
+- reconciled
+- locked
+
+Caso de prueba obligatorio:
+Booking Matej:
+- total: 700
+- date: 2026-04-27
+- bank deposit: 250 on 2026-04-23 Wells Fargo
+- cash received: 450 on 2026-04-27
+- cash expenses:
+  - fuel: 300
+  - ice: 6
+  - captain Pablo cash: 144
+- zelle payment to captain Pablo: 111 on 2026-04-30
+- captain expected pay: 5 hours × 50 = 250
+
+Expected result:
+- revenue: 700
+- payments: 700
+- expenses: 561
+- profit: 139
+- captain overpayment alert: 5
+- accounting_status: partially_reconciled
+- suggested action: classify $5 as tip, error, manual adjustment or company credit.
+
+UI requirements:
+- Use step-by-step wizard
+- Show progress bar
+- Show green/yellow/red accounting status
+- Show next recommended action
+- Disable final close unless integrity check passes
+- Add audit trail for every accounting action
+
+Deliver:
+- Backend endpoints
+- Frontend wizard
+- Integrity checker
+- Manual adjustment screen
+- Matej test case
+- No breaking changes.
