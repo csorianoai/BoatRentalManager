@@ -1,0 +1,103 @@
+Actúa como Principal Product Engineer para gestion.nadakiexcursions.
+
+OBJETIVO:
+Modificar el Booking Reconciliation Wizard para permitir registrar múltiples gastos consecutivos en el Paso de Gastos, sin obligar al usuario a avanzar al siguiente paso.
+
+PROBLEMA:
+Actualmente, después de registrar un gasto, el flujo parece avanzar o quedar poco práctico para seguir agregando gastos. Necesitamos que el usuario pueda registrar:
+- Fuel
+- Ice
+- Captain
+- Cleaning
+- Other
+en la misma pantalla, uno detrás del otro.
+
+REQUERIMIENTO FUNCIONAL:
+En booking-wizard.html, Paso “Registro de Gastos”:
+
+1. Al hacer clic en “+ Registrar Gasto”:
+   - Crear el gasto
+   - Mostrar confirmación
+   - Refrescar la lista “Gastos registrados”
+   - Actualizar totales del booking
+   - Actualizar cash clearing balance
+   - Mantener al usuario en el mismo paso de gastos
+   - NO avanzar automáticamente al siguiente paso
+
+2. Después de guardar exitosamente:
+   - Limpiar campos del formulario:
+     amount
+     description
+     responsible/vendor
+   - Mantener categoría seleccionada o resetear a default según mejor UX
+   - Mantener método de pago seleccionado
+   - Dejar el cursor listo para registrar otro gasto
+
+3. Agregar botón separado:
+   “Continuar a Validación”
+   Este botón será el único que avance al siguiente paso.
+
+4. Agregar botón opcional:
+   “Registrar otro gasto”
+   Si el formulario ya se limpia automáticamente, puede no ser necesario.
+
+5. Lista visible:
+   Debajo del formulario debe mostrarse tabla/lista actualizada:
+   - Fecha
+   - Categoría
+   - Cuenta contable
+   - Monto
+   - Método de pago
+   - Responsable
+   - Descripción
+   - Acción: editar/eliminar si el periodo no está locked
+
+6. Totales visibles:
+   Mostrar summary card:
+   - Total gastos registrados
+   - Cash expenses
+   - Bank/Zelle expenses
+   - Cash clearing remaining
+   - Net profit provisional
+
+7. Validación:
+   - No permitir monto vacío o <= 0
+   - No permitir cuenta inexistente o inactiva
+   - Si payment_method=cash, usar Cr 1015 Cash Clearing
+   - Si payment_method=bank/zelle, usar cuenta bancaria correspondiente
+   - Mantener booking_id correcto
+
+8. UX:
+   Después de registrar cada gasto mostrar:
+   “Gasto registrado correctamente. Puedes agregar otro gasto o continuar a validación.”
+
+9. No romper:
+   - Legacy lock
+   - Cash clearing logic
+   - account_code mapping
+   - Matej test
+   - Manual adjustments
+   - Integrity check
+
+10. Prueba obligatoria con booking actual:
+   booking_id = book_dDgO83lgF1
+
+   Registrar sin avanzar:
+   - Fuel 300 cash
+   - Ice 6 cash
+   - Captain 144 cash
+   - Captain 111 zelle/bank
+
+   Resultado esperado:
+   - Los 4 gastos aparecen en la lista
+   - El wizard sigue en Paso de Gastos hasta que el usuario haga clic en “Continuar a Validación”
+   - Total gastos = 561
+   - No hay navegación automática al siguiente paso
+   - Integrity check sigue funcionando
+
+ENTREGABLE:
+Reportar:
+- Archivo modificado
+- Función JS modificada
+- Si existía auto-advance, dónde se eliminó
+- Cómo probarlo

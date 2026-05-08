@@ -2222,51 +2222,77 @@ async function initializeDatabase() {
     // ── END FASE 21 ──────────────────────────────────────────────────────
 
     // ── FASE 22: COA Normalization — align with approved chart of accounts ─
-    // F22-01: Rename 5xxx accounts to match approved plan (idempotent via WHERE)
-    await pool.query(`UPDATE chart_of_accounts SET account_name='Captain Labor',       description='Captain wages and direct labor costs per charter'
-                      WHERE account_code='5010' AND account_name != 'Captain Labor'`).catch(()=>{});
-    await pool.query(`UPDATE chart_of_accounts SET account_name='Fuel Expense',        description='Fuel costs for boats and charters'
-                      WHERE account_code='5020' AND account_name != 'Fuel Expense'`).catch(()=>{});
-    await pool.query(`UPDATE chart_of_accounts SET account_name='Ice / Supplies',      description='Ice, beverages, and charter supplies'
-                      WHERE account_code='5030' AND account_name != 'Ice / Supplies'`).catch(()=>{});
-    await pool.query(`UPDATE chart_of_accounts SET account_name='Cleaning',            description='Boat cleaning and detailing per charter'
-                      WHERE account_code='5040' AND account_name != 'Cleaning'`).catch(()=>{});
-    await pool.query(`UPDATE chart_of_accounts SET account_name='Dock / Marina Fees',  description='Dockage and marina fees per charter'
-                      WHERE account_code='5050' AND account_name != 'Dock / Marina Fees'`).catch(()=>{});
-    await pool.query(`UPDATE chart_of_accounts SET account_name='Platform Fees',       description='Booking platform commission fees'
-                      WHERE account_code='5060' AND account_name != 'Platform Fees'`).catch(()=>{});
-    // F22-02: Deactivate 5080 (Operational Expenses — not in approved plan, was source of bug)
-    await pool.query(`UPDATE chart_of_accounts SET is_active=0 WHERE account_code='5080'`).catch(()=>{});
-
-    // F22-03: Create approved operating expense accounts (6xxx) — idempotent
+    // F22-01: UPSERT 5xxx Cost-of-Services accounts with approved names
+    // Uses ON CONFLICT (account_code) so production gets them even if never seeded
     const expParent22 = await pool.query(`SELECT id FROM chart_of_accounts WHERE account_code='5000' LIMIT 1`);
     const ep22 = expParent22.rows[0]?.id || null;
     await pool.query(`
-      INSERT INTO chart_of_accounts(id, account_code, account_name, account_type, parent_account_id, description)
+      INSERT INTO chart_of_accounts(id, account_code, account_name, account_type, is_active, parent_account_id, description)
       VALUES
-        ('acc_6010','6010','Insurance',             'expense',$1,'Business insurance — boats, liability, workers comp'),
-        ('acc_6020','6020','Maintenance',           'expense',$1,'General boat and equipment maintenance & repairs'),
-        ('acc_6030','6030','Marketing',             'expense',$1,'Marketing, advertising and promotional costs'),
-        ('acc_6040','6040','Software',              'expense',$1,'Software subscriptions and technology expenses'),
-        ('acc_6050','6050','Bank Fees',             'expense',$1,'Bank service charges, wire fees, processing fees'),
-        ('acc_6060','6060','Office / Admin',        'expense',$1,'Office supplies and administrative expenses'),
-        ('acc_6070','6070','Legal / Professional',  'expense',$1,'Legal, accounting and professional service fees'),
-        ('acc_6080','6080','Rent',                  'expense',$1,'Office and facility rent'),
-        ('acc_6090','6090','Utilities',             'expense',$1,'Electricity, water, internet and utility bills'),
-        ('acc_6900','6900','Miscellaneous Expense', 'expense',$1,'Miscellaneous and unclassified expenses')
-      ON CONFLICT (id) DO NOTHING
-    `, [ep22]).catch(()=>{});
+        ('acc_5010','5010','Captain Labor',     'expense',1,$1,'Captain wages and direct labor costs per charter'),
+        ('acc_5020','5020','Fuel Expense',      'expense',1,$1,'Fuel costs for boats and charters'),
+        ('acc_5030','5030','Ice / Supplies',    'expense',1,$1,'Ice, beverages, and charter supplies'),
+        ('acc_5040','5040','Cleaning',          'expense',1,$1,'Boat cleaning and detailing per charter'),
+        ('acc_5050','5050','Dock / Marina Fees','expense',1,$1,'Dockage and marina fees per charter'),
+        ('acc_5060','5060','Platform Fees',     'expense',1,$1,'Booking platform commission fees')
+      ON CONFLICT (account_code) DO UPDATE
+        SET account_name        = EXCLUDED.account_name,
+            account_type        = EXCLUDED.account_type,
+            is_active           = 1,
+            description         = EXCLUDED.description
+    `, [ep22]).catch(e => console.error('F22-01 warn:', e.message));
 
-    // F22-04: Create Other Income account
+    // F22-02: Deactivate 5080 (not in approved plan — was source of fuel→5080 bug)
+    await pool.query(`UPDATE chart_of_accounts SET is_active=0 WHERE account_code='5080'`).catch(()=>{});
+
+    // F22-03: UPSERT approved Operating Expense accounts (6xxx)
+    await pool.query(`
+      INSERT INTO chart_of_accounts(id, account_code, account_name, account_type, is_active, parent_account_id, description)
+      VALUES
+        ('acc_6010','6010','Insurance',             'expense',1,$1,'Business insurance — boats, liability, workers comp'),
+        ('acc_6020','6020','Maintenance',           'expense',1,$1,'General boat and equipment maintenance & repairs'),
+        ('acc_6030','6030','Marketing',             'expense',1,$1,'Marketing, advertising and promotional costs'),
+        ('acc_6040','6040','Software',              'expense',1,$1,'Software subscriptions and technology expenses'),
+        ('acc_6050','6050','Bank Fees',             'expense',1,$1,'Bank service charges, wire fees, processing fees'),
+        ('acc_6060','6060','Office / Admin',        'expense',1,$1,'Office supplies and administrative expenses'),
+        ('acc_6070','6070','Legal / Professional',  'expense',1,$1,'Legal, accounting and professional service fees'),
+        ('acc_6080','6080','Rent',                  'expense',1,$1,'Office and facility rent'),
+        ('acc_6090','6090','Utilities',             'expense',1,$1,'Electricity, water, internet and utility bills'),
+        ('acc_6900','6900','Miscellaneous Expense', 'expense',1,$1,'Miscellaneous and unclassified expenses')
+      ON CONFLICT (account_code) DO UPDATE
+        SET account_name = EXCLUDED.account_name,
+            account_type = EXCLUDED.account_type,
+            is_active    = 1,
+            description  = EXCLUDED.description
+    `, [ep22]).catch(e => console.error('F22-03 warn:', e.message));
+
+    // F22-04: UPSERT Other Income account
     const revParent22 = await pool.query(`SELECT id FROM chart_of_accounts WHERE account_code='4000' LIMIT 1`);
     const rp22 = revParent22.rows[0]?.id || null;
     await pool.query(`
-      INSERT INTO chart_of_accounts(id, account_code, account_name, account_type, parent_account_id, description)
-      VALUES ('acc_4090','4090','Other Income','revenue',$1,'Miscellaneous and other income sources')
-      ON CONFLICT (id) DO NOTHING
-    `, [rp22]).catch(()=>{});
+      INSERT INTO chart_of_accounts(id, account_code, account_name, account_type, is_active, parent_account_id, description)
+      VALUES ('acc_4090','4090','Other Income','revenue',1,$1,'Miscellaneous and other income sources')
+      ON CONFLICT (account_code) DO UPDATE
+        SET account_name = EXCLUDED.account_name,
+            is_active    = 1,
+            description  = EXCLUDED.description
+    `, [rp22]).catch(e => console.error('F22-04 warn:', e.message));
 
-    console.log('✅ FASE 22: COA normalized — approved accounts ready, 5080 deactivated');
+    // F22-05: UPSERT critical asset/liability accounts referenced by booking endpoints
+    await pool.query(`
+      INSERT INTO chart_of_accounts(id, account_code, account_name, account_type, is_active, description)
+      VALUES
+        ('acc_cash_clearing_1015','1015','Cash Clearing / Operating Cash','asset',1,'Clearing account for cash payments before bank deposit'),
+        ('acc_ar_1100',           '1100','Accounts Receivable',           'asset',1,'Amounts owed by customers for services rendered'),
+        ('acc_booking_deposits_2500','2500','Deferred Booking Deposits',  'liability',1,'Deposits received for future bookings — not yet revenue'),
+        ('acc_revenue_tours_4010','4010','Revenue - Tours',               'revenue',1,'Income from boat tours'),
+        ('acc_revenue_rentals_4020','4020','Revenue - Rentals',           'revenue',1,'Income from boat rentals')
+      ON CONFLICT (account_code) DO UPDATE
+        SET account_name = EXCLUDED.account_name,
+            is_active    = 1
+    `).catch(e => console.error('F22-05 warn:', e.message));
+
+    console.log('✅ FASE 22: COA normalized — all approved accounts upserted, 5080 deactivated');
     // ── END FASE 22 ──────────────────────────────────────────────────────
 
     console.log('✅ Database schema initialized successfully (all 10 phases + authentication)');
@@ -15795,6 +15821,39 @@ app.post('/api/accounting/test-matej/seed', isAuthenticated, async (req, res) =>
     console.error('Error test-matej/seed:', err);
     res.status(500).json({ error: err.message });
   } finally { pg.release(); }
+});
+
+// ── GET /api/accounting/chart-of-accounts — lista COA completa ──────────
+app.get('/api/accounting/chart-of-accounts', isAuthenticated, async (req, res) => {
+  try {
+    const { type, active_only } = req.query;
+    let sql = `SELECT id, account_code, account_name, account_type, is_active, description, parent_account_id
+               FROM chart_of_accounts WHERE 1=1`;
+    const params = [];
+    if (type) { params.push(type); sql += ` AND account_type = $${params.length}`; }
+    if (active_only !== 'false') { sql += ` AND (is_active IS NULL OR is_active != 0)`; }
+    sql += ` ORDER BY account_code`;
+    const { rows } = await pool.query(sql, params);
+    res.json(rows);
+  } catch (err) {
+    console.error('Error chart-of-accounts:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /api/accounting/chart-of-accounts/:code — cuenta específica ───────
+app.get('/api/accounting/chart-of-accounts/:code', isAuthenticated, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, account_code, account_name, account_type, is_active, description
+       FROM chart_of_accounts WHERE account_code = $1 LIMIT 1`,
+      [req.params.code]
+    );
+    if (!rows.length) return res.status(404).json({ error: `Cuenta ${req.params.code} no encontrada` });
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── GET /api/accounting/bookings-ledger-list — lista con estado contable ──

@@ -1,0 +1,75 @@
+URGENTE — corregir error persistente de cuenta 5020.
+
+Contexto:
+En booking-wizard.html, al registrar gasto de combustible, el sistema ahora intenta usar account_code 5020 para fuel, lo cual es correcto.
+Pero aparece el error:
+“Cuenta 5020 no encontrada o inactiva — para 'fuel' se sugiere 5020”
+
+Eso significa que el mapping fue corregido, pero la cuenta 5020 no existe o está inactive en chart_of_accounts.
+
+Tarea quirúrgica:
+
+1. Revisar tabla chart_of_accounts.
+2. Buscar account_code/code = '5020'.
+3. Si NO existe, crearla:
+   code: 5020
+   name: Fuel Expense
+   type: expense
+   category: Cost of Services
+   active: true
+
+4. Si existe pero active=false o status inactive:
+   actualizar a:
+   active: true
+   status: active
+
+5. Verificar que el backend valide tanto:
+   code
+   account_code
+   según el nombre real de la columna.
+
+6. Repetir para todas las cuentas críticas del Booking Reconciliation Wizard y crear/activar si faltan:
+
+5010 - Captain Labor - expense - Cost of Services
+5020 - Fuel Expense - expense - Cost of Services
+5030 - Ice / Supplies - expense - Cost of Services
+5040 - Cleaning - expense - Cost of Services
+5050 - Dock / Marina Fees - expense - Cost of Services
+5060 - Platform Fees - expense - Cost of Services
+
+1015 - Cash Clearing / Operating Cash - asset - Cash
+1010 - Wells Fargo Checking - asset - Bank
+1100 - Accounts Receivable - asset - Receivables
+2500 - Deferred Booking Deposits - liability - Deferred Revenue
+4010 - Revenue - Tours - income - Revenue
+4020 - Revenue - Rentals - income - Revenue
+6900 - Miscellaneous Expense - expense - Operating Expenses
+
+7. Crear endpoint temporal o usar existente para validar:
+GET /api/accounting/chart-of-accounts
+
+Debe devolver 5020 activa.
+
+8. Probar específicamente:
+Registrar gasto:
+booking_id = book_dDgO83lgF1
+expense_type = fuel
+amount = 300
+payment_method = cash
+expected journal:
+Dr 5020 Fuel Expense 300
+Cr 1015 Cash Clearing 300
+
+9. Si el sistema usa cache del chart_of_accounts:
+- limpiar cache
+- reiniciar servidor
+- confirmar que el frontend vuelve a cargar cuentas activas.
+
+10. Entregar evidencia:
+- cuenta 5020 existe
+- active=true
+- fuel mapping apunta a 5020
+- gasto fuel se registra sin error
+- transaction creada correctamente
+
+No cambies el mapping de fuel a otra cuenta. La cuenta correcta es 5020.
