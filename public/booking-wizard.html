@@ -1125,6 +1125,9 @@ function calcExpectedPay() {
     const expected = hours * rate;
     val.textContent = '$' + expected.toFixed(2);
     line.style.display = 'block';
+    // Auto-fill amount so the user doesn't need to click "Usar este monto"
+    const amountEl = document.getElementById('exp-amount');
+    if (amountEl) amountEl.value = expected.toFixed(2);
   } else {
     line.style.display = 'none';
   }
@@ -1143,9 +1146,15 @@ function quickCaptainPayment() {
   // Pre-fill expense form for captain payment
   const catEl = document.getElementById('exp-category');
   if (catEl) { catEl.value = 'crew'; onExpCategoryChange('crew'); }
-  document.getElementById('captain-panel').style.display = 'block';
-  document.getElementById('cap-name')?.focus();
-  showToast('exp-msg', 'Selecciona Cash o Zelle/Banco, ingresa las horas y el monto del capitán.', 'info');
+  const panel = document.getElementById('captain-panel');
+  if (panel) panel.style.display = 'block';
+  // Re-trigger calculation in case hours/rate are already filled
+  calcExpectedPay();
+  const nameEl = document.getElementById('cap-name');
+  const hoursEl = document.getElementById('cap-hours');
+  // Focus on first empty required field
+  if (nameEl && !nameEl.value) { nameEl.focus(); }
+  else if (hoursEl && !hoursEl.value) { hoursEl.focus(); }
 }
 
 async function addExpense() {
@@ -1165,6 +1174,12 @@ async function addExpense() {
   const capHours  = isCaptain ? (parseFloat(document.getElementById('cap-hours')?.value || 0) || null) : null;
   const capRate   = isCaptain ? (parseFloat(document.getElementById('cap-rate')?.value  || 50) || null) : null;
 
+  // Auto-apply expected pay for captain if amount was left empty
+  if ((!amount || amount <= 0) && isCaptain && capHours > 0) {
+    const autoAmt = capHours * (capRate || 50);
+    document.getElementById('exp-amount').value = autoAmt.toFixed(2);
+    return addExpense(); // re-run with amount filled
+  }
   if (!amount || amount <= 0) { showToast('exp-msg','Ingresa un monto válido mayor a cero.','error'); return; }
   if (!notes && !isCaptain) { showToast('exp-msg','La descripción del gasto es requerida.','error'); return; }
 
