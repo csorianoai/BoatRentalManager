@@ -2221,6 +2221,54 @@ async function initializeDatabase() {
     console.log('✅ FASE 21: Accounting period cutover control ready');
     // ── END FASE 21 ──────────────────────────────────────────────────────
 
+    // ── FASE 22: COA Normalization — align with approved chart of accounts ─
+    // F22-01: Rename 5xxx accounts to match approved plan (idempotent via WHERE)
+    await pool.query(`UPDATE chart_of_accounts SET account_name='Captain Labor',       description='Captain wages and direct labor costs per charter'
+                      WHERE account_code='5010' AND account_name != 'Captain Labor'`).catch(()=>{});
+    await pool.query(`UPDATE chart_of_accounts SET account_name='Fuel Expense',        description='Fuel costs for boats and charters'
+                      WHERE account_code='5020' AND account_name != 'Fuel Expense'`).catch(()=>{});
+    await pool.query(`UPDATE chart_of_accounts SET account_name='Ice / Supplies',      description='Ice, beverages, and charter supplies'
+                      WHERE account_code='5030' AND account_name != 'Ice / Supplies'`).catch(()=>{});
+    await pool.query(`UPDATE chart_of_accounts SET account_name='Cleaning',            description='Boat cleaning and detailing per charter'
+                      WHERE account_code='5040' AND account_name != 'Cleaning'`).catch(()=>{});
+    await pool.query(`UPDATE chart_of_accounts SET account_name='Dock / Marina Fees',  description='Dockage and marina fees per charter'
+                      WHERE account_code='5050' AND account_name != 'Dock / Marina Fees'`).catch(()=>{});
+    await pool.query(`UPDATE chart_of_accounts SET account_name='Platform Fees',       description='Booking platform commission fees'
+                      WHERE account_code='5060' AND account_name != 'Platform Fees'`).catch(()=>{});
+    // F22-02: Deactivate 5080 (Operational Expenses — not in approved plan, was source of bug)
+    await pool.query(`UPDATE chart_of_accounts SET is_active=0 WHERE account_code='5080'`).catch(()=>{});
+
+    // F22-03: Create approved operating expense accounts (6xxx) — idempotent
+    const expParent22 = await pool.query(`SELECT id FROM chart_of_accounts WHERE account_code='5000' LIMIT 1`);
+    const ep22 = expParent22.rows[0]?.id || null;
+    await pool.query(`
+      INSERT INTO chart_of_accounts(id, account_code, account_name, account_type, parent_account_id, description)
+      VALUES
+        ('acc_6010','6010','Insurance',             'expense',$1,'Business insurance — boats, liability, workers comp'),
+        ('acc_6020','6020','Maintenance',           'expense',$1,'General boat and equipment maintenance & repairs'),
+        ('acc_6030','6030','Marketing',             'expense',$1,'Marketing, advertising and promotional costs'),
+        ('acc_6040','6040','Software',              'expense',$1,'Software subscriptions and technology expenses'),
+        ('acc_6050','6050','Bank Fees',             'expense',$1,'Bank service charges, wire fees, processing fees'),
+        ('acc_6060','6060','Office / Admin',        'expense',$1,'Office supplies and administrative expenses'),
+        ('acc_6070','6070','Legal / Professional',  'expense',$1,'Legal, accounting and professional service fees'),
+        ('acc_6080','6080','Rent',                  'expense',$1,'Office and facility rent'),
+        ('acc_6090','6090','Utilities',             'expense',$1,'Electricity, water, internet and utility bills'),
+        ('acc_6900','6900','Miscellaneous Expense', 'expense',$1,'Miscellaneous and unclassified expenses')
+      ON CONFLICT (id) DO NOTHING
+    `, [ep22]).catch(()=>{});
+
+    // F22-04: Create Other Income account
+    const revParent22 = await pool.query(`SELECT id FROM chart_of_accounts WHERE account_code='4000' LIMIT 1`);
+    const rp22 = revParent22.rows[0]?.id || null;
+    await pool.query(`
+      INSERT INTO chart_of_accounts(id, account_code, account_name, account_type, parent_account_id, description)
+      VALUES ('acc_4090','4090','Other Income','revenue',$1,'Miscellaneous and other income sources')
+      ON CONFLICT (id) DO NOTHING
+    `, [rp22]).catch(()=>{});
+
+    console.log('✅ FASE 22: COA normalized — approved accounts ready, 5080 deactivated');
+    // ── END FASE 22 ──────────────────────────────────────────────────────
+
     console.log('✅ Database schema initialized successfully (all 10 phases + authentication)');
     
     // Insert default message templates if they don't exist
@@ -6545,10 +6593,10 @@ async function createFuelExpenseFromTripReport(tripReportId, fuelUsed, estimated
     // Calculate cost if not provided (assume $4.50/gallon)
     const fuelCost = estimatedCost || (fuelUsed * 4.50);
     
-    // Find fuel expense account
+    // Find fuel expense account (5020 per approved COA)
     const accountResult = await pool.query(
       `SELECT id FROM chart_of_accounts 
-       WHERE account_code = '5010' OR (account_type = 'expense' AND account_name LIKE '%Fuel%')
+       WHERE account_code = '5020' OR (account_type = 'expense' AND account_name ILIKE '%Fuel%')
        ORDER BY account_code LIMIT 1`
     );
     
@@ -6590,6 +6638,60 @@ function addMonthsSafe(date, months) {
   return d;
 }
 
+// ── EXPENSE_ACCOUNT_MAP — single source of truth for expense_type → account_code ──
+// ALL endpoints and functions must resolve expense account codes from this map.
+// Rule: no hardcoded account codes anywhere else in the codebase.
+const EXPENSE_ACCOUNT_MAP = {
+  // Cost of Services (5xxx)
+  captain_labor:      '5010',
+  captain:            '5010',
+  crew:               '5010',
+  tripulacion:        '5010',
+  fuel:               '5020',
+  combustible:        '5020',
+  gas:                '5020',
+  ice:                '5030',
+  hielo:              '5030',
+  supplies:           '5030',
+  suministros:        '5030',
+  cleaning:           '5040',
+  limpieza:           '5040',
+  dock:               '5050',
+  marina:             '5050',
+  marina_fees:        '5050',
+  platform_fee:       '5060',
+  commission:         '5060',
+  comision:           '5060',
+  // Operating Expenses (6xxx)
+  insurance:          '6010',
+  seguro:             '6010',
+  maintenance:        '6020',
+  mantenimiento:      '6020',
+  maintenance_parts:  '6020',
+  emergency_repairs:  '6020',
+  labor:              '6020',
+  marketing:          '6030',
+  publicidad:         '6030',
+  software:           '6040',
+  sistemas:           '6040',
+  subscriptions:      '6040',
+  bank_fee:           '6050',
+  bank_fees:          '6050',
+  office_admin:       '6060',
+  admin:              '6060',
+  legal_professional: '6070',
+  legal:              '6070',
+  rent:               '6080',
+  renta:              '6080',
+  utilities:          '6090',
+  electricidad:       '6090',
+  // Catch-all
+  operational:        '6900',
+  misc:               '6900',
+  other:              '6900',
+  otro:               '6900',
+};
+
 // FASE 10: Auto-create accounting transaction from boat expense
 async function syncBoatExpenseToAccounting(boatExpenseId, category, amount, expenseDate, description, boatName) {
   try {
@@ -6597,16 +6699,16 @@ async function syncBoatExpenseToAccounting(boatExpenseId, category, amount, expe
       return null;
     }
     
-    // Map boat expense categories to chart of accounts
+    // Map boat expense categories to chart of accounts (via EXPENSE_ACCOUNT_MAP)
     const categoryToAccountCode = {
-      'fuel': '5010',
-      'maintenance_parts': '5020',
-      'labor': '5030',
-      'cleaning': '5040',
-      'marina_fees': '5050',
-      'insurance': '5060',
-      'emergency_repairs': '5070',
-      'operational': '5080'
+      'fuel':             EXPENSE_ACCOUNT_MAP.fuel,
+      'maintenance_parts':EXPENSE_ACCOUNT_MAP.maintenance_parts,
+      'labor':            EXPENSE_ACCOUNT_MAP.labor,
+      'cleaning':         EXPENSE_ACCOUNT_MAP.cleaning,
+      'marina_fees':      EXPENSE_ACCOUNT_MAP.marina_fees,
+      'insurance':        EXPENSE_ACCOUNT_MAP.insurance,
+      'emergency_repairs':EXPENSE_ACCOUNT_MAP.emergency_repairs,
+      'operational':      EXPENSE_ACCOUNT_MAP.operational,
     };
     
     const accountCode = categoryToAccountCode[category];
@@ -8708,26 +8810,30 @@ app.get('/api/accounting/conciliation/items', isAuthenticated, async (req, res) 
 // RULE: no account code appears in more than one group.
 // RULE: ELSE fallback → gastos_generales (never a mystery "other").
 const UNIFIED_EXPENSE_CATEGORIES = [
-  { key:'combustible',           label:'Combustible',              codes:['5010'] },
-  { key:'marina',                label:'Gastos de Marina',         codes:['5050','5200'] },
-  { key:'mantenimiento',         label:'Gastos de Mantenimiento',  codes:['5030','5070','5100'] },
-  { key:'partes_piezas',         label:'Partes y Piezas',          codes:['5020','5975'] },
+  // ── Cost of Services (5xxx) — per approved COA ─────────────────────────
+  { key:'captain_labor',         label:'Capitán / Labor',          codes:['5010','5400'] },
+  { key:'combustible',           label:'Combustible',              codes:['5020'] },
+  { key:'hielo_suministros',     label:'Hielo / Suministros',      codes:['5030','5700'] },
   { key:'limpieza',              label:'Limpieza',                 codes:['5040'] },
-  { key:'seguro',                label:'Gastos de Seguro',         codes:['5060','5300'] },
-  { key:'sueldos',               label:'Sueldos / Tripulación',    codes:['5400'] },
-  { key:'comisiones_plataforma', label:'Comisiones de Plataforma', codes:['5500'] },
-  { key:'publicidad',            label:'Publicidad',               codes:['5600','5960'] },
-  { key:'suministros',           label:'Suministros / Equipo',     codes:['5700'] },
-  { key:'gastos_admin',          label:'Gastos Administrativos',   codes:['5800','5900'] },
+  { key:'marina',                label:'Gastos de Marina',         codes:['5050','5200'] },
+  { key:'comisiones_plataforma', label:'Comisiones de Plataforma', codes:['5060','5500'] },
+  { key:'partes_piezas',         label:'Partes y Piezas',          codes:['5975'] },
+  // ── Operating Expenses (6xxx) — per approved COA ───────────────────────
+  { key:'seguro',                label:'Seguros',                  codes:['6010','5300','5060'] },
+  { key:'mantenimiento',         label:'Mantenimiento',            codes:['6020','5020','5070','5100'] },
+  { key:'marketing',             label:'Marketing / Publicidad',   codes:['6030','5600','5960'] },
+  { key:'software',              label:'Software / Sistemas',      codes:['6040','5980'] },
+  { key:'gastos_bancarios',      label:'Gastos Bancarios',         codes:['6050','5910','5920'] },
+  { key:'oficina_admin',         label:'Oficina / Admin',          codes:['6060','5800','5900'] },
+  { key:'legal_profesional',     label:'Legal / Profesional',      codes:['6070'] },
+  { key:'renta',                 label:'Renta',                    codes:['6080','5970'] },
+  { key:'utilidades',            label:'Utilidades',               codes:['6090','5990'] },
   { key:'depreciacion',          label:'Depreciación',             codes:['5810'] },
-  { key:'comisiones_bancarias',  label:'Comisiones Bancarias',     codes:['5910','5920'] },
   { key:'viaticos',              label:'Viáticos',                 codes:['5930'] },
   { key:'transportacion',        label:'Transportación',           codes:['5940'] },
   { key:'gps',                   label:'GPS Barcos',               codes:['5950'] },
-  { key:'renta_oficina',         label:'Renta de Oficina',         codes:['5970'] },
-  { key:'sistemas_operativos',   label:'Sistemas Operativos',      codes:['5080','5980'] },
   { key:'comunicaciones',        label:'Comunicaciones',           codes:['5985'] },
-  { key:'gastos_generales',      label:'Gastos Generales',         codes:['5990'] },
+  { key:'gastos_generales',      label:'Gastos Generales / Misc',  codes:['6900','5990'] },
 ];
 
 const UNIFIED_INCOME_CATEGORIES = [
@@ -8761,42 +8867,52 @@ function codesForCategory(categories, key) {
 // Maps canonical category keys (from smartClassify + UNIFIED_EXPENSE_CATEGORIES)
 // → preferred account_code for resolveAccountId when posting bank statements.
 const CATEGORY_ACCOUNT_CODE = {
-  // ── Expenses (canonical keys = UNIFIED_EXPENSE_CATEGORIES.key) ────────────
-  combustible:           '5010',
-  marina:                '5050',
-  mantenimiento:         '5100',
-  partes_piezas:         '5975',
+  // ── Expenses — Cost of Services (5xxx, per approved COA) ─────────────────
+  captain_labor:         '5010',
+  combustible:           '5020',
+  hielo_suministros:     '5030',
   limpieza:              '5040',
-  seguro:                '5300',
-  sueldos:               '5400',
-  comisiones_plataforma: '5500',
-  publicidad:            '5960',
-  suministros:           '5700',
-  gastos_admin:          '5900',
+  marina:                '5050',
+  comisiones_plataforma: '5060',
+  partes_piezas:         '5975',
+  // ── Expenses — Operating (6xxx, per approved COA) ────────────────────────
+  seguro:                '6010',
+  mantenimiento:         '6020',
+  marketing:             '6030',
+  software:              '6040',
+  gastos_bancarios:      '6050',
+  oficina_admin:         '6060',
+  legal_profesional:     '6070',
+  renta:                 '6080',
+  utilidades:            '6090',
   depreciacion:          '5810',
-  comisiones_bancarias:  '5920',
   viaticos:              '5930',
   transportacion:        '5940',
   gps:                   '5950',
-  renta_oficina:         '5970',
-  sistemas_operativos:   '5980',
   comunicaciones:        '5985',
-  gastos_generales:      '5990',
-  // ── Legacy keys (backward compat for old bank_statement records) ──────────
-  fuel:                  '5010',
+  gastos_generales:      '6900',
+  // ── Legacy/backward-compat keys ──────────────────────────────────────────
+  fuel:                  '5020',   // fuel → 5020 Fuel Expense (approved)
   marina_fees:           '5050',
-  maintenance_repair:    '5100',
+  maintenance_repair:    '6020',
   cleaning:              '5040',
-  insurance:             '5300',
-  crew_payroll:          '5400',
-  subscriptions:         '5080',
-  office:                '5900',
-  marine_supplies:       '5020',
+  insurance:             '6010',
+  crew_payroll:          '5010',
+  sueldos:               '5010',
+  subscriptions:         '6040',   // subscriptions → 6040 Software (was 5080)
+  office:                '6060',
+  marine_supplies:       '5030',
   inventory:             '5975',
-  bank_commissions:      '5920',
-  interest_expense:      '5910',
-  other_expense:         '5990',
-  deposit:               '5080',
+  bank_commissions:      '6050',
+  comisiones_bancarias:  '6050',
+  interest_expense:      '6050',
+  other_expense:         '6900',
+  deposit:               '2500',   // deposit → 2500 Deferred Booking Deposits (was 5080)
+  sistemas_operativos:   '6040',
+  renta_oficina:         '6080',
+  publicidad:            '6030',
+  suministros:           '5030',
+  gastos_admin:          '6060',
   // ── Assets ───────────────────────────────────────────────────────────────
   equipment:             '1600',
   boat_purchase:         '1500',
@@ -14897,12 +15013,20 @@ app.post('/api/booking-expense', isAuthenticated, async (req, res) => {
     if (!bkRows.length) { await pg.query('ROLLBACK'); return res.status(404).json({ error: 'Booking no encontrado' }); }
     const bk = bkRows[0];
 
-    // Resolve expense account
-    const expAccCode = account_code || '5080';
+    // Resolve expense account via EXPENSE_ACCOUNT_MAP
+    // Priority: explicit account_code → category mapping → 6900 Misc fallback
+    const expAccCode = account_code
+      || EXPENSE_ACCOUNT_MAP[category]
+      || EXPENSE_ACCOUNT_MAP[req.body.expense_type]
+      || '6900';
     const { rows: accRows } = await pg.query(
-      `SELECT id FROM chart_of_accounts WHERE account_code = $1 LIMIT 1`, [expAccCode]
+      `SELECT id, account_name FROM chart_of_accounts WHERE account_code = $1 AND (is_active IS NULL OR is_active != 0) LIMIT 1`, [expAccCode]
     );
-    if (!accRows.length) { await pg.query('ROLLBACK'); return res.status(400).json({ error: `Cuenta ${expAccCode} no encontrada` }); }
+    if (!accRows.length) {
+      const hint = category ? ` — para '${category}' se sugiere ${EXPENSE_ACCOUNT_MAP[category] || '6900'}` : '';
+      await pg.query('ROLLBACK');
+      return res.status(400).json({ error: `Cuenta ${expAccCode} no encontrada o inactiva${hint}` });
+    }
     const expAccId = accRows[0].id;
 
     // Resolve credit account based on payment_method
@@ -15303,7 +15427,7 @@ app.get('/api/bookings/:id/reconciliation', isAuthenticated, async (req, res) =>
     const { rows: txs } = await pool.query(
       `SELECT t.id, t.transaction_date, t.amount, t.transaction_type, t.description,
               t.reference_type, t.notes, t.account_id,
-              c.account_code, c.name as account_name
+              c.account_code, c.account_name
        FROM transactions t
        LEFT JOIN chart_of_accounts c ON c.id = t.account_id
        WHERE t.booking_id = $1 ORDER BY t.transaction_date DESC, t.id DESC LIMIT 100`,
@@ -15389,8 +15513,7 @@ app.post('/api/bookings/:id/expenses', isAuthenticated, async (req, res) => {
     if (!bkRows.length) { await pg.query('ROLLBACK'); return res.status(404).json({ error:'Booking no encontrado' }); }
     const bk=bkRows[0], amt=parseFloat(amount);
     const expDate=date||new Date().toISOString().slice(0,10);
-    const catMap={fuel:'5100',crew:'5200',ice:'5300',cleaning:'5400',commission:'5500',supplies:'5600',other:'5990'};
-    const expCode = expense_account || catMap[category]||'5990';
+    const expCode = expense_account || EXPENSE_ACCOUNT_MAP[category] || '6900';
     const { rows:expAcc } = await pg.query(`SELECT id FROM chart_of_accounts WHERE account_code=$1 LIMIT 1`,[expCode]);
     const expAccId = expAcc.length?expAcc[0].id:null;
     const crAccId = ['bank','zelle','card'].includes(payment_method)

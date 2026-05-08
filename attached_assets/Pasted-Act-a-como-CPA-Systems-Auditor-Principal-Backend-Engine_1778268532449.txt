@@ -1,0 +1,307 @@
+Actúa como CPA Systems Auditor + Principal Backend Engineer para gestion.nadakiexcursions.
+
+OBJETIVO:
+Auditar completamente el Chart of Accounts y los mappings contables del sistema para detectar cuentas faltantes, códigos incorrectos, cuentas hardcoded y diferencias entre el plan contable aprobado y lo que realmente usa el sistema.
+
+PROBLEMA DETECTADO:
+Al registrar combustible, el sistema intentó usar account_code 5080 y falló con:
+“Cuenta 5080 no encontrada”.
+
+Pero el plan contable aprobado usa:
+5020 - Fuel Expense
+
+Debes descubrir:
+1. De dónde salió 5080.
+2. Qué archivo, función, endpoint, dropdown, seed, mapping o UI lo está usando.
+3. Qué otras cuentas están referenciadas en código pero no existen en chart_of_accounts.
+4. Qué cuentas aprobadas faltan en el sistema.
+5. Corregir mappings sin crear duplicados.
+
+==================================================
+1. AUDITAR CHART OF ACCOUNTS EXISTENTE
+==================================================
+
+Listar todas las cuentas existentes con:
+- code
+- name
+- type
+- category
+- active/inactive
+
+Comparar contra el plan contable aprobado:
+
+ASSETS:
+1000 Cash / Bank
+1010 Wells Fargo Checking
+1015 Cash Clearing / Operating Cash
+1100 Accounts Receivable
+1200 Prepaid Expenses
+1500 Boats / Equipment
+1600 Accumulated Depreciation
+
+LIABILITIES:
+2000 Accounts Payable
+2100 Credit Cards Payable
+2200 Taxes Payable
+2500 Deferred Booking Deposits
+2999 Legacy Booking Balancing Account
+
+EQUITY:
+3000 Owner Equity
+3100 Retained Earnings
+3200 Current Year Earnings
+3999 Prior Period Adjustment
+
+REVENUE:
+4010 Revenue - Tours
+4020 Revenue - Rentals
+4030 Platform Revenue
+4090 Other Income
+
+COST OF SERVICES:
+5010 Captain Labor
+5020 Fuel Expense
+5030 Ice / Supplies
+5040 Cleaning
+5050 Dock / Marina Fees
+5060 Platform Fees
+
+OPERATING EXPENSES:
+6010 Insurance
+6020 Maintenance
+6030 Marketing
+6040 Software
+6050 Bank Fees
+6060 Office/Admin
+6070 Legal/Professional Fees
+6080 Rent
+6090 Utilities
+6900 Miscellaneous Expense
+
+LEGACY:
+1999 Legacy Cash / Prior Period Clearing
+2999 Legacy Booking Balancing Account
+3999 Prior Period Adjustment
+
+==================================================
+2. DETECTAR CUENTAS REFERENCIADAS PERO NO CREADAS
+==================================================
+
+Buscar en TODO el proyecto referencias a códigos contables:
+
+- Regex sugerido:
+  account_code
+  accountCode
+  chart_of_accounts
+  5080
+  5020
+  5010
+  5030
+  5040
+  5050
+  5060
+  6010
+  6020
+  6030
+  6040
+  6050
+  6060
+  6070
+  6080
+  6090
+  6900
+  Fuel
+  fuel
+  combustible
+  expenseAccount
+  defaultExpenseAccount
+  categoryMapping
+  expense_type
+  booking-expense
+
+Identificar:
+- archivo
+- línea
+- cuenta usada
+- concepto
+- si la cuenta existe o no
+
+Crear reporte:
+Referenced Account Code | Concept | File | Exists in COA? | Recommended Fix
+
+==================================================
+3. DESCUBRIR ORIGEN DE 5080
+==================================================
+
+Buscar exactamente:
+- "5080"
+- 5080
+- fuel account
+- Fuel Expense
+- combustible
+
+Reportar:
+- dónde aparece
+- para qué se usa
+- si es seed viejo, dropdown, mapping frontend, backend default, endpoint o test
+
+Si 5080 solo aparece como fuel:
+- reemplazar por 5020
+- NO crear 5080 salvo que sea estrictamente necesario
+
+==================================================
+4. NORMALIZAR MAPPINGS CONTABLES
+==================================================
+
+Crear o actualizar un mapping central único:
+
+EXPENSE_ACCOUNT_MAP:
+- captain_labor → 5010
+- captain → 5010
+- fuel → 5020
+- combustible → 5020
+- gas → 5020
+- ice → 5030
+- hielo → 5030
+- supplies → 5030
+- cleaning → 5040
+- limpieza → 5040
+- dock → 5050
+- marina → 5050
+- platform_fee → 5060
+- commission → 5060
+- insurance → 6010
+- maintenance → 6020
+- marketing → 6030
+- software → 6040
+- bank_fee → 6050
+- office_admin → 6060
+- legal_professional → 6070
+- rent → 6080
+- utilities → 6090
+- misc → 6900
+- other → 6900
+
+Regla:
+Ningún endpoint o frontend debe usar códigos hardcoded dispersos.
+Todo gasto debe resolver account_code desde este mapping central o desde dropdown validado contra chart_of_accounts.
+
+==================================================
+5. CREAR CUENTAS FALTANTES
+==================================================
+
+Si una cuenta aprobada falta en chart_of_accounts:
+- crearla
+- no duplicarla
+- mantener código exacto
+- type correcto
+- category correcta
+- active = true
+
+Si una cuenta no aprobada aparece en código:
+- no crearla automáticamente
+- reemplazar por la cuenta aprobada equivalente
+- documentar el cambio
+
+Ejemplo:
+5080 Fuel → 5020 Fuel Expense
+
+==================================================
+6. VALIDAR DROPDOWNS DE UI
+==================================================
+
+Revisar booking-wizard.html y accounting.html.
+
+Los dropdowns de gastos deben cargar desde chart_of_accounts activo o desde mapping aprobado.
+
+Validar que:
+- Fuel muestra 5020
+- Captain muestra 5010
+- Ice muestra 5030
+- Cleaning muestra 5040
+- Dock/Marina muestra 5050
+- Platform/Commission muestra 5060
+- Misc/Other muestra 6900
+
+Eliminar o corregir cualquier opción que use 5080.
+
+==================================================
+7. VALIDAR ENDPOINTS
+==================================================
+
+Revisar endpoints:
+- POST /api/bookings/:id/expenses
+- POST /api/booking-expense
+- POST /api/accounting/manual-entry
+- cualquier endpoint de expenses
+- cualquier endpoint que cree transactions
+
+Validar:
+- Si recibe account_code, debe verificar que existe y está active.
+- Si recibe expense_type sin account_code, debe resolver con EXPENSE_ACCOUNT_MAP.
+- Si account_code no existe, devolver error claro con cuentas válidas sugeridas.
+- No usar 5080 para fuel.
+
+==================================================
+8. PRUEBAS OBLIGATORIAS
+==================================================
+
+Crear/pruebas:
+
+1. Fuel expense:
+expense_type=fuel
+amount=300
+Debe usar 5020 y pasar.
+
+2. Captain labor:
+expense_type=captain
+Debe usar 5010.
+
+3. Ice:
+expense_type=ice
+Debe usar 5030.
+
+4. Cleaning:
+expense_type=cleaning
+Debe usar 5040.
+
+5. Unknown account:
+account_code=5080
+Debe fallar con mensaje:
+“Account 5080 does not exist. Did you mean 5020 Fuel Expense?”
+
+6. Unknown expense_type:
+expense_type=random
+Debe usar 6900 Miscellaneous Expense o pedir selección manual.
+
+7. Manual entry:
+No debe aceptar cuentas inexistentes.
+
+8. Booking Matej:
+Fuel $300 debe registrar:
+Dr 5020 Fuel Expense
+Cr 1015 Cash Clearing
+
+==================================================
+9. ENTREGABLE FINAL
+==================================================
+
+Reportar:
+
+1. Lista de cuentas existentes antes.
+2. Cuentas aprobadas faltantes que fueron creadas.
+3. Origen exacto de 5080.
+4. Archivos corregidos.
+5. Mappings centralizados creados o actualizados.
+6. Confirmación de que fuel usa 5020.
+7. Confirmación de que 5080 ya no se usa.
+8. Lista de otros códigos inválidos encontrados.
+9. Resultados de pruebas.
+10. Riesgos pendientes.
+
+No declares terminado hasta que:
+- no haya referencias activas a 5080 para fuel
+- todas las cuentas aprobadas existan
+- los dropdowns muestren cuentas correctas
+- endpoints validen cuentas contra chart_of_accounts
+- Matej pueda registrar Fuel con 5020 sin error
