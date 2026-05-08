@@ -1522,3 +1522,515 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 });
+
+// ============================================================
+// LEGACY CLEANUP GUIDE
+// ============================================================
+
+let lcBookings    = [];
+let lcWizardBook  = null;
+let lcWizardStep  = 1;
+const LC_STEPS    = ['Revisar Booking','Pagos','Gastos','Diferencia','Evidencia','Ajuste Contable','Completar'];
+
+// ─── Kanban / stats loader ───────────────────────────────────────────────────
+async function loadLegacyCleanup() {
+    const kanban = document.getElementById('lc-kanban');
+    if (!kanban) return;
+    kanban.innerHTML = '<div style="text-align:center;padding:40px;color:#94a3b8;">Cargando bookings legacy...</div>';
+    try {
+        const r    = await fetch('/api/accounting/legacy-cleanup/bookings', { credentials: 'include' });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || 'Error loading');
+        lcBookings = data.bookings || [];
+        renderLcStats(lcBookings);
+        renderLcKanban(lcBookings);
+    } catch(err) {
+        kanban.innerHTML = `<div style="color:#dc2626;text-align:center;padding:40px;">Error: ${err.message}</div>`;
+    }
+}
+
+// ─── Stats row ───────────────────────────────────────────────────────────────
+function renderLcStats(bookings) {
+    const el = document.getElementById('lc-stats');
+    if (!el) return;
+    const cols = [
+        { key:'pending_review',   label:'Pending Review',   bg:'#f8fafc', border:'#e2e8f0', color:'#64748b' },
+        { key:'needs_evidence',   label:'Needs Evidence',   bg:'#fffbeb', border:'#fcd34d', color:'#92400e' },
+        { key:'needs_adjustment', label:'Needs Adjustment', bg:'#fff1f2', border:'#fca5a5', color:'#dc2626' },
+        { key:'adjusted',         label:'Adjusted',         bg:'#eff6ff', border:'#93c5fd', color:'#1d4ed8' },
+        { key:'locked',           label:'Locked',           bg:'#f0fdf4', border:'#86efac', color:'#15803d' },
+    ];
+    const totalDiff = bookings.reduce((s, b) => s + Math.abs(parseFloat(b.difference)||0), 0);
+    el.innerHTML = `
+    <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px;">
+        ${cols.map(c => {
+            const cnt = bookings.filter(b => b.kanban_status === c.key).length;
+            return `<div style="flex:1;min-width:130px;background:${c.bg};border:1px solid ${c.border};border-radius:10px;padding:13px 16px;">
+                <div style="font-size:10px;font-weight:700;color:${c.color};text-transform:uppercase;margin-bottom:3px;">${c.label}</div>
+                <div style="font-size:24px;font-weight:800;color:${c.color};">${cnt}</div>
+            </div>`;
+        }).join('')}
+        <div style="flex:1;min-width:130px;background:#fdf4ff;border:1px solid #d8b4fe;border-radius:10px;padding:13px 16px;">
+            <div style="font-size:10px;font-weight:700;color:#7c3aed;text-transform:uppercase;margin-bottom:3px;">Diferencia Total</div>
+            <div style="font-size:20px;font-weight:800;color:#7c3aed;">$${fmt(totalDiff)}</div>
+        </div>
+    </div>`;
+}
+
+// ─── Semaphore helper ────────────────────────────────────────────────────────
+function getLcSem(booking) {
+    const st = booking.kanban_status, risk = booking.risk_level;
+    if (st === 'locked')           return { color:'#6b7280', label:'Cerrado' };
+    if (st === 'adjusted')         return { color:'#16a34a', label:'Ajustado' };
+    if (st === 'needs_adjustment' || risk === 'high') return { color:'#dc2626', label:'Diferencia' };
+    if (st === 'needs_evidence'   || risk === 'medium') return { color:'#d97706', label:'Evidencia' };
+    return { color:'#94a3b8', label:'Pendiente' };
+}
+
+// ─── Kanban renderer ─────────────────────────────────────────────────────────
+function renderLcKanban(bookings) {
+    const kanban = document.getElementById('lc-kanban');
+    if (!kanban) return;
+    const columns = [
+        { key:'pending_review',   label:'Pending Review',   hBg:'#f1f5f9', hColor:'#475569' },
+        { key:'needs_evidence',   label:'Needs Evidence',   hBg:'#fef3c7', hColor:'#92400e' },
+        { key:'needs_adjustment', label:'Needs Adjustment', hBg:'#fee2e2', hColor:'#dc2626' },
+        { key:'adjusted',         label:'Adjusted',         hBg:'#dbeafe', hColor:'#1e40af' },
+        { key:'locked',           label:'Locked',           hBg:'#dcfce7', hColor:'#15803d' },
+    ];
+    kanban.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(5,minmax(220px,1fr));gap:10px;min-width:0;">
+        ${columns.map(col => {
+            const cards = bookings.filter(b => b.kanban_status === col.key);
+            return `
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;display:flex;flex-direction:column;">
+                <div style="background:${col.hBg};padding:10px 14px;border-bottom:1px solid #e2e8f0;flex-shrink:0;">
+                    <div style="font-size:11px;font-weight:700;color:${col.hColor};text-transform:uppercase;letter-spacing:.4px;">${col.label}</div>
+                    <div style="font-size:10px;color:${col.hColor};opacity:.7;margin-top:1px;">${cards.length} booking${cards.length!==1?'s':''}</div>
+                </div>
+                <div style="padding:8px;display:flex;flex-direction:column;gap:7px;min-height:100px;flex:1;">
+                    ${cards.length===0
+                        ? '<div style="color:#cbd5e1;font-size:11px;text-align:center;padding:16px 0;">Sin bookings</div>'
+                        : cards.map(b => renderLcCard(b)).join('')}
+                </div>
+            </div>`;
+        }).join('')}
+    </div>`;
+}
+
+// ─── Card renderer ───────────────────────────────────────────────────────────
+function renderLcCard(b) {
+    const sem      = getLcSem(b);
+    const diff     = parseFloat(b.difference)||0;
+    const total    = parseFloat(b.total_amount)||0;
+    const dColor   = diff > 100 ? '#dc2626' : diff > 0.01 ? '#d97706' : '#16a34a';
+    const dateStr  = (b.service_date||b.booking_date||'').slice(0,10);
+    const adjCount = parseInt(b.adj_count)||0;
+    return `
+    <div data-testid="lc-card-${b.id}"
+         onclick="openLegacyWizard('${b.id}')"
+         style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:11px 12px;cursor:pointer;transition:box-shadow .15s;"
+         onmouseenter="this.style.boxShadow='0 2px 8px rgba(0,0,0,.09)'"
+         onmouseleave="this.style.boxShadow='none'">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">
+            <span style="font-size:9px;font-family:monospace;color:#94a3b8;background:#f1f5f9;padding:2px 5px;border-radius:3px;overflow:hidden;text-overflow:ellipsis;max-width:140px;white-space:nowrap;">${b.id}</span>
+            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${sem.color};flex-shrink:0;" title="${sem.label}"></span>
+        </div>
+        <div style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${b.customer_name||'—'}</div>
+        <div style="font-size:10px;color:#64748b;margin-bottom:7px;">${dateStr} · ${b.platform||'—'}</div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:4px;">
+            <div>
+                <div style="font-size:9px;color:#94a3b8;text-transform:uppercase;margin-bottom:1px;">Total</div>
+                <div style="font-size:12px;font-weight:700;color:#0284c7;">$${fmt(total)}</div>
+            </div>
+            <div style="text-align:right;">
+                <div style="font-size:9px;color:#94a3b8;text-transform:uppercase;margin-bottom:1px;">Diferencia</div>
+                <div style="font-size:12px;font-weight:700;color:${dColor};">$${fmt(Math.abs(diff))}</div>
+            </div>
+        </div>
+        ${b.recommended_action ? `<div style="margin-top:7px;font-size:9px;color:#64748b;background:#f8fafc;border-radius:4px;padding:3px 6px;line-height:1.4;">${b.recommended_action}</div>` : ''}
+        ${adjCount > 0 ? `<div style="margin-top:4px;font-size:9px;color:#7c3aed;font-weight:700;">${adjCount} ajuste${adjCount>1?'s':''} registrado${adjCount>1?'s':''}</div>` : ''}
+    </div>`;
+}
+
+// ─── Open wizard ─────────────────────────────────────────────────────────────
+async function openLegacyWizard(bookingId) {
+    const booking = lcBookings.find(b => b.id === bookingId);
+    if (!booking) return;
+    lcWizardBook = { ...booking, _adjustments:[], _evidenceNote: booking.evidence_note||'' };
+    lcWizardStep = 1;
+    const lbl = document.getElementById('lc-wizard-booking-label');
+    if (lbl) lbl.textContent = bookingId;
+    try {
+        const r = await fetch(`/api/accounting/legacy-cleanup/booking/${bookingId}`, { credentials:'include' });
+        if (r.ok) {
+            const data = await r.json();
+            lcWizardBook._adjustments = data.adjustments || [];
+        }
+    } catch(e) {}
+    const modal = document.getElementById('lc-wizard-modal');
+    if (modal) { modal.style.display = 'flex'; document.body.style.overflow = 'hidden'; }
+    renderLcWizardStep();
+}
+
+function closeLegacyWizard() {
+    const modal = document.getElementById('lc-wizard-modal');
+    if (modal) modal.style.display = 'none';
+    document.body.style.overflow = '';
+    lcWizardBook = null;
+    lcWizardStep = 1;
+}
+
+// ─── Wizard step renderer ────────────────────────────────────────────────────
+function renderLcWizardStep() {
+    if (!lcWizardBook) return;
+    // Steps indicator
+    const stepsEl = document.getElementById('lc-wizard-steps');
+    if (stepsEl) {
+        stepsEl.innerHTML = LC_STEPS.map((name, i) => {
+            const n = i + 1, active = n === lcWizardStep, done = n < lcWizardStep;
+            const bg    = active ? '#7c3aed' : done ? '#16a34a' : '#e2e8f0';
+            const color = (active||done) ? '#fff' : '#94a3b8';
+            return `<span style="display:inline-flex;align-items:center;gap:5px;margin-right:6px;">
+                <span style="width:22px;height:22px;border-radius:50%;background:${bg};color:${color};font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">${done?'&#x2713;':n}</span>
+                <span style="font-size:11px;font-weight:${active?700:400};color:${active?'#1e293b':'#94a3b8'};">${name}</span>
+                ${i < LC_STEPS.length-1 ? '<span style="color:#e2e8f0;margin-left:4px;">›</span>' : ''}
+            </span>`;
+        }).join('');
+    }
+    const stepLbl = document.getElementById('lc-wizard-step-label');
+    if (stepLbl) stepLbl.textContent = `Paso ${lcWizardStep} de ${LC_STEPS.length}`;
+    const body = document.getElementById('lc-wizard-body');
+    if (body) body.innerHTML = getLcStepContent(lcWizardStep);
+}
+
+// ─── Step content generator ──────────────────────────────────────────────────
+function getLcStepContent(step) {
+    const b      = lcWizardBook;
+    const total  = parseFloat(b.total_amount)||0;
+    const pymt   = parseFloat(b.payments_found)||0;
+    const exp    = parseFloat(b.expenses_found)||0;
+    const fld    = 'width:100%;padding:9px 12px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;';
+    const lbl    = 'display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:4px;';
+    const row    = 'background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px 16px;';
+    const info   = (label, val) => `<div><div style="font-size:10px;text-transform:uppercase;color:#94a3b8;font-weight:600;margin-bottom:2px;">${label}</div><div style="font-size:13px;font-weight:600;color:#1e293b;">${val||'—'}</div></div>`;
+    const note   = (bg, border, color, text) => `<div style="background:${bg};border:1px solid ${border};border-radius:8px;padding:12px;font-size:12px;color:${color};margin-top:14px;">${text}</div>`;
+
+    switch(step) {
+    case 1:
+        return `
+        <h3 style="margin:0 0 14px;font-size:14px;font-weight:700;color:#1e293b;">Paso 1 — Revisar Booking</h3>
+        <div style="${row}display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+            ${[['Booking ID',b.id],['Cliente',b.customer_name],
+               ['Fecha',((b.service_date||b.booking_date||'').slice(0,10))],['Plataforma',b.platform],
+               ['Total','$'+fmt(total)],['Estado',b.booking_status],
+               ['Es Legacy',b.is_legacy?'SI':'NO'],['Cleanup Status',b.kanban_status]
+              ].map(([l,v])=>info(l,v)).join('')}
+        </div>
+        ${(b._adjustments||[]).length>0 ? `
+        <div style="margin-bottom:12px;">
+            <div style="font-size:12px;font-weight:700;color:#475569;margin-bottom:7px;">Ajustes previos (${b._adjustments.length})</div>
+            ${b._adjustments.map(a=>`<div style="background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:8px 12px;margin-bottom:5px;font-size:12px;">
+                <span style="color:#7c3aed;font-weight:700;">${a.adjustment_type}</span> —
+                <span style="color:#0284c7;font-weight:700;">$${fmt(a.amount)}</span> — Cta ${a.account_code} —
+                <span style="color:#64748b;">${a.notes}</span>
+            </div>`).join('')}
+        </div>` : '<div style="font-size:12px;color:#94a3b8;margin-bottom:12px;">Sin ajustes previos registrados.</div>'}
+        ${note('#fef3c7','#fcd34d','#78350f','<strong>Regla:</strong> Booking LEGACY — solo cuentas 1999, 2999, 3999. Cuenta 1015 prohibida. No usar revenue del periodo actual.')}`;
+
+    case 2:
+        return `
+        <h3 style="margin:0 0 14px;font-size:14px;font-weight:700;color:#1e293b;">Paso 2 — Identificar Pagos Recibidos</h3>
+        <p style="color:#64748b;font-size:13px;margin:0 0 14px;">Ingresa el total real cobrado por este booking.</p>
+        <div style="margin-bottom:14px;">
+            <label style="${lbl}">Total Esperado del Booking</label>
+            <div style="padding:9px 12px;background:#f0fdf4;border:1px solid #86efac;border-radius:7px;font-size:14px;font-weight:700;color:#16a34a;">$${fmt(total)}</div>
+        </div>
+        <div style="margin-bottom:14px;">
+            <label style="${lbl}">Pagos Reales Recibidos ($) <span style="color:#dc2626;">*</span></label>
+            <input type="number" id="lc-w-payments" min="0" step="0.01" value="${pymt||''}" placeholder="0.00" style="${fld}">
+            <div style="font-size:11px;color:#94a3b8;margin-top:3px;">Suma de todos los pagos (efectivo, transferencia, depósito + balance)</div>
+        </div>
+        ${note('#eff6ff','#93c5fd','#1d4ed8','Si hubo depósito + balance, suma ambos. Si no recibiste nada, deja en 0.')}`;
+
+    case 3:
+        return `
+        <h3 style="margin:0 0 14px;font-size:14px;font-weight:700;color:#1e293b;">Paso 3 — Identificar Gastos Asociados</h3>
+        <p style="color:#64748b;font-size:13px;margin:0 0 14px;">¿Cuánto se gastó en este booking?</p>
+        <div style="margin-bottom:14px;">
+            <label style="${lbl}">Gastos Totales ($)</label>
+            <input type="number" id="lc-w-expenses" min="0" step="0.01" value="${exp||''}" placeholder="0.00" style="${fld}">
+            <div style="font-size:11px;color:#94a3b8;margin-top:3px;">Comisiones de plataforma, capitán, combustible, etc.</div>
+        </div>
+        ${note('#fffbeb','#fcd34d','#92400e','Si no hay gastos identificables, deja en 0. La diferencia se calcula en el siguiente paso.')}`;
+
+    case 4: {
+        const paymentsVal = parseFloat(lcWizardBook._paymentsInput != null ? lcWizardBook._paymentsInput : pymt) || 0;
+        const expensesVal = parseFloat(lcWizardBook._expensesInput != null ? lcWizardBook._expensesInput : exp)  || 0;
+        const calcDiff    = total - paymentsVal;
+        lcWizardBook._computedDiff = calcDiff;
+        const dColor = Math.abs(calcDiff) > 100 ? '#dc2626' : Math.abs(calcDiff) > 0.01 ? '#d97706' : '#16a34a';
+        const balanced = Math.abs(calcDiff) < 0.01;
+        return `
+        <h3 style="margin:0 0 14px;font-size:14px;font-weight:700;color:#1e293b;">Paso 4 — Diferencia Calculada</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px;">
+            <div style="${row}"><div style="font-size:9px;text-transform:uppercase;color:#94a3b8;font-weight:600;margin-bottom:3px;">Total Esperado</div>
+                <div style="font-size:18px;font-weight:800;color:#0284c7;">$${fmt(total)}</div></div>
+            <div style="${row}"><div style="font-size:9px;text-transform:uppercase;color:#94a3b8;font-weight:600;margin-bottom:3px;">Pagos Recibidos</div>
+                <div style="font-size:18px;font-weight:800;color:#16a34a;">$${fmt(paymentsVal)}</div></div>
+            <div style="background:${balanced?'#f0fdf4':'#fff1f2'};border:1px solid ${balanced?'#86efac':'#fca5a5'};border-radius:8px;padding:14px 16px;">
+                <div style="font-size:9px;text-transform:uppercase;color:#94a3b8;font-weight:600;margin-bottom:3px;">Diferencia</div>
+                <div style="font-size:18px;font-weight:800;color:${dColor};">$${fmt(Math.abs(calcDiff))}</div>
+            </div>
+        </div>
+        ${balanced
+            ? note('#f0fdf4','#86efac','#15803d','<strong>Cuadrado.</strong> No hay diferencia pendiente. Procede a adjuntar evidencia y bloquear.')
+            : note('#fff1f2','#fca5a5','#dc2626',`<strong>Diferencia de $${fmt(Math.abs(calcDiff))}.</strong> ${calcDiff>0?'Falta cobrar o hay un faltante.':'Se cobró de más.'} Deberás registrar un ajuste de periodo anterior en el Paso 6.`)}`;
+    }
+
+    case 5:
+        return `
+        <h3 style="margin:0 0 14px;font-size:14px;font-weight:700;color:#1e293b;">Paso 5 — Adjuntar Evidencia / Nota</h3>
+        <p style="color:#64748b;font-size:13px;margin:0 0 14px;">Documenta el origen de los pagos, gastos, y cualquier discrepancia. Este es el audit trail oficial.</p>
+        <div style="margin-bottom:14px;">
+            <label style="${lbl}">Evidencia / Nota explicativa <span style="color:#dc2626;">*</span></label>
+            <textarea id="lc-w-evidence" rows="5" placeholder="Ej: Cliente pagó $800 en efectivo el día del tour. No se emitió recibo. Capitán cobró $150 en efectivo. Diferencia de $50 por propina no declarada..." style="width:100%;padding:9px 12px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;resize:vertical;">${lcWizardBook._evidenceNote||b.evidence_note||''}</textarea>
+            <div style="font-size:11px;color:#dc2626;margin-top:3px;">Requerido — sin nota no se puede continuar.</div>
+        </div>
+        ${note('#fdf4ff','#d8b4fe','#7c3aed','Esta nota queda en el audit trail permanente. Incluye referencias a recibos, capturas de pantalla, o notas del capitán.')}`;
+
+    case 6: {
+        const cd      = parseFloat(lcWizardBook._computedDiff) || 0;
+        const needAdj = Math.abs(cd) > 0.01;
+        return `
+        <h3 style="margin:0 0 14px;font-size:14px;font-weight:700;color:#1e293b;">Paso 6 — Ajuste de Periodo Anterior</h3>
+        ${needAdj ? `
+        <p style="color:#64748b;font-size:13px;margin:0 0 14px;">Diferencia de <strong style="color:#dc2626;">$${fmt(Math.abs(cd))}</strong>. Crea el ajuste contable de periodo anterior.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+            <div><label style="${lbl}">Tipo de Ajuste</label>
+                <select id="lc-w-adj-type" style="${fld}">
+                    <option value="prior_period_correction">Corrección de periodo anterior</option>
+                    <option value="write_off">Write-off / baja contable</option>
+                    <option value="revenue_correction">Corrección de ingresos</option>
+                    <option value="reclassification">Reclasificación</option>
+                    <option value="other">Otro</option>
+                </select></div>
+            <div><label style="${lbl}">Cuenta <span style="font-size:10px;color:#94a3b8;">(1999, 2999, 3999)</span></label>
+                <select id="lc-w-adj-account" style="${fld}">
+                    <option value="3999">3999 — Prior Period Adjustment</option>
+                    <option value="2999">2999 — Legacy Booking Balancing</option>
+                    <option value="1999">1999 — Legacy Cash / Prior Period</option>
+                </select></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+            <div><label style="${lbl}">Monto del Ajuste ($)</label>
+                <input type="number" id="lc-w-adj-amount" min="0" step="0.01" value="${Math.abs(cd).toFixed(2)}" style="${fld}"></div>
+            <div style="display:flex;align-items:flex-end;">
+                <div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:7px;padding:9px 12px;font-size:11px;color:#dc2626;width:100%;box-sizing:border-box;">
+                    NO usar cuenta 1015.<br>Solo 1999, 2999, 3999.
+                </div>
+            </div>
+        </div>
+        <div style="margin-bottom:12px;"><label style="${lbl}">Notas del Ajuste <span style="color:#dc2626;">*</span></label>
+            <input type="text" id="lc-w-adj-notes" placeholder="Descripción del ajuste de periodo anterior..." style="${fld}"></div>
+        <button onclick="submitLcAdjust()" data-testid="button-lc-submit-adjust"
+                style="padding:9px 22px;background:#7c3aed;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;">
+            Registrar Ajuste
+        </button>
+        <div id="lc-adj-result" style="margin-top:10px;font-size:12px;"></div>`
+        : note('#f0fdf4','#86efac','#15803d','No hay diferencia pendiente — no se requiere ajuste contable. Procede a completar el cuadre.')}`;
+    }
+
+    case 7:
+        return `
+        <h3 style="margin:0 0 14px;font-size:14px;font-weight:700;color:#1e293b;">Paso 7 — Completar Cuadre Legacy</h3>
+        <p style="color:#64748b;font-size:13px;margin:0 0 14px;">Marca este booking como cuadrado y bloqueado en el sistema legacy.</p>
+        <div style="${row}margin-bottom:14px;">
+            <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+                <span style="font-size:12px;font-weight:600;color:#475569;">Booking</span>
+                <span style="font-size:12px;font-family:monospace;color:#64748b;">${b.id}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+                <span style="font-size:12px;font-weight:600;color:#475569;">Cliente</span>
+                <span style="font-size:12px;color:#1e293b;">${b.customer_name}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;">
+                <span style="font-size:12px;font-weight:600;color:#475569;">Diferencia Final</span>
+                <span style="font-size:12px;font-weight:700;color:${Math.abs(parseFloat(lcWizardBook._computedDiff)||0)>0.01?'#d97706':'#16a34a'};">$${fmt(Math.abs(parseFloat(lcWizardBook._computedDiff)||0))}</span>
+            </div>
+        </div>
+        <div style="margin-bottom:14px;">
+            <label style="display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:4px;">Nota final (opcional)</label>
+            <input type="text" id="lc-w-final-note" placeholder="Ej: Cuadre completado. Diferencia autorizada por gerencia." style="width:100%;padding:9px 12px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;">
+        </div>
+        <div style="display:flex;gap:10px;">
+            <button onclick="lcMarkAdjusted('${b.id}')" data-testid="button-lc-mark-adjusted"
+                    style="flex:1;padding:10px;background:#1d4ed8;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;">
+                Marcar como Ajustado
+            </button>
+            <button onclick="lcMarkLocked('${b.id}')" data-testid="button-lc-mark-locked"
+                    style="flex:1;padding:10px;background:#15803d;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;">
+                Ajustado + Bloquear
+            </button>
+        </div>
+        <div id="lc-complete-result" style="margin-top:10px;font-size:12px;"></div>`;
+
+    default: return '<div>Paso no encontrado</div>';
+    }
+}
+
+// ─── Wizard navigation ───────────────────────────────────────────────────────
+function lcCollectStep() {
+    if (lcWizardStep === 2) {
+        const v = document.getElementById('lc-w-payments');
+        if (v) lcWizardBook._paymentsInput = parseFloat(v.value)||0;
+    }
+    if (lcWizardStep === 3) {
+        const v = document.getElementById('lc-w-expenses');
+        if (v) lcWizardBook._expensesInput = parseFloat(v.value)||0;
+    }
+    if (lcWizardStep === 5) {
+        const v = document.getElementById('lc-w-evidence');
+        if (v) lcWizardBook._evidenceNote = v.value;
+    }
+}
+
+async function lcWizardNext() {
+    lcCollectStep();
+    if (lcWizardStep === 5) {
+        const ev = document.getElementById('lc-w-evidence');
+        if (!ev || !ev.value.trim()) {
+            if (ev) ev.style.borderColor = '#dc2626';
+            ev && ev.focus();
+            return;
+        }
+        lcWizardBook._evidenceNote = ev.value.trim();
+        await lcSaveStatus(lcWizardBook.id, {
+            evidence_note:  lcWizardBook._evidenceNote,
+            payments_found: lcWizardBook._paymentsInput,
+            expenses_found: lcWizardBook._expensesInput,
+            difference:     lcWizardBook._computedDiff,
+            kanban_status:  Math.abs(parseFloat(lcWizardBook._computedDiff)||0) > 0.01
+                             ? 'needs_adjustment' : 'needs_evidence'
+        });
+    }
+    if (lcWizardStep < LC_STEPS.length) {
+        lcWizardStep++;
+        renderLcWizardStep();
+    }
+}
+
+function lcWizardPrev() {
+    if (lcWizardStep > 1) { lcWizardStep--; renderLcWizardStep(); }
+}
+
+// ─── Status save ─────────────────────────────────────────────────────────────
+async function lcSaveStatus(id, data) {
+    try {
+        await fetch(`/api/accounting/legacy-cleanup/booking/${id}/status`, {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type':'application/json' },
+            body: JSON.stringify(data)
+        });
+    } catch(e) { console.error('lcSaveStatus error:', e); }
+}
+
+// ─── Submit adjustment ───────────────────────────────────────────────────────
+async function submitLcAdjust() {
+    const b      = lcWizardBook;
+    const type   = document.getElementById('lc-w-adj-type')?.value;
+    const acct   = document.getElementById('lc-w-adj-account')?.value;
+    const amount = parseFloat(document.getElementById('lc-w-adj-amount')?.value||0);
+    const notes  = document.getElementById('lc-w-adj-notes')?.value?.trim();
+    const res    = document.getElementById('lc-adj-result');
+    if (!notes) {
+        if (res) { res.textContent='Las notas son requeridas (audit trail)'; res.style.color='#dc2626'; }
+        document.getElementById('lc-w-adj-notes')?.focus();
+        return;
+    }
+    if (res) { res.textContent='Registrando...'; res.style.color='#64748b'; }
+    try {
+        const r = await fetch(`/api/accounting/legacy-cleanup/booking/${b.id}/adjust`, {
+            method:'POST', credentials:'include',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ adjustment_type:type, amount, account_code:acct, notes })
+        });
+        const data = await r.json();
+        if (!r.ok) { if (res) { res.textContent=data.error||'Error al registrar'; res.style.color='#dc2626'; } return; }
+        if (res) { res.textContent=`Ajuste registrado (${data.adjustment_id})`; res.style.color='#16a34a'; }
+        if (!b._adjustments) b._adjustments=[];
+        b._adjustments.push({ id:data.adjustment_id, adjustment_type:type, amount, account_code:acct, notes });
+    } catch(err) {
+        if (res) { res.textContent='Error de red: '+err.message; res.style.color='#dc2626'; }
+    }
+}
+
+// ─── Mark adjusted / locked ──────────────────────────────────────────────────
+async function lcMarkAdjusted(bookingId) {
+    const finalNote = document.getElementById('lc-w-final-note')?.value?.trim();
+    const res       = document.getElementById('lc-complete-result');
+    try {
+        const r = await fetch(`/api/accounting/legacy-cleanup/booking/${bookingId}/status`, {
+            method:'POST', credentials:'include',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ kanban_status:'adjusted', evidence_note: finalNote||undefined })
+        });
+        const data = await r.json();
+        if (!r.ok) { if (res) { res.textContent=data.error; res.style.color='#dc2626'; } return; }
+        if (res) { res.textContent='Marcado como Ajustado'; res.style.color='#1d4ed8'; }
+        lcUpdateLocalStatus(bookingId, 'adjusted');
+        setTimeout(() => { closeLegacyWizard(); renderLcStats(lcBookings); renderLcKanban(lcBookings); }, 1200);
+    } catch(err) { if (res) { res.textContent='Error: '+err.message; res.style.color='#dc2626'; } }
+}
+
+async function lcMarkLocked(bookingId) {
+    const finalNote = document.getElementById('lc-w-final-note')?.value?.trim();
+    const res       = document.getElementById('lc-complete-result');
+    try {
+        const r = await fetch(`/api/accounting/legacy-cleanup/booking/${bookingId}/lock`, {
+            method:'POST', credentials:'include',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ final_note: finalNote||undefined })
+        });
+        const data = await r.json();
+        if (!r.ok) { if (res) { res.textContent=data.error; res.style.color='#dc2626'; } return; }
+        if (res) { res.textContent='Booking bloqueado exitosamente'; res.style.color='#15803d'; }
+        lcUpdateLocalStatus(bookingId, 'locked');
+        setTimeout(() => { closeLegacyWizard(); renderLcStats(lcBookings); renderLcKanban(lcBookings); }, 1200);
+    } catch(err) { if (res) { res.textContent='Error: '+err.message; res.style.color='#dc2626'; } }
+}
+
+function lcUpdateLocalStatus(id, status) {
+    const idx = lcBookings.findIndex(b => b.id === id);
+    if (idx !== -1) lcBookings[idx].kanban_status = status;
+}
+
+// ─── Export report ───────────────────────────────────────────────────────────
+async function exportLegacyReport() {
+    const btn = document.getElementById('lc-export-btn');
+    const orig = btn ? btn.textContent : '';
+    if (btn) btn.textContent = 'Generando...';
+    try {
+        const r    = await fetch('/api/accounting/legacy-cleanup/report', { credentials:'include' });
+        const data = await r.json();
+        if (!r.ok) { alert('Error: ' + (data.error||'Unknown error')); return; }
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type:'application/json' });
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href     = url;
+        a.download = `legacy-cleanup-report-${new Date().toISOString().slice(0,10)}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+    } catch(err) {
+        alert('Error exportando: ' + err.message);
+    } finally {
+        if (btn) btn.textContent = orig || 'Export Legacy Report';
+    }
+}
+
+// ─── Tab activation ──────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.tab[data-tab="legacy-cleanup"]').forEach(btn => {
+        btn.addEventListener('click', loadLegacyCleanup);
+    });
+});

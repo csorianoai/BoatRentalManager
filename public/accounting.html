@@ -386,6 +386,9 @@
             <button class="tab" data-tab="period-control" data-testid="tab-period-control">
                 Control de Periodo
             </button>
+            <button class="tab" data-tab="legacy-cleanup" data-testid="tab-legacy-cleanup" onclick="loadLegacyCleanup()">
+                Cuadre Legacy
+            </button>
         </div>
     </div>
 
@@ -2120,6 +2123,91 @@
             </div>
         </div>
         <!-- ========== END PERIOD CONTROL TAB ========== -->
+
+        <!-- ========== LEGACY CLEANUP GUIDE TAB ========== -->
+        <div class="tab-content" id="legacy-cleanup" data-testid="tab-content-legacy-cleanup">
+            <div style="max-width:1260px;margin:0 auto;">
+
+                <!-- Header -->
+                <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px 24px;margin-bottom:20px;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+                        <div>
+                            <h2 style="margin:0 0 4px;font-size:18px;font-weight:800;color:#1a1a2e;">Legacy Cleanup Guide</h2>
+                            <p style="margin:0;font-size:13px;color:#64748b;">Cuadre visual de bookings anteriores al 2026-04-27. Sin contaminar contabilidad del periodo actual.</p>
+                        </div>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                            <button onclick="loadLegacyCleanup()" data-testid="button-lc-refresh"
+                                    style="padding:8px 16px;background:#0ea5e9;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;">
+                                Actualizar
+                            </button>
+                            <button id="lc-export-btn" onclick="exportLegacyReport()" data-testid="button-lc-export"
+                                    style="padding:8px 16px;background:#7c3aed;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;">
+                                Export Legacy Report
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Timeline visual -->
+                <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px 24px;margin-bottom:20px;">
+                    <div style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.5px;margin-bottom:14px;">Timeline Contable</div>
+                    <div style="display:flex;align-items:stretch;gap:0;">
+                        <div style="flex:2;background:linear-gradient(90deg,#fef3c7,#fde68a);border:1px solid #fcd34d;border-radius:10px 0 0 10px;padding:16px 20px;text-align:center;">
+                            <div style="font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Periodo Legacy</div>
+                            <div style="font-size:15px;font-weight:800;color:#78350f;">BLOQUEADO</div>
+                            <div style="font-size:11px;color:#92400e;margin-top:4px;">Antes del 2026-04-27</div>
+                            <div style="font-size:10px;color:#a16207;margin-top:3px;">Cuentas 1999 · 2999 · 3999</div>
+                        </div>
+                        <div style="flex-shrink:0;background:#1a1a2e;color:#fff;border-radius:0;padding:16px 20px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:1;margin:0 -1px;">
+                            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#94a3b8;margin-bottom:6px;">Cutover Date</div>
+                            <div style="font-size:16px;font-weight:800;white-space:nowrap;">2026-04-27</div>
+                            <div style="font-size:9px;color:#64748b;margin-top:4px;">Matej = CURRENT</div>
+                        </div>
+                        <div style="flex:2;background:linear-gradient(90deg,#dcfce7,#bbf7d0);border:1px solid #86efac;border-radius:0 10px 10px 0;padding:16px 20px;text-align:center;">
+                            <div style="font-size:11px;font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Periodo Actual</div>
+                            <div style="font-size:15px;font-weight:800;color:#166534;">ACTIVO</div>
+                            <div style="font-size:11px;color:#15803d;margin-top:4px;">Desde 2026-04-27</div>
+                            <div style="font-size:10px;color:#16a34a;margin-top:3px;">Cuenta 1015 habilitada</div>
+                        </div>
+                    </div>
+                    <!-- Semáforo legend -->
+                    <div style="display:flex;align-items:center;gap:16px;margin-top:14px;flex-wrap:wrap;">
+                        <span style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;">Semáforo:</span>
+                        <div style="display:flex;align-items:center;gap:5px;"><div style="width:10px;height:10px;border-radius:50%;background:#16a34a;flex-shrink:0;"></div><span style="font-size:11px;color:#64748b;">Ajustado / Locked</span></div>
+                        <div style="display:flex;align-items:center;gap:5px;"><div style="width:10px;height:10px;border-radius:50%;background:#d97706;flex-shrink:0;"></div><span style="font-size:11px;color:#64748b;">Falta evidencia</span></div>
+                        <div style="display:flex;align-items:center;gap:5px;"><div style="width:10px;height:10px;border-radius:50%;background:#dc2626;flex-shrink:0;"></div><span style="font-size:11px;color:#64748b;">Diferencia sin resolver</span></div>
+                        <div style="display:flex;align-items:center;gap:5px;"><div style="width:10px;height:10px;border-radius:50%;background:#6b7280;flex-shrink:0;"></div><span style="font-size:11px;color:#64748b;">Bloqueado (cerrado)</span></div>
+                        <div style="display:flex;align-items:center;gap:5px;"><div style="width:10px;height:10px;border-radius:50%;background:#94a3b8;flex-shrink:0;"></div><span style="font-size:11px;color:#64748b;">Pendiente revisión</span></div>
+                    </div>
+                </div>
+
+                <!-- Stats cards -->
+                <div id="lc-stats"></div>
+
+                <!-- Rules box -->
+                <div style="background:#fff;border:1px solid #fcd34d;border-radius:12px;padding:14px 20px;margin-bottom:20px;display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start;">
+                    <div style="font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.5px;flex-shrink:0;margin-top:2px;">Reglas de Cuadre</div>
+                    <div style="display:flex;flex-wrap:wrap;gap:10px;">
+                        <span style="font-size:11px;background:#fee2e2;color:#dc2626;padding:3px 10px;border-radius:20px;font-weight:600;">No usar cuenta 1015</span>
+                        <span style="font-size:11px;background:#ede9fe;color:#7c3aed;padding:3px 10px;border-radius:20px;font-weight:600;">Solo cuentas 1999, 2999, 3999</span>
+                        <span style="font-size:11px;background:#fef3c7;color:#92400e;padding:3px 10px;border-radius:20px;font-weight:600;">Reason obligatorio en todo ajuste</span>
+                        <span style="font-size:11px;background:#dcfce7;color:#15803d;padding:3px 10px;border-radius:20px;font-weight:600;">Sin revenue current para legacy</span>
+                        <span style="font-size:11px;background:#eff6ff;color:#1d4ed8;padding:3px 10px;border-radius:20px;font-weight:600;">Audit trail en cada operación</span>
+                        <span style="font-size:11px;background:#f0fdf4;color:#15803d;padding:3px 10px;border-radius:20px;font-weight:600;">Matej 2026-04-27 = CURRENT</span>
+                    </div>
+                </div>
+
+                <!-- Kanban board -->
+                <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:18px 22px;margin-bottom:20px;overflow-x:auto;">
+                    <div style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.5px;margin-bottom:14px;">Kanban de Cuadre Legacy</div>
+                    <div id="lc-kanban">
+                        <div style="text-align:center;padding:40px;color:#94a3b8;">Haz clic en <strong>Actualizar</strong> para cargar los bookings legacy.</div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+        <!-- ========== END LEGACY CLEANUP GUIDE TAB ========== -->
 
         <div class="tab-content" id="cuadre-booking" data-testid="tab-content-cuadre-booking">
             <div style="max-width:900px;margin:0 auto;">
@@ -5061,5 +5149,37 @@ document.querySelectorAll('.tab[data-tab="period-control"]').forEach(btn => {
     } catch(e) {}
 })();
 </script>
+
+<!-- ========== LEGACY CLEANUP WIZARD MODAL ========== -->
+<div id="lc-wizard-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:10000;align-items:center;justify-content:center;padding:16px;">
+    <div style="background:#fff;border-radius:14px;width:100%;max-width:720px;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,.35);">
+        <!-- Modal header -->
+        <div style="padding:16px 22px;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;background:#f8fafc;">
+            <div>
+                <div style="font-size:15px;font-weight:800;color:#1a1a2e;">Cleanup Wizard — Booking Legacy</div>
+                <div id="lc-wizard-booking-label" style="font-size:11px;color:#94a3b8;margin-top:2px;font-family:monospace;"></div>
+            </div>
+            <button onclick="closeLegacyWizard()" data-testid="button-lc-wizard-close"
+                    style="border:none;background:#e5e7eb;color:#475569;cursor:pointer;padding:5px 10px;border-radius:6px;font-size:16px;font-weight:700;line-height:1;">&#x2715;</button>
+        </div>
+        <!-- Step indicators -->
+        <div id="lc-wizard-steps" style="padding:12px 22px;border-bottom:1px solid #f1f5f9;overflow-x:auto;flex-shrink:0;white-space:nowrap;background:#fff;"></div>
+        <!-- Step body -->
+        <div id="lc-wizard-body" style="padding:24px;overflow-y:auto;flex:1;"></div>
+        <!-- Footer nav -->
+        <div style="padding:14px 22px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;background:#f8fafc;">
+            <button onclick="lcWizardPrev()" data-testid="button-lc-wizard-prev"
+                    style="padding:8px 20px;background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;">
+                Anterior
+            </button>
+            <div id="lc-wizard-step-label" style="font-size:12px;color:#94a3b8;font-weight:600;"></div>
+            <button onclick="lcWizardNext()" data-testid="button-lc-wizard-next"
+                    style="padding:8px 22px;background:#7c3aed;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;">
+                Siguiente
+            </button>
+        </div>
+    </div>
+</div>
+<!-- ========== END LEGACY WIZARD MODAL ========== -->
 </body>
 </html>

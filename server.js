@@ -2197,6 +2197,27 @@ async function initializeDatabase() {
       )
     `).catch(() => {});
 
+    // F21-08: Legacy Cleanup Status — tracks kanban state per booking
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS legacy_cleanup_status (
+        booking_id        TEXT PRIMARY KEY,
+        kanban_status     TEXT NOT NULL DEFAULT 'pending_review'
+                          CHECK (kanban_status IN ('pending_review','needs_evidence','needs_adjustment','adjusted','locked')),
+        risk_level        TEXT,
+        recommended_action TEXT,
+        evidence_note     TEXT,
+        payments_found    NUMERIC(12,2) DEFAULT 0,
+        expenses_found    NUMERIC(12,2) DEFAULT 0,
+        difference        NUMERIC(12,2) DEFAULT 0,
+        adjusted_by       TEXT,
+        adjusted_at       TIMESTAMP,
+        locked_by         TEXT,
+        locked_at         TIMESTAMP,
+        created_at        TIMESTAMP DEFAULT NOW(),
+        updated_at        TIMESTAMP DEFAULT NOW()
+      )
+    `).catch(() => {});
+
     console.log('✅ FASE 21: Accounting period cutover control ready');
     // ── END FASE 21 ──────────────────────────────────────────────────────
 
@@ -14045,16 +14066,16 @@ app.get('/api/accounting/period-control', isAuthenticated, async (req, res) => {
     // Stats
     const { rows: bkStats } = await pool.query(`
       SELECT
-        COUNT(*) FILTER (WHERE booking_date::DATE >= $1) AS current_bookings,
-        COUNT(*) FILTER (WHERE booking_date::DATE < $1)  AS legacy_bookings,
-        COUNT(*) FILTER (WHERE is_legacy = true)         AS flagged_legacy
+        COUNT(CASE WHEN booking_date::DATE >= $1 THEN 1 END) AS current_bookings,
+        COUNT(CASE WHEN booking_date::DATE < $1  THEN 1 END) AS legacy_bookings,
+        COUNT(CASE WHEN is_legacy = true         THEN 1 END) AS flagged_legacy
       FROM bookings`, [ACCOUNTING_CUTOVER_DATE]);
 
     const { rows: txStats } = await pool.query(`
       SELECT
-        COUNT(*) FILTER (WHERE period_type='current')  AS current_tx,
-        COUNT(*) FILTER (WHERE period_type='legacy')   AS legacy_tx,
-        COUNT(*) FILTER (WHERE period_type IS NULL)    AS null_period
+        COUNT(CASE WHEN period_type='current' THEN 1 END) AS current_tx,
+        COUNT(CASE WHEN period_type='legacy'  THEN 1 END) AS legacy_tx,
+        COUNT(CASE WHEN period_type IS NULL   THEN 1 END) AS null_period
       FROM transactions`);
 
     const { rows: legAdj } = await pool.query(
@@ -14155,6 +14176,288 @@ app.post('/api/accounting/period-control/legacy-adjustment', isAuthenticated, as
   } catch(err) { await pg.query('ROLLBACK'); res.status(500).json({ error: err.message }); }
   finally { pg.release(); }
 });
+
+// ========== FASE 21: LEGACY CLEANUP GUIDE ENDPOINTS ==========
+
+// ── GET /api/accounting/legacy-cleanup/bookings ──────────────────────────
+app.get('/api/accounting/legacy-cleanup/bookings', isAuthenticated, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT
+        b.id, b.customer_name, b.booking_date, b.service_date,
+        b.total_amount, b.status AS booking_status, b.platform, b.is_legacy,
+        COALESCE(lcs.kanban_status, 'pending_review') AS kanban_status,
+        COALESCE(lcs.risk_level, 'unknown')           AS risk_level,
+        lcs.recommended_action,
+        lcs.evidence_note,
+        COALESCE(lcs.payments_found, 0)               AS payments_found,
+        COALESCE(lcs.expenses_found, 0)               AS expenses_found,
+        COALESCE(lcs.difference, b.total_amount)      AS difference,
+        lcs.adjusted_by, lcs.adjusted_at,
+        lcs.locked_by,   lcs.locked_at,
+        (SELECT COUNT(*) FROM legacy_adjustment_log lal WHERE lal.booking_id = b.id) AS adj_count
+      FROM bookings b
+      LEFT JOIN legacy_cleanup_status lcs ON lcs.booking_id = b.id
+      WHERE b.is_legacy = true
+      ORDER BY
+        CASE COALESCE(lcs.kanban_status, 'pending_review')
+          WHEN 'pending_review'   THEN 1
+          WHEN 'needs_evidence'   THEN 2
+          WHEN 'needs_adjustment' THEN 3
+          WHEN 'adjusted'         THEN 4
+          WHEN 'locked'           THEN 5
+        END, b.booking_date DESC
+    `);
+
+    const enriched = rows.map(b => {
+      const total  = parseFloat(b.total_amount) || 0;
+      const diff   = parseFloat(b.difference)   || total;
+      const adjCnt = parseInt(b.adj_count)       || 0;
+      const status = b.kanban_status;
+
+      let risk = b.risk_level;
+      if (!risk || risk === 'unknown') {
+        if (status === 'locked')              risk = 'resolved';
+        else if (status === 'adjusted')       risk = 'low';
+        else if (Math.abs(diff) > 500)        risk = 'high';
+        else if (Math.abs(diff) > 100)        risk = 'medium';
+        else                                  risk = 'low';
+      }
+
+      let action = b.recommended_action;
+      if (!action) {
+        if (status === 'locked')              action = 'Completo — booking cerrado';
+        else if (status === 'adjusted')       action = 'Verificar y bloquear';
+        else if (adjCnt > 0)                  action = 'Revisar ajustes registrados';
+        else if (Math.abs(diff) > 0.01)       action = 'Registrar ajuste vía cuenta 3999';
+        else                                  action = 'Revisar y adjuntar evidencia';
+      }
+
+      return { ...b, risk_level: risk, recommended_action: action,
+               difference: diff, total_amount: total };
+    });
+
+    res.json({ bookings: enriched, total: enriched.length, cutover_date: ACCOUNTING_CUTOVER_DATE });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── GET /api/accounting/legacy-cleanup/booking/:id ───────────────────────
+app.get('/api/accounting/legacy-cleanup/booking/:id', isAuthenticated, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { rows: [booking] } = await pool.query(`
+      SELECT b.*,
+        COALESCE(lcs.kanban_status, 'pending_review') AS cleanup_status,
+        lcs.risk_level, lcs.recommended_action, lcs.evidence_note,
+        COALESCE(lcs.payments_found, 0) AS payments_found,
+        COALESCE(lcs.expenses_found, 0) AS expenses_found,
+        COALESCE(lcs.difference, b.total_amount) AS difference,
+        lcs.adjusted_by, lcs.adjusted_at, lcs.locked_by, lcs.locked_at
+      FROM bookings b
+      LEFT JOIN legacy_cleanup_status lcs ON lcs.booking_id = b.id
+      WHERE b.id = $1
+    `, [id]);
+    if (!booking) return res.status(404).json({ error: 'Booking not found' });
+    if (!booking.is_legacy) return res.status(400).json({ error: 'Not a legacy booking' });
+
+    const { rows: adjustments } = await pool.query(
+      `SELECT * FROM legacy_adjustment_log WHERE booking_id = $1 ORDER BY created_at DESC`, [id]
+    );
+    res.json({ booking, adjustments });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── POST /api/accounting/legacy-cleanup/booking/:id/status ──────────────
+app.post('/api/accounting/legacy-cleanup/booking/:id/status', isAuthenticated, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { kanban_status, evidence_note, risk_level,
+            payments_found, expenses_found, difference } = req.body;
+
+    const { rows: [bk] } = await pool.query(
+      `SELECT id, is_legacy FROM bookings WHERE id=$1`, [id]);
+    if (!bk)          return res.status(404).json({ error: 'Booking not found' });
+    if (!bk.is_legacy) return res.status(400).json({ error: 'Not a legacy booking' });
+
+    const allowed = ['pending_review','needs_evidence','needs_adjustment','adjusted','locked'];
+    if (kanban_status && !allowed.includes(kanban_status))
+      return res.status(400).json({ error: `Invalid status: ${kanban_status}` });
+
+    await pool.query(`
+      INSERT INTO legacy_cleanup_status
+        (booking_id, kanban_status, evidence_note, risk_level,
+         payments_found, expenses_found, difference, updated_at)
+      VALUES ($1, COALESCE($2,'pending_review'), $3, $4,
+              COALESCE($5,0), COALESCE($6,0), COALESCE($7,0), NOW())
+      ON CONFLICT (booking_id) DO UPDATE SET
+        kanban_status  = COALESCE(EXCLUDED.kanban_status,  legacy_cleanup_status.kanban_status),
+        evidence_note  = COALESCE(EXCLUDED.evidence_note,  legacy_cleanup_status.evidence_note),
+        risk_level     = COALESCE(EXCLUDED.risk_level,     legacy_cleanup_status.risk_level),
+        payments_found = COALESCE(EXCLUDED.payments_found, legacy_cleanup_status.payments_found),
+        expenses_found = COALESCE(EXCLUDED.expenses_found, legacy_cleanup_status.expenses_found),
+        difference     = COALESCE(EXCLUDED.difference,     legacy_cleanup_status.difference),
+        updated_at     = NOW()
+    `, [id, kanban_status||null, evidence_note||null, risk_level||null,
+        payments_found != null ? parseFloat(payments_found) : null,
+        expenses_found != null ? parseFloat(expenses_found) : null,
+        difference     != null ? parseFloat(difference)     : null]);
+
+    res.json({ success: true, booking_id: id, kanban_status });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── POST /api/accounting/legacy-cleanup/booking/:id/adjust ──────────────
+app.post('/api/accounting/legacy-cleanup/booking/:id/adjust', isAuthenticated, async (req, res) => {
+  const pg = await pool.connect();
+  try {
+    await pg.query('BEGIN');
+    const { id } = req.params;
+    const { adjustment_type, amount, account_code, notes } = req.body;
+
+    if (!notes || !notes.trim()) {
+      await pg.query('ROLLBACK');
+      return res.status(400).json({ error: 'notes requerido (audit trail)' });
+    }
+    if (!adjustment_type) {
+      await pg.query('ROLLBACK');
+      return res.status(400).json({ error: 'adjustment_type requerido' });
+    }
+
+    const acctCode = account_code || '3999';
+    if (!['1999','2999','3999'].includes(acctCode)) {
+      await pg.query('ROLLBACK');
+      return res.status(400).json({ error: 'Solo cuentas 1999, 2999, 3999 para ajustes legacy' });
+    }
+    if (acctCode === '1015') {
+      await pg.query('ROLLBACK');
+      return res.status(400).json({ error: 'Cuenta 1015 no permitida para bookings legacy' });
+    }
+
+    const { rows: [bk] } = await pg.query(
+      `SELECT id, is_legacy FROM bookings WHERE id=$1`, [id]);
+    if (!bk) {
+      await pg.query('ROLLBACK');
+      return res.status(404).json({ error: 'Booking not found' });
+    }
+    if (!bk.is_legacy) {
+      await pg.query('ROLLBACK');
+      return res.status(400).json({ error: 'Not a legacy booking' });
+    }
+
+    const { nanoid } = await import('nanoid');
+    const acctId  = acctCode === '1999' ? 'acc_legacy_1999'
+                  : acctCode === '2999' ? 'acc_legacy_2999'
+                  : 'acc_legacy_3999';
+    const adjId   = 'ladj_' + nanoid(8);
+    const txType  = adjustment_type === 'write_off'           ? 'expense'
+                  : adjustment_type === 'revenue_correction'  ? 'income'
+                  : 'adjustment';
+
+    await pg.query(`
+      INSERT INTO legacy_adjustment_log
+        (id, booking_id, adjustment_type, amount, account_code, notes, created_by, created_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())
+    `, [adjId, id, adjustment_type, parseFloat(amount||0), acctCode, notes, req.user?.id||'system']);
+
+    if (amount && parseFloat(amount) > 0) {
+      await pg.query(`
+        INSERT INTO transactions
+          (id, transaction_date, accounting_date, account_id, amount, transaction_type,
+           description, reference_type, notes, period_type, source_system)
+        VALUES ($1,NOW()::DATE,NOW()::DATE,$2,$3,$4,$5,'manual_adjustment',$6,'legacy','manual_entry')
+      `, ['tx_ladj_'+nanoid(8), acctId, parseFloat(amount), txType,
+          `Legacy cleanup: ${id} — ${adjustment_type}`, notes]);
+    }
+
+    await pg.query(`
+      INSERT INTO legacy_cleanup_status
+        (booking_id, kanban_status, adjusted_by, adjusted_at, updated_at)
+      VALUES ($1,'adjusted',$2,NOW(),NOW())
+      ON CONFLICT (booking_id) DO UPDATE SET
+        kanban_status='adjusted', adjusted_by=$2, adjusted_at=NOW(), updated_at=NOW()
+    `, [id, req.user?.id||'system']);
+
+    await pg.query('COMMIT');
+    res.status(201).json({ success: true, adjustment_id: adjId, booking_id: id });
+  } catch(err) {
+    await pg.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally { pg.release(); }
+});
+
+// ── POST /api/accounting/legacy-cleanup/booking/:id/lock ─────────────────
+app.post('/api/accounting/legacy-cleanup/booking/:id/lock', isAuthenticated, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { final_note } = req.body;
+
+    const { rows: [bk] } = await pool.query(
+      `SELECT id, is_legacy FROM bookings WHERE id=$1`, [id]);
+    if (!bk)          return res.status(404).json({ error: 'Booking not found' });
+    if (!bk.is_legacy) return res.status(400).json({ error: 'Not a legacy booking' });
+
+    await pool.query(`
+      INSERT INTO legacy_cleanup_status
+        (booking_id, kanban_status, locked_by, locked_at, evidence_note, updated_at)
+      VALUES ($1,'locked',$2,NOW(),$3,NOW())
+      ON CONFLICT (booking_id) DO UPDATE SET
+        kanban_status = 'locked', locked_by = $2, locked_at = NOW(),
+        evidence_note = COALESCE($3, legacy_cleanup_status.evidence_note),
+        updated_at    = NOW()
+    `, [id, req.user?.id||'system', final_note||null]);
+
+    res.json({ success: true, booking_id: id, status: 'locked' });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── GET /api/accounting/legacy-cleanup/report ────────────────────────────
+app.get('/api/accounting/legacy-cleanup/report', isAuthenticated, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT
+        b.id AS booking_id, b.customer_name, b.booking_date, b.total_amount,
+        b.status AS booking_status, b.platform,
+        COALESCE(lcs.kanban_status, 'pending_review') AS cleanup_status,
+        COALESCE(lcs.risk_level,    'unknown')         AS risk_level,
+        lcs.evidence_note,
+        COALESCE(lcs.payments_found, 0) AS payments_found,
+        COALESCE(lcs.expenses_found, 0) AS expenses_found,
+        COALESCE(lcs.difference, b.total_amount) AS difference,
+        lcs.adjusted_by, lcs.adjusted_at,
+        lcs.locked_by,   lcs.locked_at,
+        (SELECT COUNT(*) FROM legacy_adjustment_log l WHERE l.booking_id = b.id) AS adjustments_count,
+        (SELECT JSON_AGG(JSON_BUILD_OBJECT(
+           'id', l.id, 'type', l.adjustment_type, 'amount', l.amount,
+           'account', l.account_code, 'notes', l.notes,
+           'by', l.created_by, 'at', l.created_at
+         ) ORDER BY l.created_at)
+         FROM legacy_adjustment_log l WHERE l.booking_id = b.id) AS adjustments
+      FROM bookings b
+      LEFT JOIN legacy_cleanup_status lcs ON lcs.booking_id = b.id
+      WHERE b.is_legacy = true
+      ORDER BY b.booking_date DESC
+    `);
+
+    const s = {
+      total_legacy_bookings: rows.length,
+      pending_review:  rows.filter(r => r.cleanup_status === 'pending_review').length,
+      needs_evidence:  rows.filter(r => r.cleanup_status === 'needs_evidence').length,
+      needs_adjustment:rows.filter(r => r.cleanup_status === 'needs_adjustment').length,
+      adjusted:        rows.filter(r => r.cleanup_status === 'adjusted').length,
+      locked:          rows.filter(r => r.cleanup_status === 'locked').length,
+      high_risk:       rows.filter(r => r.risk_level === 'high').length,
+      total_difference:rows.reduce((sum,r) => sum + Math.abs(parseFloat(r.difference)||0), 0).toFixed(2)
+    };
+
+    res.json({
+      generated_at: new Date().toISOString(),
+      generated_by: req.user?.id || 'system',
+      cutover_date:  ACCOUNTING_CUTOVER_DATE,
+      summary: s, bookings: rows
+    });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+// ========== END LEGACY CLEANUP GUIDE ENDPOINTS ==========
 
 // ========== FASE 20: ACCOUNTING INTEGRITY ENGINE ==========
 
