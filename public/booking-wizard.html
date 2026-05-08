@@ -442,12 +442,16 @@
                    style="padding:7px 10px;border:1px solid #93c5fd;border-radius:6px;font-size:13px;width:100%;">
           </div>
         </div>
-        <div id="cap-expected-line" style="font-size:12px;color:#1d4ed8;padding:6px 10px;background:#dbeafe;border-radius:6px;display:none;">
-          Pago esperado: <strong id="cap-expected-val">$0.00</strong>
+        <div id="cap-expected-line" style="font-size:12px;color:#1d4ed8;padding:8px 10px;background:#dbeafe;border-radius:6px;display:none;line-height:1.8;">
+          Total esperado: <strong id="cap-expected-val">$0.00</strong>
+          <span id="cap-already-paid-line" style="display:none;">
+            &nbsp;|&nbsp; Ya pagado: <strong id="cap-already-paid-val" style="color:#0f766e;">$0.00</strong>
+            &nbsp;|&nbsp; <span id="cap-pending-label">Pendiente:</span> <strong id="cap-pending-val" style="color:#dc2626;">$0.00</strong>
+          </span>
           &nbsp;&mdash;&nbsp;
-          <button type="button" onclick="applyExpectedPay()"
+          <button type="button" onclick="applyExpectedPay()" id="btn-apply-expected"
                   style="border:none;background:#2563eb;color:#fff;padding:3px 10px;border-radius:12px;font-size:11px;cursor:pointer;">
-            Usar este monto
+            Usar pendiente
           </button>
         </div>
         <div style="margin-top:8px;font-size:11px;color:#1e3a8a;">
@@ -1121,25 +1125,57 @@ function calcExpectedPay() {
   const line  = document.getElementById('cap-expected-line');
   const val   = document.getElementById('cap-expected-val');
   if (!line || !val) return;
-  if (hours > 0) {
-    const expected = hours * rate;
-    val.textContent = '$' + expected.toFixed(2);
-    line.style.display = 'block';
-    // Auto-fill amount so the user doesn't need to click "Usar este monto"
-    const amountEl = document.getElementById('exp-amount');
-    if (amountEl) amountEl.value = expected.toFixed(2);
-  } else {
-    line.style.display = 'none';
+  if (hours <= 0) { line.style.display = 'none'; return; }
+
+  const expected  = hours * rate;
+  const alreadyPaid = parseFloat(wizData?.captain_actual || 0);
+  const remaining = Math.max(0, expected - alreadyPaid);
+  const overpaid  = alreadyPaid > expected;
+
+  // Update expected total
+  val.textContent = '$' + expected.toFixed(2);
+  line.style.display = 'block';
+
+  // Show already-paid context if any payments exist
+  const paidLine    = document.getElementById('cap-already-paid-line');
+  const paidVal     = document.getElementById('cap-already-paid-val');
+  const pendingVal  = document.getElementById('cap-pending-val');
+  const pendingLbl  = document.getElementById('cap-pending-label');
+  const btnApply    = document.getElementById('btn-apply-expected');
+  if (alreadyPaid > 0 && paidLine) {
+    paidLine.style.display = 'inline';
+    if (paidVal)    paidVal.textContent    = '$' + alreadyPaid.toFixed(2);
+    if (pendingVal) pendingVal.textContent = overpaid
+      ? '-$' + (alreadyPaid - expected).toFixed(2)
+      : '$' + remaining.toFixed(2);
+    if (pendingLbl) pendingLbl.textContent = overpaid ? 'Exceso:' : 'Pendiente:';
+    if (pendingVal) pendingVal.style.color  = overpaid ? '#d97706' : '#dc2626';
+    if (btnApply)   btnApply.textContent    = overpaid ? 'Ya pagado completo' : 'Usar pendiente';
+    if (btnApply)   btnApply.disabled       = overpaid;
+  } else if (paidLine) {
+    paidLine.style.display = 'none';
+    if (btnApply)  btnApply.textContent = 'Usar este monto';
+    if (btnApply)  btnApply.disabled    = false;
+  }
+
+  // Auto-fill with remaining (or full expected if nothing paid yet)
+  const amountEl = document.getElementById('exp-amount');
+  if (amountEl) {
+    const fillAmt = alreadyPaid > 0 ? remaining : expected;
+    if (fillAmt > 0) amountEl.value = fillAmt.toFixed(2);
   }
 }
 
 function applyExpectedPay() {
   const hours = parseFloat(document.getElementById('cap-hours')?.value || 0);
   const rate  = parseFloat(document.getElementById('cap-rate')?.value  || 50);
-  if (hours > 0) {
-    const amountEl = document.getElementById('exp-amount');
-    if (amountEl) amountEl.value = (hours * rate).toFixed(2);
-  }
+  if (hours <= 0) return;
+  const expected    = hours * rate;
+  const alreadyPaid = parseFloat(wizData?.captain_actual || 0);
+  const remaining   = Math.max(0, expected - alreadyPaid);
+  const fillAmt     = alreadyPaid > 0 ? remaining : expected;
+  const amountEl    = document.getElementById('exp-amount');
+  if (amountEl && fillAmt > 0) amountEl.value = fillAmt.toFixed(2);
 }
 
 function quickCaptainPayment() {
@@ -1174,9 +1210,16 @@ async function addExpense() {
   const capHours  = isCaptain ? (parseFloat(document.getElementById('cap-hours')?.value || 0) || null) : null;
   const capRate   = isCaptain ? (parseFloat(document.getElementById('cap-rate')?.value  || 50) || null) : null;
 
-  // Auto-apply expected pay for captain if amount was left empty
+  // Auto-apply expected/remaining pay for captain if amount was left empty
   if ((!amount || amount <= 0) && isCaptain && capHours > 0) {
-    const autoAmt = capHours * (capRate || 50);
+    const fullExpected  = capHours * (capRate || 50);
+    const alreadyPaid   = parseFloat(wizData?.captain_actual || 0);
+    const remaining     = Math.max(0, fullExpected - alreadyPaid);
+    const autoAmt       = alreadyPaid > 0 ? remaining : fullExpected;
+    if (autoAmt <= 0) {
+      showToast('exp-msg', `El capitán ya tiene $${alreadyPaid.toFixed(2)} pagados — superior o igual al esperado ($${fullExpected.toFixed(2)}). Ingresa un monto manualmente si deseas registrar un pago adicional.`, 'info');
+      return;
+    }
     document.getElementById('exp-amount').value = autoAmt.toFixed(2);
     return addExpense(); // re-run with amount filled
   }
