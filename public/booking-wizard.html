@@ -1158,9 +1158,9 @@ function calcExpectedPay() {
     if (btnApply)  btnApply.disabled    = false;
   }
 
-  // Auto-fill with remaining (or full expected if nothing paid yet)
+  // Auto-fill only if the amount field is still empty — never overwrite what the user typed
   const amountEl = document.getElementById('exp-amount');
-  if (amountEl) {
+  if (amountEl && (!amountEl.value || parseFloat(amountEl.value) === 0)) {
     const fillAmt = alreadyPaid > 0 ? remaining : expected;
     if (fillAmt > 0) amountEl.value = fillAmt.toFixed(2);
   }
@@ -1210,18 +1210,20 @@ async function addExpense() {
   const capHours  = isCaptain ? (parseFloat(document.getElementById('cap-hours')?.value || 0) || null) : null;
   const capRate   = isCaptain ? (parseFloat(document.getElementById('cap-rate')?.value  || 50) || null) : null;
 
-  // Auto-apply expected/remaining pay for captain if amount was left empty
+  // Auto-apply expected/remaining pay for captain if amount field was left empty
   if ((!amount || amount <= 0) && isCaptain && capHours > 0) {
     const fullExpected  = capHours * (capRate || 50);
     const alreadyPaid   = parseFloat(wizData?.captain_actual || 0);
     const remaining     = Math.max(0, fullExpected - alreadyPaid);
     const autoAmt       = alreadyPaid > 0 ? remaining : fullExpected;
-    if (autoAmt <= 0) {
-      showToast('exp-msg', `El capitán ya tiene $${alreadyPaid.toFixed(2)} pagados — superior o igual al esperado ($${fullExpected.toFixed(2)}). Ingresa un monto manualmente si deseas registrar un pago adicional.`, 'info');
-      return;
+    if (autoAmt > 0) {
+      document.getElementById('exp-amount').value = autoAmt.toFixed(2);
+      return addExpense(); // re-run with amount filled
     }
-    document.getElementById('exp-amount').value = autoAmt.toFixed(2);
-    return addExpense(); // re-run with amount filled
+    // Already fully paid but user left amount empty — ask for manual entry
+    showToast('exp-msg', `El capitán ya tiene $${alreadyPaid.toFixed(2)} pagados (esperado $${fullExpected.toFixed(2)}). Ingresa el monto manualmente para registrar un pago adicional.`, 'info');
+    document.getElementById('exp-amount').focus();
+    return;
   }
   if (!amount || amount <= 0) { showToast('exp-msg','Ingresa un monto válido mayor a cero.','error'); return; }
   if (!notes && !isCaptain) { showToast('exp-msg','La descripción del gasto es requerida.','error'); return; }
