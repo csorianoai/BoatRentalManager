@@ -683,8 +683,13 @@ async function loadWizData() {
     );
     wizData = r;
     integrity = r;
-    const bkDate = r?.booking_date || r?.service_date || r?.booking?.booking_date;
-    isLegacyBooking = bkDate ? new Date(bkDate) < CUTOVER_DATE : false;
+    // Use is_legacy flag from server first, then fall back to date comparison
+    if (r?.is_legacy) {
+      isLegacyBooking = true;
+    } else {
+      const bkDate = r?.booking_date || r?.service_date || r?.booking?.booking_date;
+      isLegacyBooking = bkDate ? new Date(bkDate) < CUTOVER_DATE : false;
+    }
     applyLegacyState();
   } catch(e) {
     console.error(e);
@@ -986,7 +991,15 @@ async function addPayment() {
     renderPaymentSummary();
     renderStep1();
   } catch(e) {
-    showToast('pay-msg', 'Error: ' + e.message, 'error');
+    console.error('[addPayment] error:', e);
+    const errEl = document.getElementById('pay-msg');
+    if (errEl) {
+      errEl.textContent = 'Error: ' + e.message;
+      errEl.className = 'inline-msg error';
+      errEl.style.display = 'block';
+      errEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    alert('Error al registrar pago:\n' + e.message);
   } finally {
     btn.disabled = false;
     btn.textContent = '+ Registrar Pago';
@@ -1278,7 +1291,16 @@ async function addExpense() {
     renderExpenseSummary();
     renderStep1();
   } catch(e) {
-    showToast('exp-msg', 'Error: ' + e.message, 'error');
+    console.error('[addExpense] error:', e);
+    const errEl = document.getElementById('exp-msg');
+    if (errEl) {
+      errEl.textContent = 'Error: ' + e.message;
+      errEl.className = 'inline-msg error';
+      errEl.style.display = 'block';
+      errEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    // Fallback visible alert so the error is never silently swallowed
+    alert('Error al registrar gasto:\n' + e.message);
   } finally {
     btn.disabled = false;
     btn.textContent = '+ Registrar Gasto';

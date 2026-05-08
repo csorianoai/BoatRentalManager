@@ -14912,6 +14912,11 @@ async function checkBookingIntegrity(bookingId) {
     ).catch(() => {});
   }
 
+  // Add booking metadata so the wizard can detect legacy without a separate query
+  result.booking_date    = bk.booking_date ? String(bk.booking_date).slice(0, 10) : null;
+  result.is_legacy       = bk.is_legacy === true || bk.accounting_status === 'legacy_locked';
+  result.customer_name   = bk.customer_name;
+
   return result;
 }
 
