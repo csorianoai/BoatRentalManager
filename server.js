@@ -1277,9 +1277,9 @@ async function initializeDatabase() {
     await pool.query(`ALTER TABLE captain_payments ADD COLUMN IF NOT EXISTS payment_method TEXT DEFAULT 'cash'`);
     await pool.query(`ALTER TABLE captain_payments ADD COLUMN IF NOT EXISTS transaction_id TEXT`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_cap_pay_booking ON captain_payments(booking_id)`);
-    // Extend reference_type constraint to include captain_payment
-    await pool.query(`ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_reference_type_check`);
-    await pool.query(`ALTER TABLE transactions ADD CONSTRAINT transactions_reference_type_check CHECK (reference_type IN ('booking','commission','fuel','maintenance','manual','bank_transfer','other','asset','captain_payment'))`);
+    // Extend reference_type constraint to include captain_payment (full list — safe for all phases)
+    await pool.query(`ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_reference_type_check`).catch(() => {});
+    await pool.query(`ALTER TABLE transactions ADD CONSTRAINT transactions_reference_type_check CHECK (reference_type IN ('booking','commission','fuel','maintenance','manual','bank_transfer','other','asset','captain_payment','cash_clearing','booking_complete','booking_expense','manual_adjustment'))`).catch(() => {});
 
     // Stew payments (parallel to captain payments)
     await pool.query(`
@@ -1671,16 +1671,16 @@ async function initializeDatabase() {
       ON CONFLICT (id) DO NOTHING
     `);
 
-    // Extend transactions reference_type constraint to include 'asset' and 'captain_payment'
+    // Extend transactions reference_type constraint — full list, safe for all phases
     await pool.query(`
       ALTER TABLE transactions
         DROP CONSTRAINT IF EXISTS transactions_reference_type_check
-    `);
+    `).catch(() => {});
     await pool.query(`
       ALTER TABLE transactions
         ADD CONSTRAINT transactions_reference_type_check
-        CHECK (reference_type IN ('booking','commission','fuel','maintenance','manual','bank_transfer','other','asset','captain_payment'))
-    `);
+        CHECK (reference_type IN ('booking','commission','fuel','maintenance','manual','bank_transfer','other','asset','captain_payment','cash_clearing','booking_complete','booking_expense','manual_adjustment'))
+    `).catch(() => {});
     
     // AUTHENTICATION: Create sessions table (required for Replit Auth)
     await pool.query(`
