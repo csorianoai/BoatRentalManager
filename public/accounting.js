@@ -32,7 +32,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Setup tab navigation
     setupTabs();
-    
+
+    // Deep-link: activate tab from URL ?tab=xxx
+    (function activateTabFromUrl() {
+        const urlTab = new URLSearchParams(location.search).get('tab');
+        if (!urlTab) return;
+        const btn = document.querySelector(`.tab[data-tab="${urlTab}"]`);
+        if (!btn) return;
+        // small delay so setupTabs has finished wiring listeners
+        setTimeout(() => {
+            btn.click();
+            btn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        }, 120);
+    })();
+
     // Setup theme toggle
     setupThemeToggle();
     

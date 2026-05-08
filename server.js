@@ -3184,39 +3184,67 @@ app.get('/api/dashboard-data', isAuthenticated, async (req, res) => {
 // 🎯 ENDPOINTS ESPECÍFICOS
 app.get('/api/bookings', isAuthenticated, async (req, res) => {
   try {
-    const { platform, status, date, dateFrom, dateTo, captain } = req.query;
-    
-    let query = 'SELECT * FROM bookings WHERE 1=1';
+    const { platform, status, date, dateFrom, dateTo, captain, customer, is_legacy, search } = req.query;
+
+    let query = `
+      SELECT b.*,
+             COALESCE(b.assigned_captain_name, cap.name)    AS captain_name,
+             COALESCE(bt.name, b.boat_type)                 AS boat_name,
+             bl.accounting_status,
+             lcs.kanban_status                              AS legacy_cleanup_status
+      FROM bookings b
+      LEFT JOIN captains cap ON cap.id = b.assigned_captain_id
+      LEFT JOIN boats bt     ON bt.id = b.boat_id
+      LEFT JOIN LATERAL (
+        SELECT accounting_status FROM bookings_ledger
+        WHERE notes LIKE 'booking:' || b.id || '%' LIMIT 1
+      ) bl ON true
+      LEFT JOIN legacy_cleanup_status lcs ON lcs.booking_id = b.id
+      WHERE 1=1`;
     const params = [];
     let paramIndex = 1;
-    
+
     if (platform) {
-      query += ` AND platform = $${paramIndex++}`;
+      query += ` AND b.platform = $${paramIndex++}`;
       params.push(platform);
     }
     if (status) {
-      query += ` AND status = $${paramIndex++}`;
+      query += ` AND b.status = $${paramIndex++}`;
       params.push(status);
     }
     if (date) {
-      query += ` AND booking_date = $${paramIndex++}`;
+      query += ` AND b.booking_date = $${paramIndex++}`;
       params.push(date);
     }
     if (dateFrom) {
-      query += ` AND booking_date >= $${paramIndex++}`;
+      query += ` AND b.booking_date >= $${paramIndex++}`;
       params.push(dateFrom);
     }
     if (dateTo) {
-      query += ` AND booking_date <= $${paramIndex++}`;
+      query += ` AND b.booking_date <= $${paramIndex++}`;
       params.push(dateTo);
     }
     if (captain) {
-      query += ` AND assigned_captain_id = $${paramIndex++}`;
+      query += ` AND b.assigned_captain_id = $${paramIndex++}`;
       params.push(captain);
     }
-    
-    query += ' ORDER BY booking_date ASC, start_time ASC';
-    
+    if (customer) {
+      query += ` AND LOWER(COALESCE(b.customer_name,'')) LIKE $${paramIndex++}`;
+      params.push('%' + customer.toLowerCase() + '%');
+    }
+    if (search) {
+      query += ` AND (LOWER(COALESCE(b.customer_name,'')) LIKE $${paramIndex} OR b.id LIKE $${paramIndex})`;
+      params.push('%' + search.toLowerCase() + '%');
+      paramIndex++;
+    }
+    if (is_legacy === 'true') {
+      query += ` AND b.is_legacy = true`;
+    } else if (is_legacy === 'false') {
+      query += ` AND (b.is_legacy = false OR b.is_legacy IS NULL)`;
+    }
+
+    query += ' ORDER BY b.booking_date DESC, b.start_time ASC';
+
     const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (error) {

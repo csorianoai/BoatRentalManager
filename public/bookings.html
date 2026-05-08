@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bookings / Reservaciones — Nadaki Excursions</title>
+    <meta name="description" content="Listado completo de bookings y reservaciones de Nadaki Excursions. Busca, filtra y abre el wizard de cuadre contable.">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f1f5f9; color: #1e293b; min-height: 100vh; }
+
+        .page-header {
+            background: #fff;
+            border-bottom: 1px solid #e2e8f0;
+            padding: 16px 28px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 12px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .page-header-left h1 { font-size: 20px; font-weight: 800; color: #1a1a2e; margin-bottom: 2px; }
+        .page-header-left p  { font-size: 12px; color: #64748b; }
+        .header-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+        .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 7px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; text-decoration: none; transition: opacity .15s; }
+        .btn:hover { opacity: .85; }
+        .btn-primary   { background: #7c3aed; color: #fff; }
+        .btn-sky       { background: #0ea5e9; color: #fff; }
+        .btn-slate     { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+        .btn-sm        { padding: 5px 12px; font-size: 12px; border-radius: 6px; }
+        .btn-wizard    { background: #7c3aed; color: #fff; }
+        .btn-calendar  { background: #0ea5e9; color: #fff; }
+        .btn-legacy-adj{ background: #f59e0b; color: #fff; }
+
+        .filters-bar {
+            background: #fff;
+            border-bottom: 1px solid #e2e8f0;
+            padding: 14px 28px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: flex-end;
+        }
+        .filter-group { display: flex; flex-direction: column; gap: 4px; min-width: 150px; }
+        .filter-group label { font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: .3px; }
+        .filter-group input, .filter-group select {
+            padding: 7px 10px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 13px;
+            color: #1e293b;
+            background: #fff;
+        }
+        .filter-group input:focus, .filter-group select:focus { outline: 2px solid #7c3aed; border-color: transparent; }
+
+        .stats-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            padding: 16px 28px;
+        }
+        .stat-card {
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 12px 18px;
+            flex: 1;
+            min-width: 130px;
+        }
+        .stat-card .stat-label { font-size: 10px; font-weight: 700; text-transform: uppercase; color: #94a3b8; letter-spacing: .4px; margin-bottom: 3px; }
+        .stat-card .stat-value { font-size: 22px; font-weight: 800; color: #1e293b; }
+        .stat-card.purple .stat-value { color: #7c3aed; }
+        .stat-card.red    .stat-value { color: #dc2626; }
+        .stat-card.green  .stat-value { color: #16a34a; }
+        .stat-card.amber  .stat-value { color: #d97706; }
+
+        .table-container {
+            margin: 0 28px 28px;
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        table { width: 100%; border-collapse: collapse; }
+        thead th {
+            background: #f8fafc;
+            padding: 10px 14px;
+            text-align: left;
+            font-size: 11px;
+            font-weight: 700;
+            color: #475569;
+            text-transform: uppercase;
+            letter-spacing: .4px;
+            border-bottom: 1px solid #e2e8f0;
+            white-space: nowrap;
+        }
+        tbody tr { border-bottom: 1px solid #f1f5f9; transition: background .1s; }
+        tbody tr:last-child { border-bottom: none; }
+        tbody tr:hover { background: #fafbfc; }
+        tbody td { padding: 11px 14px; font-size: 13px; color: #334155; vertical-align: middle; }
+
+        .booking-id { font-family: monospace; font-size: 11px; color: #94a3b8; background: #f1f5f9; padding: 2px 6px; border-radius: 4px; display: inline-block; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .customer-name { font-weight: 600; color: #1e293b; }
+        .date-cell { font-size: 12px; white-space: nowrap; }
+        .amount-cell { font-weight: 700; color: #0284c7; white-space: nowrap; }
+
+        .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+        .badge-legacy   { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+        .badge-current  { background: #dcfce7; color: #15803d; border: 1px solid #86efac; }
+        .badge-paid     { background: #dcfce7; color: #15803d; }
+        .badge-partial  { background: #fef3c7; color: #92400e; }
+        .badge-pending  { background: #f1f5f9; color: #64748b; }
+        .badge-confirmed{ background: #dbeafe; color: #1d4ed8; }
+        .badge-completed{ background: #dcfce7; color: #15803d; }
+        .badge-cancelled{ background: #fee2e2; color: #dc2626; }
+        .badge-acct-done{ background: #dcfce7; color: #15803d; }
+        .badge-acct-partial{ background: #fef3c7; color: #92400e; }
+        .badge-acct-none{ background: #f1f5f9; color: #94a3b8; }
+
+        .legacy-lock-row { background: #fffbeb !important; }
+        .legacy-lock-row:hover { background: #fef9c3 !important; }
+
+        .action-cell { display: flex; gap: 5px; align-items: center; flex-wrap: nowrap; }
+
+        .empty-state { text-align: center; padding: 60px 24px; color: #94a3b8; }
+        .empty-state .big { font-size: 32px; margin-bottom: 10px; }
+        .empty-state p { font-size: 14px; }
+
+        .loading-row td { text-align: center; padding: 40px; color: #94a3b8; }
+
+        .platform-badge { font-size: 10px; color: #64748b; background: #f8fafc; border: 1px solid #e2e8f0; padding: 1px 6px; border-radius: 10px; white-space: nowrap; }
+
+        @media (max-width: 900px) {
+            .filters-bar { padding: 12px 16px; }
+            .stats-row    { padding: 12px 16px; }
+            .table-container { margin: 0 12px 20px; }
+            .page-header  { padding: 12px 16px; }
+            thead th:nth-child(3), td:nth-child(3),
+            thead th:nth-child(6), td:nth-child(6) { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ── Global Nav injected by global-nav.js ── -->
+
+<div class="page-header">
+    <div class="page-header-left">
+        <h1>Bookings / Reservaciones</h1>
+        <p>Todos los bookings — busca, filtra y abre el wizard de cuadre contable</p>
+    </div>
+    <div class="header-actions">
+        <a href="/accounting.html#cuadre-booking" class="btn btn-slate" data-testid="link-to-booking-reconciliation">
+            Cuadre Contable
+        </a>
+        <a href="/schedule.html" class="btn btn-sky" data-testid="link-to-calendar">
+            Ver Calendario
+        </a>
+        <button class="btn btn-slate" onclick="exportBookingsCsv()" data-testid="button-export-csv">
+            Exportar CSV
+        </button>
+    </div>
+</div>
+
+<!-- ── Filters ── -->
+<div class="filters-bar">
+    <div class="filter-group" style="flex:2;min-width:200px;">
+        <label>Buscar cliente o Booking ID</label>
+        <input type="text" id="f-search" data-testid="input-search" placeholder="Ej: Matej, book_matej_..." onkeydown="if(event.key==='Enter')loadBookings()">
+    </div>
+    <div class="filter-group">
+        <label>Desde</label>
+        <input type="date" id="f-date-from" data-testid="input-date-from">
+    </div>
+    <div class="filter-group">
+        <label>Hasta</label>
+        <input type="date" id="f-date-to" data-testid="input-date-to">
+    </div>
+    <div class="filter-group">
+        <label>Periodo</label>
+        <select id="f-period" data-testid="select-period">
+            <option value="">Todos</option>
+            <option value="current">Solo Actuales (desde 2026-04-27)</option>
+            <option value="legacy">Solo Legacy (antes 2026-04-27)</option>
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Estado booking</label>
+        <select id="f-status" data-testid="select-status">
+            <option value="">Todos</option>
+            <option value="confirmed">Confirmado</option>
+            <option value="completed">Completado</option>
+            <option value="pending">Pendiente</option>
+            <option value="cancelled">Cancelado</option>
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Plataforma</label>
+        <select id="f-platform" data-testid="select-platform">
+            <option value="">Todas</option>
+            <option value="Manual">Manual</option>
+            <option value="GetMyBoat">GetMyBoat</option>
+            <option value="Airbnb">Airbnb</option>
+            <option value="BoatSetter">BoatSetter</option>
+            <option value="Viator">Viator</option>
+            <option value="Expedia">Expedia</option>
+            <option value="FareHarbor">FareHarbor</option>
+        </select>
+    </div>
+    <div style="display:flex;align-items:flex-end;gap:6px;">
+        <button class="btn btn-primary" onclick="loadBookings()" data-testid="button-apply-filters">Buscar</button>
+        <button class="btn btn-slate"   onclick="clearFilters()" data-testid="button-clear-filters">Limpiar</button>
+    </div>
+</div>
+
+<!-- ── Stats ── -->
+<div class="stats-row" id="stats-row">
+    <div class="stat-card"><div class="stat-label">Total Bookings</div><div class="stat-value" id="stat-total">—</div></div>
+    <div class="stat-card green"><div class="stat-label">Actuales (Current)</div><div class="stat-value" id="stat-current">—</div></div>
+    <div class="stat-card amber"><div class="stat-label">Legacy</div><div class="stat-value" id="stat-legacy">—</div></div>
+    <div class="stat-card purple"><div class="stat-label">Ingresos Totales</div><div class="stat-value" id="stat-revenue">—</div></div>
+    <div class="stat-card red"><div class="stat-label">Sin Cuadrar</div><div class="stat-value" id="stat-pending-acct">—</div></div>
+</div>
+
+<!-- ── Table ── -->
+<div class="table-container">
+    <table>
+        <thead>
+            <tr>
+                <th>Booking ID</th>
+                <th>Cliente</th>
+                <th>Fecha Servicio</th>
+                <th>Barco</th>
+                <th>Capitán</th>
+                <th>Total</th>
+                <th>Pago</th>
+                <th>Contabilidad</th>
+                <th>Periodo</th>
+                <th style="text-align:center;">Acción</th>
+            </tr>
+        </thead>
+        <tbody id="bookings-tbody">
+            <tr class="loading-row"><td colspan="10">Cargando bookings...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<script>
+const CUTOVER_DATE = '2026-04-27';
+let allBookings = [];
+
+function fmt(n) {
+    return Number(n||0).toLocaleString('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 });
+}
+
+function isLegacy(booking) {
+    const d = booking.service_date || booking.booking_date;
+    if (!d) return false;
+    return d.slice(0,10) < CUTOVER_DATE;
+}
+
+function paymentBadge(b) {
+    const ps = b.payment_status;
+    if (!ps || ps === 'pending') return '<span class="badge badge-pending">Pendiente</span>';
+    if (ps === 'paid')     return '<span class="badge badge-paid">Pagado</span>';
+    if (ps === 'partial')  return '<span class="badge badge-partial">Parcial</span>';
+    if (ps === 'refunded') return '<span class="badge badge-cancelled">Devuelto</span>';
+    return `<span class="badge badge-pending">${ps}</span>`;
+}
+
+function acctBadge(b) {
+    const s = b.accounting_status;
+    if (!s || s === 'not_started') return '<span class="badge badge-acct-none">No iniciado</span>';
+    if (s === 'completed')         return '<span class="badge badge-acct-done">Cuadrado</span>';
+    if (s === 'in_progress')       return '<span class="badge badge-acct-partial">En progreso</span>';
+    if (s === 'reconciled')        return '<span class="badge badge-acct-done">Reconciliado</span>';
+    return `<span class="badge badge-acct-none">${s}</span>`;
+}
+
+function statusBadge(b) {
+    const s = b.status || b.booking_status || '';
+    if (s === 'confirmed')  return '<span class="badge badge-confirmed">Confirmado</span>';
+    if (s === 'completed')  return '<span class="badge badge-completed">Completado</span>';
+    if (s === 'cancelled')  return '<span class="badge badge-cancelled">Cancelado</span>';
+    if (s === 'pending')    return '<span class="badge badge-pending">Pendiente</span>';
+    return `<span class="badge badge-pending">${s||'—'}</span>`;
+}
+
+function periodBadge(booking) {
+    if (isLegacy(booking)) {
+        return '<span class="badge badge-legacy">LEGACY LOCKED</span>';
+    }
+    return '<span class="badge badge-current">Actual</span>';
+}
+
+function renderRow(b) {
+    const legacy    = isLegacy(b);
+    const dateStr   = (b.service_date || b.booking_date || '').slice(0,10);
+    const boatLabel = b.boat_name || b.boat_type || '—';
+    const captLabel = b.captain_name || b.assigned_captain_name || '—';
+    const total     = parseFloat(b.total_amount||0);
+
+    const actionButtons = legacy
+        ? `<button class="btn btn-sm btn-legacy-adj"
+                   onclick="openLegacyGuide('${b.id}')"
+                   data-testid="button-legacy-adj-${b.id}"
+                   title="Solo ajuste de periodo anterior — booking legacy">
+               Prior Period Adj
+           </button>
+           <a href="/accounting.html#legacy-cleanup"
+              class="btn btn-sm btn-slate"
+              data-testid="button-view-legacy-${b.id}"
+              title="Ver en Legacy Cleanup Guide">
+               Ver Legacy
+           </a>`
+        : `<button class="btn btn-sm btn-wizard"
+                   onclick="openWizard('${b.id}')"
+                   data-testid="button-wizard-${b.id}"
+                   title="Abrir Booking Reconciliation Wizard">
+               Cuadrar Booking
+           </button>
+           <a href="/schedule.html" class="btn btn-sm btn-slate" data-testid="button-cal-${b.id}" title="Ver en Calendario">Cal</a>`;
+
+    return `
+    <tr class="${legacy ? 'legacy-lock-row' : ''}" data-testid="row-booking-${b.id}">
+        <td>
+            <span class="booking-id" title="${b.id}">${b.id}</span>
+            ${b.platform ? `<br><span class="platform-badge">${b.platform}</span>` : ''}
+        </td>
+        <td>
+            <div class="customer-name">${b.customer_name || '—'}</div>
+            ${statusBadge(b)}
+        </td>
+        <td class="date-cell">${dateStr || '—'}</td>
+        <td style="font-size:12px;color:#475569;">${boatLabel}</td>
+        <td style="font-size:12px;color:#475569;">${captLabel}</td>
+        <td class="amount-cell">$${fmt(total)}</td>
+        <td>${paymentBadge(b)}</td>
+        <td>${acctBadge(b)}</td>
+        <td>${periodBadge(b)}</td>
+        <td>
+            <div class="action-cell">${actionButtons}</div>
+        </td>
+    </tr>`;
+}
+
+function openWizard(bookingId) {
+    window.open(`/booking-wizard.html?booking_id=${encodeURIComponent(bookingId)}`, '_blank');
+}
+
+function openLegacyGuide(bookingId) {
+    // Navigate to accounting legacy cleanup with booking pre-selected
+    window.location.href = `/accounting.html?tab=legacy-cleanup&booking_id=${encodeURIComponent(bookingId)}`;
+}
+
+async function loadBookings() {
+    const tbody = document.getElementById('bookings-tbody');
+    tbody.innerHTML = '<tr class="loading-row"><td colspan="10">Cargando...</td></tr>';
+
+    const params = new URLSearchParams();
+    const search   = document.getElementById('f-search').value.trim();
+    const dateFrom = document.getElementById('f-date-from').value;
+    const dateTo   = document.getElementById('f-date-to').value;
+    const period   = document.getElementById('f-period').value;
+    const status   = document.getElementById('f-status').value;
+    const platform = document.getElementById('f-platform').value;
+
+    if (search)   params.set('search', search);
+    if (dateFrom) params.set('dateFrom', dateFrom);
+    if (dateTo)   params.set('dateTo', dateTo);
+    if (status)   params.set('status', status);
+    if (platform) params.set('platform', platform);
+    if (period === 'current') params.set('is_legacy', 'false');
+    if (period === 'legacy')  params.set('is_legacy', 'true');
+
+    try {
+        const r = await fetch('/api/bookings?' + params.toString(), { credentials: 'include' });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        allBookings = await r.json();
+        renderStats(allBookings);
+        renderTable(allBookings);
+    } catch(err) {
+        tbody.innerHTML = `<tr class="loading-row"><td colspan="10" style="color:#dc2626;">Error: ${err.message}</td></tr>`;
+    }
+}
+
+function renderStats(bookings) {
+    const current = bookings.filter(b => !isLegacy(b));
+    const legacy  = bookings.filter(b => isLegacy(b));
+    const revenue = bookings.reduce((s,b) => s + parseFloat(b.total_amount||0), 0);
+    const noAcct  = bookings.filter(b => !b.accounting_status || b.accounting_status === 'not_started').length;
+
+    document.getElementById('stat-total').textContent   = bookings.length;
+    document.getElementById('stat-current').textContent = current.length;
+    document.getElementById('stat-legacy').textContent  = legacy.length;
+    document.getElementById('stat-revenue').textContent = '$' + fmt(revenue);
+    document.getElementById('stat-pending-acct').textContent = noAcct;
+}
+
+function renderTable(bookings) {
+    const tbody = document.getElementById('bookings-tbody');
+    if (!bookings.length) {
+        tbody.innerHTML = `<tr><td colspan="10">
+            <div class="empty-state">
+                <div class="big">📋</div>
+                <p>No se encontraron bookings con los filtros actuales.</p>
+            </div>
+        </td></tr>`;
+        return;
+    }
+    tbody.innerHTML = bookings.map(renderRow).join('');
+}
+
+function clearFilters() {
+    document.getElementById('f-search').value   = '';
+    document.getElementById('f-date-from').value = '';
+    document.getElementById('f-date-to').value   = '';
+    document.getElementById('f-period').value    = '';
+    document.getElementById('f-status').value    = '';
+    document.getElementById('f-platform').value  = '';
+    loadBookings();
+}
+
+function exportBookingsCsv() {
+    if (!allBookings.length) { alert('No hay bookings para exportar. Carga primero.'); return; }
+    const headers = ['Booking ID','Cliente','Fecha','Barco','Capitán','Total','Pago','Contabilidad','Periodo','Plataforma','Estado'];
+    const rows = allBookings.map(b => [
+        b.id,
+        b.customer_name||'',
+        (b.service_date||b.booking_date||'').slice(0,10),
+        b.boat_name||b.boat_type||'',
+        b.captain_name||b.assigned_captain_name||'',
+        parseFloat(b.total_amount||0).toFixed(2),
+        b.payment_status||'',
+        b.accounting_status||'',
+        isLegacy(b)?'LEGACY':'CURRENT',
+        b.platform||'',
+        b.status||''
+    ].map(v => `"${String(v).replace(/"/g,'""')}"`).join(','));
+    const csv  = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csv], { type:'text/csv' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = `bookings-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click(); URL.revokeObjectURL(url);
+}
+
+// ── URL param handling (e.g. ?search=Matej&period=current) ──
+(function() {
+    const p = new URLSearchParams(location.search);
+    if (p.get('search'))   document.getElementById('f-search').value   = p.get('search');
+    if (p.get('dateFrom')) document.getElementById('f-date-from').value = p.get('dateFrom');
+    if (p.get('dateTo'))   document.getElementById('f-date-to').value   = p.get('dateTo');
+    if (p.get('period'))   document.getElementById('f-period').value    = p.get('period');
+    if (p.get('status'))   document.getElementById('f-status').value    = p.get('status');
+    if (p.get('platform')) document.getElementById('f-platform').value  = p.get('platform');
+})();
+
+// Set default dates: last 90 days → today
+(function() {
+    const now  = new Date();
+    const from = new Date(now); from.setDate(from.getDate() - 90);
+    const df   = document.getElementById('f-date-from');
+    const dt   = document.getElementById('f-date-to');
+    if (!df.value) df.value = from.toISOString().slice(0,10);
+    if (!dt.value) dt.value = now.toISOString().slice(0,10);
+})();
+
+document.addEventListener('DOMContentLoaded', loadBookings);
+</script>
+
+<script src="/i18n.js"></script>
+<script>
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js').catch(() => {});
+    }
+</script>
+<script src="/assets/js/components/global-nav.js"></script>
+</body>
+</html>

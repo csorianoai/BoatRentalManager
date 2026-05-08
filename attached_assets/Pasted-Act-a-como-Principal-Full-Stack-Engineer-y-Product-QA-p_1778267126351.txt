@@ -1,0 +1,161 @@
+Actúa como Principal Full-Stack Engineer y Product QA para gestion.nadakiexcursions.
+
+OBJETIVO:
+Verificar dónde existe actualmente el flujo para abrir y cuadrar bookings dentro del dashboard. Si no existe, crearlo inmediatamente de forma segura y sin romper nada.
+
+NO modificar lógica contable existente salvo lo necesario para conectar la UI.
+NO eliminar endpoints.
+NO romper accounting.html ni booking-wizard.html.
+
+TAREA 1 — INSPECCIÓN
+Revisa el proyecto y responde primero:
+
+1. ¿Dónde está el listado principal de bookings/reservations?
+2. ¿Existe menú lateral para Bookings / Reservations?
+3. ¿Existe detalle individual de booking?
+4. ¿Existe botón “Cuadrar Booking”?
+5. ¿Existe ruta o archivo booking-wizard.html?
+6. ¿Existe sección Accounting → Booking Reconciliation?
+7. ¿Qué URL exacta abre el wizard?
+8. ¿Qué parámetro usa el wizard: booking_id, id, reservation_id u otro?
+9. ¿Qué endpoints usa el wizard para cargar datos?
+10. ¿Qué falta para que el usuario pueda abrir el cuadre desde el dashboard?
+
+Entregar respuesta con:
+- Archivos encontrados
+- Rutas existentes
+- Botones existentes
+- Funciones JS relevantes
+- Endpoints conectados
+- Brechas detectadas
+
+TAREA 2 — SI NO EXISTE, CREARLO INMEDIATAMENTE
+
+Si falta cualquiera de estas partes, implementarlas:
+
+A) Menú lateral
+Agregar item visible:
+“Bookings / Reservations”
+
+Debe llevar al listado principal de bookings.
+
+B) Listado de bookings
+Crear o actualizar página/listado con columnas:
+- Booking ID
+- Cliente
+- Fecha servicio
+- Barco
+- Capitán
+- Total
+- Payment Status
+- Accounting Status
+- Acción
+
+En Acción agregar botón:
+“Cuadrar Booking”
+
+El botón debe abrir:
+booking-wizard.html?booking_id={booking_id}
+
+C) Detalle de booking
+Si existe pantalla de detalle, agregar botón prominente:
+“Cuadrar Booking”
+
+D) Accounting
+Agregar sección visible:
+Accounting → Booking Reconciliation
+
+Debe mostrar:
+- Bookings current desde 2026-04-27 por defecto
+- Estado contable
+- Alertas
+- Botón “Open Wizard”
+
+E) Deep links
+Verificar que estas URLs funcionen:
+- /booking-wizard.html?booking_id={id}
+- /accounting.html?tab=booking-reconciliation
+- /accounting.html?tab=period-control
+
+F) Protección de periodos
+Si el booking es anterior a 2026-04-27:
+- Mostrar badge LEGACY LOCKED
+- No permitir abrir flujo normal de reconciliación
+- Solo permitir View Historical Record y Prior Period Adjustment
+
+Si el booking es desde 2026-04-27:
+- Abrir wizard normal completo
+
+TAREA 3 — BACKEND / ENDPOINTS
+
+Verificar o crear endpoints necesarios:
+
+GET /api/bookings
+Debe devolver lista de bookings con:
+- id
+- customer_name
+- service_date
+- boat_name
+- captain_name
+- total_amount
+- payment_status
+- accounting_status
+- is_legacy
+
+GET /api/bookings/:id
+Debe devolver detalle del booking.
+
+GET /api/bookings/:id/reconciliation
+Debe devolver ledger/resumen contable.
+
+Si los endpoints ya existen con otros nombres, no duplicar; crear adapter o conectar la UI al endpoint real.
+
+TAREA 4 — UI FALLBACK
+
+Si no hay un listado de bookings confiable, crear página:
+bookings.html
+
+Con:
+- tabla de bookings
+- filtro por fecha
+- filtro por current/legacy
+- búsqueda por cliente
+- botón “Cuadrar Booking”
+- botón “Ver en calendario” si existe calendario
+
+Agregarla al menú lateral.
+
+TAREA 5 — VALIDACIÓN
+
+Probar con caso Matej:
+
+- Buscar Matej
+- Confirmar fecha 2026-04-27
+- Confirmar que NO es legacy
+- Confirmar que aparece botón “Cuadrar Booking”
+- Confirmar que abre:
+  booking-wizard.html?booking_id={id}
+- Confirmar que el wizard carga datos
+- Confirmar que muestra accounting_status y alertas
+
+Probar con booking anterior a 2026-04-27:
+
+- Confirmar que aparece LEGACY LOCKED
+- Confirmar que NO permite reconciliación normal
+- Confirmar que solo permite ajuste de periodo anterior
+
+TAREA 6 — ENTREGABLE FINAL
+
+Al terminar, reporta:
+
+1. Dónde se encuentra ahora el flujo exacto en el dashboard.
+2. URL exacta del listado de bookings.
+3. URL exacta para abrir el wizard.
+4. Archivo donde agregaste el botón “Cuadrar Booking”.
+5. Archivo donde agregaste Accounting → Booking Reconciliation.
+6. Endpoints usados.
+7. Resultado prueba Matej.
+8. Resultado prueba legacy.
+9. Cualquier limitación pendiente.
+
+No declares terminado si el usuario no puede entrar desde el menú, buscar un booking y abrir “Cuadrar Booking”.
