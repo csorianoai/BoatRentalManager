@@ -1,0 +1,377 @@
+Actúa como Principal Product Engineer, Accounting Systems Architect y UX Workflow Engineer para gestion.nadakiexcursions.
+
+OBJETIVO:
+Actualizar el Booking Reconciliation Wizard para permitir registrar múltiples ingresos y múltiples gastos dentro del mismo paso, sin obligar al usuario a avanzar de pantalla después de cada registro.
+
+REGLA PRINCIPAL:
+El usuario debe poder cuadrar un booking en una sola corrida:
+- varios ingresos
+- varios métodos de pago
+- varios gastos
+- varias formas de pago de gastos
+sin perder contexto y sin avanzar automáticamente.
+
+NO romper:
+- Legacy lock
+- Cash Clearing 1015
+- Deferred Deposits 2500
+- Accounts Receivable
+- Revenue recognition
+- Manual adjustments
+- Integrity check
+- Caso Matej
+- Reportes current/legacy
+
+==================================================
+1. INGRESOS — MULTIPLE PAYMENT ENTRY
+==================================================
+
+En booking-wizard.html, Paso de Ingresos / Pagos:
+
+Permitir registrar múltiples ingresos consecutivos, por ejemplo:
+- Depósito Wells Fargo
+- Zelle
+- Cash
+- Stripe/Card
+- Platform payout
+- Otro
+
+Después de hacer clic en “Registrar Pago”:
+
+1. Crear el pago
+2. Refrescar lista de pagos registrados
+3. Actualizar totales:
+   - booking_total
+   - total_collected
+   - outstanding_balance
+   - overpayment
+   - deferred_deposit_total
+   - cash_collected
+4. Mantener al usuario en el mismo paso de ingresos
+5. NO avanzar automáticamente al próximo paso
+6. Limpiar campos principales:
+   - amount
+   - reference_number
+   - notes
+7. Mantener o resetear:
+   - payment_method según mejor UX
+   - payment_date con fecha actual o service date
+8. Mostrar mensaje:
+   “Pago registrado correctamente. Puedes agregar otro pago o continuar al próximo paso.”
+
+Agregar botón separado:
+“Continuar a Gastos” o “Continuar a Servicio/Gastos”
+
+Este botón será el único que avance al próximo paso.
+
+Campos requeridos para cada pago:
+- amount
+- payment_date
+- payment_method
+- account_code
+- reference_number opcional
+- notes opcional
+- received_by opcional
+
+Métodos permitidos:
+- cash
+- zelle
+- bank_deposit
+- card
+- platform
+- other
+
+Reglas contables:
+
+A) Si payment_method = cash:
+Dr 1015 Cash Clearing / Operating Cash
+Cr 2500 Deferred Booking Deposits si servicio no completado
+Cr 1100 Accounts Receivable si servicio completado y existía saldo pendiente
+
+B) Si payment_method = zelle o bank_deposit:
+Dr 1010 Wells Fargo Checking u otra cuenta bancaria seleccionada
+Cr 2500 Deferred Booking Deposits si servicio no completado
+Cr 1100 Accounts Receivable si servicio completado
+
+C) Si payment_method = card / stripe:
+Dr Bank/Card Clearing o cuenta seleccionada
+Cr 2500 Deferred Booking Deposits o 1100 Accounts Receivable
+
+D) Si payment_method = platform:
+Dr Platform Clearing / Bank según configuración
+Cr 2500 Deferred Booking Deposits o 1100 Accounts Receivable
+
+IMPORTANTE:
+- Registrar pago NO debe reconocer revenue automáticamente.
+- Revenue solo se reconoce al completar servicio.
+- No duplicar revenue.
+- No permitir pagos en bookings legacy salvo prior period adjustment.
+- Validar cuenta activa antes de postear.
+
+Lista visible de pagos:
+Debajo del formulario mostrar tabla:
+- Fecha
+- Método
+- Cuenta debitada
+- Monto
+- Referencia
+- Nota
+- Estado
+- Acción editar/eliminar si periodo no está locked
+
+Summary card de ingresos:
+- Total booking
+- Total pagado
+- Pendiente
+- Cash recibido
+- Banco/Zelle recibido
+- Plataforma recibido
+- Sobrepago si existe
+
+==================================================
+2. GASTOS — MULTIPLE EXPENSE ENTRY
+==================================================
+
+En booking-wizard.html, Paso de Gastos:
+
+Permitir registrar múltiples gastos consecutivos:
+- Fuel
+- Ice
+- Captain
+- Cleaning
+- Commission
+- Dock / Marina
+- Maintenance
+- Other
+
+Después de hacer clic en “Registrar Gasto”:
+
+1. Crear el gasto
+2. Refrescar lista de gastos registrados
+3. Actualizar totales:
+   - total_expenses
+   - cash_expenses
+   - bank_zelle_expenses
+   - cash_clearing_balance
+   - provisional_profit
+4. Mantener al usuario en el mismo paso de gastos
+5. NO avanzar automáticamente
+6. Limpiar campos:
+   - amount
+   - description
+   - vendor/responsible
+7. Mantener o resetear categoría según mejor UX
+8. Mostrar mensaje:
+   “Gasto registrado correctamente. Puedes agregar otro gasto o continuar a validación.”
+
+Agregar botón separado:
+“Continuar a Validación”
+
+Este botón será el único que avance al próximo paso.
+
+Campos requeridos:
+- expense_type
+- amount
+- expense_date
+- payment_method
+- account_code
+- vendor/person/responsible
+- notes
+
+Métodos de pago:
+- cash
+- zelle
+- bank
+- card
+- other
+
+Reglas contables:
+
+A) Si expense payment_method = cash:
+Dr Expense Account
+Cr 1015 Cash Clearing
+
+B) Si expense payment_method = zelle/bank:
+Dr Expense Account
+Cr 1010 Wells Fargo Checking u otra cuenta bancaria seleccionada
+
+C) Si expense payment_method = card:
+Dr Expense Account
+Cr Credit Card Payable / selected card account
+
+Mapping obligatorio:
+- captain_labor / captain → 5010
+- fuel / combustible → 5020
+- ice / hielo / supplies → 5030
+- cleaning / limpieza → 5040
+- dock / marina → 5050
+- platform_fee / commission → 5060
+- maintenance → 6020
+- other / misc → 6900
+
+Validaciones:
+- amount > 0
+- cuenta existe y está active
+- si cash, 1015 debe existir y estar active
+- no permitir 1015 para legacy
+- no permitir gastos normales en legacy locked
+
+Lista visible de gastos:
+- Fecha
+- Categoría
+- Cuenta contable
+- Monto
+- Método de pago
+- Responsable
+- Descripción
+- Acción editar/eliminar si periodo no está locked
+
+Summary card de gastos:
+- Total gastos
+- Gastos cash
+- Gastos banco/zelle
+- Cash clearing remaining
+- Net profit provisional
+
+==================================================
+3. BOTONES DE NAVEGACIÓN
+==================================================
+
+Eliminar cualquier auto-advance automático en:
+
+- addPayment()
+- savePayment()
+- registerPayment()
+- addExpense()
+- saveExpense()
+- registerExpense()
+
+Nueva regla:
+
+Registrar Pago = guardar y quedarse en paso de ingresos
+Registrar Gasto = guardar y quedarse en paso de gastos
+
+Solo estos botones avanzan:
+
+- “Continuar a Gastos”
+- “Continuar a Validación”
+- “Continuar a Cierre”
+
+==================================================
+4. CASO MATEJ — PRUEBA OBLIGATORIA
+==================================================
+
+Con booking_id:
+book_dDgO83lgF1
+
+Debe poder registrar en una sola corrida:
+
+INGRESOS:
+1. 250 bank_deposit / Wells Fargo / 2026-04-23
+2. 450 cash / Cash Clearing / 2026-04-27
+
+Sin salir del paso de ingresos.
+
+GASTOS:
+1. Fuel 300 cash / 2026-04-27 / responsable Pablo
+2. Ice 6 cash / 2026-04-27 / responsable Pablo
+3. Captain 144 cash / 2026-04-27 / Pablo
+4. Captain 111 zelle/bank / 2026-04-30 / Pablo
+
+Sin salir del paso de gastos.
+
+Resultado esperado:
+- total payments = 700
+- total expenses = 561
+- net profit = 139
+- captain paid = 255
+- captain expected = 250
+- alert overpayment = 5
+- accounting_status = partially_reconciled
+- wizard no avanza automáticamente
+- usuario decide cuándo continuar
+
+==================================================
+5. UI / UX
+==================================================
+
+Mejorar experiencia:
+
+A) Después de cada ingreso/gasto:
+- Mostrar toast verde
+- Refrescar tablas
+- Refrescar summary cards
+- Mantener step actual
+
+B) Si error:
+- Mostrar mensaje claro
+- No limpiar formulario
+- No avanzar
+
+C) Si cuenta falta:
+Mostrar:
+“Cuenta X no encontrada o inactiva. Revise Chart of Accounts.”
+
+D) Botón de continuar:
+Solo habilitar cuando:
+- hay al menos un pago registrado para continuar desde ingresos
+- hay al menos un gasto registrado o usuario confirma “sin gastos” para continuar desde gastos
+
+Agregar checkbox:
+“No hubo gastos para este booking”
+para permitir continuar sin gastos cuando aplique.
+
+==================================================
+6. BACKEND / ENDPOINTS
+==================================================
+
+Verificar o crear endpoints:
+
+POST /api/bookings/:id/payments
+POST /api/bookings/:id/expenses
+GET /api/bookings/:id/reconciliation
+
+Cada POST debe devolver:
+- success
+- created_transaction_ids
+- updated_ledger
+- payments_list o expenses_list
+- summary
+
+No depender de recargar toda la página.
+
+==================================================
+7. SAFETY
+==================================================
+
+Mantener protección:
+
+- legacy bookings bloqueados
+- current only desde 2026-04-27
+- cash clearing 1015 solo current
+- no revenue automático al registrar pagos
+- no duplicate revenue
+- no manual entries desbalanceadas
+- no edición si periodo locked
+- audit trail para cada pago/gasto
+
+==================================================
+8. ENTREGABLE FINAL
+==================================================
+
+Reportar:
+1. Archivos modificados
+2. Funciones JS modificadas
+3. Auto-advance eliminado en pagos y gastos
+4. Botones nuevos agregados
+5. Endpoints usados
+6. Resultado prueba Matej
+7. Confirmación de múltiples ingresos
+8. Confirmación de múltiples gastos
+9. Limitaciones pendientes si existen
+
+No declares terminado hasta que el usuario pueda:
+- agregar varios pagos seguidos
+- agregar varios gastos seguidos
+- permanecer en el mismo paso
+- avanzar solo con botón manual
