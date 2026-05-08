@@ -14757,15 +14757,14 @@ async function checkBookingIntegrity(bookingId) {
     accountingStatus = bk.accounting_status; // never override locked
   } else {
     const revenueFullyRecognized = revenueRecognized >= expectedRevenue - 0.01;
-    const cashClearingZero       = Math.abs(cashClearingBalance || 0) <= 0.01; // need to compute later — placeholder
     const noArPending            = arPending <= 0.01;
     const noPaymentGap           = !discrepancyFlag;
     if (totalCollected <= 0 && revenueRecognized <= 0) {
       accountingStatus = 'not_started';
     } else if (revenueFullyRecognized && noArPending && noPaymentGap) {
-      // Revenue recognized + no AR + no payment gap = fully reconciled
-      // (Cash Clearing check applied after cashClearingBalance is computed below)
-      accountingStatus = 'partially_reconciled'; // will upgrade to reconciled after CC check
+      // Revenue recognized + no AR + no payment gap = partially reconciled
+      // (Cash Clearing zero check applied below, after cashClearingBalance is computed)
+      accountingStatus = 'partially_reconciled';
     } else if (totalCollected >= expectedRevenue - 0.01 || revenueRecognized > 0) {
       accountingStatus = 'partially_reconciled';
     } else if (totalCollected > 0) {
