@@ -368,7 +368,7 @@
       <div class="form-row">
         <div class="fg">
           <label>Categoría *</label>
-          <select id="exp-category" data-testid="select-exp-category">
+          <select id="exp-category" data-testid="select-exp-category" onchange="onExpCategoryChange(this.value)">
             <option value="fuel">Combustible — 5020 Fuel Expense</option>
             <option value="crew">Capitán / Tripulación — 5010 Captain Labor</option>
             <option value="ice">Hielo / Bebidas — 5030 Ice / Supplies</option>
@@ -417,9 +417,52 @@
         </div>
       </div>
 
+      <!-- Panel especial Capitán — visible solo cuando categoría = crew/captain -->
+      <div id="captain-panel" style="display:none;background:#eff6ff;border:1px solid #bfdbfe;border-radius:9px;padding:14px;margin-bottom:14px;">
+        <div style="font-size:12px;font-weight:700;color:#1e40af;margin-bottom:10px;">
+          Detalle de Pago al Capitán — Dr 5010 Captain Labor
+        </div>
+        <div class="form-row" style="margin-bottom:10px;">
+          <div class="fg">
+            <label style="font-size:12px;">Nombre del Capitán</label>
+            <input type="text" id="cap-name" placeholder="Ej: Pablo" data-testid="input-captain-name"
+                   oninput="syncCaptainName()"
+                   style="padding:7px 10px;border:1px solid #93c5fd;border-radius:6px;font-size:13px;width:100%;">
+          </div>
+          <div class="fg">
+            <label style="font-size:12px;">Horas trabajadas</label>
+            <input type="number" id="cap-hours" placeholder="5" min="0" step="0.5" data-testid="input-captain-hours"
+                   oninput="calcExpectedPay()"
+                   style="padding:7px 10px;border:1px solid #93c5fd;border-radius:6px;font-size:13px;width:100%;">
+          </div>
+          <div class="fg">
+            <label style="font-size:12px;">Tarifa / hora (USD)</label>
+            <input type="number" id="cap-rate" placeholder="50" min="0" step="1" value="50" data-testid="input-captain-rate"
+                   oninput="calcExpectedPay()"
+                   style="padding:7px 10px;border:1px solid #93c5fd;border-radius:6px;font-size:13px;width:100%;">
+          </div>
+        </div>
+        <div id="cap-expected-line" style="font-size:12px;color:#1d4ed8;padding:6px 10px;background:#dbeafe;border-radius:6px;display:none;">
+          Pago esperado: <strong id="cap-expected-val">$0.00</strong>
+          &nbsp;&mdash;&nbsp;
+          <button type="button" onclick="applyExpectedPay()"
+                  style="border:none;background:#2563eb;color:#fff;padding:3px 10px;border-radius:12px;font-size:11px;cursor:pointer;">
+            Usar este monto
+          </button>
+        </div>
+        <div style="margin-top:8px;font-size:11px;color:#1e3a8a;">
+          Cash = Cr 1015 Cash Clearing &nbsp;|&nbsp; Zelle/Banco = Cr 1010 Wells Fargo (NO afecta Cash Clearing)
+        </div>
+      </div>
+
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
         <button id="btn-save-expense" class="btn btn-danger" onclick="addExpense()" data-testid="button-add-expense">
           + Registrar Gasto
+        </button>
+        <button class="btn" onclick="quickCaptainPayment()"
+                data-testid="button-quick-captain"
+                style="background:#1d4ed8;color:#fff;border:none;padding:9px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">
+          Registrar Pago Capitán
         </button>
         <span style="font-size:12px;color:#64748b;">Puedes registrar varios gastos seguidos sin avanzar de paso.</span>
       </div>
@@ -988,13 +1031,21 @@ function renderExpenseSummary() {
 
   if (!exps.length) { card.style.display = 'none'; return; }
 
-  const totalExp   = exps.reduce((s,e)=>s+parseFloat(e.amount||0), 0);
-  const cashExp    = exps.filter(e=>e.payment_method==='cash').reduce((s,e)=>s+parseFloat(e.amount||0), 0);
-  const bankExp    = exps.filter(e=>['zelle','bank'].includes(e.payment_method)).reduce((s,e)=>s+parseFloat(e.amount||0), 0);
-  const cashClr    = parseFloat(d.cash_clearing_balance || 0);
-  const revenue    = parseFloat(d.expected_revenue || 0);
-  const collected  = parseFloat(d.total_collected || 0);
-  const profitProv = Math.max(revenue, collected) - totalExp;
+  const totalExp    = exps.reduce((s,e)=>s+parseFloat(e.amount||0), 0);
+  const cashExp     = exps.filter(e=>e.payment_method==='cash').reduce((s,e)=>s+parseFloat(e.amount||0), 0);
+  const bankExp     = exps.filter(e=>['zelle','bank'].includes(e.payment_method)).reduce((s,e)=>s+parseFloat(e.amount||0), 0);
+  const cashClr     = parseFloat(d.cash_clearing_balance || 0);
+  const revenue     = parseFloat(d.expected_revenue || 0);
+  const collected   = parseFloat(d.total_collected || 0);
+  const profitProv  = Math.max(revenue, collected) - totalExp;
+
+  // Captain sub-totals from integrity data
+  const capTotal    = parseFloat(d.captain_actual || 0);
+  const capCash     = parseFloat(d.captain_paid_cash || 0);
+  const capBank     = parseFloat(d.captain_paid_bank || 0);
+  const capHrs      = parseFloat(d.captain_hours || 0);
+  const capExpected = capHrs > 0 ? capHrs * 50 : null;
+  const capDiff     = capExpected !== null ? (capTotal - capExpected) : null;
 
   card.style.display = 'block';
   kpi.innerHTML = `
@@ -1005,6 +1056,24 @@ function renderExpenseSummary() {
       <div class="kpi-val ${Math.abs(cashClr)>0.01?'red':'green'}">${fmt(cashClr)}</div></div>
     <div class="kpi"><div class="kpi-label">Profit provisional</div>
       <div class="kpi-val ${profitProv>0?'green':'red'}">${fmt(profitProv)}</div></div>
+    ${capTotal > 0 ? `
+    <div class="kpi" style="border-top:1px solid #bfdbfe;margin-top:4px;padding-top:8px;">
+      <div class="kpi-label" style="color:#1e40af;">Capitán — total pagado</div>
+      <div class="kpi-val blue">${fmt(capTotal)}</div>
+    </div>
+    <div class="kpi"><div class="kpi-label" style="color:#1e40af;">Capitán — cash</div><div class="kpi-val">${fmt(capCash)}</div></div>
+    <div class="kpi"><div class="kpi-label" style="color:#1e40af;">Capitán — Zelle/banco</div><div class="kpi-val">${fmt(capBank)}</div></div>
+    ${capExpected !== null ? `
+    <div class="kpi">
+      <div class="kpi-label" style="color:#1e40af;">Capitán — esperado</div>
+      <div class="kpi-val ${Math.abs(capDiff)>0.01?(capDiff>0?'red':'red'):'green'}">${fmt(capExpected)}</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label" style="color:#1e40af;">Diferencia capitán</div>
+      <div class="kpi-val ${capDiff>0.01?'red':capDiff<-0.01?'red':'green'}">
+        ${capDiff>0.01?'Sobrepago +':capDiff<-0.01?'Pendiente ':''}${fmt(Math.abs(capDiff||0))}
+      </div>
+    </div>` : ''}` : ''}
   `;
 }
 
@@ -1024,6 +1093,61 @@ function toggleNoGastos(checked) {
   }
 }
 
+// ── Captain panel helpers ────────────────────────────────────────────────
+const CAPTAIN_CATS = new Set(['crew','captain','captain_labor']);
+
+function onExpCategoryChange(val) {
+  const panel = document.getElementById('captain-panel');
+  if (panel) panel.style.display = CAPTAIN_CATS.has(val) ? 'block' : 'none';
+  // Auto-suggest notes placeholder
+  const notesEl = document.getElementById('exp-notes');
+  if (CAPTAIN_CATS.has(val) && notesEl && !notesEl.value) {
+    const capName = document.getElementById('cap-name')?.value || '';
+    notesEl.placeholder = capName ? `Pago capitán ${capName}` : 'Pago al capitán — efectivo o Zelle';
+  }
+}
+
+function syncCaptainName() {
+  const name = document.getElementById('cap-name')?.value || '';
+  const personEl = document.getElementById('exp-person');
+  if (personEl) personEl.value = name;
+  const notesEl = document.getElementById('exp-notes');
+  if (notesEl && !notesEl.value) notesEl.placeholder = name ? `Pago capitán ${name}` : 'Pago al capitán';
+}
+
+function calcExpectedPay() {
+  const hours = parseFloat(document.getElementById('cap-hours')?.value || 0);
+  const rate  = parseFloat(document.getElementById('cap-rate')?.value  || 50);
+  const line  = document.getElementById('cap-expected-line');
+  const val   = document.getElementById('cap-expected-val');
+  if (!line || !val) return;
+  if (hours > 0) {
+    const expected = hours * rate;
+    val.textContent = '$' + expected.toFixed(2);
+    line.style.display = 'block';
+  } else {
+    line.style.display = 'none';
+  }
+}
+
+function applyExpectedPay() {
+  const hours = parseFloat(document.getElementById('cap-hours')?.value || 0);
+  const rate  = parseFloat(document.getElementById('cap-rate')?.value  || 50);
+  if (hours > 0) {
+    const amountEl = document.getElementById('exp-amount');
+    if (amountEl) amountEl.value = (hours * rate).toFixed(2);
+  }
+}
+
+function quickCaptainPayment() {
+  // Pre-fill expense form for captain payment
+  const catEl = document.getElementById('exp-category');
+  if (catEl) { catEl.value = 'crew'; onExpCategoryChange('crew'); }
+  document.getElementById('captain-panel').style.display = 'block';
+  document.getElementById('cap-name')?.focus();
+  showToast('exp-msg', 'Selecciona Cash o Zelle/Banco, ingresa las horas y el monto del capitán.', 'info');
+}
+
 async function addExpense() {
   if (window.IS_LEGACY_BOOKING) { showToast('exp-msg','Booking legacy: no se pueden registrar gastos en periodo anterior.','error'); return; }
   if (noGastos) { showToast('exp-msg','Está marcado "Sin gastos". Desmarca si deseas registrar un gasto.','error'); return; }
@@ -1035,11 +1159,21 @@ async function addExpense() {
   const person   = document.getElementById('exp-person').value;
   const expDate  = document.getElementById('exp-date').value;
 
-  if (!amount || amount <= 0) { showToast('exp-msg','Ingresa un monto válido mayor a cero.','error'); return; }
-  if (!notes) { showToast('exp-msg','La descripción del gasto es requerida.','error'); return; }
+  // Captain-specific fields
+  const isCaptain = CAPTAIN_CATS.has(category);
+  const capName   = isCaptain ? (document.getElementById('cap-name')?.value || person || null) : null;
+  const capHours  = isCaptain ? (parseFloat(document.getElementById('cap-hours')?.value || 0) || null) : null;
+  const capRate   = isCaptain ? (parseFloat(document.getElementById('cap-rate')?.value  || 50) || null) : null;
 
-  const desc = [notes, person ? '(' + person + ')' : ''].filter(Boolean).join(' ');
+  if (!amount || amount <= 0) { showToast('exp-msg','Ingresa un monto válido mayor a cero.','error'); return; }
+  if (!notes && !isCaptain) { showToast('exp-msg','La descripción del gasto es requerida.','error'); return; }
+
+  const autoDesc = isCaptain
+    ? `Pago capitán${capName?' '+capName:''}${capHours?` (${capHours}h × $${capRate||50})`:''} — ${payment==='cash'?'efectivo':'Zelle/banco'}`
+    : null;
+  const desc = notes || autoDesc || `Gasto ${category}`;
   const accCode = EXPENSE_ACCOUNT_MAP[category] || '6900';
+  const creditAcct = payment === 'cash' ? '1015 Cash Clearing' : '1010 Banco';
 
   const btn = document.getElementById('btn-save-expense');
   btn.disabled = true;
@@ -1057,19 +1191,27 @@ async function addExpense() {
         notes:          desc,
         expense_date:   expDate || new Date().toISOString().slice(0,10),
         account_code:   accCode,
-        vendor:         person || null,
+        vendor:         capName || person || null,
+        captain_name:   capName,
+        captain_hours:  capHours,
+        captain_rate:   capRate,
       })
     });
     if (r.error) { showToast('exp-msg', 'Error: ' + r.error, 'error'); return; }
 
     const catLabel = CAT_LABELS[category] || category;
+    const crMsg = payment === 'cash' ? 'Cr 1015 Cash Clearing' : 'Cr 1010 Banco';
     showToast('exp-msg',
-      `Gasto registrado: $${amount.toFixed(2)} — ${catLabel} (${accCode}). Puedes agregar otro gasto o continuar a Validación.`,
+      `Gasto registrado: $${amount.toFixed(2)} Dr ${accCode} / ${crMsg} — ${catLabel}. Puedes agregar otro o continuar a Validación.`,
       'success');
 
     document.getElementById('exp-amount').value = '';
     document.getElementById('exp-notes').value  = '';
     document.getElementById('exp-person').value = '';
+    // Keep captain name but clear hours for next entry
+    if (isCaptain) { const h = document.getElementById('cap-hours'); if(h) h.value=''; }
+    const capLine = document.getElementById('cap-expected-line');
+    if (capLine) capLine.style.display = 'none';
 
     await loadWizData();
     renderExpenseList();
@@ -1120,6 +1262,11 @@ function renderStep4() {
           ${fmt(d.cash_clearing_balance)}</div></div>
       <div class="kpi"><div class="kpi-label">Pagos capitán</div>
         <div class="kpi-val blue">${parseFloat(d.captain_actual||0)>0?fmt(d.captain_actual):'—'}</div></div>
+      ${parseFloat(d.captain_actual||0)>0?`
+      <div class="kpi"><div class="kpi-label" style="color:#1e40af;">Capitán — cash</div>
+        <div class="kpi-val">${fmt(d.captain_paid_cash)}</div></div>
+      <div class="kpi"><div class="kpi-label" style="color:#1e40af;">Capitán — Zelle</div>
+        <div class="kpi-val">${fmt(d.captain_paid_bank)}</div></div>` : ''}
       <div class="kpi"><div class="kpi-label">Discrepancia</div>
         <div class="kpi-val ${d.discrepancy_flag?'red':'green'}">
           ${d.discrepancy_flag?fmt(d.discrepancy_amount):'$0.00 &#10003;'}</div></div>

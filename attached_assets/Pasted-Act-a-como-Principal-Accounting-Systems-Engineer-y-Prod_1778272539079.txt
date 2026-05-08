@@ -1,0 +1,247 @@
+Actúa como Principal Accounting Systems Engineer y Product Engineer para gestion.nadakiexcursions.
+
+PROBLEMA:
+En el Booking Reconciliation Wizard, el sistema no está registrando correctamente los pagos al capitán como gastos del booking. Además, cuando el efectivo recibido por el capitán no alcanza para cubrir su pago total, necesitamos poder registrar un pago adicional al capitán vía Zelle/banco sin afectar Cash Clearing.
+
+CASO REAL:
+Booking Matej:
+- booking_id: book_dDgO83lgF1
+- total booking: 699.99 / 700
+- cash received: 449.99 / 450
+- captain: Pablo
+- captain expected pay: 5 hours x 50 = 250
+- cash paid to captain: 144
+- additional Zelle/bank payment to captain: 111
+
+OBJETIVO:
+Permitir registrar pagos al capitán como gasto laboral 5010, tanto desde efectivo como desde banco/Zelle, y reflejarlo correctamente en el ledger del booking.
+
+==================================================
+1. CORREGIR CATEGORÍA CAPTAIN
+==================================================
+
+En el Paso de Gastos del booking-wizard.html, verificar que exista categoría:
+
+Capitán / Captain Labor
+
+Debe mapear a:
+5010 - Captain Labor
+
+Mapping obligatorio:
+captain → 5010
+captain_labor → 5010
+capitan → 5010
+pago_capitan → 5010
+
+Si 5010 no existe o está inactiva:
+crear/activar:
+code: 5010
+name: Captain Labor
+type: expense
+category: Cost of Services
+active: true
+
+==================================================
+2. SOPORTAR PAGO DE CAPITÁN DESDE CASH
+==================================================
+
+Cuando expense_type = captain y payment_method = cash:
+
+Crear asiento:
+Dr 5010 Captain Labor Expense
+Cr 1015 Cash Clearing
+
+Ejemplo:
+amount: 144
+responsible/vendor: Pablo
+notes: Captain cash payment from customer cash
+
+Debe:
+- aparecer en lista de gastos
+- reducir Cash Clearing
+- sumar al total captain paid
+- sumar al total expenses
+
+==================================================
+3. SOPORTAR PAGO ADICIONAL AL CAPITÁN POR ZELLE/BANCO
+==================================================
+
+Cuando expense_type = captain y payment_method = zelle o bank:
+
+Crear asiento:
+Dr 5010 Captain Labor Expense
+Cr 1010 Wells Fargo Checking o cuenta bancaria seleccionada
+
+Ejemplo:
+amount: 111
+payment_method: zelle
+responsible/vendor: Pablo
+date: 2026-04-30
+notes: Additional captain payment to complete service pay
+
+IMPORTANTE:
+Este pago NO debe afectar 1015 Cash Clearing.
+
+Debe:
+- aparecer en lista de gastos
+- sumar al total expenses
+- sumar al total captain paid
+- NO reducir cash clearing
+- afectar banco/Zelle
+
+==================================================
+4. AGREGAR CAMPOS DE CAPITÁN
+==================================================
+
+En la sección de gastos, si categoría = captain:
+
+Mostrar campos opcionales:
+- captain_name
+- captain_hours
+- captain_rate
+- expected_captain_pay
+
+Permitir calcular:
+expected_captain_pay = captain_hours * captain_rate
+
+Para Matej:
+5 * 50 = 250
+
+==================================================
+5. VALIDACIÓN DE PAGO AL CAPITÁN
+==================================================
+
+En checkBookingIntegrity(booking_id), calcular:
+
+captain_expected_pay
+captain_paid_cash
+captain_paid_bank_zelle
+captain_total_paid
+captain_difference
+
+Ejemplo:
+expected = 250
+paid_cash = 144
+paid_zelle = 111
+total_paid = 255
+difference = 5
+
+Si captain_total_paid > captain_expected_pay:
+crear alerta:
+Captain overpayment: $5
+
+Si captain_total_paid < captain_expected_pay:
+crear alerta:
+Captain underpayment: $X
+
+==================================================
+6. CORREGIR ESTADO DE CONCILIACIÓN
+==================================================
+
+El booking NO puede mostrar “CONCILIADO” si existe cualquiera de estas condiciones:
+
+- Revenue reconocido = Pendiente
+- AR pendiente > 0
+- Cash Clearing 1015 balance != 0
+- total payments != booking total
+- total revenue recognized != booking total cuando booking.status = completed
+- gastos no están completos
+- discrepancies abiertas
+
+En el screenshot actual, Matej aparece CONCILIADO pero tiene:
+- Revenue reconocido: Pendiente
+- AR pendiente: 699.99
+- Cash Clearing: 449.99
+
+Eso debe marcarse como:
+accounting_status = partially_reconciled o in_progress
+
+NO reconciled.
+
+==================================================
+7. BOTÓN ESPECÍFICO OPCIONAL
+==================================================
+
+Agregar dentro del Paso de Gastos un botón rápido:
+
+“Registrar Pago Capitán”
+
+Debe abrir o prellenar:
+- expense_type = captain
+- account_code = 5010
+- vendor/person = captain name
+- payment_method selectable:
+  - cash
+  - zelle
+  - bank
+
+==================================================
+8. CASO MATEJ — PRUEBA OBLIGATORIA
+==================================================
+
+Probar en booking_id book_dDgO83lgF1:
+
+Registrar gastos:
+1. Fuel 300 cash:
+Dr 5020
+Cr 1015
+
+2. Ice 6 cash:
+Dr 5030
+Cr 1015
+
+3. Captain Pablo 144 cash:
+Dr 5010
+Cr 1015
+
+4. Captain Pablo 111 zelle:
+Dr 5010
+Cr 1010
+
+Resultado esperado:
+- total expenses = 561
+- captain total paid = 255
+- captain expected = 250
+- captain overpayment alert = 5
+- cash clearing:
+  cash in 450
+  cash out 300 + 6 + 144 = 450
+  balance = 0
+- Zelle payment 111 afecta banco, no cash clearing
+- profit = 700 - 561 = 139
+- booking NO debe estar reconciled hasta que revenue sea reconocido y AR sea 0
+
+==================================================
+9. CORREGIR AR Y REVENUE
+==================================================
+
+Si el booking ya recibió pago completo pero revenue está pendiente:
+
+Mostrar acción:
+“Completar Booking / Reconocer Revenue”
+
+Al ejecutarla:
+Dr Deferred Deposits / Accounts Receivable
+Cr 4010 o 4020 Revenue
+
+Luego:
+- Revenue reconocido = 700
+- AR pendiente = 0
+- Payment status = paid
+
+No duplicar revenue si ya existe.
+
+==================================================
+10. ENTREGABLE
+==================================================
+
+Reportar:
+1. Si 5010 existía o fue creada/activada
+2. Archivos modificados
+3. Mapping captain → 5010 confirmado
+4. Payment method cash para captain confirmado
+5. Payment method zelle/bank para captain confirmado
+6. Cash Clearing no se afecta por Zelle
+7. Matej probado con los 4 gastos
+8. Estado corregido de reconciliación
+9. Revenue/AR corregidos o acción pendiente indicada

@@ -14724,16 +14724,20 @@ async function checkBookingIntegrity(bookingId) {
   const discrepancyFlag  = Math.abs(discrepancy) > 0.01;
   const expectedProfit   = totalExpected - totalExpenses;
 
-  let accountingStatus = bk.accounting_status || 'not_started';
-  if (totalCollected <= 0 && revenueRecognized <= 0) {
-    accountingStatus = 'not_started';
-  } else if (revenueRecognized > 0 && !discrepancyFlag && totalExpenses >= 0) {
-    accountingStatus = 'reconciled';
-  } else if (totalCollected >= totalExpected - 0.01) {
-    accountingStatus = discrepancyFlag ? 'partially_reconciled' : 'reconciled';
-  } else if (totalCollected > 0 || revenueRecognized > 0) {
-    accountingStatus = 'in_progress';
+  // ── Captain expenses registered via booking-expense wizard (5010 account) ─
+  const { rows: captainExpRows } = await pool.query(
+    `SELECT payment_method, COALESCE(SUM(amount),0) as total
+     FROM boat_expenses
+     WHERE booking_id = $1 AND category IN ('crew','captain','captain_labor','labor')
+     GROUP BY payment_method`,
+    [bookingId]
+  ).catch(() => ({ rows: [] }));
+  let captainExpCash = 0, captainExpBank = 0;
+  for (const row of captainExpRows) {
+    if (row.payment_method === 'cash') captainExpCash += parseFloat(row.total);
+    else captainExpBank += parseFloat(row.total);
   }
+  const captainExpTotal = captainExpCash + captainExpBank;
 
   // ── Captain pay comparison ─────────────────────────────────────────────
   const { rows: capRows } = await pool.query(
@@ -14742,8 +14746,34 @@ async function checkBookingIntegrity(bookingId) {
      FROM captain_payments WHERE booking_id = $1`,
     [bookingId]
   ).catch(() => ({ rows: [{ total: 0, cnt: 0, total_hours: 0 }] }));
-  const captainActual = parseFloat(capRows[0].total);
-  const captainHours  = parseFloat(capRows[0].total_hours);
+  const captainFormalPay = parseFloat(capRows[0].total);
+  const captainHours     = parseFloat(capRows[0].total_hours);
+  // Combined: formal captain_payments + expense-wizard entries (5010 Dr)
+  const captainActual    = captainFormalPay + captainExpTotal;
+
+  // ── accounting_status — strict rules (cannot be 'reconciled' with open items) ─
+  let accountingStatus = bk.accounting_status || 'not_started';
+  if (bk.accounting_status === 'locked' || bk.accounting_status === 'legacy_locked') {
+    accountingStatus = bk.accounting_status; // never override locked
+  } else {
+    const revenueFullyRecognized = revenueRecognized >= expectedRevenue - 0.01;
+    const cashClearingZero       = Math.abs(cashClearingBalance || 0) <= 0.01; // need to compute later — placeholder
+    const noArPending            = arPending <= 0.01;
+    const noPaymentGap           = !discrepancyFlag;
+    if (totalCollected <= 0 && revenueRecognized <= 0) {
+      accountingStatus = 'not_started';
+    } else if (revenueFullyRecognized && noArPending && noPaymentGap) {
+      // Revenue recognized + no AR + no payment gap = fully reconciled
+      // (Cash Clearing check applied after cashClearingBalance is computed below)
+      accountingStatus = 'partially_reconciled'; // will upgrade to reconciled after CC check
+    } else if (totalCollected >= expectedRevenue - 0.01 || revenueRecognized > 0) {
+      accountingStatus = 'partially_reconciled';
+    } else if (totalCollected > 0) {
+      accountingStatus = 'in_progress';
+    } else {
+      accountingStatus = 'not_started';
+    }
+  }
 
   // Also check stew_payments
   const { rows: stewRows } = await pool.query(
@@ -14767,6 +14797,21 @@ async function checkBookingIntegrity(bookingId) {
   const cashClearingOut     = parseFloat(cc1015Out[0].total);
   const cashClearingBalance = cashClearingIn - cashClearingOut;
 
+  // ── Final accounting_status (now that cashClearingBalance is available) ──
+  if (accountingStatus !== 'locked' && accountingStatus !== 'legacy_locked') {
+    const revenueFullyRecognized = revenueRecognized >= expectedRevenue - 0.01 && expectedRevenue > 0;
+    const cashClearingZero       = Math.abs(cashClearingBalance) <= 0.01;
+    const noArPending            = arPending <= 0.01;
+    const noPaymentGap           = !discrepancyFlag;
+    // RECONCILED requires ALL four conditions:
+    if (revenueFullyRecognized && cashClearingZero && noArPending && noPaymentGap) {
+      accountingStatus = 'reconciled';
+    } else if (accountingStatus === 'partially_reconciled') {
+      // keep as partially_reconciled — already set above
+    }
+    // otherwise keep whatever was assigned in the earlier block
+  }
+
   // ── Build alerts[] ─────────────────────────────────────────────────────
   const alerts = [];
   if (discrepancyFlag) {
@@ -14774,12 +14819,12 @@ async function checkBookingIntegrity(bookingId) {
     alerts.push({ severity: 'high', code: 'PAYMENT_GAP',
       message: `Discrepancia de pago: ${dir} $${Math.abs(discrepancy).toFixed(2)} (cobrado $${totalCollected.toFixed(2)} vs esperado $${expectedRevenue.toFixed(2)})` });
   }
-  if (Math.abs(cashClearingBalance) > 0.01 && (cashTotal > 0 || totalExpenses > 0)) {
+  if (Math.abs(cashClearingBalance) > 0.01 && (cashTotal > 0 || captainExpCash > 0)) {
     alerts.push({ severity: 'medium', code: 'CASH_CLEARING_OPEN',
-      message: `Cash Clearing (1015) tiene balance abierto: $${cashClearingBalance.toFixed(2)} — debe ser $0 al cierre` });
+      message: `Cash Clearing (1015) balance abierto: $${cashClearingBalance.toFixed(2)} — debe ser $0 al cierre del booking` });
   }
+  // Captain pay mismatch — from expense-wizard entries with captain hours
   if (captainActual > 0) {
-    // Compare captain paid vs 50/hr standard (if hours known)
     const rateExpected = captainHours > 0 ? captainHours * 50 : null;
     if (rateExpected !== null && Math.abs(captainActual - rateExpected) > 0.01) {
       const diff = captainActual - rateExpected;
@@ -14789,35 +14834,35 @@ async function checkBookingIntegrity(bookingId) {
         captain_paid: captainActual, captain_expected: rateExpected, captain_diff: diff });
     }
   }
-  if (!bk.revenue_recognized && totalCollected >= expectedRevenue - 0.01 && totalCollected > 0) {
-    alerts.push({ severity: 'info', code: 'REVENUE_PENDING',
-      message: 'Pago completo recibido — pendiente reconocer revenue (ejecutar Completar Booking)' });
+  if (revenueRecognized <= 0 && totalCollected >= expectedRevenue - 0.01 && totalCollected > 0) {
+    alerts.push({ severity: 'high', code: 'REVENUE_PENDING',
+      message: 'Pago completo recibido pero revenue NO reconocido — ejecutar "Completar Booking" en Paso 6' });
   }
-  if (arPending > 0) {
-    alerts.push({ severity: 'medium', code: 'AR_PENDING',
-      message: `Cuenta por cobrar pendiente: $${arPending.toFixed(2)}` });
+  if (arPending > 0.01) {
+    alerts.push({ severity: 'high', code: 'AR_PENDING',
+      message: `Cuenta por cobrar pendiente: $${arPending.toFixed(2)} — no se puede cerrar hasta cobrar` });
   }
 
   // ── Suggested next action ──────────────────────────────────────────────
   let suggestedNextAction = '';
-  if (accountingStatus === 'locked') {
+  if (accountingStatus === 'locked' || accountingStatus === 'legacy_locked') {
     suggestedNextAction = 'Booking cerrado y bloqueado. No se permiten cambios.';
+  } else if (alerts.find(a => a.code === 'REVENUE_PENDING')) {
+    suggestedNextAction = 'Reconocer revenue: hacer clic en "Completar Booking" (Paso 6). Luego, Cash Clearing y AR se saldarán.';
+  } else if (alerts.find(a => a.code === 'AR_PENDING')) {
+    suggestedNextAction = `Cobrar saldo pendiente de $${arPending.toFixed(2)} y marcar la AR como pagada`;
   } else if (alerts.find(a => a.code === 'CAPTAIN_PAY_MISMATCH')) {
     const cm = alerts.find(a => a.code === 'CAPTAIN_PAY_MISMATCH');
     const diff = cm.captain_diff || 0;
     suggestedNextAction = diff > 0
-      ? `Clasificar sobrepago de capitán ($${diff.toFixed(2)}) como: propina, error, crédito a empresa o ajuste manual`
+      ? `Clasificar sobrepago de capitán ($${diff.toFixed(2)}) como: propina, error, crédito o ajuste manual`
       : `Registrar pago pendiente al capitán ($${Math.abs(diff).toFixed(2)})`;
+  } else if (Math.abs(cashClearingBalance) > 0.01) {
+    suggestedNextAction = `Registrar ${cashClearingBalance > 0 ? 'gastos en efectivo' : 'cobros'} para saldar Cash Clearing (balance: $${cashClearingBalance.toFixed(2)})`;
   } else if (discrepancyFlag && discrepancy > 0) {
     suggestedNextAction = `Registrar pago faltante de $${discrepancy.toFixed(2)} o crear asiento manual de ajuste`;
-  } else if (alerts.find(a => a.code === 'REVENUE_PENDING')) {
-    suggestedNextAction = 'Reconocer revenue: hacer clic en "Completar Booking" (Paso 6)';
-  } else if (Math.abs(cashClearingBalance) > 0.01) {
-    suggestedNextAction = `Registrar ${cashClearingBalance > 0 ? 'gastos en efectivo' : 'cobros'} para saldar Cash Clearing (1015)`;
-  } else if (arPending > 0) {
-    suggestedNextAction = `Cobrar saldo pendiente de $${arPending.toFixed(2)} y marcar AR como pagada`;
-  } else if (accountingStatus === 'reconciled' && cashClearingBalance < 0.01) {
-    suggestedNextAction = 'Todo cuadrado — puedes bloquear el booking (Paso 6)';
+  } else if (accountingStatus === 'reconciled') {
+    suggestedNextAction = 'Todo cuadrado — puedes bloquear el booking definitivamente (Paso 6)';
   } else if (accountingStatus === 'not_started') {
     suggestedNextAction = 'Registrar el primer pago del cliente (depósito o efectivo)';
   } else {
@@ -14850,6 +14895,8 @@ async function checkBookingIntegrity(bookingId) {
     cash_clearing_out:      cashClearingOut,
     cash_clearing_balance:  cashClearingBalance,
     captain_actual:         captainActual,
+    captain_paid_cash:      captainExpCash,
+    captain_paid_bank:      captainExpBank,
     captain_hours:          captainHours,
     stew_actual:            stewActual,
     alerts,
@@ -15066,11 +15113,11 @@ app.post('/api/booking-expense', isAuthenticated, async (req, res) => {
       creditAccId = bankRows.length ? bankRows[0].id : 'acc_cash_clearing_1015'; // Cr Bank
     }
 
-    const expDate = new Date().toISOString().slice(0, 10);
+    const expDate = req.body.expense_date || new Date().toISOString().slice(0, 10);
     const txId = 'tx_bkexp_' + nanoid(8);
     const desc = description || notes || `Gasto del booking — ${bk.customer_name}`;
 
-    // Dr Expense account
+    // Dr Expense account (e.g. Dr 5020 Fuel, Dr 5010 Captain Labor)
     await pg.query(
       `INSERT INTO transactions
          (id, transaction_date, account_id, amount, transaction_type,
@@ -15080,19 +15127,42 @@ app.post('/api/booking-expense', isAuthenticated, async (req, res) => {
        bk.boat_id || null, notes || null, booking_id]
     );
 
-    // Also create a boat_expense record for traceability
+    // Cr Credit account — REQUIRED for double-entry integrity
+    // cash → Cr 1015 Cash Clearing (money flows OUT of clearing)
+    // zelle/bank → Cr 1010 Bank (money flows OUT of bank)
+    const crTxId = 'tx_bkexp_cr_' + nanoid(8);
+    await pg.query(
+      `INSERT INTO transactions
+         (id, transaction_date, account_id, amount, transaction_type,
+          description, reference_id, reference_type, boat_id, notes, booking_id)
+       VALUES ($1, $2, $3, $4, 'expense', $5, $6, 'booking_expense', $7, $8, $9)`,
+      [crTxId, expDate, creditAccId, parseFloat(amount), desc, booking_id,
+       bk.boat_id || null, notes || null, booking_id]
+    );
+
+    // boat_expense record for traceability (captain_name stored in vendor field via notes)
     const expId = 'bkexp_' + nanoid(8);
+    const captainName = req.body.captain_name || req.body.vendor || null;
+    const captainHours = req.body.captain_hours ? parseFloat(req.body.captain_hours) : null;
+    const captainRate  = req.body.captain_rate  ? parseFloat(req.body.captain_rate)  : null;
     await pg.query(
       `INSERT INTO boat_expenses
          (id, boat_id, category, amount, expense_date, description,
           payment_method, booking_id, expense_type, notes)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'other', $9)`,
       [expId, bk.boat_id || null, category || 'operational', parseFloat(amount),
-       expDate, desc, payment_method || 'cash', booking_id, notes || null]
+       expDate, desc, payment_method || 'cash', booking_id,
+       [notes, captainName ? `captain:${captainName}` : null,
+        captainHours ? `hours:${captainHours}` : null,
+        captainRate  ? `rate:${captainRate}`   : null].filter(Boolean).join(' | ') || null]
     ).catch(() => {}); // non-critical
 
     await pg.query('COMMIT');
-    res.status(201).json({ success: true, transaction_id: txId, expense_id: expId, amount: parseFloat(amount) });
+    res.status(201).json({
+      success: true, transaction_id: txId, expense_id: expId,
+      amount: parseFloat(amount), payment_method: payment_method || 'cash',
+      account_code: expAccCode, credit_account: creditAccId === 'acc_cash_clearing_1015' ? '1015' : '1010'
+    });
   } catch (err) {
     await pg.query('ROLLBACK');
     console.error('Error booking-expense:', err);
