@@ -14792,8 +14792,19 @@ async function checkBookingIntegrity(bookingId) {
      WHERE booking_id = $1 AND account_id = 'acc_cash_clearing_1015' AND transaction_type = 'expense'`,
     [bookingId]
   ).catch(() => ({ rows: [{ total: 0 }] }));
+  // Fallback: also count cash boat_expenses not yet synced to accounting transactions
+  // This prevents the balance from being wrong when the Cr 1015 transaction was skipped
+  const { rows: beOut } = await pool.query(
+    `SELECT COALESCE(SUM(amount),0) as total FROM boat_expenses
+     WHERE booking_id = $1 AND payment_method = 'cash'
+       AND (status IS NULL OR status NOT IN ('cancelled','archived'))
+       AND (synced_to_accounting IS NULL OR synced_to_accounting = false)`,
+    [bookingId]
+  ).catch(() => ({ rows: [{ total: 0 }] }));
   const cashClearingIn      = parseFloat(cc1015In[0].total);
-  const cashClearingOut     = parseFloat(cc1015Out[0].total);
+  // Use MAX of both sources to avoid double-counting: if the Cr 1015 tx exists,
+  // it equals the boat_expenses cash sum; take whichever is larger as the floor.
+  const cashClearingOut     = Math.max(parseFloat(cc1015Out[0].total), parseFloat(beOut[0].total));
   const cashClearingBalance = cashClearingIn - cashClearingOut;
 
   // ── Final accounting_status (now that cashClearingBalance is available) ──

@@ -1089,10 +1089,15 @@ function renderExpenseSummary() {
   const totalExp    = exps.reduce((s,e)=>s+parseFloat(e.amount||0), 0);
   const cashExp     = exps.filter(e=>e.payment_method==='cash').reduce((s,e)=>s+parseFloat(e.amount||0), 0);
   const bankExp     = exps.filter(e=>['zelle','bank'].includes(e.payment_method)).reduce((s,e)=>s+parseFloat(e.amount||0), 0);
-  const cashClr     = parseFloat(d.cash_clearing_balance || 0);
+  // Cash Clearing net balance: cash received from client minus cash expenses paid from clearing.
+  // Computed from local data to avoid relying on potentially stale server cashClearingBalance.
+  const cashClearingIn = parseFloat(d.cash_clearing_in || 0);
+  const cashClr     = cashClearingIn > 0
+    ? cashClearingIn - cashExp                  // authoritative: income minus cash expenses
+    : parseFloat(d.cash_clearing_balance || 0); // fallback if cash_clearing_in not available
   const revenue     = parseFloat(d.expected_revenue || 0);
   const collected   = parseFloat(d.total_collected || 0);
-  const profitProv  = Math.max(revenue, collected) - totalExp;
+  const profitProv  = revenue - totalExp;
 
   // Captain sub-totals from integrity data
   const capTotal    = parseFloat(d.captain_actual || 0);
