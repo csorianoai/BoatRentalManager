@@ -15538,12 +15538,73 @@ app.get('/api/bookings/:id/reconciliation', isAuthenticated, async (req, res) =>
          SELECT id FROM bookings_ledger WHERE notes LIKE 'booking:' || $1 || '%'
        ) ORDER BY deposit_date DESC`, [req.params.id]
     );
-    const { rows: auditRows } = await pool.query(
-      `SELECT * FROM booking_audit_log WHERE booking_id=$1 ORDER BY created_at DESC LIMIT 50`,
-      [req.params.id]
-    ).catch(() => ({ rows: [] }));
-    res.json({ ...integrity, transactions: txs, deposits: deps, audit_trail: auditRows });
+    const [auditRes, expRes] = await Promise.all([
+      pool.query(
+        `SELECT * FROM booking_audit_log WHERE booking_id=$1 ORDER BY created_at DESC LIMIT 50`,
+        [req.params.id]
+      ).catch(() => ({ rows: [] })),
+      pool.query(
+        `SELECT * FROM boat_expenses WHERE booking_id = $1 AND (status IS NULL OR status != 'cancelled') ORDER BY expense_date ASC`,
+        [req.params.id]
+      ).catch(() => ({ rows: [] })),
+    ]);
+    res.json({ ...integrity, transactions: txs, deposits: deps, audit_trail: auditRes.rows, expenses: expRes.rows });
   } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// DELETE /api/bookings/:bookingId/expenses/:expId — anular gasto antes de cierre
+app.delete('/api/bookings/:bookingId/expenses/:expId', isAuthenticated, async (req, res) => {
+  const pg = await pool.connect();
+  try {
+    await pg.query('BEGIN');
+    const { bookingId, expId } = req.params;
+
+    // Block if booking is locked/reconciled
+    const { rows: bkRows } = await pg.query(
+      `SELECT b.*, bl.accounting_status as ledger_status
+       FROM bookings b
+       LEFT JOIN bookings_ledger bl ON bl.notes LIKE 'booking:' || b.id || '%'
+       WHERE b.id = $1`, [bookingId]
+    );
+    if (!bkRows.length) { await pg.query('ROLLBACK'); return res.status(404).json({ error: 'Booking no encontrado' }); }
+    const bk = bkRows[0];
+    if (['reconciled','locked','legacy_locked'].includes(bk.ledger_status)) {
+      await pg.query('ROLLBACK');
+      return res.status(409).json({ error: 'El booking ya está cerrado. No se puede anular gastos.' });
+    }
+
+    // Fetch the expense record
+    const { rows: expRows } = await pg.query(
+      `SELECT * FROM boat_expenses WHERE id = $1 AND booking_id = $2`, [expId, bookingId]
+    );
+    if (!expRows.length) { await pg.query('ROLLBACK'); return res.status(404).json({ error: 'Gasto no encontrado para este booking' }); }
+    const exp = expRows[0];
+    const amt = parseFloat(exp.amount || 0);
+
+    // Delete the associated accounting transactions (both debit and credit legs)
+    await pg.query(
+      `DELETE FROM transactions WHERE booking_id = $1 AND reference_type = 'booking_expense' AND amount = $2`,
+      [bookingId, amt]
+    );
+
+    // Cancel/delete the boat_expense record
+    await pg.query(`UPDATE boat_expenses SET status = 'cancelled' WHERE id = $1`, [expId]);
+
+    // Audit log
+    await logBookingAudit(pg, {
+      booking_id: bookingId,
+      action_type: 'expense_voided',
+      amount: amt,
+      notes: `Gasto anulado: ${exp.description || exp.category || expId} ($${amt.toFixed(2)})`,
+      user: req.user?.id || 'system',
+    });
+
+    await pg.query('COMMIT');
+    res.json({ success: true, voided_amount: amt, expense_id: expId });
+  } catch(err) {
+    await pg.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally { pg.release(); }
 });
 
 // DELETE /api/bookings/:bookingId/transactions/:txId — anular/eliminar pago antes de cierre
