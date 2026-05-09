@@ -15546,6 +15546,71 @@ app.get('/api/bookings/:id/reconciliation', isAuthenticated, async (req, res) =>
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
+// DELETE /api/bookings/:bookingId/transactions/:txId — anular/eliminar pago antes de cierre
+app.delete('/api/bookings/:bookingId/transactions/:txId', isAuthenticated, async (req, res) => {
+  const pg = await pool.connect();
+  try {
+    await pg.query('BEGIN');
+    const { bookingId, txId } = req.params;
+
+    // Only allow void while booking is not locked
+    const { rows: bkRows } = await pg.query(
+      `SELECT b.*, bl.accounting_status as ledger_status
+       FROM bookings b
+       LEFT JOIN bookings_ledger bl ON bl.notes LIKE 'booking:' || b.id || '%'
+       WHERE b.id = $1`, [bookingId]
+    );
+    if (!bkRows.length) { await pg.query('ROLLBACK'); return res.status(404).json({ error: 'Booking no encontrado' }); }
+    const bk = bkRows[0];
+    const lockedStatuses = ['reconciled', 'locked', 'legacy_locked'];
+    if (lockedStatuses.includes(bk.ledger_status)) {
+      await pg.query('ROLLBACK');
+      return res.status(409).json({ error: 'El booking ya está cerrado/reconciliado. No se puede anular pagos.' });
+    }
+
+    // Fetch the transaction to get its amount and type
+    const { rows: txRows } = await pg.query(
+      `SELECT id, amount, transaction_type, account_id, description FROM transactions
+       WHERE id = $1 AND booking_id = $2`, [txId, bookingId]
+    );
+    if (!txRows.length) { await pg.query('ROLLBACK'); return res.status(404).json({ error: 'Transacción no encontrada para este booking' }); }
+    const tx = txRows[0];
+    if (tx.transaction_type !== 'income') {
+      await pg.query('ROLLBACK');
+      return res.status(400).json({ error: 'Solo se pueden anular pagos de ingreso (income) desde el wizard' });
+    }
+
+    const amt = parseFloat(tx.amount || 0);
+
+    // Delete the transaction (before reconciliation, hard delete is acceptable)
+    await pg.query(`DELETE FROM transactions WHERE id = $1`, [txId]);
+
+    // Restore booking balance
+    const curBal = parseFloat(bk.balance_pending || 0);
+    const newBal = curBal + amt;
+    const newStatus = newBal > 0.01 ? (newBal < parseFloat(bk.total_amount || 0) ? 'partial' : 'pending') : 'paid';
+    await pg.query(
+      `UPDATE bookings SET balance_pending = $1, payment_status = $2, updated_at = NOW() WHERE id = $3`,
+      [newBal, newStatus, bookingId]
+    );
+
+    // Audit log
+    await logBookingAudit(pg, {
+      booking_id: bookingId,
+      action_type: 'payment_voided',
+      amount: amt,
+      notes: `Anulado: ${tx.description || txId}`,
+      user: req.user?.id || 'system',
+    });
+
+    await pg.query('COMMIT');
+    res.json({ success: true, voided_amount: amt, new_balance: newBal });
+  } catch(err) {
+    await pg.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally { pg.release(); }
+});
+
 // POST /api/bookings/:id/payments — register a payment (alias for /api/booking-payment)
 app.post('/api/bookings/:id/payments', isAuthenticated, async (req, res) => {
   req.body.booking_id = req.params.id;
