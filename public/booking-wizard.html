@@ -412,8 +412,8 @@
       </div>
       <div class="form-row full" style="margin-bottom:14px;">
         <div class="fg">
-          <label>Descripción del gasto *</label>
-          <input type="text" id="exp-notes" placeholder="Ej: Combustible 12 gallons — $300" data-testid="input-exp-notes">
+          <label>Descripción <span style="color:#94a3b8;font-weight:400;">(opcional)</span></label>
+          <input type="text" id="exp-notes" placeholder="Ej: Compra hielo $6, Combustible 12 gal…" data-testid="input-exp-notes">
         </div>
       </div>
 
@@ -1020,11 +1020,14 @@ async function addPayment() {
     document.getElementById('pay-amount').value = '';
     document.getElementById('pay-ref').value    = '';
     document.getElementById('pay-notes').value  = '';
+    document.getElementById('pay-date').value   = '';  // reset date so next entry uses today
 
     await loadWizData();
     renderPaymentList();
     renderPaymentSummary();
     renderStep1();
+    // Focus amount for fast next entry
+    setTimeout(() => document.getElementById('pay-amount')?.focus(), 50);
   } catch(e) {
     console.error('[addPayment] error:', e);
     const errEl = document.getElementById('pay-msg');
@@ -1282,12 +1285,11 @@ async function addExpense() {
     return;
   }
   if (!amount || amount <= 0) { showToast('exp-msg','Ingresa un monto válido mayor a cero.','error'); return; }
-  if (!notes && !isCaptain) { showToast('exp-msg','La descripción del gasto es requerida.','error'); return; }
-
+  // Description is optional — auto-generate from category label when left empty
   const autoDesc = isCaptain
     ? `Pago capitán${capName?' '+capName:''}${capHours?` (${capHours}h × $${capRate||50})`:''} — ${payment==='cash'?'efectivo':'Zelle/banco'}`
-    : null;
-  const desc = notes || autoDesc || `Gasto ${category}`;
+    : `${CAT_LABELS[category] || category} — $${amount.toFixed(2)}`;
+  const desc = notes || autoDesc;
   const accCode = EXPENSE_ACCOUNT_MAP[category] || '6900';
   const creditAcct = payment === 'cash' ? '1015 Cash Clearing' : '1010 Banco';
 
@@ -1324,6 +1326,7 @@ async function addExpense() {
     document.getElementById('exp-amount').value = '';
     document.getElementById('exp-notes').value  = '';
     document.getElementById('exp-person').value = '';
+    document.getElementById('exp-date').value   = '';   // reset date so next entry uses today
     // Keep captain name but clear hours for next entry
     if (isCaptain) { const h = document.getElementById('cap-hours'); if(h) h.value=''; }
     const capLine = document.getElementById('cap-expected-line');
@@ -1333,6 +1336,8 @@ async function addExpense() {
     renderExpenseList();
     renderExpenseSummary();
     renderStep1();
+    // Focus amount for fast next entry
+    setTimeout(() => document.getElementById('exp-amount')?.focus(), 50);
   } catch(e) {
     console.error('[addExpense] error:', e);
     const errEl = document.getElementById('exp-msg');
