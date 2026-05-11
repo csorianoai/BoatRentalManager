@@ -474,6 +474,20 @@
       <!-- Inline success/error message -->
       <div id="exp-msg" class="inline-msg"></div>
 
+      <!-- NO-GASTOS ACTIVE BANNER — shown when checkbox is checked -->
+      <div id="no-gastos-banner" style="display:none;background:#fef3c7;border:2px solid #f59e0b;border-radius:8px;padding:14px 16px;margin-bottom:14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+          <div>
+            <strong style="color:#92400e;font-size:14px;">&#9888; "Sin gastos" está marcado</strong>
+            <div style="color:#92400e;font-size:13px;margin-top:3px;">El formulario de gastos está bloqueado. Desmarca la casilla para registrar gastos.</div>
+          </div>
+          <button type="button" onclick="document.getElementById('chk-no-gastos').checked=false;toggleNoGastos(false);"
+                  style="background:#d97706;color:#fff;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-weight:700;font-size:13px;white-space:nowrap;">
+            Desmarcar y registrar gastos
+          </button>
+        </div>
+      </div>
+
       <!-- No gastos checkbox -->
       <div class="no-expense-row">
         <input type="checkbox" id="chk-no-gastos" data-testid="checkbox-no-gastos"
@@ -1142,17 +1156,25 @@ function renderExpenseSummary() {
 
 function toggleNoGastos(checked) {
   noGastos = checked;
-  const btn = document.getElementById('btn-save-expense');
-  const fields = ['exp-amount','exp-notes','exp-person'];
+  const btn    = document.getElementById('btn-save-expense');
+  const banner = document.getElementById('no-gastos-banner');
+  const fields = ['exp-amount','exp-notes','exp-person','exp-date','exp-category','exp-payment'];
   btn.disabled = checked;
   fields.forEach(id => {
     const el = document.getElementById(id);
     if (el) el.disabled = checked;
   });
+  if (banner) banner.style.display = checked ? 'block' : 'none';
   if (checked) {
     showToast('exp-msg', 'Sin gastos confirmado. Puedes continuar a Validación.', 'success');
   } else {
     hideMsg('exp-msg');
+    // Re-enable any fields the captain panel might use
+    ['cap-name','cap-hours','cap-rate'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.disabled = false;
+    });
+    setTimeout(() => document.getElementById('exp-amount')?.focus(), 50);
   }
 }
 

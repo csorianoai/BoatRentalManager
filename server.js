@@ -2295,6 +2295,50 @@ async function initializeDatabase() {
     console.log('✅ FASE 22: COA normalized — all approved accounts upserted, 5080 deactivated');
     // ── END FASE 22 ──────────────────────────────────────────────────────
 
+    // ── FIXUP: Insert missing Cr 1015 transactions for booking_expense Dr-only records ─
+    // The boat_expense sync path only creates the Dr transaction. Any booking-expense
+    // record in boat_expenses that has a corresponding Dr transaction but no Cr
+    // transaction in 1015 gets the missing Cr inserted here (idempotent).
+    try {
+      const { rows: drOnly } = await pool.query(`
+        SELECT DISTINCT t.booking_id, t.amount, t.transaction_date, t.boat_id, t.description, t.reference_id
+        FROM transactions t
+        WHERE t.reference_type = 'booking_expense'
+          AND t.transaction_type = 'expense'
+          AND t.account_id != 'acc_cash_clearing_1015'
+          AND NOT EXISTS (
+            SELECT 1 FROM transactions cr
+            WHERE cr.reference_type = 'booking_expense'
+              AND cr.transaction_type = 'expense'
+              AND cr.account_id = 'acc_cash_clearing_1015'
+              AND cr.booking_id = t.booking_id
+              AND cr.amount = t.amount
+          )
+          AND t.booking_id IS NOT NULL
+        LIMIT 50
+      `);
+      if (drOnly.length > 0) {
+        const { nanoid } = await import('nanoid');
+        for (const dr of drOnly) {
+          const crId = 'tx_bkexp_cr_fix_' + nanoid(6);
+          await pool.query(
+            `INSERT INTO transactions
+               (id, transaction_date, account_id, amount, transaction_type,
+                description, reference_id, reference_type, boat_id, notes, booking_id)
+             VALUES ($1,$2,'acc_cash_clearing_1015',$3,'expense',$4,$5,'booking_expense',$6,'fixup-cr',$7)
+             ON CONFLICT (id) DO NOTHING`,
+            [crId, dr.transaction_date, dr.amount,
+             `[Cr fixup] ${dr.description}`, dr.reference_id || dr.booking_id,
+             dr.boat_id, dr.booking_id]
+          );
+          console.log(`✅ FIXUP: Inserted missing Cr 1015 for booking=${dr.booking_id} amount=${dr.amount}`);
+        }
+      }
+    } catch (fixErr) {
+      console.warn('⚠️ FIXUP Cr-transaction skipped (non-critical):', fixErr.message);
+    }
+    // ── END FIXUP ────────────────────────────────────────────────────────
+
     console.log('✅ Database schema initialized successfully (all 10 phases + authentication)');
     
     // Insert default message templates if they don't exist
@@ -15088,18 +15132,27 @@ app.post('/api/booking-expense', isAuthenticated, async (req, res) => {
     await pg.query('BEGIN');
     const { nanoid } = await import('nanoid');
     const { booking_id, account_code, amount, payment_method, notes, category, description } = req.body;
+    console.log(`[booking-expense] START booking=${booking_id} amount=${amount} category=${category} payment=${payment_method}`);
     if (!booking_id || !amount || amount <= 0) {
+      console.log(`[booking-expense] REJECTED — missing booking_id or amount`);
       return res.status(400).json({ error: 'booking_id y amount son requeridos' });
     }
 
     // R-1 fix: block legacy bookings
     const legacyErr = await assertBookingIsCurrentPeriod(booking_id, pg);
-    if (legacyErr) { await pg.query('ROLLBACK'); return res.status(legacyErr.status).json(legacyErr); }
+    if (legacyErr) {
+      console.log(`[booking-expense] REJECTED legacy — ${legacyErr.error}`);
+      await pg.query('ROLLBACK'); return res.status(legacyErr.status).json(legacyErr);
+    }
 
     // Validate booking
     const { rows: bkRows } = await pg.query(`SELECT * FROM bookings WHERE id = $1`, [booking_id]);
-    if (!bkRows.length) { await pg.query('ROLLBACK'); return res.status(404).json({ error: 'Booking no encontrado' }); }
+    if (!bkRows.length) {
+      console.log(`[booking-expense] REJECTED — booking ${booking_id} not found`);
+      await pg.query('ROLLBACK'); return res.status(404).json({ error: 'Booking no encontrado' });
+    }
     const bk = bkRows[0];
+    console.log(`[booking-expense] Booking found: ${bk.customer_name}, boat=${bk.boat_id}, is_legacy=${bk.is_legacy}`);
 
     // Resolve expense account via EXPENSE_ACCOUNT_MAP
     // Priority: explicit account_code → category mapping → 6900 Misc fallback
@@ -15107,15 +15160,18 @@ app.post('/api/booking-expense', isAuthenticated, async (req, res) => {
       || EXPENSE_ACCOUNT_MAP[category]
       || EXPENSE_ACCOUNT_MAP[req.body.expense_type]
       || '6900';
+    console.log(`[booking-expense] Resolving account: category=${category} → code=${expAccCode}`);
     const { rows: accRows } = await pg.query(
       `SELECT id, account_name FROM chart_of_accounts WHERE account_code = $1 AND (is_active IS NULL OR is_active != 0) LIMIT 1`, [expAccCode]
     );
     if (!accRows.length) {
       const hint = category ? ` — para '${category}' se sugiere ${EXPENSE_ACCOUNT_MAP[category] || '6900'}` : '';
+      console.log(`[booking-expense] ERROR — account ${expAccCode} not found${hint}`);
       await pg.query('ROLLBACK');
       return res.status(400).json({ error: `Cuenta ${expAccCode} no encontrada o inactiva${hint}` });
     }
     const expAccId = accRows[0].id;
+    console.log(`[booking-expense] Dr account resolved: ${expAccId} (${accRows[0].account_name})`);
 
     // Resolve credit account based on payment_method
     let creditAccId;
@@ -15127,12 +15183,14 @@ app.post('/api/booking-expense', isAuthenticated, async (req, res) => {
       );
       creditAccId = bankRows.length ? bankRows[0].id : 'acc_cash_clearing_1015'; // Cr Bank
     }
+    console.log(`[booking-expense] Cr account: ${creditAccId}`);
 
     const expDate = req.body.expense_date || new Date().toISOString().slice(0, 10);
     const txId = 'tx_bkexp_' + nanoid(8);
     const desc = description || notes || `Gasto del booking — ${bk.customer_name}`;
 
     // Dr Expense account (e.g. Dr 5020 Fuel, Dr 5010 Captain Labor)
+    console.log(`[booking-expense] INSERT Dr tx=${txId} account=${expAccId} amount=${amount}`);
     await pg.query(
       `INSERT INTO transactions
          (id, transaction_date, account_id, amount, transaction_type,
@@ -15141,11 +15199,13 @@ app.post('/api/booking-expense', isAuthenticated, async (req, res) => {
       [txId, expDate, expAccId, parseFloat(amount), desc, booking_id,
        bk.boat_id || null, notes || null, booking_id]
     );
+    console.log(`[booking-expense] Dr tx inserted OK`);
 
     // Cr Credit account — REQUIRED for double-entry integrity
     // cash → Cr 1015 Cash Clearing (money flows OUT of clearing)
     // zelle/bank → Cr 1010 Bank (money flows OUT of bank)
     const crTxId = 'tx_bkexp_cr_' + nanoid(8);
+    console.log(`[booking-expense] INSERT Cr tx=${crTxId} account=${creditAccId} amount=${amount}`);
     await pg.query(
       `INSERT INTO transactions
          (id, transaction_date, account_id, amount, transaction_type,
@@ -15154,6 +15214,7 @@ app.post('/api/booking-expense', isAuthenticated, async (req, res) => {
       [crTxId, expDate, creditAccId, parseFloat(amount), desc, booking_id,
        bk.boat_id || null, notes || null, booking_id]
     );
+    console.log(`[booking-expense] Cr tx inserted OK`);
 
     // boat_expense record for traceability (captain_name stored in vendor field via notes)
     const expId = 'bkexp_' + nanoid(8);
@@ -15170,9 +15231,10 @@ app.post('/api/booking-expense', isAuthenticated, async (req, res) => {
        [notes, captainName ? `captain:${captainName}` : null,
         captainHours ? `hours:${captainHours}` : null,
         captainRate  ? `rate:${captainRate}`   : null].filter(Boolean).join(' | ') || null]
-    ).catch(() => {}); // non-critical
+    ).catch((beErr) => { console.log(`[booking-expense] boat_expense insert failed (non-critical): ${beErr.message}`); });
 
     await pg.query('COMMIT');
+    console.log(`[booking-expense] COMMITTED OK — txId=${txId} crTxId=${crTxId} expId=${expId}`);
     res.status(201).json({
       success: true, transaction_id: txId, expense_id: expId,
       amount: parseFloat(amount), payment_method: payment_method || 'cash',
