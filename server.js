@@ -15216,30 +15216,52 @@ app.post('/api/booking-expense', isAuthenticated, async (req, res) => {
     );
     console.log(`[booking-expense] Cr tx inserted OK`);
 
-    // boat_expense record for traceability (captain_name stored in vendor field via notes)
+    // ── COMMIT the Dr + Cr transaction FIRST — before any non-critical inserts ──
+    // This prevents boat_expenses CHECK constraint violations from aborting the
+    // accounting transaction (PostgreSQL aborts the whole tx on any error inside it).
+    await pg.query('COMMIT');
+    console.log(`[booking-expense] COMMITTED OK — txId=${txId} crTxId=${crTxId}`);
+    res.status(201).json({
+      success: true, transaction_id: txId,
+      amount: parseFloat(amount), payment_method: payment_method || 'cash',
+      account_code: expAccCode, credit_account: creditAccId === 'acc_cash_clearing_1015' ? '1015' : '1010'
+    });
+
+    // ── boat_expense record for traceability — uses pool.query() (outside transaction) ──
+    // boat_expenses.category has a CHECK constraint with specific allowed values.
+    // Map wizard categories to valid boat_expenses.category values.
+    const BOAT_EXP_CATEGORY_MAP = {
+      captain: 'labor', captain_labor: 'labor', crew: 'labor', tripulacion: 'labor',
+      fuel: 'fuel', combustible: 'fuel', gas: 'fuel',
+      ice: 'operational', hielo: 'operational', supplies: 'operational', suministros: 'operational',
+      cleaning: 'cleaning', limpieza: 'cleaning',
+      dock: 'marina_fees', marina: 'marina_fees', marina_fees: 'marina_fees',
+      platform_fee: 'operational', commission: 'operational', comision: 'operational',
+      insurance: 'insurance', seguro: 'insurance',
+      maintenance: 'maintenance_parts', mantenimiento: 'maintenance_parts',
+      maintenance_parts: 'maintenance_parts', emergency_repairs: 'emergency_repairs',
+      labor: 'labor',
+      marketing: 'operational', software: 'operational', subscriptions: 'operational',
+      bank_fee: 'operational', office_admin: 'operational', legal: 'operational',
+      rent: 'operational', utilities: 'operational',
+      other: 'operational', misc: 'operational', otro: 'operational', operational: 'operational',
+    };
     const expId = 'bkexp_' + nanoid(8);
     const captainName = req.body.captain_name || req.body.vendor || null;
     const captainHours = req.body.captain_hours ? parseFloat(req.body.captain_hours) : null;
     const captainRate  = req.body.captain_rate  ? parseFloat(req.body.captain_rate)  : null;
-    await pg.query(
+    const beCategory = BOAT_EXP_CATEGORY_MAP[category] || 'operational';
+    pool.query(
       `INSERT INTO boat_expenses
          (id, boat_id, category, amount, expense_date, description,
           payment_method, booking_id, expense_type, notes)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'other', $9)`,
-      [expId, bk.boat_id || null, category || 'operational', parseFloat(amount),
+      [expId, bk.boat_id || null, beCategory, parseFloat(amount),
        expDate, desc, payment_method || 'cash', booking_id,
        [notes, captainName ? `captain:${captainName}` : null,
         captainHours ? `hours:${captainHours}` : null,
         captainRate  ? `rate:${captainRate}`   : null].filter(Boolean).join(' | ') || null]
     ).catch((beErr) => { console.log(`[booking-expense] boat_expense insert failed (non-critical): ${beErr.message}`); });
-
-    await pg.query('COMMIT');
-    console.log(`[booking-expense] COMMITTED OK — txId=${txId} crTxId=${crTxId} expId=${expId}`);
-    res.status(201).json({
-      success: true, transaction_id: txId, expense_id: expId,
-      amount: parseFloat(amount), payment_method: payment_method || 'cash',
-      account_code: expAccCode, credit_account: creditAccId === 'acc_cash_clearing_1015' ? '1015' : '1010'
-    });
   } catch (err) {
     await pg.query('ROLLBACK');
     console.error('Error booking-expense:', err);

@@ -1,0 +1,437 @@
+Actúa como Principal QA Automation Engineer, Accounting Systems Auditor y Backend Debugging Engineer para gestion.nadakiexcursions.
+
+PROBLEMA CRÍTICO:
+El sistema sigue sin registrar correctamente el gasto de Hielo / Ice. Ya se intentó varias veces y el problema persiste.
+
+NO quiero otro parche superficial.
+Necesito resolverlo de raíz.
+
+OBJETIVO:
+Auditar, corregir y probar de punta a punta TODOS los gastos del Booking Reconciliation Wizard antes de declarar que funciona.
+
+CUENTAS OBLIGATORIAS DE GASTOS:
+5010 - Captain Labor
+5020 - Fuel Expense
+5030 - Ice / Supplies
+5040 - Cleaning
+5050 - Dock / Marina Fees
+5060 - Platform Fees
+6020 - Maintenance
+6900 - Miscellaneous Expense
+
+==================================================
+1. NO DECLARAR ÉXITO SIN PRUEBA REAL
+==================================================
+
+No digas “completado” hasta ejecutar pruebas reales de creación de gastos para TODAS las categorías.
+
+Debes probar:
+- captain
+- fuel
+- ice
+- cleaning
+- dock/marina
+- platform/commission
+- maintenance
+- other/misc
+
+Cada prueba debe confirmar:
+- la cuenta existe
+- está activa
+- el mapping resuelve correctamente
+- el endpoint acepta el gasto
+- la transacción se crea
+- el booking ledger se actualiza
+- el gasto aparece en la lista de gastos
+- el integrity check lo reconoce
+
+==================================================
+2. ENCONTRAR LA CAUSA RAÍZ DEL ICE
+==================================================
+
+Buscar en todo el proyecto referencias a:
+
+- ice
+- Ice
+- hielo
+- Hielo
+- supplies
+- Supplies
+- 5030
+- 5080
+- 5020
+- expense_type
+- category
+- categoryMapping
+- expenseCategory
+- EXPENSE_ACCOUNT_MAP
+- account_code
+- saveExpense
+- registerExpense
+- booking expenses
+
+Identificar exactamente:
+- archivo
+- línea
+- valor enviado desde frontend
+- valor recibido por backend
+- mapping aplicado
+- cuenta final usada
+- error exacto
+
+Reportar:
+“Root cause of Ice failure: ________”
+
+==================================================
+3. NORMALIZAR MAPPING ÚNICO
+==================================================
+
+Crear o corregir un único mapping central, usado por frontend y backend.
+
+Mapping obligatorio:
+
+captain → 5010
+captain_labor → 5010
+capitan → 5010
+pago_capitan → 5010
+
+fuel → 5020
+combustible → 5020
+gas → 5020
+
+ice → 5030
+hielo → 5030
+supplies → 5030
+ice_supplies → 5030
+
+cleaning → 5040
+limpieza → 5040
+
+dock → 5050
+marina → 5050
+dock_marina → 5050
+
+platform → 5060
+platform_fee → 5060
+commission → 5060
+comision → 5060
+
+maintenance → 6020
+mantenimiento → 6020
+
+other → 6900
+misc → 6900
+otro → 6900
+
+REGLA:
+No puede haber mappings diferentes en distintos archivos.
+Si existe mapping duplicado en frontend y backend, ambos deben coincidir exactamente.
+Preferible: backend es fuente de verdad y frontend solo muestra labels.
+
+==================================================
+4. CREAR / ACTIVAR CUENTAS FALTANTES
+==================================================
+
+Verificar chart_of_accounts.
+
+Si falta alguna, crearla.
+Si existe inactiva, activarla.
+
+Cuentas:
+5010 Captain Labor - expense - Cost of Services
+5020 Fuel Expense - expense - Cost of Services
+5030 Ice / Supplies - expense - Cost of Services
+5040 Cleaning - expense - Cost of Services
+5050 Dock / Marina Fees - expense - Cost of Services
+5060 Platform Fees - expense - Cost of Services
+6020 Maintenance - expense - Operating Expenses
+6900 Miscellaneous Expense - expense - Operating Expenses
+
+También verificar:
+1015 Cash Clearing / Operating Cash - asset - Cash
+1010 Wells Fargo Checking - asset - Bank
+
+==================================================
+5. VALIDAR ENDPOINT DE GASTOS
+==================================================
+
+Revisar el endpoint usado por el wizard para registrar gastos.
+
+Debe aceptar:
+{
+  booking_id,
+  expense_type,
+  amount,
+  payment_method,
+  expense_date,
+  responsible,
+  notes
+}
+
+Debe resolver:
+expense_type → account_code
+
+Si account_code viene desde frontend:
+- validarlo contra chart_of_accounts
+- si no existe, intentar resolver por expense_type
+- si ambos fallan, devolver error claro
+
+Para expense_type=ice o hielo:
+Debe resolver siempre:
+account_code = 5030
+
+==================================================
+6. CREAR TEST BOOKING TEMPORAL
+==================================================
+
+Crear booking temporal de prueba o usar uno seguro marcado como QA:
+
+customer_name: QA Expense Test
+service_date: 2026-05-08
+booking_total: 999
+period_type: current
+
+Registrar cash payment suficiente:
+amount: 2000
+payment_method: cash
+account: 1015
+
+Esto permitirá probar gastos cash sin fallar por cash clearing.
+
+==================================================
+7. EJECUTAR PRUEBA REAL DE TODOS LOS GASTOS CASH
+==================================================
+
+Crear los siguientes gastos contra el booking QA:
+
+1. captain
+amount: 10
+payment_method: cash
+expected:
+Dr 5010
+Cr 1015
+
+2. fuel
+amount: 20
+payment_method: cash
+expected:
+Dr 5020
+Cr 1015
+
+3. ice
+amount: 6
+payment_method: cash
+expected:
+Dr 5030
+Cr 1015
+
+4. cleaning
+amount: 15
+payment_method: cash
+expected:
+Dr 5040
+Cr 1015
+
+5. dock
+amount: 25
+payment_method: cash
+expected:
+Dr 5050
+Cr 1015
+
+6. platform_fee
+amount: 30
+payment_method: cash
+expected:
+Dr 5060
+Cr 1015
+
+7. maintenance
+amount: 40
+payment_method: cash
+expected:
+Dr 6020
+Cr 1015
+
+8. other
+amount: 50
+payment_method: cash
+expected:
+Dr 6900
+Cr 1015
+
+Total expected expenses cash:
+196
+
+Confirmar:
+- 8 gastos creados
+- total expenses = 196
+- 1015 cash out = 196
+- cada cuenta tiene su transacción correspondiente
+
+==================================================
+8. EJECUTAR PRUEBA REAL DE TODOS LOS GASTOS BANK/ZELLE
+==================================================
+
+En el mismo booking QA, registrar gastos adicionales:
+
+1. captain
+amount: 11
+payment_method: zelle
+expected:
+Dr 5010
+Cr 1010
+
+2. fuel
+amount: 21
+payment_method: bank
+expected:
+Dr 5020
+Cr 1010
+
+3. ice
+amount: 7
+payment_method: zelle
+expected:
+Dr 5030
+Cr 1010
+
+4. cleaning
+amount: 16
+payment_method: bank
+expected:
+Dr 5040
+Cr 1010
+
+5. dock
+amount: 26
+payment_method: bank
+expected:
+Dr 5050
+Cr 1010
+
+6. platform_fee
+amount: 31
+payment_method: bank
+expected:
+Dr 5060
+Cr 1010
+
+7. maintenance
+amount: 41
+payment_method: bank
+expected:
+Dr 6020
+Cr 1010
+
+8. other
+amount: 51
+payment_method: bank
+expected:
+Dr 6900
+Cr 1010
+
+Total expected bank/zelle expenses:
+204
+
+Confirmar:
+- 8 gastos bank/zelle creados
+- total expenses additional = 204
+- 1010 credited properly
+- ice zelle usa 5030
+
+Total QA expenses:
+196 + 204 = 400
+
+==================================================
+9. PROBAR DESDE FRONTEND/WIZARD
+==================================================
+
+No basta probar API.
+
+Desde booking-wizard.html, con el booking QA:
+
+Intentar registrar manualmente desde UI:
+- Ice / Hielo
+- amount 6
+- payment_method cash
+- responsible QA
+- notes frontend ice test
+
+Confirmar:
+- No sale error
+- aparece en lista de gastos
+- usa cuenta 5030
+- ledger se actualiza
+
+Si la API funciona pero UI falla:
+- el problema está en booking-wizard.html
+- inspeccionar payload real enviado por saveExpense()
+
+==================================================
+10. VALIDACIÓN DE PAYLOAD
+==================================================
+
+Agregar logging temporal seguro en modo QA:
+
+Cuando se llame saveExpense():
+console.log:
+- expense_type
+- selected category value
+- account_code
+- payment_method
+- amount
+
+En backend:
+log:
+- received expense_type
+- received account_code
+- resolved account_code
+- chart account found?
+- transaction ids created
+
+Remover o reducir logs si son demasiado verbosos después de corregir.
+
+==================================================
+11. NO USAR WORKAROUNDS MALOS
+==================================================
+
+No resolver creando cuenta duplicada innecesaria.
+No mandar ice a 6900 si existe 5030.
+No cambiar Ice a Fuel.
+No ignorar error.
+No declarar éxito si solo fuel funciona.
+
+==================================================
+12. RESULTADO ESPERADO
+==================================================
+
+Al final debe poder registrarse:
+
+Ice / Hielo:
+Dr 5030 Ice / Supplies
+Cr 1015 si cash
+
+Ice / Hielo:
+Dr 5030 Ice / Supplies
+Cr 1010 si bank/zelle
+
+==================================================
+13. ENTREGABLE FINAL OBLIGATORIO
+==================================================
+
+Entregar reporte con:
+
+1. Causa raíz exacta del fallo Ice
+2. Archivos corregidos
+3. Mapping final aplicado
+4. Lista de cuentas verificadas activas
+5. Resultado prueba cash para las 8 categorías
+6. Resultado prueba bank/zelle para las 8 categorías
+7. Resultado prueba desde frontend para Ice
+8. IDs de transacciones creadas en QA
+9. Confirmación de que el booking ledger actualiza
+10. Confirmación de que Matej puede registrar Ice 6 correctamente
+11. Cualquier riesgo pendiente
+
+No declares terminado hasta que todas las pruebas anteriores pasen.
