@@ -2339,6 +2339,55 @@ async function initializeDatabase() {
     }
     // ── END FIXUP ────────────────────────────────────────────────────────
 
+    // ── FASE 23: Captain Payable tables ──────────────────────────────────────
+    try {
+      await pool.query(`UPDATE chart_of_accounts SET account_name='Accounts Payable', is_active=1 WHERE account_code='2000'`);
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS booking_captain_payables (
+          id               TEXT PRIMARY KEY,
+          booking_id       TEXT NOT NULL,
+          captain_name     TEXT NOT NULL,
+          captain_id       TEXT,
+          service_hours    NUMERIC(8,2),
+          hourly_rate      NUMERIC(10,2),
+          total_due        NUMERIC(10,2) NOT NULL,
+          total_paid       NUMERIC(10,2) NOT NULL DEFAULT 0,
+          balance_due      NUMERIC(10,2) NOT NULL DEFAULT 0,
+          status           TEXT NOT NULL DEFAULT 'pending',
+          obligation_tx_dr TEXT,
+          obligation_tx_cr TEXT,
+          notes            TEXT,
+          created_at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_bcpay_booking ON booking_captain_payables(booking_id)`);
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS booking_captain_payments (
+          id                 TEXT PRIMARY KEY,
+          booking_id         TEXT NOT NULL,
+          captain_payable_id TEXT NOT NULL,
+          amount             NUMERIC(10,2) NOT NULL,
+          payment_method     TEXT NOT NULL DEFAULT 'cash',
+          payment_date       DATE NOT NULL,
+          account_credit     TEXT,
+          notes              TEXT,
+          transaction_id_dr  TEXT,
+          transaction_id_cr  TEXT,
+          created_at         TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_bcpmts_payable ON booking_captain_payments(captain_payable_id)`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_bcpmts_booking ON booking_captain_payments(booking_id)`);
+
+      console.log('✅ FASE 23: booking_captain_payables + booking_captain_payments ready');
+    } catch (e) {
+      console.warn('⚠️ FASE 23 captain payable tables (non-critical):', e.message);
+    }
+    // ── END FASE 23 ──────────────────────────────────────────────────────────
+
     console.log('✅ Database schema initialized successfully (all 10 phases + authentication)');
     
     // Insert default message templates if they don't exist
@@ -14795,6 +14844,24 @@ async function checkBookingIntegrity(bookingId) {
   // Combined: formal captain_payments + expense-wizard entries (5010 Dr)
   const captainActual    = captainFormalPay + captainExpTotal;
 
+  // ── Captain Payable (formal payable model) ─────────────────────────────
+  const { rows: cpayRows } = await pool.query(
+    `SELECT COALESCE(SUM(total_due),0) as total_due,
+            COALESCE(SUM(total_paid),0) as total_paid,
+            COALESCE(SUM(balance_due),0) as balance_due,
+            COUNT(*) as cnt
+     FROM booking_captain_payables WHERE booking_id=$1`,
+    [bookingId]
+  ).catch(() => ({ rows: [{ total_due: 0, total_paid: 0, balance_due: 0, cnt: 0 }] }));
+  const captainPayableDue     = parseFloat(cpayRows[0].total_due);
+  const captainPayablePaid    = parseFloat(cpayRows[0].total_paid);
+  const captainPayableBalance = parseFloat(cpayRows[0].balance_due);
+  const captainPayableCount   = parseInt(cpayRows[0].cnt);
+  const captainPayableStatus  = captainPayableCount === 0 ? 'none'
+    : captainPayableBalance <= 0.005 ? 'paid'
+    : captainPayablePaid > 0 ? 'partially_paid'
+    : 'pending';
+
   // ── accounting_status — strict rules (cannot be 'reconciled' with open items) ─
   let accountingStatus = bk.accounting_status || 'not_started';
   if (bk.accounting_status === 'locked' || bk.accounting_status === 'legacy_locked') {
@@ -14896,6 +14963,17 @@ async function checkBookingIntegrity(bookingId) {
     alerts.push({ severity: 'high', code: 'AR_PENDING',
       message: `Cuenta por cobrar pendiente: $${arPending.toFixed(2)} — no se puede cerrar hasta cobrar` });
   }
+  // Captain Payable alerts
+  if (captainPayableBalance > 0.01) {
+    alerts.push({ severity: 'high', code: 'CAPTAIN_PAYABLE_PENDING',
+      message: `Pago pendiente al capitán: $${captainPayableBalance.toFixed(2)} — el booking no puede cerrarse hasta saldar`,
+      captain_balance_due: captainPayableBalance });
+  }
+  if (captainPayablePaid > captainPayableDue + 0.01 && captainPayableDue > 0) {
+    alerts.push({ severity: 'medium', code: 'CAPTAIN_PAYABLE_OVERPAID',
+      message: `Sobrepago al capitán: $${(captainPayablePaid - captainPayableDue).toFixed(2)} — clasificar como propina, error o ajuste`,
+      captain_overpayment: captainPayablePaid - captainPayableDue });
+  }
 
   // ── Suggested next action ──────────────────────────────────────────────
   let suggestedNextAction = '';
@@ -14903,6 +14981,8 @@ async function checkBookingIntegrity(bookingId) {
     suggestedNextAction = 'Booking cerrado y bloqueado. No se permiten cambios.';
   } else if (alerts.find(a => a.code === 'REVENUE_PENDING')) {
     suggestedNextAction = 'Reconocer revenue: hacer clic en "Completar Booking" (Paso 6). Luego, Cash Clearing y AR se saldarán.';
+  } else if (alerts.find(a => a.code === 'CAPTAIN_PAYABLE_PENDING')) {
+    suggestedNextAction = `Registrar abono pendiente al capitán: $${captainPayableBalance.toFixed(2)} en Paso 3 → Cuenta por Pagar Capitán`;
   } else if (alerts.find(a => a.code === 'AR_PENDING')) {
     suggestedNextAction = `Cobrar saldo pendiente de $${arPending.toFixed(2)} y marcar la AR como pagada`;
   } else if (alerts.find(a => a.code === 'CAPTAIN_PAY_MISMATCH')) {
@@ -14948,13 +15028,18 @@ async function checkBookingIntegrity(bookingId) {
     cash_clearing_in:       cashClearingIn,
     cash_clearing_out:      cashClearingOut,
     cash_clearing_balance:  cashClearingBalance,
-    captain_actual:         captainActual,
-    captain_paid_cash:      captainExpCash,
-    captain_paid_bank:      captainExpBank,
-    captain_hours:          captainHours,
-    stew_actual:            stewActual,
+    captain_actual:            captainActual,
+    captain_paid_cash:         captainExpCash,
+    captain_paid_bank:         captainExpBank,
+    captain_hours:             captainHours,
+    stew_actual:               stewActual,
+    captain_payable_due:       captainPayableDue,
+    captain_payable_paid:      captainPayablePaid,
+    captain_payable_balance:   captainPayableBalance,
+    captain_payable_status:    captainPayableStatus,
+    captain_payable_count:     captainPayableCount,
     alerts,
-    suggested_next_action:  suggestedNextAction,
+    suggested_next_action:     suggestedNextAction,
   };
 
   // Persist computed status back to bookings_ledger if changed
@@ -15265,6 +15350,186 @@ app.post('/api/booking-expense', isAuthenticated, async (req, res) => {
   } catch (err) {
     await pg.query('ROLLBACK');
     console.error('Error booking-expense:', err);
+    res.status(500).json({ error: err.message });
+  } finally { pg.release(); }
+});
+
+// ── Captain Payable: GET /api/bookings/:id/captain-payable ────────────────
+app.get('/api/bookings/:id/captain-payable', isAuthenticated, async (req, res) => {
+  try {
+    const bookingId = req.params.id;
+    const { rows: payables } = await pool.query(
+      `SELECT * FROM booking_captain_payables WHERE booking_id = $1 ORDER BY created_at DESC`,
+      [bookingId]
+    );
+    const { rows: payments } = await pool.query(
+      `SELECT * FROM booking_captain_payments WHERE booking_id = $1 ORDER BY created_at ASC`,
+      [bookingId]
+    );
+    const totalDue  = payables.reduce((s, p) => s + parseFloat(p.total_due  || 0), 0);
+    const totalPaid = payables.reduce((s, p) => s + parseFloat(p.total_paid || 0), 0);
+    res.json({ payables, payments, total_due: totalDue, total_paid: totalPaid, balance_due: totalDue - totalPaid });
+  } catch (err) {
+    console.error('GET captain-payable error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Helper: resolve account ID by code (works across dev/prod) ──────────
+async function resolveAccountId(code) {
+  const { rows } = await pool.query(
+    `SELECT id FROM chart_of_accounts WHERE account_code=$1 AND is_active=1 LIMIT 1`, [code]
+  );
+  if (!rows.length) throw new Error(`Chart of accounts: account ${code} not found or inactive`);
+  return rows[0].id;
+}
+
+// ── Captain Payable: POST /api/bookings/:id/captain-payable ───────────────
+app.post('/api/bookings/:id/captain-payable', isAuthenticated, async (req, res) => {
+  const pg = await pool.connect();
+  try {
+    const bookingId = req.params.id;
+    const { captain_name, service_hours, hourly_rate, notes } = req.body;
+    if (!captain_name || !captain_name.trim()) return res.status(400).json({ error: 'captain_name es requerido' });
+    const hours    = parseFloat(service_hours) || 0;
+    const rate     = parseFloat(hourly_rate)   || 0;
+    const totalDue = parseFloat((hours * rate).toFixed(2));
+    if (totalDue <= 0) return res.status(400).json({ error: 'total_due debe ser > 0 (service_hours × hourly_rate)' });
+
+    // Idempotency: return existing if same captain+booking
+    const { rows: existing } = await pool.query(
+      `SELECT * FROM booking_captain_payables WHERE booking_id=$1 AND lower(captain_name)=lower($2) LIMIT 1`,
+      [bookingId, captain_name.trim()]
+    );
+    if (existing.length > 0) {
+      return res.json({ payable: existing[0], created: false, message: 'Obligation already exists for this captain in this booking' });
+    }
+
+    // Resolve account IDs dynamically (dev & prod safe)
+    const [acct5010, acct2000] = await Promise.all([
+      resolveAccountId('5010'),
+      resolveAccountId('2000'),
+    ]);
+
+    const { nanoid } = await import('nanoid');
+    const payableId = 'cpay_' + nanoid(10);
+    const drTxId    = 'tx_cpay_dr_' + nanoid(8);
+    const crTxId    = 'tx_cpay_cr_' + nanoid(8);
+
+    const { rows: bkRows } = await pool.query(
+      `SELECT service_date, booking_date FROM bookings WHERE id=$1`, [bookingId]
+    );
+    const txDate = bkRows[0]?.service_date || bkRows[0]?.booking_date || new Date().toISOString().split('T')[0];
+
+    await pg.query('BEGIN');
+
+    // Dr 5010 Captain Labor Expense
+    await pg.query(`
+      INSERT INTO transactions (id, transaction_date, account_id, amount, transaction_type, description,
+        reference_id, reference_type, booking_id, notes, source_system)
+      VALUES ($1,$2,$3,$4,'expense',$5,$6,'captain_payment',$7,'captain_obligation_dr','booking_wizard')
+    `, [drTxId, txDate, acct5010, totalDue, `Dr 5010 Captain Labor — ${captain_name.trim()} (${hours}h × $${rate})`, payableId, bookingId]);
+
+    // Cr 2000 Accounts Payable
+    await pg.query(`
+      INSERT INTO transactions (id, transaction_date, account_id, amount, transaction_type, description,
+        reference_id, reference_type, booking_id, notes, source_system)
+      VALUES ($1,$2,$3,$4,'expense',$5,$6,'captain_payment',$7,'captain_obligation_cr','booking_wizard')
+    `, [crTxId, txDate, acct2000, totalDue, `Cr 2000 AP — Obligación capitán ${captain_name.trim()}`, payableId, bookingId]);
+
+    // Insert payable record
+    await pg.query(`
+      INSERT INTO booking_captain_payables
+        (id, booking_id, captain_name, service_hours, hourly_rate, total_due, total_paid, balance_due, status, obligation_tx_dr, obligation_tx_cr, notes)
+      VALUES ($1,$2,$3,$4,$5,$6,0,$6,'pending',$7,$8,$9)
+    `, [payableId, bookingId, captain_name.trim(), hours || null, rate || null, totalDue, drTxId, crTxId, notes || null]);
+
+    await pg.query('COMMIT');
+    console.log(`✅ Captain payable created: ${payableId} booking=${bookingId} captain=${captain_name} total=${totalDue}`);
+    const { rows: created } = await pool.query(`SELECT * FROM booking_captain_payables WHERE id=$1`, [payableId]);
+    res.json({ payable: created[0], created: true });
+  } catch (err) {
+    await pg.query('ROLLBACK').catch(() => {});
+    console.error('POST captain-payable error:', err);
+    res.status(500).json({ error: err.message });
+  } finally { pg.release(); }
+});
+
+// ── Captain Payable Payment: POST /api/bookings/:id/captain-payable/:payable_id/payments ─
+app.post('/api/bookings/:id/captain-payable/:payable_id/payments', isAuthenticated, async (req, res) => {
+  const pg = await pool.connect();
+  try {
+    const { id: bookingId, payable_id: payableId } = req.params;
+    const { amount, payment_method, payment_date, notes } = req.body;
+    const pmtAmount = parseFloat(amount);
+    if (!pmtAmount || pmtAmount <= 0) return res.status(400).json({ error: 'amount debe ser > 0' });
+
+    const { rows: payRows } = await pool.query(
+      `SELECT * FROM booking_captain_payables WHERE id=$1 AND booking_id=$2`, [payableId, bookingId]
+    );
+    if (payRows.length === 0) return res.status(404).json({ error: 'Captain payable no encontrado' });
+    const payable = payRows[0];
+
+    const method       = (payment_method || 'cash').toLowerCase();
+    // Resolve credit account dynamically (dev & prod safe)
+    const crAccountId  = (method === 'cash') ? await resolveAccountId('1015') : await resolveAccountId('1010');
+    const crLabel      = (method === 'cash') ? '1015 Cash Clearing' : '1010 Wells Fargo Checking';
+
+    const newTotalPaid  = parseFloat(payable.total_paid) + pmtAmount;
+    const newBalanceDue = parseFloat(payable.total_due)  - newTotalPaid;
+    const newStatus     = newTotalPaid >= parseFloat(payable.total_due) - 0.005
+      ? (newTotalPaid > parseFloat(payable.total_due) + 0.005 ? 'overpaid' : 'paid')
+      : 'partially_paid';
+
+    const { nanoid } = await import('nanoid');
+    const pmtId  = 'cpmt_' + nanoid(10);
+    const drTxId = 'tx_cpmt_dr_' + nanoid(8);
+    const crTxId = 'tx_cpmt_cr_' + nanoid(8);
+    const txDate = payment_date || new Date().toISOString().split('T')[0];
+
+    await pg.query('BEGIN');
+
+    const acct2000pmt = await resolveAccountId('2000');
+
+    // Dr 2000 Accounts Payable (reduces the liability)
+    await pg.query(`
+      INSERT INTO transactions (id, transaction_date, account_id, amount, transaction_type, description,
+        reference_id, reference_type, booking_id, notes, source_system)
+      VALUES ($1,$2,$3,$4,'expense',$5,$6,'captain_payment',$7,'captain_payment_dr','booking_wizard')
+    `, [drTxId, txDate, acct2000pmt, pmtAmount, `Dr 2000 AP — Abono capitán ${payable.captain_name} (${method})`, pmtId, bookingId]);
+
+    // Cr 1015 Cash Clearing o Cr 1010 Wells Fargo
+    await pg.query(`
+      INSERT INTO transactions (id, transaction_date, account_id, amount, transaction_type, description,
+        reference_id, reference_type, booking_id, notes, source_system)
+      VALUES ($1,$2,$3,$4,'expense',$5,$6,'captain_payment',$7,'captain_payment_cr','booking_wizard')
+    `, [crTxId, txDate, crAccountId, pmtAmount, `Cr ${crLabel} — Abono capitán ${payable.captain_name}`, pmtId, bookingId]);
+
+    // Insert payment record
+    await pg.query(`
+      INSERT INTO booking_captain_payments
+        (id, booking_id, captain_payable_id, amount, payment_method, payment_date, account_credit, notes, transaction_id_dr, transaction_id_cr)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+    `, [pmtId, bookingId, payableId, pmtAmount, method, txDate, crAccountId, notes || null, drTxId, crTxId]);
+
+    // Update payable aggregate totals
+    await pg.query(`
+      UPDATE booking_captain_payables
+      SET total_paid=$1, balance_due=$2, status=$3, updated_at=NOW()
+      WHERE id=$4
+    `, [newTotalPaid, Math.max(0, newBalanceDue), newStatus, payableId]);
+
+    await pg.query('COMMIT');
+    console.log(`✅ Captain payment: ${pmtId} payable=${payableId} amount=${pmtAmount} method=${method} status→${newStatus}`);
+
+    const { rows: updated  } = await pool.query(`SELECT * FROM booking_captain_payables WHERE id=$1`, [payableId]);
+    const { rows: payments } = await pool.query(
+      `SELECT * FROM booking_captain_payments WHERE captain_payable_id=$1 ORDER BY created_at ASC`, [payableId]
+    );
+    res.json({ payable: updated[0], payments, payment_id: pmtId, new_status: newStatus });
+  } catch (err) {
+    await pg.query('ROLLBACK').catch(() => {});
+    console.error('POST captain-payment error:', err);
     res.status(500).json({ error: err.message });
   } finally { pg.release(); }
 });

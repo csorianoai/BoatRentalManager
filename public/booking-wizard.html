@@ -509,6 +509,99 @@
       </div>
     </div>
 
+    <!-- ===== CAPTAIN PAYABLE SECTION ===== -->
+    <div class="wiz-card" id="captain-payable-card" style="border:2px solid #3b82f6;">
+      <h2 style="color:#1e40af;">Cuenta por Pagar — Capitán</h2>
+      <p class="sub">Registra la obligación total del capitán y luego abona en una o varias partes (efectivo, Zelle, banco). Cada abono genera Dr 2000 AP / Cr cuenta correspondiente.</p>
+
+      <!-- Existing payable summary — shown when payable exists -->
+      <div id="cpay-summary" style="display:none;">
+        <div class="kpi-grid" id="cpay-kpi" style="margin-bottom:14px;"></div>
+        <div style="font-size:12px;font-weight:700;color:#475569;margin-bottom:8px;">Abonos registrados</div>
+        <div id="cpay-payments-list" style="margin-bottom:14px;"></div>
+        <hr style="border:none;border-top:1px solid #e2e8f0;margin:14px 0;">
+        <div style="font-size:13px;font-weight:700;color:#1e40af;margin-bottom:10px;">Registrar otro abono</div>
+        <div class="form-row" style="align-items:flex-end;">
+          <div class="fg">
+            <label>Monto ($) *</label>
+            <input type="number" id="cpmt-amount" placeholder="136.00" min="0.01" step="0.01" data-testid="input-cpmt-amount"
+                   style="padding:8px 10px;border:1px solid #93c5fd;border-radius:7px;font-size:13px;width:100%;">
+          </div>
+          <div class="fg">
+            <label>Método de pago *</label>
+            <select id="cpmt-method" data-testid="select-cpmt-method"
+                    style="padding:8px 10px;border:1px solid #93c5fd;border-radius:7px;font-size:13px;width:100%;background:#fff;">
+              <option value="cash">Efectivo — Cr 1015 Cash Clearing</option>
+              <option value="zelle">Zelle — Cr 1010 Wells Fargo</option>
+              <option value="bank">Banco / Transfer — Cr 1010 Wells Fargo</option>
+              <option value="card">Tarjeta — Cr 1010 Wells Fargo</option>
+              <option value="other">Otro — Cr 1010 Wells Fargo</option>
+            </select>
+          </div>
+          <div class="fg">
+            <label>Fecha del abono</label>
+            <input type="date" id="cpmt-date" data-testid="input-cpmt-date"
+                   style="padding:8px 10px;border:1px solid #93c5fd;border-radius:7px;font-size:13px;width:100%;">
+          </div>
+          <div class="fg">
+            <label>Notas</label>
+            <input type="text" id="cpmt-notes" placeholder="Opcional" data-testid="input-cpmt-notes"
+                   style="padding:8px 10px;border:1px solid #93c5fd;border-radius:7px;font-size:13px;width:100%;">
+          </div>
+        </div>
+        <div style="margin-top:10px;">
+          <button class="btn btn-primary" onclick="registerCaptainPayment()" id="btn-cpmt-register" data-testid="button-register-captain-payment">
+            Registrar Abono
+          </button>
+          <span id="cpmt-msg" style="margin-left:12px;font-size:12px;"></span>
+        </div>
+      </div>
+
+      <!-- Create obligation form — shown when no payable exists yet -->
+      <div id="cpay-create-form">
+        <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:14px;margin-bottom:14px;">
+          <div style="font-size:12px;font-weight:700;color:#1e40af;margin-bottom:10px;">
+            Paso 1 — Crear obligación (Dr 5010 Captain Labor / Cr 2000 Accounts Payable)
+          </div>
+          <div class="form-row" style="margin-bottom:10px;">
+            <div class="fg">
+              <label>Nombre del capitán *</label>
+              <input type="text" id="cpay-name" placeholder="Pablo" data-testid="input-cpay-name"
+                     style="padding:8px 10px;border:1px solid #93c5fd;border-radius:7px;font-size:13px;width:100%;"
+                     oninput="calcCaptainObligation()">
+            </div>
+            <div class="fg">
+              <label>Horas trabajadas *</label>
+              <input type="number" id="cpay-hours" placeholder="5" min="0.5" step="0.5" data-testid="input-cpay-hours"
+                     style="padding:8px 10px;border:1px solid #93c5fd;border-radius:7px;font-size:13px;width:100%;"
+                     oninput="calcCaptainObligation()">
+            </div>
+            <div class="fg">
+              <label>Tarifa / hora (USD) *</label>
+              <input type="number" id="cpay-rate" placeholder="50" min="1" step="1" value="50" data-testid="input-cpay-rate"
+                     style="padding:8px 10px;border:1px solid #93c5fd;border-radius:7px;font-size:13px;width:100%;"
+                     oninput="calcCaptainObligation()">
+            </div>
+          </div>
+          <div id="cpay-calc-line" style="display:none;background:#dbeafe;border-radius:6px;padding:9px 12px;font-size:13px;color:#1d4ed8;margin-bottom:10px;line-height:1.8;">
+            <strong id="cpay-hours-val">0</strong>h × $<strong id="cpay-rate-val">50</strong> =
+            <strong style="font-size:16px;" id="cpay-total-val">$0.00</strong>
+            &nbsp;&mdash;&nbsp; se creará: <em>Dr 5010 / Cr 2000</em>
+          </div>
+          <div class="fg" style="max-width:320px;margin-bottom:10px;">
+            <label>Notas (opcional)</label>
+            <input type="text" id="cpay-notes" placeholder="Servicio de capitán para este booking"
+                   style="padding:8px 10px;border:1px solid #93c5fd;border-radius:7px;font-size:13px;width:100%;">
+          </div>
+          <button class="btn btn-dark" onclick="createCaptainPayable()" id="btn-cpay-create" data-testid="button-create-captain-payable">
+            Crear Obligación del Capitán
+          </button>
+          <span id="cpay-msg" style="margin-left:12px;font-size:12px;"></span>
+        </div>
+      </div>
+    </div>
+    <!-- ===== END CAPTAIN PAYABLE SECTION ===== -->
+
     <div class="wiz-nav">
       <div class="nav-left">
         <button class="btn btn-ghost" onclick="goStep(2)" data-testid="button-step3-back">&#8592; Atrás</button>
@@ -1063,6 +1156,7 @@ function renderStep3() {
   if (!wizData) return;
   renderExpenseList();
   renderExpenseSummary();
+  loadCaptainPayable();
 }
 
 function renderExpenseList() {
@@ -1703,6 +1797,189 @@ function renderAuditTrail() {
       <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${a.notes||'—'}</td>
       <td style="font-size:11px;">${a.created_by||'system'}</td>
     </tr>`).join('')}</tbody></table>`;
+}
+
+// ========= CAPTAIN PAYABLE =========
+let cpayState = null; // stores the current payable for this booking (first one found)
+
+async function loadCaptainPayable() {
+  if (!STATE.bookingId) return;
+  try {
+    const data = await apiFetch(`/api/bookings/${STATE.bookingId}/captain-payable`);
+    renderCaptainPayable(data);
+  } catch (e) {
+    console.warn('loadCaptainPayable error:', e.message);
+  }
+}
+
+function renderCaptainPayable(data) {
+  const { payables = [], payments = [] } = data;
+  const createForm = document.getElementById('cpay-create-form');
+  const summary    = document.getElementById('cpay-summary');
+  const card       = document.getElementById('captain-payable-card');
+  if (!createForm || !summary) return;
+
+  if (payables.length === 0) {
+    cpayState = null;
+    createForm.style.display = 'block';
+    summary.style.display    = 'none';
+    return;
+  }
+
+  // Use first payable (one captain per booking is the common case)
+  const p = payables[0];
+  cpayState = p;
+  createForm.style.display = 'none';
+  summary.style.display    = 'block';
+
+  // Update card border color based on status
+  const borderColor = p.status === 'paid' ? '#16a34a' : p.status === 'overpaid' ? '#7c3aed' : '#f59e0b';
+  card.style.borderColor = borderColor;
+
+  // KPI
+  const statusLabels = { pending:'Pendiente', partially_paid:'Parcialmente pagado', paid:'Pagado', overpaid:'Sobrepago' };
+  const statusColors = { pending:'#dc2626', partially_paid:'#d97706', paid:'#15803d', overpaid:'#7c3aed' };
+  const kpiEl = document.getElementById('cpay-kpi');
+  const totalDue  = parseFloat(p.total_due  || 0);
+  const totalPaid = parseFloat(p.total_paid || 0);
+  const balance   = parseFloat(p.balance_due || 0);
+  kpiEl.innerHTML = `
+    <div class="kpi">
+      <div class="kpi-label">Capitán</div>
+      <div class="kpi-val" style="font-size:16px;font-weight:800;">${p.captain_name}</div>
+      ${p.service_hours ? `<div style="font-size:11px;color:#64748b;margin-top:2px;">${p.service_hours}h × $${parseFloat(p.hourly_rate||0).toFixed(0)}</div>` : ''}
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Total debido</div>
+      <div class="kpi-val blue">$${totalDue.toFixed(2)}</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Pagado</div>
+      <div class="kpi-val green">$${totalPaid.toFixed(2)}</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Balance pendiente</div>
+      <div class="kpi-val" style="color:${balance > 0.01 ? '#dc2626' : '#15803d'};">$${balance.toFixed(2)}</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Estado</div>
+      <div class="kpi-val" style="font-size:14px;color:${statusColors[p.status]||'#374151'};">${statusLabels[p.status]||p.status}</div>
+    </div>`;
+
+  // Payments table
+  const pList = document.getElementById('cpay-payments-list');
+  if (!payments.length) {
+    pList.innerHTML = '<div style="color:#94a3b8;font-size:12px;padding:4px;">Sin abonos aún.</div>';
+  } else {
+    const methodLabels = { cash:'Efectivo', zelle:'Zelle', bank:'Banco', card:'Tarjeta', other:'Otro' };
+    pList.innerHTML = `<table class="mini-table">
+      <thead><tr><th>Fecha</th><th>Método</th><th>Monto</th><th>Cuenta</th><th>Notas</th></tr></thead>
+      <tbody>${payments.map(pm => `<tr>
+        <td style="white-space:nowrap;">${String(pm.payment_date||'').slice(0,10)}</td>
+        <td><span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:12px;font-size:10px;font-weight:700;">${methodLabels[pm.payment_method]||pm.payment_method}</span></td>
+        <td><strong style="color:#15803d;">$${parseFloat(pm.amount||0).toFixed(2)}</strong></td>
+        <td style="font-size:11px;font-family:monospace;">${pm.account_credit === 'acc_cash_clearing_1015' ? '1015 Cash Clearing' : '1010 Wells Fargo'}</td>
+        <td style="font-size:11px;">${pm.notes||'—'}</td>
+      </tr>`).join('')}</tbody></table>`;
+  }
+
+  // Pre-fill payment date with service date
+  const dateInput = document.getElementById('cpmt-date');
+  if (dateInput && !dateInput.value) {
+    dateInput.value = (wizData?.booking?.service_date || wizData?.booking?.booking_date || '').slice(0,10);
+  }
+
+  // Hide payment form if already paid
+  const pmtSection = summary.querySelector('hr');
+  const pmtForm    = document.getElementById('btn-cpmt-register');
+  if (p.status === 'paid') {
+    if (pmtSection) pmtSection.style.display = 'none';
+    const addAbono = summary.querySelector('[style*="Registrar otro"]');
+    if (addAbono) addAbono.style.display = 'none';
+    if (pmtForm) pmtForm.closest('div').style.display = 'none';
+    const cpmtForm = document.querySelector('#cpay-summary .form-row');
+    if (cpmtForm) cpmtForm.style.display = 'none';
+    const cpmtLabel = summary.querySelector('[style*="Registrar otro abono"]');
+    if (cpmtLabel) cpmtLabel.style.display = 'none';
+  }
+}
+
+function calcCaptainObligation() {
+  const h = parseFloat(document.getElementById('cpay-hours')?.value) || 0;
+  const r = parseFloat(document.getElementById('cpay-rate')?.value)  || 0;
+  const line = document.getElementById('cpay-calc-line');
+  if (!line) return;
+  if (h > 0 && r > 0) {
+    document.getElementById('cpay-hours-val').textContent = h;
+    document.getElementById('cpay-rate-val').textContent  = r;
+    document.getElementById('cpay-total-val').textContent = '$' + (h * r).toFixed(2);
+    line.style.display = 'block';
+  } else {
+    line.style.display = 'none';
+  }
+}
+
+async function createCaptainPayable() {
+  const name  = (document.getElementById('cpay-name')?.value  || '').trim();
+  const hours = parseFloat(document.getElementById('cpay-hours')?.value) || 0;
+  const rate  = parseFloat(document.getElementById('cpay-rate')?.value)  || 0;
+  const notes = (document.getElementById('cpay-notes')?.value || '').trim();
+  const msg   = document.getElementById('cpay-msg');
+
+  if (!name)     { if (msg) { msg.style.color='#dc2626'; msg.textContent='Ingresa el nombre del capitán.'; } return; }
+  if (hours <= 0){ if (msg) { msg.style.color='#dc2626'; msg.textContent='Ingresa las horas trabajadas.'; } return; }
+  if (rate  <= 0){ if (msg) { msg.style.color='#dc2626'; msg.textContent='Ingresa la tarifa por hora.';  } return; }
+
+  const btn = document.getElementById('btn-cpay-create');
+  if (btn) btn.disabled = true;
+  if (msg) { msg.style.color='#64748b'; msg.textContent='Creando obligación...'; }
+
+  try {
+    const data = await apiFetch(`/api/bookings/${STATE.bookingId}/captain-payable`, {
+      method: 'POST',
+      body: JSON.stringify({ captain_name: name, service_hours: hours, hourly_rate: rate, notes })
+    });
+    if (msg) { msg.style.color='#15803d'; msg.textContent = data.created ? `Obligación creada — Dr 5010 $${parseFloat(data.payable.total_due).toFixed(2)} / Cr 2000` : 'Obligación ya existente — cargando...'; }
+    await loadCaptainPayable();
+  } catch (e) {
+    if (msg) { msg.style.color='#dc2626'; msg.textContent = e.message; }
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function registerCaptainPayment() {
+  if (!cpayState) return;
+  const amount = parseFloat(document.getElementById('cpmt-amount')?.value);
+  const method = document.getElementById('cpmt-method')?.value || 'cash';
+  const date   = document.getElementById('cpmt-date')?.value || '';
+  const notes  = (document.getElementById('cpmt-notes')?.value || '').trim();
+  const msg    = document.getElementById('cpmt-msg');
+
+  if (!amount || amount <= 0) { if (msg) { msg.style.color='#dc2626'; msg.textContent='Monto inválido.'; } return; }
+
+  const btn = document.getElementById('btn-cpmt-register');
+  if (btn) btn.disabled = true;
+  if (msg) { msg.style.color='#64748b'; msg.textContent='Registrando abono...'; }
+
+  try {
+    const data = await apiFetch(
+      `/api/bookings/${STATE.bookingId}/captain-payable/${cpayState.id}/payments`,
+      { method: 'POST', body: JSON.stringify({ amount, payment_method: method, payment_date: date, notes }) }
+    );
+    // Clear payment form
+    document.getElementById('cpmt-amount').value = '';
+    document.getElementById('cpmt-notes').value  = '';
+    if (msg) {
+      const crLabel = method === 'cash' ? 'Cr 1015 Cash Clearing' : 'Cr 1010 Wells Fargo';
+      msg.style.color = '#15803d';
+      msg.textContent = `Abono registrado — Dr 2000 $${amount.toFixed(2)} / ${crLabel} — Estado: ${data.new_status}`;
+    }
+    if (btn) btn.disabled = false;
+    await loadCaptainPayable();
+  } catch (e) {
+    if (msg) { msg.style.color='#dc2626'; msg.textContent = e.message; }
+    if (btn) btn.disabled = false;
+  }
 }
 
 // ========= HELPERS =========

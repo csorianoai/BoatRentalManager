@@ -1,0 +1,315 @@
+Actúa como Principal Accounting Systems Architect, Backend Engineer y Product Engineer para gestion.nadakiexcursions.
+
+PROBLEMA:
+El Booking Reconciliation Wizard no permite registrar pagos parciales o múltiples abonos al capitán. Actualmente intenta registrar el pago al capitán como un único gasto cerrado, pero en la operación real puede ocurrir que el capitán reciba una parte en efectivo y luego otro pago por Zelle/banco/cash para completar su monto total.
+
+CASO REAL:
+Capitán Pablo:
+- Servicio: 5 horas
+- Tarifa: $50/hora
+- Monto total debido: $250
+- Primer abono: $114 en efectivo
+- Saldo pendiente: $136
+- Segundo abono: puede ser Zelle, banco o cash
+
+OBJETIVO:
+Implementar soporte completo para cuentas por pagar al capitán y pagos parciales múltiples.
+
+==================================================
+1. MODELO CONTABLE CORRECTO
+==================================================
+
+El pago al capitán debe tener dos niveles:
+
+A) Obligación / costo total del servicio:
+Dr 5010 Captain Labor Expense
+Cr 2000 Accounts Payable
+
+B) Pagos parciales al capitán:
+Dr 2000 Accounts Payable
+Cr 1015 Cash Clearing si pago es cash
+Cr 1010 Wells Fargo Checking si pago es Zelle/bank
+Cr selected account si otro método
+
+IMPORTANTE:
+No registrar cada abono como nuevo gasto si ya se reconoció el costo total.
+Los abonos deben reducir Accounts Payable.
+
+==================================================
+2. NUEVO CONCEPTO: CAPTAIN PAYABLE
+==================================================
+
+Crear o extender tabla/estructura:
+
+booking_captain_payables:
+- id
+- booking_id
+- captain_name
+- captain_id optional
+- service_hours
+- hourly_rate
+- total_due
+- total_paid
+- balance_due
+- status:
+  - pending
+  - partially_paid
+  - paid
+  - overpaid
+- created_at
+- updated_at
+
+Crear tabla/estructura:
+
+booking_captain_payments:
+- id
+- booking_id
+- captain_payable_id
+- amount
+- payment_method:
+  - cash
+  - zelle
+  - bank
+  - card
+  - other
+- payment_date
+- account_credit
+- notes
+- created_by
+- created_at
+- transaction_id
+
+==================================================
+3. UI EN BOOKING WIZARD
+==================================================
+
+En el paso de Gastos agregar una subsección:
+
+“Pago / Cuenta por Pagar Capitán”
+
+Debe permitir:
+
+1. Definir obligación:
+- Captain name
+- Hours
+- Rate per hour
+- Total due calculado automáticamente
+
+Ejemplo:
+5 × 50 = 250
+
+Botón:
+“Crear obligación del capitán”
+
+2. Registrar abonos:
+- Amount
+- Payment method
+- Date
+- Notes
+
+Botón:
+“Registrar abono”
+
+Debe permitir múltiples abonos sin salir del paso.
+
+Mostrar resumen:
+- Total debido
+- Total pagado
+- Balance pendiente
+- Estado
+- Lista de abonos
+
+Ejemplo:
+Total debido: 250
+Pagado: 114
+Pendiente: 136
+Estado: partially_paid
+
+==================================================
+4. BACKEND ENDPOINTS
+==================================================
+
+Crear endpoints:
+
+POST /api/bookings/:id/captain-payable
+
+Body:
+{
+  "captain_name": "Pablo",
+  "service_hours": 5,
+  "hourly_rate": 50,
+  "notes": "Captain service for booking"
+}
+
+Acción:
+- Crear obligación si no existe
+- Crear asiento:
+  Dr 5010 Captain Labor Expense
+  Cr 2000 Accounts Payable
+- total_due = service_hours * hourly_rate
+- status = pending
+
+No duplicar obligación si ya existe para ese capitán y booking.
+
+POST /api/bookings/:id/captain-payable/:payable_id/payments
+
+Body:
+{
+  "amount": 114,
+  "payment_method": "cash",
+  "payment_date": "2026-04-27",
+  "notes": "Partial cash payment to captain"
+}
+
+Acción:
+- Validar amount > 0
+- Validar payable existe
+- Crear asiento:
+  Dr 2000 Accounts Payable
+  Cr 1015 Cash Clearing si cash
+  Cr 1010 Wells Fargo si zelle/bank
+- Actualizar total_paid
+- Actualizar balance_due
+- Actualizar status:
+  if total_paid = total_due → paid
+  if total_paid < total_due → partially_paid
+  if total_paid > total_due → overpaid
+
+GET /api/bookings/:id/captain-payable
+
+Debe devolver:
+- total_due
+- total_paid
+- balance_due
+- status
+- payments list
+- related transactions
+
+==================================================
+5. VALIDACIONES
+==================================================
+
+- No permitir pago parcial mayor que balance_due sin confirmación.
+- Si pago excede total_due, marcar overpaid y pedir clasificación:
+  - tip_authorized
+  - payment_error
+  - company_credit
+  - manual_adjustment
+
+- Si payment_method = cash:
+  debe verificar Cash Clearing disponible o permitir balance negativo con alerta crítica.
+- Si payment_method = zelle/bank:
+  no debe afectar Cash Clearing.
+- No permitir esto en booking legacy salvo prior period adjustment.
+
+==================================================
+6. INTEGRITY CHECK
+==================================================
+
+Actualizar checkBookingIntegrity(booking_id):
+
+Debe incluir:
+- captain_total_due
+- captain_total_paid
+- captain_balance_due
+- captain_status
+
+Reglas:
+- Si captain_balance_due > 0:
+  booking NO puede ser locked
+  mostrar alerta:
+  “Captain payment pending: $X”
+
+- Si captain_total_paid > captain_total_due:
+  alerta:
+  “Captain overpayment: $X”
+
+- Si captain_status = paid:
+  ok
+
+==================================================
+7. CASO DE PRUEBA OBLIGATORIO
+==================================================
+
+Usar booking:
+book_dDgO83lgF1
+
+Crear obligación:
+captain_name = Pablo
+service_hours = 5
+hourly_rate = 50
+total_due = 250
+
+Registrar primer abono:
+amount = 114
+payment_method = cash
+expected:
+Dr 2000 Accounts Payable 114
+Cr 1015 Cash Clearing 114
+
+Resultado:
+total_due = 250
+total_paid = 114
+balance_due = 136
+status = partially_paid
+
+Registrar segundo abono:
+amount = 136
+payment_method = zelle
+expected:
+Dr 2000 Accounts Payable 136
+Cr 1010 Wells Fargo Checking 136
+
+Resultado:
+total_due = 250
+total_paid = 250
+balance_due = 0
+status = paid
+
+==================================================
+8. COMPATIBILIDAD CON GASTOS EXISTENTES
+==================================================
+
+Si ya existen gastos captain registrados directamente en 5010:
+- No duplicar gasto.
+- Detectar y mostrar alerta:
+  “Captain labor already posted directly. Convert to payable or leave as historical entry.”
+- Para nuevos registros, usar modelo payable.
+
+==================================================
+9. UI FINAL ESPERADA
+==================================================
+
+En el wizard debe verse:
+
+Captain Payable:
+Pablo
+Hours: 5
+Rate: 50
+Total Due: 250
+Paid: 114
+Balance: 136
+Status: Partially Paid
+
+Payments:
+- 04/27 Cash $114
+- Add another payment button
+
+Botón:
+“Registrar otro abono”
+
+El usuario puede hacer varios abonos sin salir del paso.
+
+==================================================
+10. ENTREGABLE
+==================================================
+
+Reportar:
+1. Tablas creadas/modificadas
+2. Endpoints creados
+3. UI agregada
+4. Asientos generados
+5. Resultado test con $114 cash
+6. Resultado test con $136 zelle
+7. Confirmación de que el booking no puede cerrar si captain_balance_due > 0
+8. Confirmación de que puede aceptar múltiples abonos
