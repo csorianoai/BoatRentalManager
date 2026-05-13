@@ -1,0 +1,238 @@
+Actúa como Senior Full-Stack Debugging Engineer y Accounting Workflow Engineer para gestion.nadakiexcursions.
+
+PROBLEMA:
+En booking-wizard.html, sección de Gastos / Pago Capitán, el sistema calcula correctamente:
+
+Total esperado: 250
+Ya pagado: 144
+Pendiente: 106
+
+Pero el botón “Usar pendiente” no funciona. Al hacer clic no permite cerrar el saldo pendiente del capitán ni registrar el pago restante.
+
+OBJETIVO:
+Corregir completamente el botón “Usar pendiente” para que aplique el balance pendiente del capitán y permita registrar el pago adicional en cualquier método: zelle, banco, cash u otro.
+
+==================================================
+1. LOCALIZAR BOTÓN “USAR PENDIENTE”
+==================================================
+
+Buscar en booking-wizard.html:
+- “Usar pendiente”
+- useCaptainPending
+- captain pending
+- captainBalance
+- captain_pending
+- captain balance due
+- pending captain
+- captain_due
+- registerCaptainPayment
+
+Identificar:
+- id del botón
+- onclick handler
+- función JS asociada
+- campos que debe llenar
+- endpoint usado al registrar pago capitán
+
+==================================================
+2. FUNCIÓN CORRECTA ESPERADA
+==================================================
+
+Crear o corregir función:
+
+function useCaptainPendingAmount() {
+  const pending = calculateCaptainPendingAmount();
+
+  if (!pending || pending <= 0) {
+    showToast("No hay saldo pendiente del capitán.", "info");
+    return;
+  }
+
+  // Debe llenar el campo de monto del pago/gasto capitán
+  setValue("expense-amount", pending);
+  setValue("captain-payment-amount", pending);
+
+  // Debe seleccionar categoría captain
+  setValue("expense-category", "captain");
+  setValue("expense-type", "captain");
+
+  // Debe seleccionar cuenta 5010 si existe campo visible/hidden
+  setValue("expense-account", "5010");
+  setValue("account-code", "5010");
+
+  // Debe mantener o permitir seleccionar payment_method
+  // Si no hay método seleccionado, default recomendado: zelle/bank
+  if (!getSelectedPaymentMethod()) {
+    setValue("expense-payment-method", "zelle");
+  }
+
+  showToast(`Pendiente del capitán aplicado: $${pending.toFixed(2)}. Selecciona método de pago y registra.`, "success");
+}
+
+IMPORTANTE:
+Adaptar IDs reales del HTML. Si los campos tienen otros IDs, usar los IDs reales.
+
+==================================================
+3. EL BOTÓN DEBE HACER UNA DE DOS OPCIONES
+==================================================
+
+Opción A — Mejor UX:
+“Usar pendiente” solo llena el formulario con el monto pendiente.
+Luego el usuario elige método de pago y hace clic en “Registrar Pago Capitán”.
+
+Opción B — Alternativa:
+“Usar pendiente” abre un mini modal:
+- amount = pending
+- payment_method
+- date
+- notes
+- confirmar
+
+Selecciona Opción A si es más rápida y segura.
+
+==================================================
+4. REGISTRAR PAGO PENDIENTE DEL CAPITÁN
+==================================================
+
+Corregir botón:
+“Registrar Pago Capitán”
+
+Debe tomar:
+- amount = valor del campo captain-payment-amount o expense-amount
+- payment_method seleccionado
+- captain_name
+- booking_id
+- date
+- notes
+
+Debe permitir pagos parciales múltiples.
+
+Si payment_method = cash:
+Crear:
+Dr 2000 Accounts Payable
+Cr 1015 Cash Clearing
+
+Si payment_method = zelle/bank:
+Crear:
+Dr 2000 Accounts Payable
+Cr 1010 Wells Fargo Checking
+
+Si todavía NO existe obligación payable:
+- crear obligación primero:
+  Dr 5010 Captain Labor Expense
+  Cr 2000 Accounts Payable
+- total_due = hours * rate
+- luego registrar el pago parcial
+
+Si ya existe obligación:
+- NO duplicar Dr 5010
+- solo registrar:
+  Dr 2000
+  Cr cash/bank
+
+==================================================
+5. ACTUALIZAR RESUMEN DESPUÉS DEL PAGO
+==================================================
+
+Después de registrar el pago pendiente:
+
+Refrescar:
+- Total esperado
+- Ya pagado
+- Pendiente
+- Capitán total pagado
+- Capitán cash
+- Capitán Zelle/banco
+- Gastos banco/Zelle
+- Total gastos
+- Profit provisional
+- Lista de gastos / pagos capitán
+- Integrity check
+
+Si el pendiente llega a 0:
+Mostrar:
+“Capitán saldado correctamente.”
+
+Status:
+captain_status = paid
+
+==================================================
+6. VALIDACIÓN DEL CASO ACTUAL
+==================================================
+
+Usar booking:
+book_dDgO83lgF1
+
+Estado actual visto en pantalla:
+- total esperado capitán = 250
+- ya pagado = 144
+- pendiente = 106
+- cash clearing = -0.01 aproximadamente
+- gastos cash = 450
+- gastos banco/Zelle = 0
+
+Prueba esperada:
+
+1. Click “Usar pendiente”
+Debe llenar monto = 106
+
+2. Seleccionar método:
+Zelle/Banco
+
+3. Click “Registrar Pago Capitán”
+
+Debe crear:
+Dr 2000 Accounts Payable 106
+Cr 1010 Wells Fargo Checking 106
+
+Resultado esperado:
+- Capitán total pagado = 250
+- Capitán cash = 144
+- Capitán Zelle/banco = 106
+- Pendiente = 0
+- captain_status = paid
+- Gastos banco/Zelle = 106
+- Total gastos = 556
+- Cash Clearing se mantiene igual, NO cambia con Zelle
+- Profit provisional se actualiza
+
+==================================================
+7. MANEJO DE CENTAVOS / ROUNDING
+==================================================
+
+El sistema muestra Cash Clearing = -0.01.
+
+Agregar tolerancia:
+Si abs(cash_clearing_balance) <= 0.01:
+tratar como 0 para efectos de cierre, pero mostrar:
+“Rounding difference: $0.01”
+
+No bloquear cierre por diferencia de 1 centavo si está documentada como rounding.
+
+==================================================
+8. NO DECLARAR TERMINADO SIN PRUEBA REAL
+==================================================
+
+Antes de reportar terminado, ejecutar prueba real:
+
+- Usar pendiente llena monto 106
+- Registrar pago capitán con zelle
+- El ledger actualiza
+- El pendiente baja a 0
+- El botón puede usarse nuevamente y muestra “No hay saldo pendiente”
+- No duplica gasto 5010
+- No afecta Cash Clearing si es zelle/bank
+
+==================================================
+9. ENTREGABLE FINAL
+==================================================
+
+Reportar:
+1. Causa exacta por la cual “Usar pendiente” no funcionaba
+2. Archivo y función corregida
+3. IDs reales usados
+4. Endpoint usado para registrar pago capitán
+5. Resultado prueba con book_dDgO83lgF1
+6. Confirmación de que pendiente capitán quedó en 0
+7. Confirmación de que Zelle/Banco no afecta Cash Clearing
+8. Confirmación de que no se duplicó el gasto 5010

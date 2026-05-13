@@ -454,8 +454,13 @@
             Usar pendiente
           </button>
         </div>
-        <div style="margin-top:8px;font-size:11px;color:#1e3a8a;">
-          Cash = Cr 1015 Cash Clearing &nbsp;|&nbsp; Zelle/Banco = Cr 1010 Wells Fargo (NO afecta Cash Clearing)
+        <div style="margin-top:8px;font-size:11px;color:#1e3a8a;" id="cap-panel-hint">
+          <span id="cap-hint-no-payable">
+            Cash = Dr 5010 / Cr 1015 Cash Clearing &nbsp;|&nbsp; Zelle/Banco = Dr 5010 / Cr 1010 (NO afecta Cash Clearing)
+          </span>
+          <span id="cap-hint-has-payable" style="display:none;color:#065f46;font-weight:600;">
+            Cuenta por Pagar registrada abajo &#8595; &mdash; usa &ldquo;Usar pendiente&rdquo; para ir al abono correcto (Dr 2000 / Cr Banco o Cash). NO uses &quot;+ Registrar Gasto&quot; si ya existe la obligaci&oacute;n.
+          </span>
         </div>
       </div>
 
@@ -1302,21 +1307,23 @@ function calcExpectedPay() {
   if (!line || !val) return;
   if (hours <= 0) { line.style.display = 'none'; return; }
 
-  const expected  = hours * rate;
-  const alreadyPaid = parseFloat(wizData?.captain_actual || 0);
+  const expected = hours * rate;
+  // Prefer cpayState.total_paid (new payable system) when available; fall back to legacy captain_actual
+  const alreadyPaid = cpayState
+    ? parseFloat(cpayState.total_paid || 0)
+    : parseFloat(wizData?.captain_actual || 0);
   const remaining = Math.max(0, expected - alreadyPaid);
-  const overpaid  = alreadyPaid > expected;
+  const overpaid  = alreadyPaid > expected + 0.005;
 
-  // Update expected total
-  val.textContent = '$' + expected.toFixed(2);
+  val.textContent    = '$' + expected.toFixed(2);
   line.style.display = 'block';
 
-  // Show already-paid context if any payments exist
-  const paidLine    = document.getElementById('cap-already-paid-line');
-  const paidVal     = document.getElementById('cap-already-paid-val');
-  const pendingVal  = document.getElementById('cap-pending-val');
-  const pendingLbl  = document.getElementById('cap-pending-label');
-  const btnApply    = document.getElementById('btn-apply-expected');
+  const paidLine = document.getElementById('cap-already-paid-line');
+  const paidVal  = document.getElementById('cap-already-paid-val');
+  const pendingVal = document.getElementById('cap-pending-val');
+  const pendingLbl = document.getElementById('cap-pending-label');
+  const btnApply   = document.getElementById('btn-apply-expected');
+
   if (alreadyPaid > 0 && paidLine) {
     paidLine.style.display = 'inline';
     if (paidVal)    paidVal.textContent    = '$' + alreadyPaid.toFixed(2);
@@ -1324,46 +1331,117 @@ function calcExpectedPay() {
       ? '-$' + (alreadyPaid - expected).toFixed(2)
       : '$' + remaining.toFixed(2);
     if (pendingLbl) pendingLbl.textContent = overpaid ? 'Exceso:' : 'Pendiente:';
-    if (pendingVal) pendingVal.style.color  = overpaid ? '#d97706' : '#dc2626';
-    if (btnApply)   btnApply.textContent    = overpaid ? 'Ya pagado completo' : 'Usar pendiente';
-    if (btnApply)   btnApply.disabled       = overpaid;
+    if (pendingVal) pendingVal.style.color = overpaid ? '#d97706' : '#dc2626';
+    if (btnApply) {
+      btnApply.textContent = overpaid ? 'Ya pagado completo' : 'Usar pendiente';
+      btnApply.disabled    = overpaid || remaining <= 0.005;
+    }
   } else if (paidLine) {
     paidLine.style.display = 'none';
-    if (btnApply)  btnApply.textContent = 'Usar este monto';
-    if (btnApply)  btnApply.disabled    = false;
+    if (btnApply) { btnApply.textContent = 'Usar este monto'; btnApply.disabled = false; }
   }
 
-  // Auto-fill only if the amount field is still empty — never overwrite what the user typed
-  const amountEl = document.getElementById('exp-amount');
-  if (amountEl && (!amountEl.value || parseFloat(amountEl.value) === 0)) {
-    const fillAmt = alreadyPaid > 0 ? remaining : expected;
-    if (fillAmt > 0) amountEl.value = fillAmt.toFixed(2);
+  // Auto-fill amount field only when empty — never overwrite user input
+  // When cpayState exists, DON'T fill exp-amount (that would create a duplicate Dr 5010)
+  if (!cpayState) {
+    const amountEl = document.getElementById('exp-amount');
+    if (amountEl && (!amountEl.value || parseFloat(amountEl.value) === 0)) {
+      const fillAmt = alreadyPaid > 0 ? remaining : expected;
+      if (fillAmt > 0) amountEl.value = fillAmt.toFixed(2);
+    }
   }
 }
 
 function applyExpectedPay() {
   const hours = parseFloat(document.getElementById('cap-hours')?.value || 0);
   const rate  = parseFloat(document.getElementById('cap-rate')?.value  || 50);
-  if (hours <= 0) return;
+
+  if (hours <= 0) {
+    showToast('exp-msg', 'Ingresa las horas trabajadas primero.', 'error');
+    return;
+  }
+
   const expected    = hours * rate;
-  const alreadyPaid = parseFloat(wizData?.captain_actual || 0);
+  // Use cpayState.total_paid when payable exists (authoritative), else fall back to legacy
+  const alreadyPaid = cpayState
+    ? parseFloat(cpayState.total_paid  || 0)
+    : parseFloat(wizData?.captain_actual || 0);
   const remaining   = Math.max(0, expected - alreadyPaid);
-  const fillAmt     = alreadyPaid > 0 ? remaining : expected;
-  const amountEl    = document.getElementById('exp-amount');
-  if (amountEl && fillAmt > 0) amountEl.value = fillAmt.toFixed(2);
+
+  if (remaining <= 0.005) {
+    showToast('exp-msg', `Capitán saldado completo — $${expected.toFixed(2)} pagados. No hay pendiente.`, 'success');
+    return;
+  }
+
+  // ── ROUTE A: Captain Payable exists → fill cpmt-amount and scroll to payable section ──
+  if (cpayState) {
+    const pending = parseFloat(cpayState.balance_due || 0);
+    if (pending <= 0.005) {
+      showToast('exp-msg', 'La Cuenta por Pagar del capitán ya está saldada.', 'success');
+      return;
+    }
+    const cpmtAmount = document.getElementById('cpmt-amount');
+    const cpmtMethod = document.getElementById('cpmt-method');
+    const cpmtDate   = document.getElementById('cpmt-date');
+    if (cpmtAmount) cpmtAmount.value = pending.toFixed(2);
+    // Default method to Zelle for pending balance (cash clearing already has prior payments)
+    if (cpmtMethod && cpmtMethod.value === 'cash') cpmtMethod.value = 'zelle';
+    if (cpmtDate && !cpmtDate.value) {
+      cpmtDate.value = (wizData?.booking?.service_date || wizData?.booking?.booking_date || '').slice(0, 10)
+        || new Date().toISOString().slice(0, 10);
+    }
+    // Scroll to and briefly highlight the Captain Payable card
+    const card = document.getElementById('captain-payable-card');
+    if (card) {
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      card.style.outline = '3px solid #2563eb';
+      setTimeout(() => { if (card) card.style.outline = ''; }, 2000);
+    }
+    document.getElementById('cpmt-amount')?.focus();
+    showToast('exp-msg',
+      `$${pending.toFixed(2)} cargado en Cuenta por Pagar — selecciona método y registra abono.`,
+      'success');
+    return;
+  }
+
+  // ── ROUTE B: No payable — fill standard expense form (creates Dr 5010 directly) ──
+  const amountEl = document.getElementById('exp-amount');
+  if (amountEl) amountEl.value = remaining.toFixed(2);
+  showToast('exp-msg',
+    `$${remaining.toFixed(2)} cargado. Selecciona método de pago y haz clic en "+ Registrar Gasto".`,
+    'success');
 }
 
 function quickCaptainPayment() {
-  // Pre-fill expense form for captain payment
+  // ── If a Captain Payable already exists, route to the payable section ──
+  if (cpayState) {
+    const card = document.getElementById('captain-payable-card');
+    if (card) {
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      card.style.outline = '3px solid #2563eb';
+      setTimeout(() => { if (card) card.style.outline = ''; }, 2000);
+    }
+    const pending = parseFloat(cpayState.balance_due || 0);
+    if (pending > 0.005) {
+      const cpmtAmount = document.getElementById('cpmt-amount');
+      if (cpmtAmount && (!cpmtAmount.value || parseFloat(cpmtAmount.value) === 0)) {
+        cpmtAmount.value = pending.toFixed(2);
+      }
+      const cpmtMethod = document.getElementById('cpmt-method');
+      if (cpmtMethod && cpmtMethod.value === 'cash') cpmtMethod.value = 'zelle';
+    }
+    document.getElementById('cpmt-amount')?.focus();
+    return;
+  }
+
+  // ── No payable — pre-fill expense form (creates Dr 5010 directly) ──
   const catEl = document.getElementById('exp-category');
   if (catEl) { catEl.value = 'crew'; onExpCategoryChange('crew'); }
   const panel = document.getElementById('captain-panel');
   if (panel) panel.style.display = 'block';
-  // Re-trigger calculation in case hours/rate are already filled
   calcExpectedPay();
-  const nameEl = document.getElementById('cap-name');
+  const nameEl  = document.getElementById('cap-name');
   const hoursEl = document.getElementById('cap-hours');
-  // Focus on first empty required field
   if (nameEl && !nameEl.value) { nameEl.focus(); }
   else if (hoursEl && !hoursEl.value) { hoursEl.focus(); }
 }
@@ -1819,10 +1897,16 @@ function renderCaptainPayable(data) {
   const card       = document.getElementById('captain-payable-card');
   if (!createForm || !summary) return;
 
+  // ── Toggle captain-panel hint based on whether a payable exists ──
+  const hintNo  = document.getElementById('cap-hint-no-payable');
+  const hintYes = document.getElementById('cap-hint-has-payable');
+
   if (payables.length === 0) {
     cpayState = null;
     createForm.style.display = 'block';
     summary.style.display    = 'none';
+    if (hintNo)  hintNo.style.display  = 'inline';
+    if (hintYes) hintYes.style.display = 'none';
     return;
   }
 
@@ -1831,6 +1915,9 @@ function renderCaptainPayable(data) {
   cpayState = p;
   createForm.style.display = 'none';
   summary.style.display    = 'block';
+  // Show the warning hint so user knows NOT to use "+ Registrar Gasto" for captain
+  if (hintNo)  hintNo.style.display  = 'none';
+  if (hintYes) hintYes.style.display = 'inline';
 
   // Update card border color based on status
   const borderColor = p.status === 'paid' ? '#16a34a' : p.status === 'overpaid' ? '#7c3aed' : '#f59e0b';
@@ -1969,13 +2056,22 @@ async function registerCaptainPayment() {
     // Clear payment form
     document.getElementById('cpmt-amount').value = '';
     document.getElementById('cpmt-notes').value  = '';
+
+    const crLabel = method === 'cash' ? 'Cr 1015 Cash Clearing' : 'Cr 1010 Wells Fargo';
+    const isPaid  = data.new_status === 'paid';
     if (msg) {
-      const crLabel = method === 'cash' ? 'Cr 1015 Cash Clearing' : 'Cr 1010 Wells Fargo';
       msg.style.color = '#15803d';
-      msg.textContent = `Abono registrado — Dr 2000 $${amount.toFixed(2)} / ${crLabel} — Estado: ${data.new_status}`;
+      msg.textContent = isPaid
+        ? `Capitán saldado correctamente. Dr 2000 $${amount.toFixed(2)} / ${crLabel} — Estado: Pagado`
+        : `Abono registrado — Dr 2000 $${amount.toFixed(2)} / ${crLabel} — Estado: ${data.new_status}`;
     }
     if (btn) btn.disabled = false;
-    await loadCaptainPayable();
+
+    // Refresh everything: payable section, wiz data, integrity check, and captain expected-pay panel
+    await Promise.all([loadCaptainPayable(), loadWizData()]);
+    calcExpectedPay();
+    renderExpenseList();
+    if (typeof loadIntegrity === 'function') loadIntegrity();
   } catch (e) {
     if (msg) { msg.style.color='#dc2626'; msg.textContent = e.message; }
     if (btn) btn.disabled = false;
