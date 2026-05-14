@@ -902,10 +902,26 @@ function showToast(elementId, message, type) {
   const el = document.getElementById(elementId);
   if (!el) return;
   el.textContent = message;
-  el.className = 'inline-msg ' + (type === 'error' ? 'error' : 'success');
+  if (type === 'error') {
+    el.className = 'inline-msg error';
+    el.style.background = '';
+    el.style.color = '';
+    el.style.border = '';
+  } else if (type === 'info') {
+    el.className = 'inline-msg';
+    el.style.background = '#eff6ff';
+    el.style.color = '#1d4ed8';
+    el.style.border = '1px solid #93c5fd';
+  } else {
+    el.className = 'inline-msg success';
+    el.style.background = '';
+    el.style.color = '';
+    el.style.border = '';
+  }
   el.style.display = 'block';
   if (type !== 'error') {
-    setTimeout(() => { el.style.display = 'none'; }, 5000);
+    const delay = type === 'info' ? 9000 : 5000;
+    setTimeout(() => { el.style.display = 'none'; }, delay);
   }
 }
 function hideMsg(elementId) {
@@ -1176,10 +1192,15 @@ function renderExpenseList() {
       <th>Fecha</th><th>Categoría</th><th>Cuenta</th><th>Monto</th><th>Método</th><th>Responsable</th><th>Descripción</th><th></th>
     </tr></thead>
     <tbody>${exps.map(e => {
-      const accCode = EXPENSE_ACCOUNT_MAP[e.category] || EXPENSE_ACCOUNT_MAP[e.expense_type] || '6900';
+      // expense_type stores the ORIGINAL wizard category (e.g. 'crew', 'ice') for booking-wizard expenses.
+      // boat_expenses.category stores the mapped value for boat_expenses CHECK constraint (e.g. 'labor', 'operational').
+      // Always prefer expense_type (original) for display; fall back to mapped category.
+      const origCat = (e.expense_type && e.expense_type !== 'other') ? e.expense_type : e.category;
+      const accCode = EXPENSE_ACCOUNT_MAP[origCat] || EXPENSE_ACCOUNT_MAP[e.category] || '6900';
+      const catLabel = CAT_LABELS[origCat] || CAT_LABELS[e.category] || e.category || '—';
       return `<tr>
         <td style="white-space:nowrap;">${String(e.expense_date||'').slice(0,10)}</td>
-        <td><span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:12px;font-size:10px;font-weight:700;">${CAT_LABELS[e.category]||e.category||'—'}</span></td>
+        <td><span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:12px;font-size:10px;font-weight:700;">${catLabel}</span></td>
         <td style="font-family:monospace;font-size:11px;">${accCode}</td>
         <td><strong style="color:#dc2626;">-$${parseFloat(e.amount||0).toFixed(2)}</strong></td>
         <td style="font-size:11px;">${e.payment_method||'—'}</td>
@@ -1399,8 +1420,8 @@ function applyExpectedPay() {
     }
     document.getElementById('cpmt-amount')?.focus();
     showToast('exp-msg',
-      `$${pending.toFixed(2)} cargado en Cuenta por Pagar — selecciona método y registra abono.`,
-      'success');
+      `⬇ PASO 1/2: $${pending.toFixed(2)} pre-cargado. Ahora selecciona método de pago abajo y haz clic en "Registrar Abono" para guardar el pago.`,
+      'info');
     return;
   }
 
@@ -1408,8 +1429,8 @@ function applyExpectedPay() {
   const amountEl = document.getElementById('exp-amount');
   if (amountEl) amountEl.value = remaining.toFixed(2);
   showToast('exp-msg',
-    `$${remaining.toFixed(2)} cargado. Selecciona método de pago y haz clic en "+ Registrar Gasto".`,
-    'success');
+    `⬇ PASO 1/2: $${remaining.toFixed(2)} pre-cargado. Selecciona método de pago y haz clic en "+ Registrar Gasto" para guardar.`,
+    'info');
 }
 
 function quickCaptainPayment() {

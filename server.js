@@ -2383,6 +2383,57 @@ async function initializeDatabase() {
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_bcpmts_booking ON booking_captain_payments(booking_id)`);
 
       console.log('✅ FASE 23: booking_captain_payables + booking_captain_payments ready');
+
+      // ── FASE 23B: Fix existing boat_expenses where expense_type='other' was hardcoded ──
+      // Before this fix, all booking-wizard expenses stored expense_type='other'.
+      // Now expense_type stores the original wizard category (crew, ice, fuel, etc.)
+      // so renderExpenseList can show the correct account code (5010, 5030, 5020…).
+      // We run these UPDATEs idempotently — only targets records still showing 'other'.
+      await pool.query(`
+        UPDATE boat_expenses
+        SET expense_type = 'crew'
+        WHERE booking_id IS NOT NULL
+          AND expense_type = 'other'
+          AND category = 'labor'
+          AND (notes ILIKE '%captain:%' OR description ILIKE '%capit%' OR description ILIKE '%pago cap%')
+      `).catch(() => {});
+      await pool.query(`
+        UPDATE boat_expenses
+        SET expense_type = 'ice'
+        WHERE booking_id IS NOT NULL
+          AND expense_type = 'other'
+          AND category = 'operational'
+          AND (description ILIKE '%hielo%' OR description ILIKE '%ice%' OR description ILIKE '%bebid%' OR description ILIKE '%agua%')
+      `).catch(() => {});
+      await pool.query(`
+        UPDATE boat_expenses
+        SET expense_type = 'fuel'
+        WHERE booking_id IS NOT NULL
+          AND expense_type = 'other'
+          AND category = 'fuel'
+      `).catch(() => {});
+      await pool.query(`
+        UPDATE boat_expenses
+        SET expense_type = 'cleaning'
+        WHERE booking_id IS NOT NULL
+          AND expense_type = 'other'
+          AND category = 'cleaning'
+      `).catch(() => {});
+      await pool.query(`
+        UPDATE boat_expenses
+        SET expense_type = 'dock'
+        WHERE booking_id IS NOT NULL
+          AND expense_type = 'other'
+          AND category = 'marina_fees'
+      `).catch(() => {});
+      await pool.query(`
+        UPDATE boat_expenses
+        SET expense_type = 'maintenance'
+        WHERE booking_id IS NOT NULL
+          AND expense_type = 'other'
+          AND category = 'maintenance_parts'
+      `).catch(() => {});
+      console.log('✅ FASE 23B: boat_expenses expense_type backfill complete');
     } catch (e) {
       console.warn('⚠️ FASE 23 captain payable tables (non-critical):', e.message);
     }
@@ -15336,16 +15387,22 @@ app.post('/api/booking-expense', isAuthenticated, async (req, res) => {
     const captainHours = req.body.captain_hours ? parseFloat(req.body.captain_hours) : null;
     const captainRate  = req.body.captain_rate  ? parseFloat(req.body.captain_rate)  : null;
     const beCategory = BOAT_EXP_CATEGORY_MAP[category] || 'operational';
+    // Store original wizard category in expense_type so the wizard UI can show the correct
+    // account code (e.g. 'crew'→5010, 'ice'→5030) instead of the mapped boat_expenses category.
+    const beNotesArr = [notes,
+      captainName  ? `captain:${captainName}`  : null,
+      captainHours ? `hours:${captainHours}`   : null,
+      captainRate  ? `rate:${captainRate}`      : null,
+    ].filter(Boolean);
     pool.query(
       `INSERT INTO boat_expenses
          (id, boat_id, category, amount, expense_date, description,
           payment_method, booking_id, expense_type, notes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'other', $9)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
       [expId, bk.boat_id || null, beCategory, parseFloat(amount),
        expDate, desc, payment_method || 'cash', booking_id,
-       [notes, captainName ? `captain:${captainName}` : null,
-        captainHours ? `hours:${captainHours}` : null,
-        captainRate  ? `rate:${captainRate}`   : null].filter(Boolean).join(' | ') || null]
+       category,   // original wizard category → used by renderExpenseList for correct account display
+       beNotesArr.join(' | ') || null]
     ).catch((beErr) => { console.log(`[booking-expense] boat_expense insert failed (non-critical): ${beErr.message}`); });
   } catch (err) {
     await pg.query('ROLLBACK');
