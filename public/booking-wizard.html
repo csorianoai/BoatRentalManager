@@ -1902,9 +1902,9 @@ function renderAuditTrail() {
 let cpayState = null; // stores the current payable for this booking (first one found)
 
 async function loadCaptainPayable() {
-  if (!STATE.bookingId) return;
+  if (!BOOKING_ID) return;
   try {
-    const data = await apiFetch(`/api/bookings/${STATE.bookingId}/captain-payable`);
+    const data = await apiFetch(`/api/bookings/${BOOKING_ID}/captain-payable`);
     renderCaptainPayable(data);
   } catch (e) {
     console.warn('loadCaptainPayable error:', e.message);
@@ -2043,7 +2043,7 @@ async function createCaptainPayable() {
   if (msg) { msg.style.color='#64748b'; msg.textContent='Creando obligación...'; }
 
   try {
-    const data = await apiFetch(`/api/bookings/${STATE.bookingId}/captain-payable`, {
+    const data = await apiFetch(`/api/bookings/${BOOKING_ID}/captain-payable`, {
       method: 'POST',
       body: JSON.stringify({ captain_name: name, service_hours: hours, hourly_rate: rate, notes })
     });
@@ -2071,7 +2071,7 @@ async function registerCaptainPayment() {
 
   try {
     const data = await apiFetch(
-      `/api/bookings/${STATE.bookingId}/captain-payable/${cpayState.id}/payments`,
+      `/api/bookings/${BOOKING_ID}/captain-payable/${cpayState.id}/payments`,
       { method: 'POST', body: JSON.stringify({ amount, payment_method: method, payment_date: date, notes }) }
     );
     // Clear payment form
