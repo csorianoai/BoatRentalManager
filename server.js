@@ -14997,8 +14997,11 @@ async function checkBookingIntegrity(bookingId) {
   // If cashClearingIn = 0 (customer paid online/platform, no direct cash from client),
   // the balance MUST be 0 regardless of any Cr 1015 transactions created by expense recording
   // or FIXUP migrations — those Cr entries are artifacts, not real clearing imbalances.
+  const cashClearingOut     = cashClearingIn > 0.01
+    ? Math.max(rawCc1015Out, rawBeOut)
+    : 0;
   const cashClearingBalance = cashClearingIn > 0.01
-    ? cashClearingIn - Math.max(rawCc1015Out, rawBeOut)
+    ? cashClearingIn - cashClearingOut
     : 0;
 
   // ── Final accounting_status (now that cashClearingBalance is available) ──
