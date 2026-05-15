@@ -14988,9 +14988,14 @@ async function checkBookingIntegrity(bookingId) {
     [bookingId]
   ).catch(() => ({ rows: [{ total: 0 }] }));
   const cashClearingIn      = parseFloat(cc1015In[0].total);
-  // Use MAX of both sources to avoid double-counting: if the Cr 1015 tx exists,
-  // it equals the boat_expenses cash sum; take whichever is larger as the floor.
-  const cashClearingOut     = Math.max(parseFloat(cc1015Out[0].total), parseFloat(beOut[0].total));
+  // Only apply the beOut fallback when cash was actually received into 1015.
+  // If cashClearingIn = 0 (no cash from customer), there is nothing to clear —
+  // using beOut when no cash came in produces a false negative balance (e.g. 0 - $111 = -$111).
+  const rawCc1015Out = parseFloat(cc1015Out[0].total);
+  const rawBeOut     = parseFloat(beOut[0].total);
+  const cashClearingOut     = cashClearingIn > 0.01
+    ? Math.max(rawCc1015Out, rawBeOut)   // cash received → use best estimate of outflows
+    : rawCc1015Out;                       // no cash in → only count actual 1015 expense txs
   const cashClearingBalance = cashClearingIn - cashClearingOut;
 
   // ── Final accounting_status (now that cashClearingBalance is available) ──
