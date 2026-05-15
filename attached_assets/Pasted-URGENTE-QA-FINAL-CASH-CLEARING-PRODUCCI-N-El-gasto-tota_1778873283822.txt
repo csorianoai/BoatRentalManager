@@ -1,0 +1,103 @@
+URGENTE — QA FINAL CASH CLEARING PRODUCCIÓN
+
+El gasto total ya está correcto: $560.99.
+Pero Cash Clearing sigue mostrando -$111.00 cuando debe ser $0.00.
+
+Booking real:
+book_dDgO83lgF1
+
+Datos correctos:
+Cash recibido del cliente: $449.99
+Cash usado:
+- Fuel: $300.00
+- Ice: $5.99
+- Captain cash: $144.00
+Total cash out correcto: $449.99
+Cash Clearing correcto: $0.00
+
+El pago Zelle al capitán:
+- $106.00
+NO debe afectar Cash Clearing 1015.
+Debe afectar banco 1010.
+
+PROBLEMA:
+El sistema parece estar incluyendo el pago Zelle de $106 en Cash Clearing o está calculando cash out usando total captain paid en vez de solo captain cash.
+
+TAREAS:
+
+1. Revisar checkBookingIntegrity() y cualquier función del endpoint:
+GET /api/bookings/book_dDgO83lgF1/reconciliation
+
+2. Auditar cálculo de Cash Clearing:
+Debe usar únicamente:
+cash_in = pagos recibidos con payment_method='cash'
+cash_out = gastos pagados con payment_method='cash'
+
+NO debe incluir:
+- zelle
+- bank
+- card
+- captain_total_paid
+- accounts payable payments por banco
+- 1010 Wells Fargo
+
+3. Fórmula correcta:
+cashClearingIn = SUM(payments where payment_method='cash')
+cashClearingOut = SUM(expenses/payments where payment_method='cash' AND credit_account='1015')
+cashClearingBalance = cashClearingIn - cashClearingOut
+
+4. Para book_dDgO83lgF1 debe devolver:
+cashClearingIn = 449.99
+cashClearingOut = 449.99
+cashClearingBalance = 0.00
+
+5. Verificar que captain zelle:
+amount = 106.00
+payment_method = zelle/bank
+credit_account = 1010
+NO aparece en cashClearingOut.
+
+6. Crear logs temporales QA para este booking:
+console/server log:
+- cashClearingIn rows
+- cashClearingOut rows
+- excluded non-cash rows
+- final balance
+
+7. Ejecutar pruebas REALES antes de publicar:
+A) API local:
+GET /api/bookings/book_dDgO83lgF1/reconciliation
+
+B) API producción después de publish:
+GET https://gestion.nadakiexcursions.com/api/bookings/book_dDgO83lgF1/reconciliation
+
+Ambas deben mostrar:
+cash_clearing_balance: 0.00
+
+8. Revisar frontend booking-wizard.html:
+Confirmar que el campo Cash Clearing usa el valor del endpoint actualizado, no un cálculo viejo local.
+
+Buscar:
+- cashClearing
+- cash_clearing_balance
+- cashClearingBalance
+- cashClearingOut
+- captain_total_paid
+- captain_zelle
+
+Si frontend calcula localmente, eliminar cálculo local y usar solo endpoint oficial.
+
+9. No declarar terminado hasta que:
+- endpoint producción muestre Cash Clearing 0.00
+- pantalla del wizard muestre Cash Clearing 0.00
+- refresh hard browser funciona
+- no aparece -111.00
+- Zelle $106 queda en Capitán Zelle/Banco, no en Cash Clearing
+
+10. Entregar evidencia:
+- JSON local
+- JSON producción
+- captura o valores del UI
+- lista de filas incluidas en cash in
+- lista de filas incluidas en cash out
+- lista de filas excluidas: Zelle $106

@@ -14968,41 +14968,67 @@ async function checkBookingIntegrity(bookingId) {
   const stewActual = parseFloat(stewRows[0].total);
 
   // ── Cash Clearing (1015) balance for this booking ─────────────────────
-  const { rows: cc1015In } = await pool.query(
-    `SELECT COALESCE(SUM(amount),0) as total FROM transactions
-     WHERE booking_id = $1 AND account_id = 'acc_cash_clearing_1015' AND transaction_type = 'income'`,
+  // Correct formula per QA spec:
+  //   cashClearingIn  = cash received from customer (Dr 1015 income transactions)
+  //   cashClearingOut = cash paid for expenses (boat_expenses WHERE payment_method='cash')
+  //                     Using boat_expenses as authoritative source avoids contamination from
+  //                     wrong Cr 1015 transactions (e.g. Zelle payments mis-routed to 1015).
+  //   cashClearingBalance = cashClearingIn - cashClearingOut
+  //
+  // Zelle/bank captain payments must NOT appear in cashClearingOut (they credit 1010, not 1015).
+
+  // IN: Dr 1015 income transactions (cash received from customer)
+  const { rows: cc1015InRows } = await pool.query(
+    `SELECT id, amount, description, transaction_date
+     FROM transactions
+     WHERE booking_id = $1 AND account_id = 'acc_cash_clearing_1015' AND transaction_type = 'income'
+     ORDER BY transaction_date`,
     [bookingId]
-  ).catch(() => ({ rows: [{ total: 0 }] }));
-  const { rows: cc1015Out } = await pool.query(
-    `SELECT COALESCE(SUM(amount),0) as total FROM transactions
-     WHERE booking_id = $1 AND account_id = 'acc_cash_clearing_1015' AND transaction_type = 'expense'`,
-    [bookingId]
-  ).catch(() => ({ rows: [{ total: 0 }] }));
-  // Fallback: also count cash boat_expenses not yet synced to accounting transactions
-  // This prevents the balance from being wrong when the Cr 1015 transaction was skipped
-  const { rows: beOut } = await pool.query(
-    `SELECT COALESCE(SUM(amount),0) as total FROM boat_expenses
+  ).catch(() => ({ rows: [] }));
+
+  // OUT (authoritative): boat_expenses with payment_method='cash' — excludes zelle/bank
+  const { rows: cashExpRows } = await pool.query(
+    `SELECT id, amount, expense_type, payment_method, description
+     FROM boat_expenses
      WHERE booking_id = $1 AND payment_method = 'cash'
        AND (status IS NULL OR status NOT IN ('cancelled','archived'))
-       AND (synced_to_accounting IS NULL OR synced_to_accounting = false)`,
+     ORDER BY expense_date`,
     [bookingId]
-  ).catch(() => ({ rows: [{ total: 0 }] }));
-  const cashClearingIn      = parseFloat(cc1015In[0].total);
-  // Only apply the beOut fallback when cash was actually received into 1015.
-  // If cashClearingIn = 0 (no cash from customer), there is nothing to clear —
-  // using beOut when no cash came in produces a false negative balance (e.g. 0 - $111 = -$111).
-  const rawCc1015Out = parseFloat(cc1015Out[0].total);
-  const rawBeOut     = parseFloat(beOut[0].total);
-  // Cash Clearing (1015) is only meaningful when cash was actually received from the customer.
-  // If cashClearingIn = 0 (customer paid online/platform, no direct cash from client),
-  // the balance MUST be 0 regardless of any Cr 1015 transactions created by expense recording
-  // or FIXUP migrations — those Cr entries are artifacts, not real clearing imbalances.
-  const cashClearingOut     = cashClearingIn > 0.01
-    ? Math.max(rawCc1015Out, rawBeOut)
-    : 0;
-  const cashClearingBalance = cashClearingIn > 0.01
-    ? cashClearingIn - cashClearingOut
-    : 0;
+  ).catch(() => ({ rows: [] }));
+
+  // OUT (reference only, not used in balance): Cr 1015 expense transactions for QA audit
+  const { rows: cc1015OutRows } = await pool.query(
+    `SELECT id, amount, description, transaction_date
+     FROM transactions
+     WHERE booking_id = $1 AND account_id = 'acc_cash_clearing_1015' AND transaction_type = 'expense'
+     ORDER BY transaction_date`,
+    [bookingId]
+  ).catch(() => ({ rows: [] }));
+
+  // EXCLUDED (QA reference): non-cash expenses that must NOT affect Cash Clearing
+  const { rows: nonCashExpRows } = await pool.query(
+    `SELECT id, amount, expense_type, payment_method
+     FROM boat_expenses
+     WHERE booking_id = $1 AND payment_method != 'cash'
+       AND (status IS NULL OR status NOT IN ('cancelled','archived'))`,
+    [bookingId]
+  ).catch(() => ({ rows: [] }));
+
+  const cashClearingIn  = cc1015InRows.reduce((s, r) => s + parseFloat(r.amount || 0), 0);
+  const cashClearingOut = cashExpRows.reduce((s, r) => s + parseFloat(r.amount || 0), 0);
+  const cashClearingBalance = cashClearingIn - cashClearingOut;
+
+  // QA logging for book_dDgO83IgF1 (remove after confirmed correct in production)
+  if (bookingId === 'book_dDgO83IgF1') {
+    console.log(`\n[QA-CASH-CLEARING] booking=${bookingId}`);
+    console.log(`  cashClearingIn  = $${cashClearingIn.toFixed(2)} (${cc1015InRows.length} income tx)`);
+    cc1015InRows.forEach(r => console.log(`    + $${parseFloat(r.amount).toFixed(2)} | ${r.description} | ${r.transaction_date?.toISOString?.()?.slice(0,10) || r.transaction_date}`));
+    console.log(`  cashClearingOut = $${cashClearingOut.toFixed(2)} (${cashExpRows.length} cash expenses from boat_expenses)`);
+    cashExpRows.forEach(r => console.log(`    - $${parseFloat(r.amount).toFixed(2)} | ${r.expense_type} | ${r.payment_method}`));
+    console.log(`  EXCLUDED non-cash expenses (${nonCashExpRows.length}): ${nonCashExpRows.map(r=>`$${parseFloat(r.amount).toFixed(2)} ${r.payment_method}`).join(', ') || 'none'}`);
+    console.log(`  Cr 1015 txs in DB (reference only, NOT used): ${cc1015OutRows.map(r=>`$${parseFloat(r.amount).toFixed(2)}`).join(', ') || 'none'}`);
+    console.log(`  cashClearingBalance = $${cashClearingBalance.toFixed(2)}\n`);
+  }
 
   // ── Final accounting_status (now that cashClearingBalance is available) ──
   if (accountingStatus !== 'locked' && accountingStatus !== 'legacy_locked') {
