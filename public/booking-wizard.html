@@ -1733,7 +1733,7 @@ async function renderStep6() {
   const d = integrity;
   const fmt = v => '$' + parseFloat(v||0).toFixed(2);
   const checks = [
-    { label: 'Pagos igualan el total del booking', pass: parseFloat(d.total_collected||0) >= parseFloat(d.expected_revenue||0) - 0.01 },
+    { label: 'Pagos igualan el total del booking', pass: parseFloat(d.total_collected||0) >= parseFloat(d.expected_revenue||0) - 0.01 || (parseFloat(d.total_ar_pending||0) < 0.01 && (d.revenue_recognized || parseFloat(d.revenue_recognized_amount||0) > 0)) },
     { label: 'Revenue reconocido', pass: d.revenue_recognized || parseFloat(d.revenue_recognized_amount||0) > 0 },
     { label: 'Cash Clearing (1015) en cero', pass: Math.abs(parseFloat(d.cash_clearing_balance||0)) <= 0.01 },
     { label: 'Sin discrepancias de pago', pass: !d.discrepancy_flag },

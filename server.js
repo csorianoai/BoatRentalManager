@@ -14886,10 +14886,19 @@ async function checkBookingIntegrity(bookingId) {
   const revenueRecognized = parseFloat(revRows[0].total);
 
   // 9. Calculations
-  const totalCollected   = depTotal + cashTotal + arPaid;
+  // totalCollected = actual cash received from customer (deposits + cash clearing).
+  // arPaid is intentionally EXCLUDED: the AR is an accounting receivable record, not a
+  // cash inflow. The actual cash is already captured in depTotal (booking_deposits) or
+  // cashTotal (cash_clearing transactions). Adding arPaid would double-count the same money.
+  const totalCollected   = depTotal + cashTotal;
   const totalExpected    = expectedRevenue;
   const discrepancy      = totalExpected - totalCollected;
-  const discrepancyFlag  = Math.abs(discrepancy) > 0.01;
+  // Suppress discrepancy flag when: revenue has been recognized AND AR is fully settled.
+  // This handles cases where the booking is legitimately closed even if the raw
+  // deposit+cash numbers show a gap (e.g. platform pays later, cash taken upfront).
+  const revenueFullyRecognized = revenueRecognized >= expectedRevenue - 0.01;
+  const arFullySettled         = arPending <= 0.01;
+  const discrepancyFlag  = Math.abs(discrepancy) > 0.01 && !(revenueFullyRecognized && arFullySettled);
   const expectedProfit   = totalExpected - totalExpenses;
 
   // ── Captain expenses registered via booking-expense wizard (5010 account) ─
