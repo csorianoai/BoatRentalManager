@@ -5682,7 +5682,7 @@ cron.schedule('30 3 * * *', async () => {
 
     // Get default revenue account (4020 - Rentals)
     const { rows: accts } = await pool.query(
-      `SELECT id FROM chart_of_accounts WHERE account_code = '4020' AND is_active = true LIMIT 1`
+      `SELECT id FROM chart_of_accounts WHERE account_code = '4020' AND (is_active IS NULL OR is_active != 0) LIMIT 1`
     );
     const defaultAccountId = accts.length ? accts[0].id : null;
     if (!defaultAccountId) { console.log('  ⚠️ No default revenue account found, skipping'); return; }
@@ -15253,7 +15253,7 @@ app.post('/api/bookings/:id/complete', isAuthenticated, async (req, res) => {
     // Determine revenue account (4010 tours default, 4020 rentals)
     const accCode = revenue_account_code || (bk.boat_type?.toLowerCase().includes('rental') ? '4020' : '4010');
     const { rows: accRows } = await pg.query(
-      `SELECT id, account_name FROM chart_of_accounts WHERE account_code = $1 AND is_active = true LIMIT 1`,
+      `SELECT id, account_name FROM chart_of_accounts WHERE account_code = $1 AND (is_active IS NULL OR is_active != 0) LIMIT 1`,
       [accCode]
     );
     if (!accRows.length) { await pg.query('ROLLBACK'); return res.status(400).json({ error: `Cuenta ${accCode} no encontrada` }); }
