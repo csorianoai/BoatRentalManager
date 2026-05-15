@@ -1,0 +1,235 @@
+Actúa como Principal Accounting Debugging Engineer, CPA Systems Auditor y Database Forensics Engineer para gestion.nadakiexcursions.
+
+PROBLEMA CRÍTICO:
+El booking book_dDgO83lgF1 muestra gastos totales $1,682.97, pero el gasto real correcto debe ser $560.99.
+
+Datos correctos del booking:
+- Revenue esperado: 699.99
+- Total cobrado: 699.99
+- Captain total pay: 250.00
+  - Cash: 144.00
+  - Zelle: 106.00
+- Fuel: 300.00
+- Ice: 5.99
+- Review: 5.00
+- Total expenses correcto: 560.99
+- Profit correcto: 139.00
+- Cash Clearing correcto: 0.00
+- Discrepancia correcta: 0.00
+- Revenue todavía pendiente hasta ejecutar Completar Booking
+
+OBJETIVO:
+Auditar y corregir por qué el sistema está mostrando $1,682.97 en gastos. No borrar transacciones. Si hay duplicados, corregir con reversing entries o marcar duplicates/excluded_from_ledger con auditoría.
+
+==================================================
+1. AUDITORÍA FORENSE DEL LEDGER
+==================================================
+
+Para booking_id = book_dDgO83lgF1 listar TODAS las transacciones relacionadas:
+
+Campos:
+- transaction_id
+- date
+- accounting_date
+- account_code
+- account_name
+- debit
+- credit
+- amount
+- transaction_type
+- source_type
+- reference_type
+- reference_id
+- booking_id
+- expense_type
+- payment_method
+- memo/description
+- created_at
+- created_by
+- is_reversal
+- reversed_transaction_id
+- excluded_from_ledger
+
+Reportar tabla:
+Transaction | Account | Debit | Credit | Source | Expense Type | Should Count as Expense? YES/NO | Reason
+
+==================================================
+2. DETECTAR DUPLICACIÓN
+==================================================
+
+Buscar específicamente:
+
+A) Captain payable duplicado:
+Si existe:
+Dr 5010 Captain Labor 250
+Cr 2000 Accounts Payable 250
+
+Entonces los pagos:
+Dr 2000 / Cr 1015 por 144
+Dr 2000 / Cr 1010 por 106
+
+NO deben contarse otra vez como gastos.
+Solo el Dr 5010 de 250 cuenta como gasto.
+
+B) Captain payments mal contados:
+Si los abonos de 144 y 106 también se están sumando como expense, corregir el ledger calculator.
+
+C) Gastos duplicados de pruebas:
+Buscar múltiples Fuel 300, Ice, Captain, Review o test entries asociados a este booking.
+
+D) Suma sospechosa:
+El sistema muestra 1682.97.
+Comparar contra 560.99 para detectar si está multiplicando por 3 o incluyendo debits/credits incorrectos.
+
+==================================================
+3. CORREGIR CÁLCULO DE TOTAL EXPENSES
+==================================================
+
+El cálculo de total_expenses debe sumar SOLO:
+
+- Débitos a cuentas de gastos:
+  5010-5999 Cost of Services
+  6000-6999 Operating Expenses
+
+Y debe EXCLUIR:
+- Créditos a banco/cash
+- Créditos a 1015
+- Débitos a 2000 Accounts Payable
+- Payments against payable
+- Revenue accounts
+- Asset transfers
+- Reversals
+- Transactions marked excluded_from_ledger = true
+- Duplicate entries
+
+Regla:
+Payments to captain payable reduce liability. They are NOT additional expense if the payable was already recognized.
+
+==================================================
+4. CORREGIR CAPTAIN PAYABLE LOGIC
+==================================================
+
+Para capitán:
+
+Modelo correcto:
+1. Crear gasto total:
+Dr 5010 Captain Labor Expense 250
+Cr 2000 Accounts Payable 250
+
+2. Abono cash:
+Dr 2000 Accounts Payable 144
+Cr 1015 Cash Clearing 144
+
+3. Abono Zelle:
+Dr 2000 Accounts Payable 106
+Cr 1010 Wells Fargo 106
+
+El ledger debe mostrar:
+Captain expense = 250
+Captain paid = 250
+Captain balance = 0
+
+NO:
+Captain expense = 250 + 144 + 106
+
+==================================================
+5. CORREGIR BOOKING book_dDgO83lgF1
+==================================================
+
+El ledger final debe quedar:
+
+Expenses:
+- 5010 Captain Labor: 250.00
+- 5020 Fuel Expense: 300.00
+- 5030 Ice / Supplies: 5.99
+- 6900 Misc / Review: 5.00
+
+Total expenses = 560.99
+
+Profit provisional:
+699.99 - 560.99 = 139.00
+
+Cash clearing:
+Cash in: 449.99
+Cash out:
+- Fuel 300
+- Ice 5.99
+- Captain cash 144
+Total cash out = 449.99
+Cash clearing = 0.00
+
+Captain:
+Expected = 250
+Paid = 250
+Pending = 0
+
+==================================================
+6. NO BORRAR DATA
+==================================================
+
+Si hay transacciones duplicadas:
+- No hacer DELETE
+- Crear reversing entry, o
+- Marcar como excluded_from_ledger=true con:
+  exclusion_reason
+  excluded_by
+  excluded_at
+
+Preferencia:
+Si son transacciones reales posteadas erróneamente, crear reversal.
+Si son pruebas/duplicados claramente del wizard, marcar excluded_from_ledger con audit trail.
+
+==================================================
+7. CORREGIR UI DE INTEGRIDAD
+==================================================
+
+En la pantalla de Verificación de Integridad:
+
+Debe mostrar:
+- Gastos totales: 560.99
+- Profit: 139.00
+- Cash Clearing: 0.00
+- Pagos capitán: 250.00
+- Capitán cash: 144.00
+- Capitán Zelle: 106.00
+- Discrepancia: 0.00
+
+Debe seguir mostrando:
+- Revenue pendiente
+- AR pendiente si todavía no se ejecutó Completar Booking
+
+Pero NO debe mostrar gastos inflados.
+
+==================================================
+8. PRUEBA OBLIGATORIA
+==================================================
+
+Después del fix ejecutar test:
+
+GET /api/bookings/book_dDgO83lgF1/reconciliation
+
+Debe devolver:
+{
+  "booking_total": 699.99,
+  "total_collected": 699.99,
+  "total_expenses": 560.99,
+  "profit": 139.00,
+  "cash_clearing_balance": 0.00,
+  "captain_total_paid": 250.00,
+  "captain_balance_due": 0.00,
+  "discrepancy": 0.00
+}
+
+==================================================
+9. ENTREGABLE FINAL
+==================================================
+
+Reportar:
+1. Causa exacta del gasto inflado
+2. Transacciones duplicadas o mal contadas encontradas
+3. Qué entradas se excluyeron o reversaron
+4. Qué función calculaba mal total_expenses
+5. Confirmación de que captain payments ya no duplican expense
+6. Resultado final del booking book_dDgO83lgF1
+7. Captura o JSON del ledger corregido
+8. Confirmación de que el sistema no puede volver a duplicar captain expense

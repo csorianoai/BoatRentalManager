@@ -2434,6 +2434,25 @@ async function initializeDatabase() {
           AND category = 'maintenance_parts'
       `).catch(() => {});
       console.log('✅ FASE 23B: boat_expenses expense_type backfill complete');
+
+      // ── FASE 23C: Cancel duplicate boat_expenses from captain app ─────────
+      // Booking book_dDgO83IgF1: two entries were created twice by the captain app —
+      //   bkexp_VQb5QmaJ (fuel $300.01) duplicates bkexp_cKJI-x_E (fuel $300.00)
+      //   bkexp_v2lL5vw8 (ice  $6.00)   duplicates bkexp_cUeOBhlb (ice  $5.99)
+      // Neither has accounting transactions — safe to cancel with audit note.
+      // No DELETE — status='cancelled' preserves the audit trail.
+      const fase23c = await pool.query(`
+        UPDATE boat_expenses
+        SET status = 'cancelled',
+            notes  = COALESCE(notes,'') || ' [DUPLICADO — cancelado FASE-23C audit 2026-05-15]'
+        WHERE id IN ('bkexp_VQb5QmaJ','bkexp_v2lL5vw8')
+          AND (status IS NULL OR status != 'cancelled')
+      `).catch(() => ({ rowCount: 0 }));
+      if (fase23c.rowCount > 0) {
+        console.log(`✅ FASE 23C: ${fase23c.rowCount} duplicate boat_expenses cancelled (book_dDgO83IgF1)`);
+      } else {
+        console.log('✅ FASE 23C: no duplicate boat_expenses to cancel (already clean)');
+      }
     } catch (e) {
       console.warn('⚠️ FASE 23 captain payable tables (non-critical):', e.message);
     }
@@ -14835,7 +14854,7 @@ async function checkBookingIntegrity(bookingId) {
   );
   const arPending = parseFloat(arPendRows[0].total);
 
-  // 6. Expenses from boat_expenses table
+  // 6. Expenses from boat_expenses table — single authoritative source
   const { rows: expRows } = await pool.query(
     `SELECT COALESCE(SUM(amount),0) as total FROM boat_expenses
      WHERE booking_id = $1 AND (status IS NULL OR status != 'cancelled')`,
@@ -14843,14 +14862,19 @@ async function checkBookingIntegrity(bookingId) {
   );
   const expensesTable = parseFloat(expRows[0].total);
 
-  // 7. Expenses from transactions (booking_expense reference type)
+  // 7. expensesTx is kept for reference only — NOT added to totalExpenses.
+  //    The transactions table stores double-entry pairs (Dr expense account + Cr cash/payable).
+  //    Both rows share the same booking_id and reference_type='booking_expense', so summing
+  //    ALL of them would count each expense twice (Dr side + Cr side = 2× the real cost).
+  //    boat_expenses is the authoritative ledger of what was actually spent.
   const { rows: expTxRows } = await pool.query(
     `SELECT COALESCE(SUM(amount),0) as total FROM transactions
      WHERE booking_id = $1 AND reference_type = 'booking_expense'`,
     [bookingId]
   );
   const expensesTx = parseFloat(expTxRows[0].total);
-  const totalExpenses = expensesTable + expensesTx;
+  // totalExpenses uses ONLY boat_expenses — adding expensesTx would double-count Dr+Cr pairs
+  const totalExpenses = expensesTable;
 
   // 8. Revenue transactions
   const { rows: revRows } = await pool.query(
