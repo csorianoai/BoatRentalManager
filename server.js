@@ -15967,7 +15967,7 @@ app.post('/api/bookings/:id/lock', isAuthenticated, async (req, res) => {
     // Lock booking
     await pg.query(
       `UPDATE bookings SET status = CASE WHEN status != 'completed' THEN 'completed' ELSE status END,
-       updated_at = NOW() WHERE id = $1`,
+       payment_status = 'paid', balance_pending = 0, updated_at = NOW() WHERE id = $1`,
       [bookingId]
     );
     await pg.query(
@@ -16339,7 +16339,7 @@ app.post('/api/bookings/:id/reconcile/lock', isAuthenticated, async (req, res) =
     if (!integrity.revenue_recognized) errors.push('Revenue no reconocido');
     if (parseFloat(integrity.total_collected||0)<parseFloat(integrity.expected_revenue||0)-0.01) errors.push('Pagos incompletos');
     if (errors.length&&!req.body?.force) { await pg.query('ROLLBACK'); return res.status(400).json({ error:'Checks pendientes', errors }); }
-    await pg.query(`UPDATE bookings SET status=CASE WHEN status!='completed' THEN 'completed' ELSE status END,updated_at=NOW() WHERE id=$1`,[bookingId]);
+    await pg.query(`UPDATE bookings SET status=CASE WHEN status!='completed' THEN 'completed' ELSE status END,payment_status='paid',balance_pending=0,updated_at=NOW() WHERE id=$1`,[bookingId]);
     await pg.query(`UPDATE bookings_ledger SET accounting_status='locked',status='completed' WHERE notes LIKE 'booking:'||$1||'%'`,[bookingId]);
     const { nanoid } = await import('nanoid');
     await logBookingAudit(pg,{ booking_id:bookingId, action_type:'booking_locked', amount:integrity.expected_revenue||0,
