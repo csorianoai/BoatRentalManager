@@ -14993,10 +14993,13 @@ async function checkBookingIntegrity(bookingId) {
   // using beOut when no cash came in produces a false negative balance (e.g. 0 - $111 = -$111).
   const rawCc1015Out = parseFloat(cc1015Out[0].total);
   const rawBeOut     = parseFloat(beOut[0].total);
-  const cashClearingOut     = cashClearingIn > 0.01
-    ? Math.max(rawCc1015Out, rawBeOut)   // cash received → use best estimate of outflows
-    : rawCc1015Out;                       // no cash in → only count actual 1015 expense txs
-  const cashClearingBalance = cashClearingIn - cashClearingOut;
+  // Cash Clearing (1015) is only meaningful when cash was actually received from the customer.
+  // If cashClearingIn = 0 (customer paid online/platform, no direct cash from client),
+  // the balance MUST be 0 regardless of any Cr 1015 transactions created by expense recording
+  // or FIXUP migrations — those Cr entries are artifacts, not real clearing imbalances.
+  const cashClearingBalance = cashClearingIn > 0.01
+    ? cashClearingIn - Math.max(rawCc1015Out, rawBeOut)
+    : 0;
 
   // ── Final accounting_status (now that cashClearingBalance is available) ──
   if (accountingStatus !== 'locked' && accountingStatus !== 'legacy_locked') {
