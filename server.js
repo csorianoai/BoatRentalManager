@@ -48,8 +48,24 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL
 });
 // Log once on successful initialization
-pool.query('SELECT NOW()').then(() => {
+pool.query('SELECT NOW()').then(async () => {
   console.log('✅ Database connection pool initialized');
+  // Fix: any booking locked in bookings_ledger should have payment_status='paid'
+  try {
+    const fixResult = await pool.query(`
+      UPDATE bookings b
+      SET payment_status = 'paid', balance_pending = 0, updated_at = NOW()
+      FROM bookings_ledger bl
+      WHERE bl.notes LIKE 'booking:' || b.id || '%'
+        AND bl.accounting_status IN ('locked', 'reconciled')
+        AND (b.payment_status IS NULL OR b.payment_status != 'paid')
+    `);
+    if (fixResult.rowCount > 0) {
+      console.log(`✅ Fixed ${fixResult.rowCount} locked booking(s) with incorrect payment_status`);
+    }
+  } catch (e) {
+    console.warn('⚠️ payment_status fix skipped:', e.message);
+  }
 }).catch(err => {
   console.error('❌ Database connection failed:', err);
 });
