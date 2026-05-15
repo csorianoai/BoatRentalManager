@@ -705,6 +705,9 @@
         <button class="btn btn-success" id="btn-recognize-revenue" onclick="recognizeRevenue()" data-testid="button-recognize-revenue" style="display:none;">
           Reconocer Revenue (Completar)
         </button>
+        <button class="btn btn-warning" id="btn-mark-ar-paid" onclick="markArPaid()" data-testid="button-mark-ar-paid" style="display:none;background:#f59e0b;color:#fff;border:none;">
+          Marcar AR como Cobrada
+        </button>
         <button class="btn btn-purple" id="btn-lock-booking" onclick="lockBooking()" data-testid="button-lock-booking" disabled>
           Bloquear Booking (Cierre Definitivo)
         </button>
@@ -1763,13 +1766,18 @@ async function renderStep6() {
       <div>Hay checks pendientes. Regresa a los pasos anteriores para resolverlos antes de cerrar.</div>
     </div>`}`;
 
-  const revBtn  = document.getElementById('btn-recognize-revenue');
-  const lockBtn = document.getElementById('btn-lock-booking');
+  const revBtn   = document.getElementById('btn-recognize-revenue');
+  const arBtn    = document.getElementById('btn-mark-ar-paid');
+  const lockBtn  = document.getElementById('btn-lock-booking');
   if (!d.revenue_recognized && parseFloat(d.revenue_recognized_amount||0) === 0) {
     revBtn.style.display = 'inline-block';
   } else {
     revBtn.style.display = 'none';
   }
+  // Show "Marcar AR como Cobrada" only when there's pending AR and revenue is already recognized
+  const hasPendingAr = parseFloat(d.total_ar_pending||0) > 0.01;
+  const revenueOk    = d.revenue_recognized || parseFloat(d.revenue_recognized_amount||0) > 0;
+  arBtn.style.display = (hasPendingAr && revenueOk) ? 'inline-block' : 'none';
   lockBtn.disabled = !allPass || d.accounting_status === 'locked';
   if (d.accounting_status === 'locked') {
     lockBtn.textContent = 'Booking Bloqueado';
@@ -1805,6 +1813,22 @@ async function lockBooking() {
     await loadIntegrity();
     renderStep6();
     goStep(1);
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function markArPaid() {
+  if (window.IS_LEGACY_BOOKING) { showLegacyWarning(); return; }
+  const arPending = parseFloat(integrity?.total_ar_pending || 0);
+  if (!confirm(`¿Marcar la cuenta por cobrar pendiente ($${arPending.toFixed(2)}) como pagada?\n\nUsa esto cuando el dinero ya fue recibido (efectivo/Cash Clearing) y solo falta actualizar el estado del AR.`)) return;
+  try {
+    const r = await apiFetch(`/api/bookings/${BOOKING_ID}/mark-ar-paid`, {
+      method: 'POST',
+      body: JSON.stringify({})
+    });
+    if (r.error) { alert('Error: ' + r.error); return; }
+    alert(`AR actualizada: ${r.records_updated} registro(s) marcados como pagados ($${parseFloat(r.total_marked||0).toFixed(2)})`);
+    await loadIntegrity();
+    renderStep6();
   } catch(e) { alert('Error: ' + e.message); }
 }
 

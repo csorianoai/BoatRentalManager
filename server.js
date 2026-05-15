@@ -19238,6 +19238,52 @@ const HOST = '0.0.0.0'; // Required for deployment
     } catch(err) { res.status(500).json({ error: err.message }); }
   });
 
+  // POST /api/bookings/:id/mark-ar-paid  — marca todos los AR pending del booking como pagados
+  app.post('/api/bookings/:id/mark-ar-paid', isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { notes } = req.body || {};
+
+      // Obtener el ledgerId del booking
+      const ledRes = await pool.query(
+        `SELECT bl.id as ledger_id FROM bookings b
+         LEFT JOIN bookings_ledger bl ON bl.notes LIKE 'booking:' || b.id || '%'
+         WHERE b.id = $1`,
+        [id]
+      );
+      if (!ledRes.rows.length) return res.status(404).json({ error: 'Booking no encontrado' });
+
+      const ledgerId = ledRes.rows[0].ledger_id;
+      if (!ledgerId) return res.status(400).json({ error: 'Este booking no tiene ledger — no se puede marcar AR' });
+
+      // Marcar todos los AR pending vinculados a este booking como pagados
+      const updateRes = await pool.query(
+        `UPDATE booking_receivables
+         SET status = 'paid',
+             notes  = COALESCE($1, notes)
+         WHERE booking_id = $2
+           AND status = 'pending'
+         RETURNING id, amount`,
+        [notes || `Marcado pagado manualmente en cierre — booking ${id}`, ledgerId]
+      );
+
+      const updated = updateRes.rows;
+      const totalMarked = updated.reduce((s, r) => s + parseFloat(r.amount || 0), 0);
+
+      console.log(`[mark-ar-paid] booking=${id} ledger=${ledgerId} — ${updated.length} AR(s) marcados pagados ($${totalMarked.toFixed(2)})`);
+
+      res.json({
+        ok: true,
+        records_updated: updated.length,
+        total_marked: totalMarked.toFixed(2),
+        ids: updated.map(r => r.id)
+      });
+    } catch (err) {
+      console.error('[mark-ar-paid] Error:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // POST /api/bookings/:id/mark-paid
   app.post('/api/bookings/:id/mark-paid', async (req, res) => {
     const pg = await pool.connect();
