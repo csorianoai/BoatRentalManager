@@ -1,0 +1,86 @@
+Actúa como CPA Systems Auditor y QA Automation Engineer.
+
+Necesito confirmar con evidencia si los bookings cancelados están afectando o no la contabilidad actual.
+
+Ejecuta estas pruebas reales en producción o contra la misma base de datos usada por gestion.nadakiexcursions:
+
+1. Ejecutar:
+GET /api/audit/cancelled-bookings
+
+Reportar:
+- total_cancelled_bookings
+- cancelled_with_revenue
+- cancelled_with_ar_balance
+- cancelled_with_cash_clearing
+- cancelled_with_expenses
+- cancelled_affecting_current_financials
+- critical_issues
+
+2. Validar que:
+critical_issues = 0
+cancelled_affecting_current_financials = 0
+
+3. Comparar reportes financieros con y sin cancelados:
+
+Ejecutar:
+GET /api/dashboard-data
+GET /api/bookings?include_cancelled=false
+GET /api/bookings?include_cancelled=true
+GET /api/accounting/reports/income-statement?period=2026-05
+GET /api/accounting/reports/accounts-receivable?period=2026-05
+
+Confirmar:
+- dashboard-data NO incluye revenue de cancelados
+- income-statement NO incluye revenue de cancelados
+- AR report NO incluye saldos de cancelados
+- bookings activos NO cuentan cancelados como activos
+- include_cancelled=true solo los muestra para auditoría/listado, no para revenue operativo
+
+4. Auditar específicamente estos bookings cancelados:
+
+- book_nizJIiBQaN
+- book_m1difxiY4K
+- book_tJbtgdsFkX
+- book_93ayXAkabD
+- book_yYUqM8bY1b
+- book_GDte0jwOPg
+- book_xN5w0tfM00
+- book_yp5mCDAUT4
+
+Para cada uno reportar:
+- booking_id
+- status
+- balance_pending
+- revenue_active
+- ar_active
+- cash_clearing_active
+- expenses_active
+- affects_financials: true/false
+
+5. Probar guards:
+
+Intentar en un booking cancelado:
+POST /api/booking-cash-payment
+POST /api/bookings/:id/complete
+POST /api/bookings/:id/lock
+
+Debe devolver:
+HTTP 409
+code: BOOKING_CANCELLED_ACCOUNTING_LOCKED
+
+6. Confirmar UI:
+- bookings.html muestra “Auditar Cancelado”
+- booking-wizard.html muestra banner rojo
+- no permite registrar pago/gasto/revenue/cierre normal
+
+7. Entregar conclusión final en este formato:
+
+RESULTADO FINAL:
+- ¿Los cancelados afectan ingresos? SÍ/NO
+- ¿Afectan AR? SÍ/NO
+- ¿Afectan Cash Clearing? SÍ/NO
+- ¿Afectan gastos? SÍ/NO
+- ¿Afectan reportes financieros actuales? SÍ/NO
+- ¿Quedan issues críticos? SÍ/NO
+
+No declares auditado si no ejecutaste las pruebas reales y muestras los valores.
