@@ -1,0 +1,378 @@
+Actúa como Principal Accounting Systems Auditor, CPA Audit-Readiness Engineer, Backend Debugging Engineer y QA Automation Engineer para gestion.nadakiexcursions.
+
+MISIÓN:
+Auditar si los bookings con status “cancelado/cancelled” están afectando ingresos, pagos, cuentas por cobrar, cash clearing, gastos, revenue o reportes financieros. Si están afectando, corregirlo inmediatamente y probarlo con múltiples revisiones antes de declarar terminado.
+
+NO borrar datos.
+NO hacer fixes superficiales.
+NO declarar completado sin evidencia real.
+Toda corrección debe ser auditada, reversible y sustentada con pruebas.
+
+==================================================
+1. PROBLEMA A AUDITAR
+==================================================
+
+En bookings.html aparecen múltiples bookings con status:
+Cancelado / Cancelled
+
+Necesitamos verificar si esos bookings:
+- siguen generando revenue
+- siguen apareciendo como cuentas por cobrar
+- siguen apareciendo en total de bookings activos
+- siguen afectando reportes financieros
+- siguen afectando dashboard-data
+- siguen afectando booking reconciliation
+- siguen afectando cash clearing
+- tienen transactions activas
+- tienen receivables/deposits pendientes
+- tienen expenses activos
+- tienen revenue reconocido por error
+
+==================================================
+2. REGLA CONTABLE PARA BOOKINGS CANCELADOS
+==================================================
+
+Un booking cancelado NO debe afectar ingresos operativos.
+
+Reglas:
+
+A) Si booking.status IN ('cancelled', 'canceled', 'cancelado'):
+- No debe reconocerse revenue.
+- No debe aparecer como ingreso pendiente.
+- No debe aparecer como AR pendiente.
+- No debe aparecer como booking actual activo.
+- No debe permitir “Cuadrar Booking” normal salvo modo auditoría/cancelación.
+- No debe afectar profit operativo.
+
+B) Si hubo depósito no reembolsable:
+Debe tratarse como:
+- Cancellation Fee Revenue / Other Income
+o
+- Deferred deposit hasta decisión
+pero NO como full booking revenue.
+
+C) Si hubo reembolso:
+Debe registrarse como:
+Dr Customer Refund / Refund Expense o reverso de revenue
+Cr Bank/Cash
+
+D) Si ya existían asientos:
+No borrar.
+Crear reversal entries o marcar excluded_from_ledger con audit trail, según corresponda.
+
+==================================================
+3. AUDITORÍA FORENSE
+==================================================
+
+Crear auditoría para todos los bookings cancelados desde 2026-04-27 en adelante.
+
+Endpoint o script interno:
+auditCancelledBookingsAccounting()
+
+Debe listar por cada booking cancelado:
+
+- booking_id
+- customer_name
+- service_date
+- status
+- total_amount
+- payment_status
+- accounting_status
+- period_type
+- total_payments
+- total_revenue_recognized
+- total_receivable
+- total_deposits
+- total_expenses
+- cash_clearing_balance
+- transactions_count
+- active_transactions_count
+- has_revenue_transaction
+- has_ar_balance
+- has_cash_clearing
+- has_expenses
+- should_affect_financials: true/false
+- issue_detected
+- recommended_fix
+
+==================================================
+4. DETECTAR TRANSACCIONES ACTIVAS DE BOOKINGS CANCELADOS
+==================================================
+
+Buscar en tablas relevantes:
+
+- bookings
+- transactions
+- boat_expenses
+- booking_deposits
+- booking_receivables
+- booking_captain_payables
+- booking_captain_payments
+- manual_entries
+- reconciliation ledgers
+- monthly snapshots si aplica
+
+Para cada booking cancelado, buscar:
+
+A) Revenue:
+- account_code IN (4010, 4020, 4030, 4090)
+
+B) Accounts Receivable:
+- account_code = 1100
+- booking_receivables status pending/open
+
+C) Deferred deposits:
+- account_code = 2500
+- booking_deposits open/applied
+
+D) Cash Clearing:
+- account_code = 1015
+
+E) Expenses:
+- account_code BETWEEN 5010 AND 6999
+
+F) Captain payables:
+- account_code = 2000
+- captain payable status pending/paid
+
+==================================================
+5. CORREGIR LÓGICA DE REPORTES
+==================================================
+
+Todos los reportes current deben excluir bookings cancelados por defecto.
+
+Aplicar filtro:
+
+booking.status NOT IN ('cancelled', 'canceled', 'cancelado')
+
+en:
+- /api/dashboard-data
+- /api/bookings
+- /api/accounting/transactions si filtra por booking operativo
+- /api/accounting/reports/income-statement
+- /api/accounting/reports/bookings-summary
+- /api/accounting/reports/accounts-receivable
+- /api/accounting/reports/cash-flow
+- /api/bookings/:id/reconciliation
+- cualquier cálculo de revenue/profit operativo
+
+IMPORTANTE:
+Las transacciones históricas deben seguir visibles en modo auditoría, pero NO en reportes operativos actuales.
+
+Agregar query param:
+include_cancelled=true
+
+Por defecto:
+include_cancelled=false
+
+Si include_cancelled=true:
+mostrar bookings cancelados con badge:
+“Cancelled — Audit View Only”
+
+==================================================
+6. BLOQUEAR WIZARD NORMAL PARA CANCELADOS
+==================================================
+
+En booking-wizard.html:
+
+Si booking.status es cancelled/canceled/cancelado:
+
+- Mostrar banner rojo:
+  “BOOKING CANCELLED — accounting actions restricted”
+
+- Bloquear:
+  - Registrar pagos normales
+  - Registrar gastos normales
+  - Reconocer revenue
+  - Completar booking
+  - Close/Lock normal
+
+- Permitir solo:
+  - Ver historial
+  - Registrar cancellation fee si aplica
+  - Registrar refund si aplica
+  - Crear reversing adjustment con razón obligatoria
+
+El botón “Cuadrar Booking” en bookings.html para cancelados debe cambiar a:
+“Ver Auditoría”
+o abrir wizard en modo audit-only.
+
+==================================================
+7. CORRECCIÓN DE ASIENTOS EXISTENTES
+==================================================
+
+Si un booking cancelado tiene revenue activo incorrecto:
+
+Crear reversal entry:
+
+Dr Revenue account
+Cr Original offset account
+
+o usar el reverso exacto del asiento original.
+
+Si tiene AR pendiente incorrecto:
+- cerrar AR con reversing adjustment
+- no dejar balance pendiente operativo
+
+Si tiene cash clearing incorrecto:
+- corregir con reversing entry
+- no tocar 1015 si no corresponde
+- si fue cash real recibido y no devuelto, clasificar como deposit/cancellation fee según decisión
+
+Si tiene gastos:
+- no eliminarlos si fueron gastos reales
+- pero no deben computarse en profit operativo de booking activo
+- marcar como cancellation-related expense si aplica
+
+==================================================
+8. NUEVO STATUS CONTABLE PARA CANCELADOS
+==================================================
+
+Agregar accounting_status si no existe:
+
+cancelled_audit
+cancelled_reversed
+cancelled_fee_retained
+cancelled_refunded
+
+Reglas:
+- cancelled_audit: pendiente de revisión
+- cancelled_reversed: asientos operativos reversados
+- cancelled_fee_retained: hubo cargo retenido correctamente clasificado
+- cancelled_refunded: pago devuelto correctamente
+
+==================================================
+9. PRUEBAS OBLIGATORIAS
+==================================================
+
+Crear y ejecutar múltiples pruebas reales.
+
+PRUEBA 1 — listado bookings
+GET /api/bookings
+Debe mostrar cancelados como cancelados, pero NO contarlos como activos.
+
+PRUEBA 2 — dashboard
+GET /api/dashboard-data
+Debe excluir cancelados de revenue, AR, profit y bookings activos.
+
+PRUEBA 3 — income statement
+GET /api/accounting/reports/income-statement?period=2026-05
+Debe excluir revenue de bookings cancelados salvo cancellation fees válidas.
+
+PRUEBA 4 — AR report
+GET /api/accounting/reports/accounts-receivable?period=2026-05
+No debe mostrar AR pendiente de bookings cancelados.
+
+PRUEBA 5 — booking reconciliation cancelado
+GET /api/bookings/{cancelled_booking_id}/reconciliation
+Debe devolver:
+status = cancelled
+audit_mode = true
+can_register_payment = false
+can_register_expense = false
+can_recognize_revenue = false
+can_close_normal = false
+
+PRUEBA 6 — intento de registrar pago en cancelado
+POST /api/bookings/{cancelled_booking_id}/payments
+Debe devolver HTTP 409:
+BOOKING_CANCELLED_ACCOUNTING_LOCKED
+
+PRUEBA 7 — intento de reconocer revenue en cancelado
+POST /api/bookings/{cancelled_booking_id}/complete
+Debe devolver HTTP 409.
+
+PRUEBA 8 — include_cancelled
+GET /api/bookings?include_cancelled=true
+Debe incluir cancelados.
+GET /api/bookings?include_cancelled=false
+Debe excluirlos o marcarlos fuera de activos.
+
+PRUEBA 9 — transaction audit
+Endpoint o script debe listar cualquier cancelled booking con transactions activas que afecten current financials.
+
+PRUEBA 10 — after fix
+Re-ejecutar auditCancelledBookingsAccounting()
+Debe devolver:
+critical_issues = 0
+
+==================================================
+10. REVISIÓN DE CASOS VISIBLES EN SCREENSHOT
+==================================================
+
+Auditar estos bookings cancelados visibles, si existen en DB:
+
+- book_93ayXAkabD — Linje — 2026-05-10 — $278.40 — Airbnb
+- book_m1difxiY4K — Paola Scott — 2026-05-09 — $890.00 — Manual
+- book_yYUqM8bY1b — Chantel Blake — 2026-05-09 — $1,200.00
+- book_tJbtgdsFkX — Judeline Thomas-Magloire — 2026-05-09 — $1,260.00
+- book_GDte0jwOPg — Gabrielle Grizzell — 2026-05-09 — $1,200.00
+- book_niZJiBQaN — Alla Serdiukova — 2026-05-09 — $600.00
+- book_xN5w0tfM00 — Jasmine Barlow — 2026-05-09 — $697.95
+- book_yp5mCDAUT4 — Jessica — 2026-05-09 — $278.40 — Airbnb
+
+Para cada uno:
+- confirmar si tiene revenue
+- confirmar si tiene AR
+- confirmar si tiene payments
+- confirmar si tiene expenses
+- confirmar si está afectando reportes
+- aplicar fix si corresponde
+
+==================================================
+11. UI EN bookings.html
+==================================================
+
+Para bookings cancelados:
+- Mantener badge rojo Cancelado
+- Cambiar botón “Cuadrar Booking” por:
+  “Auditar Cancelado”
+o deshabilitar “Cuadrar Booking” normal
+
+Al abrir:
+booking-wizard.html?booking_id=...&mode=audit_cancelled
+
+Debe mostrar:
+- status cancelado
+- audit-only mode
+- financial impact summary
+- reversal status
+- cancellation fee/refund tools si aplica
+
+==================================================
+12. REPORTE FINAL OBLIGATORIO
+==================================================
+
+No declarar terminado hasta entregar:
+
+1. Total de bookings cancelados auditados
+2. Cuántos estaban afectando ingresos
+3. Cuántos tenían AR pendiente
+4. Cuántos tenían cash clearing
+5. Cuántos tenían gastos
+6. Cuántos fueron corregidos
+7. Lista de reversal entries creados
+8. Lista de transactions excluidas del ledger si aplica
+9. Resultado de las 10 pruebas obligatorias
+10. Evidencia de que dashboard-data ya no incluye cancelados
+11. Evidencia de que income statement ya no incluye cancelados
+12. Evidencia de que AR report ya no incluye cancelados
+13. Evidencia de que no se puede registrar pago/revenue normal en cancelados
+14. Riesgos pendientes si quedan
+
+==================================================
+13. CRITERIO DE FINALIZACIÓN
+==================================================
+
+Solo puedes decir “terminado” si:
+
+- critical_issues = 0
+- cancelled bookings no afectan ingresos operativos
+- cancelled bookings no generan AR pendiente
+- cancelled bookings no pueden reconocer revenue
+- dashboard excluye cancelados
+- reportes financieros excluyen cancelados
+- pruebas pasan local y producción
+- se entrega evidencia JSON o logs de prueba
+
+Si algo falla, reportar exactamente qué falló y no marcar como completado.

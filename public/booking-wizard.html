@@ -168,6 +168,18 @@
     <span id="wiz-breadcrumb">Cuadrar Booking</span>
   </div>
 
+  <!-- Cancelled Booking Banner -->
+  <div id="cancelled-banner" style="display:none;align-items:center;gap:14px;background:#fee2e2;border:1px solid #fca5a5;border-radius:10px;padding:14px 18px;margin-bottom:18px;">
+    <div style="background:#dc2626;color:#fff;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:900;flex-shrink:0;">✕</div>
+    <div style="flex:1;">
+      <div style="font-weight:800;color:#991b1b;font-size:15px;">BOOKING CANCELADO — Acciones contables restringidas</div>
+      <div style="font-size:12px;color:#b91c1c;margin-top:2px;">
+        Este booking está cancelado. No se pueden registrar pagos, gastos ni reconocer revenue.
+        Solo se permite consultar el historial.
+      </div>
+    </div>
+  </div>
+
   <!-- Legacy Booking Banner -->
   <div id="legacy-banner" style="display:none;align-items:center;gap:14px;background:#fef3c7;border:1px solid #fcd34d;border-radius:10px;padding:14px 18px;margin-bottom:18px;">
     <div style="font-size:22px;">&#128274;</div>
@@ -789,7 +801,8 @@ async function loadAll() {
 }
 
 const CUTOVER_DATE = new Date('2026-04-27');
-let isLegacyBooking = false;
+let isLegacyBooking   = false;
+let isCancelledBooking = false;
 
 async function loadWizData() {
   try {
@@ -805,7 +818,9 @@ async function loadWizData() {
       const bkDate = r?.booking_date || r?.service_date || r?.booking?.booking_date;
       isLegacyBooking = bkDate ? new Date(bkDate) < CUTOVER_DATE : false;
     }
+    isCancelledBooking = ['cancelled','canceled','cancelado'].includes((r?.status||'').toLowerCase());
     applyLegacyState();
+    applyCancelledState();
   } catch(e) {
     console.error(e);
   }
@@ -837,6 +852,33 @@ function applyLegacyState() {
     const adjPanel = document.getElementById('legacy-adj-panel');
     if (adjPanel) adjPanel.style.display = 'none';
   }
+}
+
+function applyCancelledState() {
+  window.IS_CANCELLED_BOOKING = !!isCancelledBooking;
+  const banner = document.getElementById('cancelled-banner');
+  if (!banner) return;
+  if (isCancelledBooking) {
+    banner.style.display = 'flex';
+    ['btn-lock-booking','btn-recognize-revenue','btn-add-payment','btn-save-expense','btn-add-expense','btn-mark-ar-paid'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) { el.disabled = true; el.title = 'Booking cancelado — acciones contables bloqueadas'; }
+    });
+    document.querySelectorAll('.wiz-step-tab[data-step]').forEach(tab => {
+      const step = parseInt(tab.dataset.step);
+      if ([2, 3, 5, 6].includes(step)) {
+        tab.style.opacity = '0.4';
+        tab.style.cursor  = 'not-allowed';
+        tab.onclick = (e) => { e.stopImmediatePropagation(); showCancelledWarning(); };
+      }
+    });
+  } else {
+    banner.style.display = 'none';
+  }
+}
+
+function showCancelledWarning() {
+  showToast('pay-msg', 'Este booking está CANCELADO. No se pueden realizar acciones contables.', 'error');
 }
 
 function showLegacyWarning() {

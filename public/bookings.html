@@ -34,7 +34,8 @@
         .btn-sm        { padding: 5px 12px; font-size: 12px; border-radius: 6px; }
         .btn-wizard    { background: #7c3aed; color: #fff; }
         .btn-calendar  { background: #0ea5e9; color: #fff; }
-        .btn-legacy-adj{ background: #f59e0b; color: #fff; }
+        .btn-legacy-adj      { background: #f59e0b; color: #fff; }
+        .btn-audit-cancelled { background: #dc2626; color: #fff; }
 
         .filters-bar {
             background: #fff;
@@ -306,6 +307,7 @@ function renderRow(b) {
     const captLabel = b.captain_name || b.assigned_captain_name || '—';
     const total     = parseFloat(b.total_amount||0);
 
+    const isCancelled = ['cancelled','canceled','cancelado'].includes((b.status||'').toLowerCase());
     const actionButtons = legacy
         ? `<button class="btn btn-sm btn-legacy-adj"
                    onclick="openLegacyGuide('${b.id}')"
@@ -319,6 +321,13 @@ function renderRow(b) {
               title="Ver en Legacy Cleanup Guide">
                Ver Legacy
            </a>`
+        : isCancelled
+        ? `<button class="btn btn-sm btn-audit-cancelled"
+                   onclick="openWizard('${b.id}')"
+                   data-testid="button-audit-cancelled-${b.id}"
+                   title="Ver auditoría del booking cancelado (solo lectura)">
+               Auditar Cancelado
+           </button>`
         : `<button class="btn btn-sm btn-wizard"
                    onclick="openWizard('${b.id}')"
                    data-testid="button-wizard-${b.id}"

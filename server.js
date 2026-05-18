@@ -63,6 +63,14 @@ pool.query('SELECT NOW()').then(async () => {
     if (fixResult.rowCount > 0) {
       console.log(`✅ Fixed ${fixResult.rowCount} locked booking(s) with incorrect payment_status`);
     }
+    // Fix: zero out balance_pending for cancelled bookings
+    const cancelFix = await pool.query(`
+      UPDATE bookings SET balance_pending = 0, updated_at = NOW()
+      WHERE LOWER(status) IN ('cancelled','canceled','cancelado') AND balance_pending > 0
+    `);
+    if (cancelFix.rowCount > 0) {
+      console.log(`✅ Fixed ${cancelFix.rowCount} cancelled booking(s) with balance_pending > 0`);
+    }
   } catch (e) {
     console.warn('⚠️ payment_status fix skipped:', e.message);
   }
@@ -3494,6 +3502,12 @@ app.get('/api/bookings', isAuthenticated, async (req, res) => {
       query += ` AND b.is_legacy = true`;
     } else if (is_legacy === 'false') {
       query += ` AND (b.is_legacy = false OR b.is_legacy IS NULL)`;
+    }
+
+    // include_cancelled: default true (show in list); pass false to hide completely
+    const { include_cancelled } = req.query;
+    if (include_cancelled === 'false') {
+      query += ` AND LOWER(COALESCE(b.status,'')) NOT IN ('cancelled','canceled','cancelado')`;
     }
 
     query += ' ORDER BY b.booking_date DESC, b.start_time ASC';
@@ -15217,6 +15231,12 @@ app.post('/api/booking-cash-payment', isAuthenticated, async (req, res) => {
     if (!bkRows.length) { await pg.query('ROLLBACK'); return res.status(404).json({ error: 'Booking no encontrado' }); }
     const bk = bkRows[0];
 
+    // Block cancelled bookings
+    if (['cancelled','canceled','cancelado'].includes((bk.status||'').toLowerCase())) {
+      await pg.query('ROLLBACK');
+      return res.status(409).json({ error: 'BOOKING_CANCELLED_ACCOUNTING_LOCKED', message: 'Este booking está cancelado. No se pueden registrar pagos.' });
+    }
+
     const payDate = date || new Date().toISOString().slice(0, 10);
     const txId = 'tx_cash_' + nanoid(8);
     const desc = `Pago en efectivo recibido — ${bk.customer_name}${notes ? ' / ' + notes : ''}`;
@@ -15270,6 +15290,11 @@ app.post('/api/bookings/:id/complete', isAuthenticated, async (req, res) => {
     const { rows: bkRows } = await pg.query(`SELECT * FROM bookings WHERE id = $1`, [bookingId]);
     if (!bkRows.length) { await pg.query('ROLLBACK'); return res.status(404).json({ error: 'Booking no encontrado' }); }
     const bk = bkRows[0];
+    // Block cancelled bookings from revenue recognition
+    if (['cancelled','canceled','cancelado'].includes((bk.status||'').toLowerCase())) {
+      await pg.query('ROLLBACK');
+      return res.status(409).json({ error: 'BOOKING_CANCELLED_ACCOUNTING_LOCKED', message: 'Booking cancelado — no se puede reconocer revenue.' });
+    }
     if (bk.revenue_recognized === true) {
       await pg.query('ROLLBACK');
       return res.status(400).json({ error: 'Revenue ya fue reconocido para este booking' });
@@ -15962,6 +15987,13 @@ app.post('/api/bookings/:id/lock', isAuthenticated, async (req, res) => {
       return res.status(400).json({ error: 'El booking ya está bloqueado' });
     }
 
+    // Block cancelled bookings from being locked
+    const { rows: bkStatusRows } = await pg.query(`SELECT status FROM bookings WHERE id = $1`, [bookingId]);
+    if (bkStatusRows.length && ['cancelled','canceled','cancelado'].includes((bkStatusRows[0].status||'').toLowerCase())) {
+      await pg.query('ROLLBACK');
+      return res.status(409).json({ error: 'BOOKING_CANCELLED_ACCOUNTING_LOCKED', message: 'Booking cancelado — no se puede bloquear.' });
+    }
+
     // Validation checks
     const errors = [];
     if (integrity.discrepancy_flag) errors.push('Hay discrepancia de pago pendiente');
@@ -16017,6 +16049,106 @@ app.post('/api/bookings/:id/lock', isAuthenticated, async (req, res) => {
     console.error('Error locking booking:', err);
     res.status(500).json({ error: err.message });
   } finally { pg.release(); }
+});
+
+// ── GET /api/audit/cancelled-bookings — forensic audit of cancelled bookings ──
+app.get('/api/audit/cancelled-bookings', isAuthenticated, async (req, res) => {
+  try {
+    const { rows: cancelled } = await pool.query(`
+      SELECT b.id, b.customer_name, b.booking_date, b.status, b.payment_status,
+             b.accounting_status, b.total_amount, b.balance_pending, b.platform, b.boat_type
+      FROM bookings b
+      WHERE LOWER(b.status) IN ('cancelled','canceled','cancelado')
+      ORDER BY b.booking_date DESC
+    `);
+
+    const results = [];
+    for (const bk of cancelled) {
+      const bookingId = bk.id;
+      const [txRes, arRes, expRes] = await Promise.all([
+        pool.query(
+          `SELECT t.id, t.amount, t.reference_type, c.account_code
+           FROM transactions t
+           LEFT JOIN chart_of_accounts c ON c.id = t.account_id
+           WHERE t.booking_id = $1`, [bookingId]
+        ),
+        pool.query(
+          `SELECT id, amount, status FROM booking_receivables WHERE booking_id = $1`, [bookingId]
+        ),
+        pool.query(
+          `SELECT id, amount, status FROM boat_expenses
+           WHERE booking_id = $1 AND COALESCE(status,'') != 'cancelled'`, [bookingId]
+        ),
+      ]);
+
+      const txs   = txRes.rows;
+      const ars   = arRes.rows;
+      const exps  = expRes.rows;
+
+      const revenueTxs   = txs.filter(t => ['4010','4020','4030','4090'].includes(t.account_code));
+      const cashClearing = txs.filter(t => t.reference_type === 'cash_clearing');
+      const arPending    = ars.filter(a => ['pending','open'].includes((a.status||'')));
+
+      const totalRevenue  = revenueTxs.reduce((s, t) => s + parseFloat(t.amount||0), 0);
+      const totalAR       = arPending.reduce((s, a)  => s + parseFloat(a.amount||0), 0);
+      const totalExp      = exps.reduce((s, e)       => s + parseFloat(e.amount||0), 0);
+      const totalPayments = cashClearing.reduce((s, t) => s + parseFloat(t.amount||0), 0);
+      const balance_pending = parseFloat(bk.balance_pending || 0);
+
+      const issues = [];
+      if (totalRevenue > 0)         issues.push(`Revenue activo: $${totalRevenue.toFixed(2)}`);
+      if (totalAR > 0)              issues.push(`AR pendiente: $${totalAR.toFixed(2)}`);
+      if (cashClearing.length > 0)  issues.push(`Cash clearing activo: ${cashClearing.length} tx(s)`);
+      if (totalExp > 0)             issues.push(`Gastos activos: $${totalExp.toFixed(2)}`);
+      if (balance_pending > 0)      issues.push(`balance_pending=$${balance_pending.toFixed(2)} debe ser 0`);
+
+      results.push({
+        booking_id:               bookingId,
+        customer_name:            bk.customer_name,
+        service_date:             bk.booking_date,
+        platform:                 bk.platform,
+        boat_type:                bk.boat_type,
+        status:                   bk.status,
+        payment_status:           bk.payment_status,
+        accounting_status:        bk.accounting_status,
+        total_amount:             parseFloat(bk.total_amount||0),
+        balance_pending,
+        total_payments,
+        total_revenue_recognized: totalRevenue,
+        total_receivable:         totalAR,
+        total_expenses:           totalExp,
+        transactions_count:       txs.length,
+        cash_clearing_count:      cashClearing.length,
+        has_revenue_transaction:  revenueTxs.length > 0,
+        has_ar_balance:           totalAR > 0,
+        has_cash_clearing:        cashClearing.length > 0,
+        has_expenses:             exps.length > 0,
+        issue_detected:           issues.length > 0,
+        issues,
+        recommended_fix: issues.length === 0 ? 'none'
+          : balance_pending > 0    ? 'zero_balance_pending'
+          : totalRevenue > 0       ? 'create_reversal_entry'
+          : totalAR > 0            ? 'close_ar'
+          : 'review_required',
+      });
+    }
+
+    res.json({
+      audit_date:                    new Date().toISOString(),
+      total_cancelled:               results.length,
+      critical_issues:               results.filter(r => r.issue_detected).length,
+      bookings_affecting_revenue:    results.filter(r => r.has_revenue_transaction).length,
+      bookings_with_ar:              results.filter(r => r.has_ar_balance).length,
+      bookings_with_cash_clearing:   results.filter(r => r.has_cash_clearing).length,
+      bookings_with_expenses:        results.filter(r => r.has_expenses).length,
+      bookings_with_open_balance:    results.filter(r => r.balance_pending > 0).length,
+      clean_bookings:                results.filter(r => !r.issue_detected).length,
+      results,
+    });
+  } catch (err) {
+    console.error('Error in cancelled bookings audit:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── ALIAS ENDPOINTS — spec-compliant per-booking routes ───────────────────
