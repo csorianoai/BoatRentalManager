@@ -78,6 +78,21 @@
         .stat-card.red    .stat-value { color: #dc2626; }
         .stat-card.green  .stat-value { color: #16a34a; }
         .stat-card.amber  .stat-value { color: #d97706; }
+        .stat-card.blue   .stat-value { color: #1d4ed8; }
+        .stat-card.sky    .stat-value { color: #0284c7; }
+        .stat-card.orange .stat-value { color: #ea580c; }
+        .stat-card.teal   .stat-value { color: #0d9488; }
+
+        .kpi-section { background: #fff; border-bottom: 1px solid #e2e8f0; }
+        .kpi-group { padding: 0 28px 14px; }
+        .kpi-group-label {
+            font-size: 10px; font-weight: 700; text-transform: uppercase;
+            color: #94a3b8; letter-spacing: .5px;
+            padding: 12px 28px 6px;
+        }
+        .kpi-group .stats-row { padding: 0; gap: 8px; }
+        .stat-value.stat-sm { font-size: 16px; }
+        .stat-card-profit-neg .stat-value { color: #dc2626 !important; }
 
         .table-container {
             margin: 0 28px 28px;
@@ -155,6 +170,9 @@
         <p>Todos los bookings — busca, filtra y abre el wizard de cuadre contable</p>
     </div>
     <div class="header-actions">
+        <a href="/analytics.html" class="btn btn-primary" data-testid="link-fleet-profitability" style="background:#0f172a;">
+            Fleet Profitability
+        </a>
         <a href="/accounting.html#cuadre-booking" class="btn btn-slate" data-testid="link-to-booking-reconciliation">
             Cuadre Contable
         </a>
@@ -218,13 +236,33 @@
     </div>
 </div>
 
-<!-- ── Stats ── -->
-<div class="stats-row" id="stats-row">
-    <div class="stat-card"><div class="stat-label">Total Bookings</div><div class="stat-value" id="stat-total">—</div></div>
-    <div class="stat-card green"><div class="stat-label">Actuales (Current)</div><div class="stat-value" id="stat-current">—</div></div>
-    <div class="stat-card amber"><div class="stat-label">Legacy</div><div class="stat-value" id="stat-legacy">—</div></div>
-    <div class="stat-card purple"><div class="stat-label">Ingresos Totales</div><div class="stat-value" id="stat-revenue">—</div></div>
-    <div class="stat-card red"><div class="stat-label">Sin Cuadrar</div><div class="stat-value" id="stat-pending-acct">—</div></div>
+<!-- ── KPI Section ── -->
+<div class="kpi-section">
+    <div class="kpi-group-label">Estado de Bookings</div>
+    <div class="kpi-group">
+        <div class="stats-row" id="stats-row">
+            <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value" id="stat-total" data-testid="stat-total">—</div></div>
+            <div class="stat-card blue"><div class="stat-label">Ejecutados</div><div class="stat-value" id="stat-executed" data-testid="stat-executed">—</div></div>
+            <div class="stat-card amber"><div class="stat-label">Pendientes</div><div class="stat-value" id="stat-pending" data-testid="stat-pending">—</div></div>
+            <div class="stat-card red"><div class="stat-label">Cancelados</div><div class="stat-value" id="stat-cancelled" data-testid="stat-cancelled">—</div></div>
+            <div class="stat-card sky"><div class="stat-label">En Proceso</div><div class="stat-value" id="stat-inprogress" data-testid="stat-inprogress">—</div></div>
+            <div class="stat-card green"><div class="stat-label">Cuadrados</div><div class="stat-value" id="stat-reconciled" data-testid="stat-reconciled">—</div></div>
+            <div class="stat-card orange"><div class="stat-label">Sin Cuadrar</div><div class="stat-value" id="stat-unreconciled" data-testid="stat-unreconciled">—</div></div>
+        </div>
+    </div>
+    <div class="kpi-group-label">KPIs Financieros</div>
+    <div class="kpi-group">
+        <div class="stats-row">
+            <div class="stat-card green"><div class="stat-label">Revenue Operativo</div><div class="stat-value stat-sm" id="stat-rev-operational" data-testid="stat-rev-operational">—</div></div>
+            <div class="stat-card red"><div class="stat-label">Revenue Cancelado</div><div class="stat-value stat-sm" id="stat-rev-cancelled" data-testid="stat-rev-cancelled">—</div></div>
+            <div class="stat-card amber"><div class="stat-label">Revenue Pendiente</div><div class="stat-value stat-sm" id="stat-rev-pending" data-testid="stat-rev-pending">—</div></div>
+            <div class="stat-card teal"><div class="stat-label">Revenue Reconocido</div><div class="stat-value stat-sm" id="stat-rev-recognized" data-testid="stat-rev-recognized">—</div></div>
+            <div class="stat-card sky"><div class="stat-label">No Reconocido</div><div class="stat-value stat-sm" id="stat-rev-unrecognized" data-testid="stat-rev-unrecognized">—</div></div>
+            <div class="stat-card" id="stat-card-profit"><div class="stat-label">Profit Operativo</div><div class="stat-value stat-sm" id="stat-profit" data-testid="stat-profit">—</div></div>
+            <div class="stat-card"><div class="stat-label">Costo Operativo</div><div class="stat-value stat-sm" id="stat-costs" data-testid="stat-costs">—</div></div>
+            <div class="stat-card purple"><div class="stat-label">Margen %</div><div class="stat-value" id="stat-margin" data-testid="stat-margin">—</div></div>
+        </div>
+    </div>
 </div>
 
 <!-- ── Table ── -->
@@ -400,16 +438,63 @@ async function loadBookings() {
 }
 
 function renderStats(bookings) {
-    const current = bookings.filter(b => !isLegacy(b));
-    const legacy  = bookings.filter(b => isLegacy(b));
-    const revenue = bookings.reduce((s,b) => s + parseFloat(b.total_amount||0), 0);
-    const noAcct  = bookings.filter(b => !b.accounting_status || b.accounting_status === 'not_started').length;
+    const EXECUTED   = ['completed','executed','finished','done'];
+    const PENDING    = ['pending','confirmed','scheduled'];
+    const CANCELLED  = ['cancelled','canceled','cancelado'];
+    const INPROGRESS = ['in_progress','active','underway'];
+    const RECONCILED = ['reconciled','closed','locked'];
 
-    document.getElementById('stat-total').textContent   = bookings.length;
-    document.getElementById('stat-current').textContent = current.length;
-    document.getElementById('stat-legacy').textContent  = legacy.length;
-    document.getElementById('stat-revenue').textContent = '$' + fmt(revenue);
-    document.getElementById('stat-pending-acct').textContent = noAcct;
+    const executed     = bookings.filter(b => EXECUTED.includes((b.status||'').toLowerCase()));
+    const pending      = bookings.filter(b => PENDING.includes((b.status||'').toLowerCase()));
+    const cancelled    = bookings.filter(b => CANCELLED.includes((b.status||'').toLowerCase()));
+    const inProgress   = bookings.filter(b => INPROGRESS.includes((b.status||'').toLowerCase()));
+    const nonCancelled = bookings.filter(b => !CANCELLED.includes((b.status||'').toLowerCase()));
+    const reconciled   = bookings.filter(b => RECONCILED.includes((b.accounting_status||'').toLowerCase()));
+    const unreconciled = bookings.filter(b => !RECONCILED.includes((b.accounting_status||'').toLowerCase()));
+
+    const sum = (arr) => arr.reduce((s,b) => s + parseFloat(b.total_amount||0), 0);
+
+    const revenueOperational  = sum(executed);
+    const revenueCancelled    = sum(cancelled);
+    const revenuePending      = sum(pending);
+    const revenueRecognized   = sum(bookings.filter(b => b.revenue_recognized === true));
+    const revenueUnrecognized = sum(nonCancelled.filter(b => !b.revenue_recognized));
+    const totalCosts          = bookings.reduce((s,b) => s + parseFloat(b.total_costs||0), 0);
+    const profit              = revenueOperational - totalCosts;
+    const margin              = revenueOperational > 0 ? (profit / revenueOperational * 100) : 0;
+
+    const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+
+    // Status KPIs
+    set('stat-total',        bookings.length);
+    set('stat-executed',     executed.length);
+    set('stat-pending',      pending.length);
+    set('stat-cancelled',    cancelled.length);
+    set('stat-inprogress',   inProgress.length);
+    set('stat-reconciled',   reconciled.length);
+    set('stat-unreconciled', unreconciled.length);
+
+    // Financial KPIs
+    set('stat-rev-operational',  '$' + fmt(revenueOperational));
+    set('stat-rev-cancelled',    '$' + fmt(revenueCancelled));
+    set('stat-rev-pending',      '$' + fmt(revenuePending));
+    set('stat-rev-recognized',   '$' + fmt(revenueRecognized));
+    set('stat-rev-unrecognized', '$' + fmt(revenueUnrecognized));
+    set('stat-profit',           (profit >= 0 ? '+$' : '-$') + fmt(Math.abs(profit)));
+    set('stat-costs',            '$' + fmt(totalCosts));
+    set('stat-margin',           margin.toFixed(1) + '%');
+
+    // Dynamic profit card color
+    const profitCard = document.getElementById('stat-card-profit');
+    if (profitCard) {
+        profitCard.className = 'stat-card ' + (profit < 0 ? 'red' : 'green');
+    }
+    // Dynamic margin color
+    const marginEl = document.getElementById('stat-margin');
+    if (marginEl) {
+        const marginCard = marginEl.closest('.stat-card');
+        if (marginCard) marginCard.className = 'stat-card ' + (margin >= 30 ? 'purple' : margin >= 15 ? 'amber' : 'red');
+    }
 }
 
 function renderTable(bookings) {

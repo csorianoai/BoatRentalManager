@@ -2480,6 +2480,82 @@ async function initializeDatabase() {
     } catch (e) {
       console.warn('⚠️ FASE 23 captain payable tables (non-critical):', e.message);
     }
+    // ── FASE 24: Pricing Intelligence & Fleet Profitability ──────────────────
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS boat_pricing_rules (
+          id                         TEXT PRIMARY KEY,
+          boat_id                    TEXT,
+          boat_name                  TEXT NOT NULL,
+          minimum_hourly_rate        NUMERIC(10,2) DEFAULT 0,
+          minimum_total_booking      NUMERIC(10,2) DEFAULT 0,
+          fuel_cost_per_hour         NUMERIC(10,2) DEFAULT 0,
+          captain_cost_per_hour      NUMERIC(10,2) DEFAULT 0,
+          cleaning_cost_estimated    NUMERIC(10,2) DEFAULT 0,
+          target_profit_margin       NUMERIC(5,2)  DEFAULT 30,
+          minimum_profit_per_booking NUMERIC(10,2) DEFAULT 0,
+          active                     BOOLEAN       DEFAULT true,
+          created_by                 TEXT,
+          created_at                 TIMESTAMPTZ   DEFAULT NOW(),
+          updated_at                 TIMESTAMPTZ   DEFAULT NOW()
+        )
+      `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS pricing_alerts (
+          id              TEXT PRIMARY KEY,
+          booking_id      TEXT,
+          boat_id         TEXT,
+          boat_name       TEXT,
+          alert_type      TEXT          NOT NULL,
+          severity        TEXT          DEFAULT 'warning',
+          message         TEXT,
+          expected_value  NUMERIC(10,2),
+          actual_value    NUMERIC(10,2),
+          variance        NUMERIC(10,2),
+          acknowledged    BOOLEAN       DEFAULT false,
+          acknowledged_by TEXT,
+          acknowledged_at TIMESTAMPTZ,
+          created_at      TIMESTAMPTZ   DEFAULT NOW()
+        )
+      `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS booking_pricing_audit (
+          id                   TEXT PRIMARY KEY,
+          booking_id           TEXT,
+          boat_id              TEXT,
+          sold_price           NUMERIC(10,2),
+          expected_price       NUMERIC(10,2),
+          variance             NUMERIC(10,2),
+          discount_amount      NUMERIC(10,2),
+          discount_percent     NUMERIC(5,2),
+          approved_by          TEXT,
+          approval_reason      TEXT,
+          override_authorized  BOOLEAN     DEFAULT false,
+          created_at           TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+      // Seed default pricing rules if none exist
+      const { rows: ruleCount } = await pool.query(`SELECT COUNT(*) FROM boat_pricing_rules`);
+      if (parseInt(ruleCount[0].count) === 0) {
+        const { nanoid } = await import('nanoid');
+        await pool.query(`
+          INSERT INTO boat_pricing_rules
+            (id, boat_name, minimum_hourly_rate, minimum_total_booking,
+             fuel_cost_per_hour, captain_cost_per_hour, cleaning_cost_estimated,
+             target_profit_margin, minimum_profit_per_booking)
+          VALUES
+            ($1,'CRANCHI',          200,  800, 40, 35, 50, 35, 250),
+            ($2,'SEARAY 500',        175,  700, 35, 35, 50, 30, 200),
+            ($3,'VIKING PRINCESS',   250, 1000, 50, 40, 60, 40, 300)
+        `, ['bpr_'+nanoid(8), 'bpr_'+nanoid(8), 'bpr_'+nanoid(8)]);
+        console.log('✅ FASE 24: Seeded default pricing rules for 3 boats');
+      }
+      console.log('✅ FASE 24: Pricing intelligence tables ready (boat_pricing_rules, pricing_alerts, booking_pricing_audit)');
+    } catch(e) {
+      console.warn('⚠️ FASE 24 (non-critical):', e.message);
+    }
+    // ── END FASE 24 ──────────────────────────────────────────────────────────
+
     // ── END FASE 23 ──────────────────────────────────────────────────────────
 
     console.log('✅ Database schema initialized successfully (all 10 phases + authentication)');
@@ -16147,6 +16223,396 @@ app.get('/api/audit/cancelled-bookings', isAuthenticated, async (req, res) => {
     });
   } catch (err) {
     console.error('Error in cancelled bookings audit:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ANALYTICS & FLEET PROFITABILITY ENDPOINTS
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── GET /api/analytics/bookings-summary ─────────────────────────────────
+app.get('/api/analytics/bookings-summary', isAuthenticated, async (req, res) => {
+  try {
+    const { dateFrom, dateTo, platform, status, is_legacy, captain, boat } = req.query;
+    let params = [], idx = 1, where = '1=1';
+    if (dateFrom)                       { where += ` AND b.booking_date >= $${idx++}`; params.push(dateFrom); }
+    if (dateTo)                         { where += ` AND b.booking_date <= $${idx++}`; params.push(dateTo); }
+    if (platform && platform !== 'all') { where += ` AND LOWER(b.platform) = LOWER($${idx++})`; params.push(platform); }
+    if (status)                         { where += ` AND b.status = $${idx++}`; params.push(status); }
+    if (is_legacy === 'true')           { where += ` AND b.booking_date < '2026-04-27'`; }
+    if (is_legacy === 'false')          { where += ` AND b.booking_date >= '2026-04-27'`; }
+    if (captain)  { where += ` AND b.assigned_captain_id = $${idx++}`; params.push(captain); }
+    if (boat)     { where += ` AND LOWER(COALESCE(b.boat_type,'')) = LOWER($${idx++})`; params.push(boat); }
+
+    const { rows: bookings } = await pool.query(
+      `SELECT b.id, b.status, b.payment_status, b.total_amount::numeric,
+              b.booking_date, b.revenue_recognized, b.is_legacy, b.boat_type,
+              COALESCE(bl.accounting_status, 'not_started') as accounting_status,
+              COALESCE((
+                SELECT SUM(e.amount::numeric) FROM boat_expenses e
+                WHERE e.booking_id = b.id AND COALESCE(e.status,'') != 'cancelled'
+              ), 0) as total_costs
+       FROM bookings b
+       LEFT JOIN LATERAL (
+         SELECT accounting_status FROM bookings_ledger
+         WHERE notes LIKE 'booking:' || b.id || '%'
+         ORDER BY created_at DESC LIMIT 1
+       ) bl ON true
+       WHERE ${where}`, params
+    );
+
+    const EXECUTED   = ['completed','executed','finished','done'];
+    const PENDING    = ['pending','confirmed','scheduled'];
+    const CANCELLED  = ['cancelled','canceled','cancelado'];
+    const INPROGRESS = ['in_progress','active','underway'];
+    const RECONCILED = ['reconciled','closed','locked'];
+
+    const executed     = bookings.filter(b => EXECUTED.includes((b.status||'').toLowerCase()));
+    const pending      = bookings.filter(b => PENDING.includes((b.status||'').toLowerCase()));
+    const cancelled    = bookings.filter(b => CANCELLED.includes((b.status||'').toLowerCase()));
+    const inProgress   = bookings.filter(b => INPROGRESS.includes((b.status||'').toLowerCase()));
+    const nonCancelled = bookings.filter(b => !CANCELLED.includes((b.status||'').toLowerCase()));
+    const reconciled   = bookings.filter(b => RECONCILED.includes((b.accounting_status||'').toLowerCase()));
+    const unreconciled = bookings.filter(b => !RECONCILED.includes((b.accounting_status||'').toLowerCase()));
+
+    const sum = (arr, f = 'total_amount') => arr.reduce((s, b) => s + parseFloat(b[f] || 0), 0);
+
+    const revenueExecuted     = sum(executed);
+    const revenueCancelled    = sum(cancelled);
+    const revenuePending      = sum(pending);
+    const revenueRecognized   = sum(bookings.filter(b => b.revenue_recognized === true));
+    const revenueUnrecognized = sum(nonCancelled.filter(b => !b.revenue_recognized));
+    const totalCosts          = sum(executed, 'total_costs');
+    const grossProfit         = revenueExecuted - totalCosts;
+    const marginPct           = revenueExecuted > 0 ? (grossProfit / revenueExecuted * 100) : 0;
+
+    // Cancelled bookings by month (for trend chart)
+    const cancelledByMonth = {};
+    cancelled.forEach(b => {
+      const m = (b.booking_date || '').slice(0, 7);
+      if (!cancelledByMonth[m]) cancelledByMonth[m] = { count: 0, revenue: 0 };
+      cancelledByMonth[m].count++;
+      cancelledByMonth[m].revenue += parseFloat(b.total_amount || 0);
+    });
+
+    res.json({
+      filter:       { dateFrom, dateTo, platform, status, is_legacy, boat },
+      generated_at: new Date().toISOString(),
+      bookings: {
+        total:        bookings.length,
+        executed:     executed.length,
+        pending:      pending.length,
+        cancelled:    cancelled.length,
+        in_progress:  inProgress.length,
+        reconciled:   reconciled.length,
+        unreconciled: unreconciled.length,
+      },
+      revenue: {
+        operational_real:    Math.round(revenueExecuted     * 100) / 100,
+        cancelled:           Math.round(revenueCancelled    * 100) / 100,
+        pending:             Math.round(revenuePending      * 100) / 100,
+        recognized:          Math.round(revenueRecognized   * 100) / 100,
+        unrecognized:        Math.round(revenueUnrecognized * 100) / 100,
+        total_non_cancelled: Math.round(sum(nonCancelled)   * 100) / 100,
+      },
+      profitability: {
+        total_costs:      Math.round(totalCosts  * 100) / 100,
+        gross_profit:     Math.round(grossProfit * 100) / 100,
+        margin_percent:   Math.round(marginPct   * 10 ) / 10,
+        avg_per_executed: executed.length > 0 ? Math.round(revenueExecuted / executed.length * 100) / 100 : 0,
+      },
+      cancelled_by_month: cancelledByMonth,
+    });
+  } catch (err) {
+    console.error('bookings-summary error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /api/analytics/fleet-profitability ───────────────────────────────
+app.get('/api/analytics/fleet-profitability', isAuthenticated, async (req, res) => {
+  try {
+    const { dateFrom, dateTo } = req.query;
+    let params = [], idx = 1, dateFilter = '1=1';
+    if (dateFrom) { dateFilter += ` AND b.booking_date >= $${idx++}`; params.push(dateFrom); }
+    if (dateTo)   { dateFilter += ` AND b.booking_date <= $${idx++}`; params.push(dateTo); }
+
+    const { rows: byBoat } = await pool.query(
+      `SELECT
+         COALESCE(b.boat_type, 'Sin asignar') as boat_type,
+         COUNT(*) as total_bookings,
+         SUM(CASE WHEN LOWER(b.status) IN ('completed','executed','finished','done') THEN 1 ELSE 0 END) as executed_count,
+         SUM(CASE WHEN LOWER(b.status) IN ('confirmed','pending','scheduled')        THEN 1 ELSE 0 END) as pending_count,
+         SUM(CASE WHEN LOWER(b.status) IN ('cancelled','canceled','cancelado')       THEN 1 ELSE 0 END) as cancelled_count,
+         SUM(b.total_amount::numeric) as total_revenue,
+         SUM(CASE WHEN LOWER(b.status) IN ('completed','executed','finished','done')
+             THEN b.total_amount::numeric ELSE 0 END) as executed_revenue,
+         SUM(CASE WHEN LOWER(b.status) IN ('cancelled','canceled','cancelado')
+             THEN b.total_amount::numeric ELSE 0 END) as cancelled_revenue,
+         AVG(CASE WHEN LOWER(b.status) NOT IN ('cancelled','canceled','cancelado')
+             THEN b.total_amount::numeric END) as avg_booking_value,
+         SUM(COALESCE((
+           SELECT SUM(e.amount::numeric) FROM boat_expenses e
+           WHERE e.booking_id = b.id AND COALESCE(e.status,'') != 'cancelled'
+         ), 0)) as total_costs
+       FROM bookings b
+       WHERE ${dateFilter}
+       GROUP BY b.boat_type
+       ORDER BY total_revenue DESC`, params
+    );
+
+    const { rows: pricingRules } = await pool.query(
+      `SELECT * FROM boat_pricing_rules WHERE active = true`
+    ).catch(() => ({ rows: [] }));
+    const rulesMap = {};
+    pricingRules.forEach(r => { rulesMap[r.boat_name] = r; });
+
+    const boats = byBoat.map(boat => {
+      const rule      = rulesMap[boat.boat_type] || {};
+      const revenue   = parseFloat(boat.executed_revenue || 0);
+      const costs     = parseFloat(boat.total_costs || 0);
+      const profit    = revenue - costs;
+      const margin    = revenue > 0 ? (profit / revenue * 100) : 0;
+      const execCnt   = parseInt(boat.executed_count || 0);
+      const avgVal    = parseFloat(boat.avg_booking_value || 0);
+      const minMargin = parseFloat(rule.target_profit_margin || 20);
+      const minProfit = parseFloat(rule.minimum_profit_per_booking || 0);
+      const minTotal  = parseFloat(rule.minimum_total_booking || 0);
+
+      const alerts = [];
+      if (profit < 0 && execCnt > 0)
+        alerts.push({ type: 'NEGATIVE_PROFIT', severity: 'critical',
+          message: `Pérdida neta: -$${Math.abs(profit).toFixed(0)}`, expected: 0, actual: profit });
+      if (minProfit > 0 && execCnt > 0 && profit / execCnt < minProfit)
+        alerts.push({ type: 'LOW_PROFIT_PER_BOOKING', severity: 'error',
+          message: `Profit/booking $${(profit/execCnt).toFixed(0)} < mínimo $${minProfit}`,
+          expected: minProfit, actual: execCnt > 0 ? profit/execCnt : 0 });
+      if (minMargin > 0 && margin < minMargin && execCnt > 0)
+        alerts.push({ type: 'LOW_MARGIN', severity: 'warning',
+          message: `Margen ${margin.toFixed(1)}% < objetivo ${minMargin}%`,
+          expected: minMargin, actual: margin });
+      if (minTotal > 0 && avgVal < minTotal && execCnt > 0)
+        alerts.push({ type: 'BELOW_MINIMUM_BOOKING', severity: 'warning',
+          message: `Promedio $${avgVal.toFixed(0)} < mínimo $${minTotal}`,
+          expected: minTotal, actual: avgVal });
+
+      let health = 'healthy';
+      if (profit < 0 && execCnt > 0) health = 'loss';
+      else if (alerts.length > 0) health = 'warning';
+
+      return {
+        boat_type:          boat.boat_type,
+        total_bookings:     parseInt(boat.total_bookings),
+        executed_bookings:  execCnt,
+        pending_bookings:   parseInt(boat.pending_count || 0),
+        cancelled_bookings: parseInt(boat.cancelled_count || 0),
+        total_revenue:      Math.round(parseFloat(boat.total_revenue || 0) * 100) / 100,
+        executed_revenue:   Math.round(revenue * 100) / 100,
+        cancelled_revenue:  Math.round(parseFloat(boat.cancelled_revenue || 0) * 100) / 100,
+        total_costs:        Math.round(costs * 100) / 100,
+        gross_profit:       Math.round(profit * 100) / 100,
+        margin_percent:     Math.round(margin * 10) / 10,
+        avg_booking_value:  Math.round(avgVal * 100) / 100,
+        profit_per_booking: execCnt > 0 ? Math.round(profit / execCnt * 100) / 100 : 0,
+        health,
+        pricing_rule: rule.boat_name ? {
+          minimum_hourly_rate:       parseFloat(rule.minimum_hourly_rate || 0),
+          minimum_total_booking:     parseFloat(rule.minimum_total_booking || 0),
+          target_profit_margin:      parseFloat(rule.target_profit_margin || 0),
+          minimum_profit_per_booking:parseFloat(rule.minimum_profit_per_booking || 0),
+          fuel_cost_per_hour:        parseFloat(rule.fuel_cost_per_hour || 0),
+          captain_cost_per_hour:     parseFloat(rule.captain_cost_per_hour || 0),
+        } : null,
+        alert_count: alerts.length,
+        alerts,
+      };
+    });
+
+    const totRev    = boats.reduce((s,b) => s + b.executed_revenue,   0);
+    const totProfit = boats.reduce((s,b) => s + b.gross_profit,        0);
+    const totCosts  = boats.reduce((s,b) => s + b.total_costs,         0);
+    const totCanc   = boats.reduce((s,b) => s + b.cancelled_revenue,   0);
+
+    res.json({
+      generated_at: new Date().toISOString(),
+      filter: { dateFrom, dateTo },
+      summary: {
+        total_boats:         boats.length,
+        profitable_boats:    boats.filter(b => b.gross_profit > 0).length,
+        loss_boats:          boats.filter(b => b.gross_profit < 0 && b.executed_bookings > 0).length,
+        boats_with_alerts:   boats.filter(b => b.alert_count > 0).length,
+        total_revenue:       Math.round(totRev    * 100) / 100,
+        total_profit:        Math.round(totProfit * 100) / 100,
+        total_costs:         Math.round(totCosts  * 100) / 100,
+        cancelled_revenue:   Math.round(totCanc   * 100) / 100,
+        avg_margin_percent:  totRev > 0 ? Math.round(totProfit / totRev * 1000) / 10 : 0,
+        total_alerts:        boats.reduce((s,b) => s + b.alert_count, 0),
+      },
+      boats,
+    });
+  } catch (err) {
+    console.error('fleet-profitability error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /api/analytics/boat-profitability/:boat_name ─────────────────────
+app.get('/api/analytics/boat-profitability/:boat_name', isAuthenticated, async (req, res) => {
+  try {
+    const boatName = decodeURIComponent(req.params.boat_name);
+    const { dateFrom, dateTo } = req.query;
+    let params = [boatName], idx = 2, dateFilter = '';
+    if (dateFrom) { dateFilter += ` AND b.booking_date >= $${idx++}`; params.push(dateFrom); }
+    if (dateTo)   { dateFilter += ` AND b.booking_date <= $${idx++}`; params.push(dateTo); }
+
+    const { rows: bookings } = await pool.query(
+      `SELECT b.id, b.customer_name, b.booking_date, b.status, b.total_amount::numeric,
+              b.num_guests, b.platform, b.revenue_recognized,
+              COALESCE((
+                SELECT SUM(e.amount::numeric) FROM boat_expenses e
+                WHERE e.booking_id = b.id AND COALESCE(e.status,'') != 'cancelled'
+              ), 0) as total_costs
+       FROM bookings b
+       WHERE LOWER(b.boat_type) = LOWER($1) ${dateFilter}
+       ORDER BY b.booking_date DESC`, params
+    );
+
+    const { rows: ruleRows } = await pool.query(
+      `SELECT * FROM boat_pricing_rules WHERE LOWER(boat_name) = LOWER($1) AND active = true LIMIT 1`,
+      [boatName]
+    ).catch(() => ({ rows: [] }));
+    const rule = ruleRows[0] || null;
+
+    const alerts = [];
+    const enriched = bookings.map(bk => {
+      const rev   = parseFloat(bk.total_amount || 0);
+      const costs = parseFloat(bk.total_costs  || 0);
+      const profit = rev - costs;
+      const margin = rev > 0 ? profit / rev * 100 : 0;
+      const minTotal  = rule ? parseFloat(rule.minimum_total_booking || 0)      : 0;
+      const minProfit = rule ? parseFloat(rule.minimum_profit_per_booking || 0) : 0;
+      const targetMgn = rule ? parseFloat(rule.target_profit_margin || 0)       : 0;
+      const bkAlerts  = [];
+
+      if (profit < 0)
+        bkAlerts.push({ type: 'NEGATIVE_PROFIT',      severity: 'critical' });
+      else if (minProfit > 0 && profit < minProfit)
+        bkAlerts.push({ type: 'LOW_PROFIT',            severity: 'error',   expected: minProfit, variance: minProfit - profit });
+      else if (targetMgn > 0 && margin < targetMgn)
+        bkAlerts.push({ type: 'LOW_MARGIN',            severity: 'warning', expected_margin: targetMgn });
+      if (minTotal > 0 && rev < minTotal)
+        bkAlerts.push({ type: 'BELOW_MINIMUM_BOOKING', severity: 'warning', expected: minTotal, variance: minTotal - rev });
+
+      if (bkAlerts.length) alerts.push({ booking_id: bk.id, customer: bk.customer_name, date: bk.booking_date, alerts: bkAlerts, revenue: rev, profit });
+
+      return {
+        id: bk.id, customer: bk.customer_name, date: bk.booking_date, status: bk.status,
+        revenue: rev, costs, profit, margin: Math.round(margin * 10) / 10,
+        guests: bk.num_guests, platform: bk.platform, revenue_recognized: bk.revenue_recognized,
+        alert_count: bkAlerts.length,
+      };
+    });
+
+    res.json({ boat_name: boatName, pricing_rule: rule, total_bookings: bookings.length, bookings: enriched, alerts });
+  } catch (err) {
+    console.error('boat-profitability error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /api/analytics/pricing-alerts ────────────────────────────────────
+app.get('/api/analytics/pricing-alerts', isAuthenticated, async (req, res) => {
+  try {
+    const { acknowledged } = req.query;
+    let where = '1=1';
+    if (acknowledged === 'false') where += ' AND acknowledged = false';
+    if (acknowledged === 'true')  where += ' AND acknowledged = true';
+    const { rows } = await pool.query(
+      `SELECT * FROM pricing_alerts WHERE ${where} ORDER BY created_at DESC LIMIT 200`
+    );
+    res.json({ total: rows.length, alerts: rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/analytics/pricing-alerts/:id/acknowledge ───────────────────
+app.post('/api/analytics/pricing-alerts/:id/acknowledge', isAuthenticated, async (req, res) => {
+  try {
+    const { acknowledged_by } = req.body;
+    await pool.query(
+      `UPDATE pricing_alerts SET acknowledged=true, acknowledged_by=$1, acknowledged_at=NOW() WHERE id=$2`,
+      [acknowledged_by || 'system', req.params.id]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /api/boat-pricing-rules ───────────────────────────────────────────
+app.get('/api/boat-pricing-rules', isAuthenticated, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`SELECT * FROM boat_pricing_rules ORDER BY boat_name`);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/boat-pricing-rules ──────────────────────────────────────────
+app.post('/api/boat-pricing-rules', isAuthenticated, async (req, res) => {
+  try {
+    const { nanoid } = await import('nanoid');
+    const { boat_id, boat_name, minimum_hourly_rate, minimum_total_booking,
+            fuel_cost_per_hour, captain_cost_per_hour, cleaning_cost_estimated,
+            target_profit_margin, minimum_profit_per_booking, created_by } = req.body;
+    if (!boat_name) return res.status(400).json({ error: 'boat_name requerido' });
+    const id = 'bpr_' + nanoid(8);
+    const { rows } = await pool.query(
+      `INSERT INTO boat_pricing_rules
+         (id, boat_id, boat_name, minimum_hourly_rate, minimum_total_booking,
+          fuel_cost_per_hour, captain_cost_per_hour, cleaning_cost_estimated,
+          target_profit_margin, minimum_profit_per_booking, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+      [id, boat_id||null, boat_name,
+       parseFloat(minimum_hourly_rate||0), parseFloat(minimum_total_booking||0),
+       parseFloat(fuel_cost_per_hour||0), parseFloat(captain_cost_per_hour||0),
+       parseFloat(cleaning_cost_estimated||0), parseFloat(target_profit_margin||30),
+       parseFloat(minimum_profit_per_booking||0), created_by||null]
+    );
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── PUT /api/boat-pricing-rules/:id ──────────────────────────────────────
+app.put('/api/boat-pricing-rules/:id', isAuthenticated, async (req, res) => {
+  try {
+    const { minimum_hourly_rate, minimum_total_booking, fuel_cost_per_hour,
+            captain_cost_per_hour, cleaning_cost_estimated, target_profit_margin,
+            minimum_profit_per_booking, active } = req.body;
+    const { rows } = await pool.query(
+      `UPDATE boat_pricing_rules SET
+         minimum_hourly_rate        = COALESCE($1, minimum_hourly_rate),
+         minimum_total_booking      = COALESCE($2, minimum_total_booking),
+         fuel_cost_per_hour         = COALESCE($3, fuel_cost_per_hour),
+         captain_cost_per_hour      = COALESCE($4, captain_cost_per_hour),
+         cleaning_cost_estimated    = COALESCE($5, cleaning_cost_estimated),
+         target_profit_margin       = COALESCE($6, target_profit_margin),
+         minimum_profit_per_booking = COALESCE($7, minimum_profit_per_booking),
+         active                     = COALESCE($8, active),
+         updated_at                 = NOW()
+       WHERE id = $9 RETURNING *`,
+      [minimum_hourly_rate, minimum_total_booking, fuel_cost_per_hour,
+       captain_cost_per_hour, cleaning_cost_estimated, target_profit_margin,
+       minimum_profit_per_booking, active, req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Rule not found' });
+    res.json(rows[0]);
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });

@@ -1,0 +1,351 @@
+Actúa como Principal Financial Systems Architect, Revenue Intelligence Engineer, Maritime Operations Analyst y BI Product Engineer para gestion.nadakiexcursions.
+
+OBJETIVO:
+Rediseñar el dashboard de Bookings y los KPIs financieros para separar correctamente:
+- bookings ejecutados
+- bookings cancelados
+- bookings pendientes
+- bookings completados
+- revenue operativo real
+- revenue perdido
+- revenue cancelado
+- rentabilidad mínima esperada por barco/hora
+
+Además, crear un sistema de alertas de pricing/rentabilidad para detectar bookings vendidos por debajo del mínimo permitido.
+
+==================================================
+FASE 1 — CORREGIR KPIs DE BOOKINGS
+==================================================
+
+PROBLEMA:
+Actualmente el dashboard muestra:
+
+TOTAL BOOKINGS: 25
+ACTUALES: 25
+INGRESOS TOTALES: 20,070.19
+SIN CUADRAR: 25
+
+Pero NO diferencia:
+- cancelados
+- completados
+- pendientes
+- ejecutados
+- revenue cancelado
+- revenue realizado
+
+Esto impide saber la realidad operativa del negocio.
+
+==================================================
+1. NUEVOS KPIs OBLIGATORIOS
+==================================================
+
+Reemplazar el summary actual por:
+
+A) BOOKINGS TOTALES
+Todos los bookings del filtro actual.
+
+B) BOOKINGS EJECUTADOS
+status IN:
+- completed
+- executed
+- finished
+
+C) BOOKINGS PENDIENTES
+status IN:
+- pending
+- confirmed
+- scheduled
+
+D) BOOKINGS CANCELADOS
+status IN:
+- cancelled
+- canceled
+- cancelado
+
+E) BOOKINGS EN PROCESO
+status IN:
+- in_progress
+- active
+- underway
+
+F) BOOKINGS CUADRADOS
+accounting_status IN:
+- reconciled
+- closed
+
+G) BOOKINGS SIN CUADRAR
+accounting_status NOT IN:
+- reconciled
+- closed
+
+==================================================
+2. KPIs FINANCIEROS NUEVOS
+==================================================
+
+Agregar cards:
+
+A) REVENUE OPERATIVO REAL
+Solo bookings ejecutados/completados.
+
+B) REVENUE CANCELADO
+Suma de bookings cancelados.
+
+C) REVENUE PENDIENTE
+Bookings confirmados no ejecutados.
+
+D) REVENUE RECONOCIDO
+Revenue ya reconocido contablemente.
+
+E) REVENUE NO RECONOCIDO
+Bookings cobrados pero no completados.
+
+F) PROFIT OPERATIVO
+Revenue operativo real - costos reales.
+
+G) COSTO OPERATIVO TOTAL
+Fuel + Captain + Ice + Cleaning + etc.
+
+H) MARGEN OPERATIVO %
+(Profit / Revenue operativo real)
+
+==================================================
+3. TODOS LOS KPIs DEBEN RESPETAR FILTROS
+==================================================
+
+Los KPIs deben recalcularse según:
+- rango de fechas
+- barco
+- capitán
+- status
+- plataforma
+- periodo
+- include_cancelled
+
+Ejemplo:
+“May 2026”
+Debe mostrar:
+- cuántos bookings cancelados hubo en mayo
+- revenue perdido por cancelaciones
+- bookings realmente ejecutados
+- profit real del mes
+
+==================================================
+FASE 2 — RENTABILIDAD POR BARCO
+==================================================
+
+Crear nueva tabla:
+boat_pricing_rules
+
+Campos:
+- id
+- boat_id
+- boat_name
+- minimum_hourly_rate
+- minimum_total_booking
+- fuel_cost_per_hour_estimated
+- captain_cost_per_hour
+- cleaning_cost_estimated
+- target_profit_margin
+- minimum_profit_per_booking
+- active
+- created_by
+- created_at
+
+==================================================
+4. MOTOR DE RENTABILIDAD
+==================================================
+
+Crear cálculo por booking:
+
+booking_revenue
+- fuel_cost
+- captain_cost
+- cleaning_cost
+- platform_fee
+- total_cost
+- gross_profit
+- margin_percent
+- revenue_per_hour
+- profit_per_hour
+
+==================================================
+5. ALERTAS DE PRICING
+==================================================
+
+Crear sistema:
+pricing_alerts
+
+Generar alertas si:
+
+A) booking sold below minimum hourly rate
+B) booking sold below minimum total booking
+C) profit margin below target
+D) negative profit
+E) fuel unusually high
+F) captain cost exceeds threshold
+G) heavy discount detected
+
+==================================================
+6. EJEMPLO
+==================================================
+
+Boat:
+VIKING PRINCESS
+
+Rules:
+minimum_hourly_rate = 250
+minimum_profit_per_booking = 300
+
+Booking:
+5 hours
+total sold = 700
+
+Revenue/hour:
+700 / 5 = 140
+
+Debe generar:
+LOW_PRICE_ALERT
+
+Y mostrar:
+- expected minimum
+- actual sold
+- variance
+- estimated lost revenue
+
+==================================================
+7. AUDITORÍA DE AUTORIZACIÓN
+==================================================
+
+Crear tabla:
+booking_pricing_audit
+
+Campos:
+- booking_id
+- boat_id
+- sold_price
+- expected_price
+- variance
+- discount_amount
+- discount_percent
+- approved_by
+- approval_reason
+- override_authorized
+- created_at
+
+==================================================
+8. WORKFLOW DE OVERRIDE
+==================================================
+
+Si booking está por debajo del mínimo:
+
+A) Mostrar alerta roja:
+“Booking below minimum profitability threshold”
+
+B) Requerir:
+- authorized_by
+- override_reason
+
+C) Guardar auditoría.
+
+==================================================
+9. DASHBOARD NUEVO — FLEET PROFITABILITY
+==================================================
+
+Crear nueva sección:
+Finanzas → Fleet Profitability
+
+Debe mostrar tabla:
+
+Boat | Bookings | Revenue | Costs | Profit | Margin | Avg/hour | Cancelled | Alerts
+
+Con colores:
+- rojo = pérdida
+- amarillo = margen bajo
+- verde = saludable
+
+==================================================
+10. TABLA DETALLADA DE BOOKINGS
+==================================================
+
+Agregar columnas:
+
+- Hours
+- Revenue/hour
+- Cost/hour
+- Profit/hour
+- Margin %
+- Pricing Alert
+- Authorized Discount
+- Approved By
+
+==================================================
+11. ALERTAS AUTOMÁTICAS
+==================================================
+
+Ejemplos:
+
+🔴 NEGATIVE PROFIT
+🟠 BELOW MINIMUM RATE
+🟡 HIGH FUEL COST
+🟣 HEAVY DISCOUNT
+🔵 MANUAL OVERRIDE
+🟢 HEALTHY BOOKING
+
+==================================================
+12. API NUEVA
+==================================================
+
+Crear endpoints:
+
+GET /api/analytics/bookings-summary
+GET /api/analytics/fleet-profitability
+GET /api/analytics/pricing-alerts
+GET /api/analytics/boat-profitability/:boat_id
+
+==================================================
+13. VALIDACIÓN OBLIGATORIA
+==================================================
+
+Ejecutar pruebas:
+
+A) bookings cancelados no cuentan como ejecutados
+B) revenue cancelado separado
+C) revenue operativo correcto
+D) margin calculations correctos
+E) alertas aparecen correctamente
+F) override requiere autorización
+G) filtros recalculan KPIs correctamente
+
+==================================================
+14. UI / UX
+==================================================
+
+Diseño:
+- enterprise grade
+- visual financiero tipo BI
+- colores claros de riesgo
+- sortable tables
+- filtros rápidos
+- export CSV/XLSX
+- gráficos:
+  - revenue by boat
+  - cancellations by month
+  - margin by boat
+  - profit trend
+  - pricing alerts
+
+==================================================
+15. ENTREGABLE FINAL
+==================================================
+
+Reportar:
+1. Nuevos KPIs implementados
+2. Nuevas tablas creadas
+3. Nuevos endpoints
+4. Alertas implementadas
+5. Reglas de pricing configurables
+6. Resultado pruebas
+7. Ejemplo real de booking con alerta
+8. Confirmación de que cancelados ya no afectan métricas operativas
+9. Capturas o JSON de métricas nuevas
+10. Riesgos pendientes

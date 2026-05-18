@@ -1,0 +1,905 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fleet Profitability — Nadaki Excursions</title>
+    <meta name="description" content="Dashboard de rentabilidad por barco, alertas de pricing, y configuración de reglas mínimas de rentabilidad.">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f1f5f9; color: #1e293b; min-height: 100vh; }
+
+        /* ── Header ── */
+        .page-header {
+            background: #0f172a; color: #fff;
+            padding: 16px 28px;
+            display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;
+            position: sticky; top: 0; z-index: 100;
+        }
+        .page-header h1 { font-size: 18px; font-weight: 800; letter-spacing: -.3px; }
+        .page-header p  { font-size: 12px; color: #94a3b8; margin-top: 2px; }
+        .header-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+        /* ── Buttons ── */
+        .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 7px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; text-decoration: none; transition: opacity .15s; }
+        .btn:hover { opacity: .85; }
+        .btn-primary { background: #7c3aed; color: #fff; }
+        .btn-slate   { background: #334155; color: #e2e8f0; border: 1px solid #475569; }
+        .btn-ghost   { background: transparent; color: #94a3b8; border: 1px solid #334155; }
+        .btn-sm      { padding: 5px 12px; font-size: 12px; border-radius: 6px; }
+        .btn-green   { background: #16a34a; color: #fff; }
+        .btn-amber   { background: #d97706; color: #fff; }
+
+        /* ── Filters ── */
+        .filters-bar {
+            background: #fff; border-bottom: 1px solid #e2e8f0;
+            padding: 14px 28px; display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end;
+        }
+        .filter-group { display: flex; flex-direction: column; gap: 4px; min-width: 150px; }
+        .filter-group label { font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: .3px; }
+        .filter-group input, .filter-group select {
+            padding: 7px 10px; border: 1px solid #d1d5db; border-radius: 6px;
+            font-size: 13px; color: #1e293b; background: #fff;
+        }
+        .filter-group input:focus, .filter-group select:focus { outline: 2px solid #7c3aed; border-color: transparent; }
+        .period-btns { display: flex; gap: 4px; align-items: flex-end; }
+        .period-btn { padding: 7px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; border: 1px solid #d1d5db; background: #fff; color: #475569; transition: all .15s; }
+        .period-btn.active { background: #0f172a; color: #fff; border-color: #0f172a; }
+
+        /* ── Summary KPIs ── */
+        .summary-section { background: #0f172a; padding: 0 28px 20px; }
+        .summary-grid { display: flex; gap: 12px; flex-wrap: wrap; padding-top: 16px; }
+        .summary-card {
+            background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1);
+            border-radius: 10px; padding: 14px 18px; flex: 1; min-width: 140px;
+        }
+        .summary-card .s-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: #94a3b8; margin-bottom: 4px; }
+        .summary-card .s-value { font-size: 22px; font-weight: 800; color: #f8fafc; }
+        .summary-card.green  .s-value { color: #4ade80; }
+        .summary-card.red    .s-value { color: #f87171; }
+        .summary-card.amber  .s-value { color: #fbbf24; }
+        .summary-card.sky    .s-value { color: #38bdf8; }
+        .summary-card.purple .s-value { color: #c084fc; }
+        .summary-card .s-sub { font-size: 11px; color: #64748b; margin-top: 3px; }
+
+        /* ── Fleet Table ── */
+        .section { margin: 20px 28px; }
+        .section-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+        .section-title { font-size: 16px; font-weight: 800; color: #0f172a; }
+        .section-sub { font-size: 12px; color: #64748b; margin-top: 1px; }
+
+        .table-wrap { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; }
+        table { width: 100%; border-collapse: collapse; }
+        thead th {
+            background: #f8fafc; padding: 10px 14px; text-align: left;
+            font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase;
+            letter-spacing: .4px; border-bottom: 1px solid #e2e8f0; white-space: nowrap;
+            cursor: pointer; user-select: none;
+        }
+        thead th:hover { background: #f1f5f9; }
+        thead th.sorted-asc::after  { content: ' ▲'; color: #7c3aed; }
+        thead th.sorted-desc::after { content: ' ▼'; color: #7c3aed; }
+        thead th.num { text-align: right; }
+        tbody tr { border-bottom: 1px solid #f1f5f9; transition: background .1s; }
+        tbody tr:last-child { border-bottom: none; }
+        tbody tr:hover { background: #fafbfc; }
+        tbody td { padding: 12px 14px; font-size: 13px; color: #334155; vertical-align: middle; }
+        tbody td.num { text-align: right; font-variant-numeric: tabular-nums; }
+        .loading-row td { text-align: center; padding: 40px; color: #94a3b8; }
+
+        /* ── Health chips ── */
+        .chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+        .chip-healthy { background: #dcfce7; color: #15803d; }
+        .chip-warning { background: #fef9c3; color: #854d0e; }
+        .chip-loss    { background: #fee2e2; color: #dc2626; }
+        .chip-alert   { background: #fef3c7; color: #92400e; }
+
+        /* ── Alert row highlight ── */
+        .row-loss    { background: #fff5f5 !important; }
+        .row-warning { background: #fffbeb !important; }
+        .row-loss:hover    { background: #fee2e2 !important; }
+        .row-warning:hover { background: #fef3c7 !important; }
+
+        /* ── Value colors ── */
+        .val-positive { color: #16a34a; font-weight: 700; }
+        .val-negative { color: #dc2626; font-weight: 700; }
+        .val-neutral  { color: #0284c7; font-weight: 700; }
+        .val-warn     { color: #d97706; font-weight: 600; }
+
+        /* ── Alert badges ── */
+        .alert-dot { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; font-size: 11px; font-weight: 700; }
+        .alert-dot.critical { background: #dc2626; color: #fff; }
+        .alert-dot.error    { background: #ea580c; color: #fff; }
+        .alert-dot.warning  { background: #d97706; color: #fff; }
+        .alert-dot.none     { background: #dcfce7; color: #15803d; }
+
+        /* ── Charts ── */
+        .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 28px; }
+        .chart-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; }
+        .chart-title { font-size: 14px; font-weight: 700; color: #0f172a; margin-bottom: 16px; }
+        .chart-sub   { font-size: 11px; color: #94a3b8; font-weight: 400; margin-left: 4px; }
+        canvas { width: 100% !important; }
+
+        /* ── Pricing Rules ── */
+        .rules-table tbody td { padding: 10px 14px; }
+        .input-inline { width: 100%; padding: 5px 8px; border: 1px solid #d1d5db; border-radius: 5px; font-size: 12px; }
+        .input-inline:focus { outline: 2px solid #7c3aed; border-color: transparent; }
+
+        /* ── Alert List ── */
+        .alert-item {
+            display: flex; align-items: flex-start; gap: 12px;
+            padding: 12px 16px; border-radius: 8px; margin-bottom: 8px;
+            border: 1px solid;
+        }
+        .alert-item.critical { background: #fef2f2; border-color: #fecaca; }
+        .alert-item.error    { background: #fff7ed; border-color: #fed7aa; }
+        .alert-item.warning  { background: #fffbeb; border-color: #fde68a; }
+        .alert-icon { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; flex-shrink: 0; }
+        .alert-icon.critical { background: #dc2626; color: #fff; }
+        .alert-icon.error    { background: #ea580c; color: #fff; }
+        .alert-icon.warning  { background: #d97706; color: #fff; }
+        .alert-body .a-title { font-size: 13px; font-weight: 700; color: #1e293b; }
+        .alert-body .a-meta  { font-size: 11px; color: #64748b; margin-top: 2px; }
+
+        /* ── Modal ── */
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 999; align-items: center; justify-content: center; }
+        .modal-overlay.open { display: flex; }
+        .modal { background: #fff; border-radius: 12px; padding: 28px; width: 540px; max-width: 95vw; max-height: 90vh; overflow-y: auto; }
+        .modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+        .modal-title { font-size: 18px; font-weight: 800; color: #0f172a; }
+        .modal-close { background: none; border: none; font-size: 22px; cursor: pointer; color: #94a3b8; line-height: 1; }
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        .form-field { display: flex; flex-direction: column; gap: 5px; }
+        .form-field label { font-size: 11px; font-weight: 700; text-transform: uppercase; color: #64748b; }
+        .form-field input { padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 7px; font-size: 13px; }
+        .form-field input:focus { outline: 2px solid #7c3aed; border-color: transparent; }
+        .form-field.full { grid-column: 1 / -1; }
+        .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+
+        /* ── Misc ── */
+        .empty-box { text-align: center; padding: 40px; color: #94a3b8; font-size: 13px; }
+        .badge-count { display: inline-flex; align-items: center; justify-content: center; background: #dc2626; color: #fff; border-radius: 10px; font-size: 10px; font-weight: 700; padding: 2px 6px; margin-left: 4px; }
+        .last-updated { font-size: 11px; color: #94a3b8; }
+        .section-tabs { display: flex; gap: 0; border-bottom: 2px solid #e2e8f0; margin-bottom: 16px; }
+        .tab-btn { padding: 8px 18px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; background: none; color: #64748b; border-bottom: 2px solid transparent; margin-bottom: -2px; }
+        .tab-btn.active { color: #7c3aed; border-bottom-color: #7c3aed; }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+
+        @media (max-width: 900px) {
+            .charts-grid { grid-template-columns: 1fr; }
+            .section, .charts-grid { margin: 14px 14px; }
+            .filters-bar { padding: 12px 14px; }
+            .summary-section { padding: 0 14px 16px; }
+            .form-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ── Global Nav ── -->
+
+<div class="page-header">
+    <div>
+        <h1>Fleet Profitability — Análisis de Rentabilidad</h1>
+        <p>Revenue, costos, profit y alertas de pricing por barco</p>
+    </div>
+    <div class="header-actions">
+        <a href="/bookings.html" class="btn btn-ghost btn-sm">Bookings</a>
+        <button class="btn btn-ghost btn-sm" onclick="exportCSV()" data-testid="button-export-csv">Exportar CSV</button>
+        <button class="btn btn-primary btn-sm" onclick="openAddRuleModal()" data-testid="button-add-rule">+ Pricing Rule</button>
+    </div>
+</div>
+
+<!-- ── Filters ── -->
+<div class="filters-bar">
+    <div class="filter-group">
+        <label>Desde</label>
+        <input type="date" id="f-from" data-testid="input-date-from">
+    </div>
+    <div class="filter-group">
+        <label>Hasta</label>
+        <input type="date" id="f-to" data-testid="input-date-to">
+    </div>
+    <div class="period-btns" style="align-items:flex-end;">
+        <button class="period-btn" onclick="setPeriod(7)"   data-testid="btn-7d">7d</button>
+        <button class="period-btn" onclick="setPeriod(30)"  data-testid="btn-30d">30d</button>
+        <button class="period-btn active" onclick="setPeriod(90)" data-testid="btn-90d">90d</button>
+        <button class="period-btn" onclick="setPeriod(365)" data-testid="btn-365d">1a</button>
+        <button class="period-btn" onclick="setPeriod(0)"   data-testid="btn-all">Todo</button>
+    </div>
+    <div style="display:flex;align-items:flex-end;gap:6px;">
+        <button class="btn btn-primary btn-sm" onclick="loadAll()" data-testid="button-apply-filters">Actualizar</button>
+    </div>
+    <div class="last-updated" id="last-updated" style="align-self:flex-end;"></div>
+</div>
+
+<!-- ── Summary KPIs ── -->
+<div class="summary-section">
+    <div class="summary-grid" id="summary-grid">
+        <div class="summary-card"><div class="s-label">Barcos</div><div class="s-value" id="s-boats">—</div></div>
+        <div class="summary-card green"><div class="s-label">Rentables</div><div class="s-value" id="s-profitable">—</div><div class="s-sub" id="s-profitable-sub"></div></div>
+        <div class="summary-card red"><div class="s-label">Con Pérdida</div><div class="s-value" id="s-loss">—</div></div>
+        <div class="summary-card sky"><div class="s-label">Revenue Operativo</div><div class="s-value" id="s-revenue">—</div></div>
+        <div class="summary-card green"><div class="s-label">Profit Total</div><div class="s-value" id="s-profit">—</div></div>
+        <div class="summary-card amber"><div class="s-label">Rev. Cancelado</div><div class="s-value" id="s-cancelled">—</div><div class="s-sub">Oportunidad perdida</div></div>
+        <div class="summary-card purple"><div class="s-label">Margen Promedio</div><div class="s-value" id="s-margin">—</div></div>
+        <div class="summary-card red"><div class="s-label">Total Alertas</div><div class="s-value" id="s-alerts">—</div></div>
+    </div>
+</div>
+
+<!-- ── Main Content ── -->
+<div class="section">
+    <div class="section-tabs">
+        <button class="tab-btn active" onclick="switchTab('fleet')"   data-testid="tab-fleet">Flota</button>
+        <button class="tab-btn"        onclick="switchTab('alerts')"  data-testid="tab-alerts">Alertas <span class="badge-count" id="alert-badge" style="display:none">0</span></button>
+        <button class="tab-btn"        onclick="switchTab('rules')"   data-testid="tab-rules">Pricing Rules</button>
+        <button class="tab-btn"        onclick="switchTab('charts')"  data-testid="tab-charts">Gráficos</button>
+    </div>
+
+    <!-- TAB: Fleet Table -->
+    <div class="tab-panel active" id="tab-fleet">
+        <div class="section-header">
+            <div>
+                <div class="section-title">Rentabilidad por Barco</div>
+                <div class="section-sub">Haz clic en un encabezado para ordenar</div>
+            </div>
+        </div>
+        <div class="table-wrap">
+            <table id="fleet-table">
+                <thead>
+                    <tr>
+                        <th onclick="sortTable('boat_type')">Barco</th>
+                        <th class="num" onclick="sortTable('total_bookings')">Bookings</th>
+                        <th class="num" onclick="sortTable('executed_bookings')">Ejecutados</th>
+                        <th class="num" onclick="sortTable('cancelled_bookings')">Cancelados</th>
+                        <th class="num" onclick="sortTable('executed_revenue')">Revenue Op.</th>
+                        <th class="num" onclick="sortTable('total_costs')">Costos</th>
+                        <th class="num" onclick="sortTable('gross_profit')">Profit</th>
+                        <th class="num" onclick="sortTable('margin_percent')">Margen %</th>
+                        <th class="num" onclick="sortTable('avg_booking_value')">Prom/booking</th>
+                        <th class="num" onclick="sortTable('cancelled_revenue')">Rev. Canc.</th>
+                        <th>Estado</th>
+                        <th class="num" onclick="sortTable('alert_count')">Alertas</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="fleet-tbody">
+                    <tr class="loading-row"><td colspan="13">Cargando datos de flota...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- TAB: Alerts -->
+    <div class="tab-panel" id="tab-alerts">
+        <div class="section-header">
+            <div>
+                <div class="section-title">Alertas de Pricing</div>
+                <div class="section-sub">Bookings vendidos por debajo del mínimo de rentabilidad</div>
+            </div>
+        </div>
+        <div id="alerts-container">
+            <div class="empty-box">Cargando alertas...</div>
+        </div>
+    </div>
+
+    <!-- TAB: Pricing Rules -->
+    <div class="tab-panel" id="tab-rules">
+        <div class="section-header">
+            <div>
+                <div class="section-title">Reglas de Pricing por Barco</div>
+                <div class="section-sub">Define tarifas mínimas, costos estimados y margen objetivo por embarcación</div>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="openAddRuleModal()" data-testid="button-add-rule-tab">+ Nueva Regla</button>
+        </div>
+        <div class="table-wrap">
+            <table class="rules-table">
+                <thead>
+                    <tr>
+                        <th>Barco</th>
+                        <th class="num">Min. Tarifa/h</th>
+                        <th class="num">Min. Total Booking</th>
+                        <th class="num">Combustible/h</th>
+                        <th class="num">Capitán/h</th>
+                        <th class="num">Limpieza</th>
+                        <th class="num">Margen Obj. %</th>
+                        <th class="num">Min. Profit</th>
+                        <th>Estado</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="rules-tbody">
+                    <tr class="loading-row"><td colspan="10">Cargando reglas...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- TAB: Charts -->
+    <div class="tab-panel" id="tab-charts">
+        <div class="charts-grid" id="charts-grid">
+            <div class="chart-card">
+                <div class="chart-title">Revenue Operativo por Barco <span class="chart-sub">ejecutados</span></div>
+                <canvas id="chart-revenue" height="220"></canvas>
+            </div>
+            <div class="chart-card">
+                <div class="chart-title">Profit & Costos por Barco</div>
+                <canvas id="chart-profit" height="220"></canvas>
+            </div>
+            <div class="chart-card">
+                <div class="chart-title">Margen % por Barco <span class="chart-sub">vs objetivo</span></div>
+                <canvas id="chart-margin" height="220"></canvas>
+            </div>
+            <div class="chart-card">
+                <div class="chart-title">Revenue Cancelado vs Operativo <span class="chart-sub">pérdida potencial</span></div>
+                <canvas id="chart-cancelled" height="220"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Modals ── -->
+<div class="modal-overlay" id="modal-rule">
+    <div class="modal">
+        <div class="modal-header">
+            <div class="modal-title" id="modal-rule-title">Nueva Pricing Rule</div>
+            <button class="modal-close" onclick="closeRuleModal()">&times;</button>
+        </div>
+        <form id="form-rule" onsubmit="submitRule(event)">
+            <input type="hidden" id="rule-id">
+            <div class="form-grid">
+                <div class="form-field full">
+                    <label>Nombre del Barco</label>
+                    <input type="text" id="rule-boat-name" placeholder="Ej: CRANCHI" required data-testid="input-rule-boat-name">
+                </div>
+                <div class="form-field">
+                    <label>Tarifa Mínima / Hora ($)</label>
+                    <input type="number" id="rule-min-hourly" step="0.01" min="0" placeholder="250" data-testid="input-rule-min-hourly">
+                </div>
+                <div class="form-field">
+                    <label>Booking Mínimo Total ($)</label>
+                    <input type="number" id="rule-min-total" step="0.01" min="0" placeholder="800" data-testid="input-rule-min-total">
+                </div>
+                <div class="form-field">
+                    <label>Combustible / Hora ($)</label>
+                    <input type="number" id="rule-fuel" step="0.01" min="0" placeholder="40" data-testid="input-rule-fuel">
+                </div>
+                <div class="form-field">
+                    <label>Costo Capitán / Hora ($)</label>
+                    <input type="number" id="rule-captain" step="0.01" min="0" placeholder="35" data-testid="input-rule-captain">
+                </div>
+                <div class="form-field">
+                    <label>Costo Limpieza Est. ($)</label>
+                    <input type="number" id="rule-cleaning" step="0.01" min="0" placeholder="50" data-testid="input-rule-cleaning">
+                </div>
+                <div class="form-field">
+                    <label>Margen Objetivo (%)</label>
+                    <input type="number" id="rule-margin" step="0.1" min="0" max="100" placeholder="30" data-testid="input-rule-margin">
+                </div>
+                <div class="form-field">
+                    <label>Profit Mínimo / Booking ($)</label>
+                    <input type="number" id="rule-min-profit" step="0.01" min="0" placeholder="250" data-testid="input-rule-min-profit">
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-ghost" onclick="closeRuleModal()">Cancelar</button>
+                <button type="submit" class="btn btn-primary" data-testid="button-rule-save">Guardar Regla</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ── Booking Detail Modal ── -->
+<div class="modal-overlay" id="modal-boat-detail">
+    <div class="modal" style="width:680px;">
+        <div class="modal-header">
+            <div class="modal-title" id="modal-boat-title">Detalle Barco</div>
+            <button class="modal-close" onclick="document.getElementById('modal-boat-detail').classList.remove('open')">&times;</button>
+        </div>
+        <div id="boat-detail-body"><div class="empty-box">Cargando...</div></div>
+    </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let fleetData    = null;
+let rulesData    = [];
+let sortKey      = 'executed_revenue';
+let sortDir      = 'desc';
+let activeTab    = 'fleet';
+let chartRevenue = null, chartProfit = null, chartMargin = null, chartCancelled = null;
+
+// ── Formatters ────────────────────────────────────────────────────────────
+const fmt  = n => Number(n||0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtK = n => { const v = Number(n||0); return v >= 1000 ? '$' + (v/1000).toFixed(1) + 'K' : '$' + fmt(v); };
+
+// ── Period selector ────────────────────────────────────────────────────────
+function setPeriod(days) {
+    document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+    event.target.classList.add('active');
+    const to   = new Date();
+    const from = new Date(to);
+    if (days > 0) from.setDate(from.getDate() - days);
+    document.getElementById('f-to').value   = to.toISOString().slice(0,10);
+    document.getElementById('f-from').value = days > 0 ? from.toISOString().slice(0,10) : '';
+    loadAll();
+}
+
+// ── Tab switching ──────────────────────────────────────────────────────────
+function switchTab(name) {
+    activeTab = name;
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelector(`[onclick="switchTab('${name}')"]`).classList.add('active');
+    document.getElementById('tab-' + name).classList.add('active');
+    if (name === 'charts' && fleetData) renderCharts(fleetData.boats);
+    if (name === 'rules') loadRules();
+}
+
+// ── Main load ─────────────────────────────────────────────────────────────
+async function loadAll() {
+    const dateFrom = document.getElementById('f-from').value;
+    const dateTo   = document.getElementById('f-to').value;
+    const params   = new URLSearchParams();
+    if (dateFrom) params.set('dateFrom', dateFrom);
+    if (dateTo)   params.set('dateTo',   dateTo);
+
+    try {
+        const r = await fetch('/api/analytics/fleet-profitability?' + params, { credentials: 'include' });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        fleetData = await r.json();
+        renderSummary(fleetData.summary);
+        renderFleetTable(fleetData.boats);
+        renderAlerts(fleetData.boats);
+        if (activeTab === 'charts') renderCharts(fleetData.boats);
+        document.getElementById('last-updated').textContent =
+            'Actualizado: ' + new Date().toLocaleTimeString('es', { hour:'2-digit', minute:'2-digit' });
+    } catch(err) {
+        document.getElementById('fleet-tbody').innerHTML =
+            `<tr class="loading-row"><td colspan="13" style="color:#dc2626;">Error: ${err.message}</td></tr>`;
+    }
+}
+
+// ── Summary KPIs ──────────────────────────────────────────────────────────
+function renderSummary(s) {
+    const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+    set('s-boats',      s.total_boats);
+    set('s-profitable', s.profitable_boats);
+    set('s-loss',       s.loss_boats);
+    set('s-revenue',    '$' + fmt(s.total_revenue));
+    set('s-profit',     (s.total_profit >= 0 ? '+$' : '-$') + fmt(Math.abs(s.total_profit)));
+    set('s-cancelled',  '$' + fmt(s.cancelled_revenue));
+    set('s-margin',     s.avg_margin_percent + '%');
+    set('s-alerts',     s.total_alerts);
+
+    const profitable = document.getElementById('s-profitable');
+    if (profitable) profitable.closest('.summary-card').className = 'summary-card ' + (s.profitable_boats === s.total_boats ? 'green' : 'amber');
+    const profitEl = document.getElementById('s-profit');
+    if (profitEl) profitEl.closest('.summary-card').className = 'summary-card ' + (s.total_profit >= 0 ? 'green' : 'red');
+    const marginEl = document.getElementById('s-margin');
+    if (marginEl) marginEl.closest('.summary-card').className = 'summary-card ' + (s.avg_margin_percent >= 30 ? 'purple' : s.avg_margin_percent >= 15 ? 'amber' : 'red');
+
+    // Alert badge on tab
+    const badge = document.getElementById('alert-badge');
+    if (badge) {
+        badge.textContent = s.total_alerts;
+        badge.style.display = s.total_alerts > 0 ? 'inline-flex' : 'none';
+    }
+}
+
+// ── Fleet Table ───────────────────────────────────────────────────────────
+function renderFleetTable(boats) {
+    const sorted = [...boats].sort((a, b) => {
+        const av = a[sortKey], bv = b[sortKey];
+        if (typeof av === 'string') return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
+        return sortDir === 'asc' ? av - bv : bv - av;
+    });
+
+    document.querySelectorAll('#fleet-table thead th').forEach(th => {
+        th.classList.remove('sorted-asc','sorted-desc');
+    });
+    const headers = ['boat_type','total_bookings','executed_bookings','cancelled_bookings',
+                     'executed_revenue','total_costs','gross_profit','margin_percent',
+                     'avg_booking_value','cancelled_revenue','','alert_count',''];
+    const idx = headers.indexOf(sortKey);
+    const thList = document.querySelectorAll('#fleet-table thead th');
+    if (idx >= 0 && thList[idx]) thList[idx].classList.add('sorted-' + sortDir);
+
+    const healthChip = h => {
+        if (h === 'loss')    return '<span class="chip chip-loss">Pérdida</span>';
+        if (h === 'warning') return '<span class="chip chip-warning">Alerta</span>';
+        return '<span class="chip chip-healthy">Saludable</span>';
+    };
+
+    const alertDot = (count, alerts) => {
+        if (!count) return '<span class="alert-dot none">0</span>';
+        const sev = alerts.find(a => a.severity === 'critical') ? 'critical'
+                  : alerts.find(a => a.severity === 'error')    ? 'error' : 'warning';
+        return `<span class="alert-dot ${sev}">${count}</span>`;
+    };
+
+    const rowClass = h => h === 'loss' ? 'row-loss' : h === 'warning' ? 'row-warning' : '';
+
+    document.getElementById('fleet-tbody').innerHTML = sorted.length ? sorted.map(b => `
+        <tr class="${rowClass(b.health)}" data-testid="row-boat-${b.boat_type.replace(/\s+/g,'-')}">
+            <td><strong>${b.boat_type}</strong></td>
+            <td class="num">${b.total_bookings}</td>
+            <td class="num val-neutral">${b.executed_bookings}</td>
+            <td class="num ${b.cancelled_bookings > 0 ? 'val-warn' : ''}">${b.cancelled_bookings}</td>
+            <td class="num val-positive">$${fmt(b.executed_revenue)}</td>
+            <td class="num ${b.total_costs > 0 ? 'val-warn' : ''}">$${fmt(b.total_costs)}</td>
+            <td class="num ${b.gross_profit < 0 ? 'val-negative' : 'val-positive'}">${b.gross_profit >= 0 ? '+' : ''}$${fmt(b.gross_profit)}</td>
+            <td class="num ${b.margin_percent < 15 ? 'val-negative' : b.margin_percent < 25 ? 'val-warn' : 'val-positive'}">${b.margin_percent}%</td>
+            <td class="num">$${fmt(b.avg_booking_value)}</td>
+            <td class="num ${b.cancelled_revenue > 0 ? 'val-warn' : ''}">$${fmt(b.cancelled_revenue)}</td>
+            <td>${healthChip(b.health)}</td>
+            <td class="num" style="text-align:center;">${alertDot(b.alert_count, b.alerts)}</td>
+            <td>
+                <button class="btn btn-ghost btn-sm"
+                    onclick="openBoatDetail('${encodeURIComponent(b.boat_type)}')"
+                    data-testid="button-detail-${b.boat_type.replace(/\s+/g,'-')}">
+                    Detalle
+                </button>
+            </td>
+        </tr>
+    `).join('') : '<tr class="loading-row"><td colspan="13">No hay datos para el período seleccionado.</td></tr>';
+}
+
+function sortTable(key) {
+    if (sortKey === key) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+    else { sortKey = key; sortDir = 'desc'; }
+    if (fleetData) renderFleetTable(fleetData.boats);
+}
+
+// ── Alerts Tab ────────────────────────────────────────────────────────────
+function renderAlerts(boats) {
+    const container = document.getElementById('alerts-container');
+    const allAlerts = [];
+    boats.forEach(b => {
+        b.alerts.forEach(a => allAlerts.push({ ...a, boat_type: b.boat_type }));
+    });
+
+    if (!allAlerts.length) {
+        container.innerHTML = `<div class="empty-box">Sin alertas activas — toda la flota opera dentro de los parámetros de rentabilidad.</div>`;
+        return;
+    }
+
+    const iconMap = { critical: '!', error: '!', warning: '!' };
+    container.innerHTML = allAlerts.map(a => `
+        <div class="alert-item ${a.severity}" data-testid="alert-item-${a.type}">
+            <div class="alert-icon ${a.severity}">${iconMap[a.severity] || '!'}</div>
+            <div class="alert-body">
+                <div class="a-title">${a.boat_type} — ${formatAlertType(a.type)}</div>
+                <div class="a-meta">${a.message}
+                    ${a.expected !== undefined ? ` | Esperado: $${fmt(a.expected)}` : ''}
+                    ${a.actual   !== undefined ? ` | Actual: ${typeof a.actual === 'number' && a.actual < 0 ? '-$'+fmt(Math.abs(a.actual)) : '$'+fmt(a.actual)}` : ''}
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+function formatAlertType(type) {
+    const map = {
+        NEGATIVE_PROFIT:       'Profit Negativo',
+        LOW_PROFIT_PER_BOOKING: 'Profit por Booking Bajo',
+        LOW_MARGIN:            'Margen por Debajo del Objetivo',
+        BELOW_MINIMUM_BOOKING: 'Booking Debajo del Mínimo',
+    };
+    return map[type] || type;
+}
+
+// ── Pricing Rules ─────────────────────────────────────────────────────────
+async function loadRules() {
+    try {
+        const r = await fetch('/api/boat-pricing-rules', { credentials: 'include' });
+        rulesData = await r.json();
+        renderRulesTable(rulesData);
+    } catch(err) {
+        document.getElementById('rules-tbody').innerHTML =
+            `<tr class="loading-row"><td colspan="10" style="color:#dc2626;">Error: ${err.message}</td></tr>`;
+    }
+}
+
+function renderRulesTable(rules) {
+    document.getElementById('rules-tbody').innerHTML = rules.length ? rules.map(r => `
+        <tr data-testid="row-rule-${r.id}">
+            <td><strong>${r.boat_name}</strong></td>
+            <td class="num">$${fmt(r.minimum_hourly_rate)}</td>
+            <td class="num">$${fmt(r.minimum_total_booking)}</td>
+            <td class="num">$${fmt(r.fuel_cost_per_hour)}</td>
+            <td class="num">$${fmt(r.captain_cost_per_hour)}</td>
+            <td class="num">$${fmt(r.cleaning_cost_estimated)}</td>
+            <td class="num">${r.target_profit_margin}%</td>
+            <td class="num">$${fmt(r.minimum_profit_per_booking)}</td>
+            <td><span class="chip ${r.active ? 'chip-healthy' : 'chip-warning'}">${r.active ? 'Activa' : 'Inactiva'}</span></td>
+            <td>
+                <button class="btn btn-ghost btn-sm" onclick="editRule('${r.id}')"
+                    data-testid="button-edit-rule-${r.id}">Editar</button>
+            </td>
+        </tr>
+    `).join('') : '<tr class="loading-row"><td colspan="10">No hay reglas configuradas. Agrega una usando el botón "+ Nueva Regla".</td></tr>';
+}
+
+function openAddRuleModal() {
+    document.getElementById('modal-rule-title').textContent = 'Nueva Pricing Rule';
+    document.getElementById('rule-id').value             = '';
+    document.getElementById('rule-boat-name').value      = '';
+    document.getElementById('rule-min-hourly').value     = '';
+    document.getElementById('rule-min-total').value      = '';
+    document.getElementById('rule-fuel').value           = '';
+    document.getElementById('rule-captain').value        = '';
+    document.getElementById('rule-cleaning').value       = '';
+    document.getElementById('rule-margin').value         = '30';
+    document.getElementById('rule-min-profit').value     = '';
+    document.getElementById('modal-rule').classList.add('open');
+}
+
+function editRule(id) {
+    const rule = rulesData.find(r => r.id === id);
+    if (!rule) return;
+    document.getElementById('modal-rule-title').textContent     = 'Editar Pricing Rule';
+    document.getElementById('rule-id').value                    = rule.id;
+    document.getElementById('rule-boat-name').value             = rule.boat_name;
+    document.getElementById('rule-min-hourly').value            = rule.minimum_hourly_rate;
+    document.getElementById('rule-min-total').value             = rule.minimum_total_booking;
+    document.getElementById('rule-fuel').value                  = rule.fuel_cost_per_hour;
+    document.getElementById('rule-captain').value               = rule.captain_cost_per_hour;
+    document.getElementById('rule-cleaning').value              = rule.cleaning_cost_estimated;
+    document.getElementById('rule-margin').value                = rule.target_profit_margin;
+    document.getElementById('rule-min-profit').value            = rule.minimum_profit_per_booking;
+    document.getElementById('modal-rule').classList.add('open');
+}
+
+function closeRuleModal() {
+    document.getElementById('modal-rule').classList.remove('open');
+}
+
+async function submitRule(event) {
+    event.preventDefault();
+    const id = document.getElementById('rule-id').value;
+    const body = {
+        boat_name:                  document.getElementById('rule-boat-name').value.trim().toUpperCase(),
+        minimum_hourly_rate:        parseFloat(document.getElementById('rule-min-hourly').value  || 0),
+        minimum_total_booking:      parseFloat(document.getElementById('rule-min-total').value   || 0),
+        fuel_cost_per_hour:         parseFloat(document.getElementById('rule-fuel').value        || 0),
+        captain_cost_per_hour:      parseFloat(document.getElementById('rule-captain').value     || 0),
+        cleaning_cost_estimated:    parseFloat(document.getElementById('rule-cleaning').value    || 0),
+        target_profit_margin:       parseFloat(document.getElementById('rule-margin').value      || 30),
+        minimum_profit_per_booking: parseFloat(document.getElementById('rule-min-profit').value  || 0),
+    };
+    try {
+        const url    = id ? `/api/boat-pricing-rules/${id}` : '/api/boat-pricing-rules';
+        const method = id ? 'PUT' : 'POST';
+        const r = await fetch(url, { method, credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        closeRuleModal();
+        loadRules();
+        loadAll();
+    } catch(err) {
+        alert('Error guardando regla: ' + err.message);
+    }
+}
+
+// ── Boat Detail Modal ─────────────────────────────────────────────────────
+async function openBoatDetail(encodedName) {
+    const boatName = decodeURIComponent(encodedName);
+    document.getElementById('modal-boat-title').textContent = 'Detalle — ' + boatName;
+    document.getElementById('modal-boat-detail').classList.add('open');
+    document.getElementById('boat-detail-body').innerHTML = '<div class="empty-box">Cargando...</div>';
+
+    const dateFrom = document.getElementById('f-from').value;
+    const dateTo   = document.getElementById('f-to').value;
+    const params   = new URLSearchParams();
+    if (dateFrom) params.set('dateFrom', dateFrom);
+    if (dateTo)   params.set('dateTo',   dateTo);
+
+    try {
+        const r = await fetch(`/api/analytics/boat-profitability/${encodedName}?${params}`, { credentials: 'include' });
+        const data = await r.json();
+        const rule = data.pricing_rule;
+        const rows = data.bookings || [];
+
+        let ruleHtml = '';
+        if (rule) {
+            ruleHtml = `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 16px;margin-bottom:16px;display:flex;gap:24px;flex-wrap:wrap;font-size:12px;">
+                <div><strong style="color:#94a3b8;text-transform:uppercase;font-size:10px;">Min. Tarifa/h</strong><br>$${fmt(rule.minimum_hourly_rate)}</div>
+                <div><strong style="color:#94a3b8;text-transform:uppercase;font-size:10px;">Min. Total</strong><br>$${fmt(rule.minimum_total_booking)}</div>
+                <div><strong style="color:#94a3b8;text-transform:uppercase;font-size:10px;">Margen Obj.</strong><br>${rule.target_profit_margin}%</div>
+                <div><strong style="color:#94a3b8;text-transform:uppercase;font-size:10px;">Min. Profit</strong><br>$${fmt(rule.minimum_profit_per_booking)}</div>
+                <div><strong style="color:#94a3b8;text-transform:uppercase;font-size:10px;">Combustible/h</strong><br>$${fmt(rule.fuel_cost_per_hour)}</div>
+                <div><strong style="color:#94a3b8;text-transform:uppercase;font-size:10px;">Capitán/h</strong><br>$${fmt(rule.captain_cost_per_hour)}</div>
+            </div>`;
+        }
+
+        const tableRows = rows.length ? rows.map(bk => {
+            const alertIcon = bk.alert_count > 0 ? `<span style="color:#dc2626;font-weight:700;" title="${bk.alert_count} alertas">!</span> ` : '';
+            return `<tr>
+                <td style="font-family:monospace;font-size:11px;color:#94a3b8;">${bk.id.slice(-8)}</td>
+                <td>${bk.customer || '—'}</td>
+                <td style="white-space:nowrap;">${(bk.date||'').slice(0,10)}</td>
+                <td><span style="padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700;background:${bk.status==='completed'?'#dcfce7':bk.status==='cancelled'?'#fee2e2':'#f1f5f9'};color:${bk.status==='completed'?'#15803d':bk.status==='cancelled'?'#dc2626':'#64748b'}">${bk.status||'—'}</span></td>
+                <td style="text-align:right;font-weight:700;color:#0284c7;">$${fmt(bk.revenue)}</td>
+                <td style="text-align:right;color:#d97706;">$${fmt(bk.costs)}</td>
+                <td style="text-align:right;font-weight:700;color:${bk.profit<0?'#dc2626':'#16a34a'}">${bk.profit>=0?'+':''}$${fmt(bk.profit)}</td>
+                <td style="text-align:right;color:${bk.margin<15?'#dc2626':bk.margin<25?'#d97706':'#16a34a'}">${bk.margin}%</td>
+                <td>${alertIcon}${bk.platform||'—'}</td>
+            </tr>`;
+        }).join('') : '<tr><td colspan="9" style="text-align:center;padding:20px;color:#94a3b8;">Sin bookings en el período.</td></tr>';
+
+        document.getElementById('boat-detail-body').innerHTML = `
+            ${ruleHtml}
+            <div style="overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;">
+                <thead><tr style="background:#f8fafc;">
+                    <th style="padding:8px 10px;font-size:11px;font-weight:700;color:#475569;text-align:left;border-bottom:1px solid #e2e8f0;">ID</th>
+                    <th style="padding:8px 10px;font-size:11px;font-weight:700;color:#475569;text-align:left;border-bottom:1px solid #e2e8f0;">Cliente</th>
+                    <th style="padding:8px 10px;font-size:11px;font-weight:700;color:#475569;text-align:left;border-bottom:1px solid #e2e8f0;">Fecha</th>
+                    <th style="padding:8px 10px;font-size:11px;font-weight:700;color:#475569;text-align:left;border-bottom:1px solid #e2e8f0;">Status</th>
+                    <th style="padding:8px 10px;font-size:11px;font-weight:700;color:#475569;text-align:right;border-bottom:1px solid #e2e8f0;">Revenue</th>
+                    <th style="padding:8px 10px;font-size:11px;font-weight:700;color:#475569;text-align:right;border-bottom:1px solid #e2e8f0;">Costos</th>
+                    <th style="padding:8px 10px;font-size:11px;font-weight:700;color:#475569;text-align:right;border-bottom:1px solid #e2e8f0;">Profit</th>
+                    <th style="padding:8px 10px;font-size:11px;font-weight:700;color:#475569;text-align:right;border-bottom:1px solid #e2e8f0;">Margen</th>
+                    <th style="padding:8px 10px;font-size:11px;font-weight:700;color:#475569;text-align:left;border-bottom:1px solid #e2e8f0;">Plataforma</th>
+                </tr></thead>
+                <tbody>${tableRows}</tbody>
+            </table>
+            </div>
+        `;
+    } catch(err) {
+        document.getElementById('boat-detail-body').innerHTML = `<div class="empty-box" style="color:#dc2626;">Error: ${err.message}</div>`;
+    }
+}
+
+// ── Charts ────────────────────────────────────────────────────────────────
+function renderCharts(boats) {
+    const labels   = boats.map(b => b.boat_type);
+    const revenues = boats.map(b => b.executed_revenue);
+    const profits  = boats.map(b => b.gross_profit);
+    const costs    = boats.map(b => b.total_costs);
+    const margins  = boats.map(b => b.margin_percent);
+    const canc     = boats.map(b => b.cancelled_revenue);
+
+    const COLORS = ['#7c3aed','#0ea5e9','#16a34a','#d97706','#dc2626','#0d9488','#6366f1','#f59e0b'];
+
+    // Revenue by boat
+    if (chartRevenue) chartRevenue.destroy();
+    chartRevenue = new Chart(document.getElementById('chart-revenue'), {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [{
+                label: 'Revenue Operativo',
+                data: revenues,
+                backgroundColor: COLORS,
+                borderRadius: 6,
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { ticks: { callback: v => fmtK(v) }, grid: { color: '#f1f5f9' } },
+                x: { grid: { display: false } }
+            }
+        }
+    });
+
+    // Profit & Costs grouped
+    if (chartProfit) chartProfit.destroy();
+    chartProfit = new Chart(document.getElementById('chart-profit'), {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [
+                { label: 'Profit', data: profits, backgroundColor: profits.map(p => p >= 0 ? '#16a34a' : '#dc2626'), borderRadius: 4 },
+                { label: 'Costos', data: costs,   backgroundColor: '#fbbf24', borderRadius: 4 },
+            ]
+        },
+        options: {
+            responsive: true,
+            plugins: { legend: { position: 'top' } },
+            scales: {
+                y: { ticks: { callback: v => fmtK(v) }, grid: { color: '#f1f5f9' } },
+                x: { grid: { display: false } }
+            }
+        }
+    });
+
+    // Margin by boat (horizontal bar)
+    if (chartMargin) chartMargin.destroy();
+    chartMargin = new Chart(document.getElementById('chart-margin'), {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [{
+                label: 'Margen %',
+                data: margins,
+                backgroundColor: margins.map(m => m >= 30 ? '#16a34a' : m >= 15 ? '#d97706' : '#dc2626'),
+                borderRadius: 4,
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: {
+                    ticks: { callback: v => v + '%' },
+                    grid: { color: '#f1f5f9' },
+                    min: 0,
+                },
+                y: { grid: { display: false } }
+            }
+        }
+    });
+
+    // Cancelled revenue vs executed revenue
+    if (chartCancelled) chartCancelled.destroy();
+    chartCancelled = new Chart(document.getElementById('chart-cancelled'), {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [
+                { label: 'Revenue Operativo', data: revenues, backgroundColor: '#7c3aed', borderRadius: 4 },
+                { label: 'Revenue Cancelado', data: canc,     backgroundColor: '#dc2626', borderRadius: 4 },
+            ]
+        },
+        options: {
+            responsive: true,
+            plugins: { legend: { position: 'top' } },
+            scales: {
+                y: { ticks: { callback: v => fmtK(v) }, grid: { color: '#f1f5f9' } },
+                x: { grid: { display: false } }
+            }
+        }
+    });
+}
+
+// ── CSV Export ────────────────────────────────────────────────────────────
+function exportCSV() {
+    if (!fleetData || !fleetData.boats.length) { alert('Sin datos para exportar.'); return; }
+    const headers = ['Barco','Total Bookings','Ejecutados','Cancelados','Revenue Op.','Costos','Profit','Margen %','Prom/booking','Rev. Cancelado','Estado','Alertas'];
+    const rows = fleetData.boats.map(b => [
+        b.boat_type, b.total_bookings, b.executed_bookings, b.cancelled_bookings,
+        b.executed_revenue.toFixed(2), b.total_costs.toFixed(2), b.gross_profit.toFixed(2),
+        b.margin_percent, b.avg_booking_value.toFixed(2), b.cancelled_revenue.toFixed(2),
+        b.health, b.alert_count
+    ].map(v => `"${String(v).replace(/"/g,'""')}"`).join(','));
+    const csv  = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = `fleet-profitability-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click(); URL.revokeObjectURL(url);
+}
+
+// ── Close modals on overlay click ─────────────────────────────────────────
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+    overlay.addEventListener('click', e => {
+        if (e.target === overlay) overlay.classList.remove('open');
+    });
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────
+(function init() {
+    const to   = new Date();
+    const from = new Date(to);
+    from.setDate(from.getDate() - 90);
+    document.getElementById('f-to').value   = to.toISOString().slice(0,10);
+    document.getElementById('f-from').value = from.toISOString().slice(0,10);
+    loadAll();
+})();
+</script>
+
+<script src="/i18n.js"></script>
+<script>
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js').catch(() => {});
+    }
+</script>
+<script src="/assets/js/components/global-nav.js"></script>
+</body>
+</html>
