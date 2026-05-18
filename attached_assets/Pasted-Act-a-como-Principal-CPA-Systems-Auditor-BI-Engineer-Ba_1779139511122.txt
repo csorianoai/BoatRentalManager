@@ -1,0 +1,371 @@
+Actúa como Principal CPA Systems Auditor, BI Engineer, Backend Debugging Engineer y QA Automation Engineer para gestion.nadakiexcursions.
+
+PROBLEMA:
+Los KPIs del dashboard de Bookings no están considerando correctamente beneficios, gastos, profit operativo ni margen. En pantalla se ve:
+
+- Total bookings: 25
+- Ejecutados: 0
+- Pendientes: 17
+- Cancelados: 8
+- Revenue pendiente: 13,665.44
+- Revenue cancelado: 6,404.75
+- Profit operativo: 0.00
+- Costo operativo: 0.00
+- Margen: 0.0%
+
+Necesito auditar y corregir TODOS los KPIs para que reflejen la realidad contable según reglas correctas.
+
+==================================================
+1. REGLAS CONTABLES OFICIALES PARA KPIs
+==================================================
+
+Los KPIs deben calcularse según el filtro de fechas activo.
+
+A) TOTAL BOOKINGS
+Todos los bookings del periodo filtrado.
+
+B) EJECUTADOS
+Bookings con status:
+- completed
+- executed
+- finished
+- done
+
+C) PENDIENTES
+Bookings con status:
+- pending
+- confirmed
+- scheduled
+- reservado
+- confirmado
+
+D) CANCELADOS
+Bookings con status:
+- cancelled
+- canceled
+- cancelado
+
+E) EN PROCESO
+Bookings con status:
+- in_progress
+- active
+- underway
+
+F) CUADRADOS
+accounting_status:
+- reconciled
+- closed
+- locked
+
+G) SIN CUADRAR
+bookings no cancelados donde accounting_status no está reconciled/closed/locked
+
+IMPORTANTE:
+Cancelados NO deben contar como sin cuadrar operativo.
+
+==================================================
+2. REGLAS FINANCIERAS
+==================================================
+
+A) REVENUE OPERATIVO
+Solo bookings ejecutados/completados con revenue reconocido.
+
+B) REVENUE PENDIENTE
+Bookings confirmados/pendientes/scheduled que no han sido ejecutados.
+
+C) REVENUE CANCELADO
+Bookings cancelados, solo como métrica de revenue perdido, NO ingreso.
+
+D) REVENUE RECONOCIDO
+Suma de transacciones revenue activas:
+accounts 4010, 4020, 4030, 4090
+period_type=current
+excluyendo cancelados.
+
+E) NO RECONOCIDO
+Bookings no cancelados con pago o total pendiente de revenue recognition.
+
+F) COSTO OPERATIVO
+Gastos reales del periodo asociados a bookings no cancelados:
+5010, 5020, 5030, 5040, 5050, 5060, 6020, 6900
+usando fuente autoritativa correcta:
+- boat_expenses activos
+- captain payable expense solo una vez
+- NO duplicar payments contra 2000
+- NO contar créditos de banco/cash como gastos
+- NO contar transacciones reversadas o excluded_from_ledger
+
+G) PROFIT OPERATIVO
+Revenue operativo reconocido - costo operativo real
+
+H) MARGEN %
+Si revenue operativo > 0:
+profit / revenue operativo * 100
+Si revenue operativo = 0:
+0%
+
+==================================================
+3. PROBLEMA A INVESTIGAR
+==================================================
+
+Actualmente cost/profit salen en 0. Eso puede ser por:
+
+1. Dashboard está mirando solo bookings completed y no hay ninguno.
+2. Gastos existen pero están ligados a bookings con accounting_status no reconocido.
+3. KPIs están ignorando boat_expenses.
+4. KPIs están usando transactions equivocadas.
+5. Status reales son “confirmed” aunque el servicio ya pasó.
+6. Revenue aún no está reconocido, por eso profit operativo sale 0.
+7. Filtro de fechas no coincide con accounting_date/service_date.
+
+Debes identificar causa exacta.
+
+==================================================
+4. AUDITORÍA FORENSE DE KPI SOURCE
+==================================================
+
+Crear función/debug:
+auditBookingDashboardKpis(filters)
+
+Debe devolver:
+
+- filter_start_date
+- filter_end_date
+- total_bookings
+- bookings_by_status
+- bookings_by_accounting_status
+- bookings_cancelled
+- bookings_completed
+- bookings_pending
+- revenue_pending_source_rows
+- revenue_cancelled_source_rows
+- recognized_revenue_source_rows
+- expense_source_rows
+- total_expenses_from_boat_expenses
+- total_expenses_from_transactions
+- excluded_expense_rows
+- calculated_profit
+- margin_percent
+
+Para cada KPI mostrar:
+- fórmula usada
+- tabla usada
+- registros incluidos
+- registros excluidos
+- total final
+
+==================================================
+5. CORREGIR ENDPOINT DEL DASHBOARD
+==================================================
+
+Localizar endpoint usado por bookings.html:
+probablemente:
+GET /api/analytics/bookings-summary
+o
+GET /api/bookings
+o
+GET /api/dashboard-data
+
+Corregir para que devuelva:
+
+{
+  "booking_status": {
+    "total": 25,
+    "executed": X,
+    "pending": X,
+    "cancelled": X,
+    "in_progress": X,
+    "reconciled": X,
+    "unreconciled": X
+  },
+  "financial_kpis": {
+    "operational_revenue": X,
+    "cancelled_revenue": X,
+    "pending_revenue": X,
+    "recognized_revenue": X,
+    "unrecognized_revenue": X,
+    "operational_cost": X,
+    "operational_profit": X,
+    "margin_percent": X
+  },
+  "debug": optional
+}
+
+==================================================
+6. REGLA ESPECIAL: BOOKINGS PASADOS PERO CONFIRMADOS
+==================================================
+
+Si service_date < today y status sigue confirmed/pending:
+NO contarlo automáticamente como executed.
+Pero sí crear alerta:
+PAST_BOOKING_NOT_COMPLETED
+
+Debe aparecer en:
+- bookings needing action
+- sin cuadrar
+- operational alerts
+
+El sistema debe sugerir:
+“Este booking ya pasó de fecha. Marcar como completed o cancelled para reconocer revenue/costos correctamente.”
+
+==================================================
+7. COSTOS DEBEN PODER MOSTRARSE AUNQUE REVENUE NO ESTÉ RECONOCIDO
+==================================================
+
+Aunque revenue operativo sea 0, el KPI Costo Operativo debe mostrar los gastos reales registrados en el periodo para bookings no cancelados.
+
+Ejemplo:
+Si Matej tiene gastos 560.99 pero revenue pendiente:
+- Revenue operativo reconocido: 0
+- Costos operativos: 560.99
+- Profit operativo reconocido: -560.99 o mostrar separado como provisional
+
+Agregar dos métricas:
+A) Profit reconocido:
+recognized_revenue - recognized_costs
+
+B) Profit provisional:
+booking_total_non_cancelled - actual_costs
+
+En pantalla:
+- Profit operativo reconocido
+- Profit provisional
+
+==================================================
+8. PROVISIONAL PROFIT
+==================================================
+
+Crear KPIs:
+
+PROFIT PROVISIONAL:
+Suma de revenue esperado de bookings no cancelados
+menos gastos reales asociados.
+
+MARGEN PROVISIONAL:
+profit provisional / revenue esperado no cancelado
+
+Esto ayuda mientras revenue no esté reconocido.
+
+==================================================
+9. CANCELADOS NO DEBEN AFECTAR PROFIT
+==================================================
+
+Cancelados deben ir a:
+- revenue_cancelled
+- cancelled_count
+
+Pero NO:
+- operational_revenue
+- recognized_revenue
+- operational_profit
+- operational_cost
+- unreconciled operativo
+
+Si tuvieron gastos reales, mostrarlos separado:
+cancelled_related_costs
+
+==================================================
+10. PRUEBAS OBLIGATORIAS
+==================================================
+
+Ejecutar con filtros actuales de pantalla:
+start_date = 2026-05-01
+end_date = 2026-05-18
+
+Pruebas:
+
+1. Conteo:
+total = 25
+pending = 17
+cancelled = 8
+executed debe coincidir con statuses reales.
+
+2. Cancelados:
+revenue_cancelled = 6,404.75
+No deben entrar en revenue operativo.
+
+3. Pendientes:
+revenue_pending = 13,665.44
+Debe coincidir con bookings no cancelados y no ejecutados.
+
+4. Costos:
+Si hay boat_expenses en el periodo, operational_cost debe ser > 0.
+Si no hay gastos en mayo, explicar:
+“No hay gastos registrados en este periodo.”
+
+5. Matej:
+Aunque sea 2026-04-27, si el filtro es mayo, NO debe contaminar mayo.
+Si se prueba periodo abril:
+debe mostrar:
+expenses = 560.99
+provisional profit = 139.00
+
+6. Revenue reconocido:
+Si no se ha completado ningún booking, recognized_revenue = 0 es correcto.
+Pero unrecognized_revenue debe mostrar lo pendiente.
+
+7. Profit:
+Si recognized_revenue = 0 y costs = 0, profit reconocido = 0.
+Pero profit provisional debe calcularse si hay bookings con total esperado.
+
+==================================================
+11. UI BOOKINGS.HTML
+==================================================
+
+Actualizar KPIs visibles:
+
+Estado de Bookings:
+- Total
+- Ejecutados
+- Pendientes
+- Cancelados
+- En proceso
+- Cuadrados
+- Sin cuadrar
+
+KPIs Financieros:
+- Revenue Operativo Reconocido
+- Revenue Pendiente
+- Revenue Cancelado
+- Costo Operativo Real
+- Profit Reconocido
+- Profit Provisional
+- Margen Reconocido %
+- Margen Provisional %
+
+Agregar tooltip:
+“Revenue cancelado es revenue perdido, no ingreso contable.”
+
+Agregar tooltip:
+“Profit provisional usa bookings no cancelados aunque revenue aún no esté reconocido.”
+
+==================================================
+12. AUDITORÍA FINAL
+==================================================
+
+No declarar terminado hasta entregar:
+
+1. Endpoint exacto corregido.
+2. Fórmulas finales de cada KPI.
+3. Registros incluidos/excluidos.
+4. Resultado con filtro 2026-05-01 a 2026-05-18.
+5. Resultado con filtro 2026-04-27 a 2026-04-30 para Matej.
+6. Confirmación de que cancelados no afectan profit operativo.
+7. Confirmación de que gastos aparecen si existen.
+8. Confirmación de que si no hay gastos en mayo, el sistema lo explica correctamente.
+9. Captura o JSON de respuesta corregida.
+10. Tests automatizados o script de QA ejecutado.
+
+==================================================
+13. CRITERIO DE ÉXITO
+==================================================
+
+El sistema solo está correcto si:
+
+- KPIs de conteo cuadran por status real.
+- Cancelados separados y no contaminan ingresos.
+- Revenue reconocido separado de revenue pendiente.
+- Costos reales no se quedan en 0 si existen gastos.
+- Profit provisional existe.
+- Matej no contamina mayo.
+- Abril muestra correctamente Matej con gastos 560.99 y profit 139.00.

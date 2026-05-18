@@ -253,16 +253,23 @@
     <div class="kpi-group-label">KPIs Financieros</div>
     <div class="kpi-group">
         <div class="stats-row">
-            <div class="stat-card green"><div class="stat-label">Revenue Operativo</div><div class="stat-value stat-sm" id="stat-rev-operational" data-testid="stat-rev-operational">—</div></div>
-            <div class="stat-card red"><div class="stat-label">Revenue Cancelado</div><div class="stat-value stat-sm" id="stat-rev-cancelled" data-testid="stat-rev-cancelled">—</div></div>
+            <div class="stat-card green"><div class="stat-label" title="Suma de bookings ejecutados/completados con revenue reconocido">Rev. Op. Reconocido</div><div class="stat-value stat-sm" id="stat-rev-operational" data-testid="stat-rev-operational">—</div></div>
             <div class="stat-card amber"><div class="stat-label">Revenue Pendiente</div><div class="stat-value stat-sm" id="stat-rev-pending" data-testid="stat-rev-pending">—</div></div>
-            <div class="stat-card teal"><div class="stat-label">Revenue Reconocido</div><div class="stat-value stat-sm" id="stat-rev-recognized" data-testid="stat-rev-recognized">—</div></div>
-            <div class="stat-card sky"><div class="stat-label">No Reconocido</div><div class="stat-value stat-sm" id="stat-rev-unrecognized" data-testid="stat-rev-unrecognized">—</div></div>
-            <div class="stat-card" id="stat-card-profit"><div class="stat-label">Profit Operativo</div><div class="stat-value stat-sm" id="stat-profit" data-testid="stat-profit">—</div></div>
-            <div class="stat-card"><div class="stat-label">Costo Operativo</div><div class="stat-value stat-sm" id="stat-costs" data-testid="stat-costs">—</div></div>
-            <div class="stat-card purple"><div class="stat-label">Margen %</div><div class="stat-value" id="stat-margin" data-testid="stat-margin">—</div></div>
+            <div class="stat-card red"><div class="stat-label" title="Revenue cancelado es revenue perdido, no ingreso contable">Revenue Cancelado</div><div class="stat-value stat-sm" id="stat-rev-cancelled" data-testid="stat-rev-cancelled">—</div></div>
+            <div class="stat-card orange"><div class="stat-label">Costo Operativo Real</div><div class="stat-value stat-sm" id="stat-costs" data-testid="stat-costs">—</div></div>
+            <div class="stat-card" id="stat-card-profit-rec"><div class="stat-label">Profit Reconocido</div><div class="stat-value stat-sm" id="stat-profit-recognized" data-testid="stat-profit-recognized">—</div></div>
+            <div class="stat-card" id="stat-card-profit-prov"><div class="stat-label" title="Profit provisional usa bookings no cancelados aunque revenue aún no esté reconocido">Profit Provisional</div><div class="stat-value stat-sm" id="stat-profit-provisional" data-testid="stat-profit-provisional">—</div></div>
+            <div class="stat-card purple"><div class="stat-label">Margen Reconocido %</div><div class="stat-value" id="stat-margin-recognized" data-testid="stat-margin-recognized">—</div></div>
+            <div class="stat-card teal"><div class="stat-label">Margen Provisional %</div><div class="stat-value" id="stat-margin-provisional" data-testid="stat-margin-provisional">—</div></div>
         </div>
     </div>
+</div>
+
+<!-- Past Bookings Alert Banner -->
+<div id="past-bookings-alert" style="display:none; margin:0 0 12px 0; background:#7c2d12; border:1px solid #dc2626; border-radius:6px; padding:10px 16px; color:#fca5a5; font-size:13px;">
+    <strong style="color:#fef2f2;">&#9888; Bookings Pasados Sin Completar:</strong>
+    <span id="past-bookings-alert-msg"></span>
+    <span style="color:#fca5a5; font-size:12px; margin-left:8px;">— Marcar como <em>completed</em> o <em>cancelled</em> para reconocer revenue/costos correctamente.</span>
 </div>
 
 <!-- ── Table ── -->
@@ -439,62 +446,143 @@ async function loadBookings() {
 
 function renderStats(bookings) {
     const EXECUTED   = ['completed','executed','finished','done'];
-    const PENDING    = ['pending','confirmed','scheduled'];
+    const PENDING    = ['pending','confirmed','scheduled','reservado','confirmado'];
     const CANCELLED  = ['cancelled','canceled','cancelado'];
     const INPROGRESS = ['in_progress','active','underway'];
     const RECONCILED = ['reconciled','closed','locked'];
+    const TODAY      = new Date().toISOString().split('T')[0];
 
     const executed     = bookings.filter(b => EXECUTED.includes((b.status||'').toLowerCase()));
     const pending      = bookings.filter(b => PENDING.includes((b.status||'').toLowerCase()));
     const cancelled    = bookings.filter(b => CANCELLED.includes((b.status||'').toLowerCase()));
     const inProgress   = bookings.filter(b => INPROGRESS.includes((b.status||'').toLowerCase()));
     const nonCancelled = bookings.filter(b => !CANCELLED.includes((b.status||'').toLowerCase()));
-    const reconciled   = bookings.filter(b => RECONCILED.includes((b.accounting_status||'').toLowerCase()));
-    const unreconciled = bookings.filter(b => !RECONCILED.includes((b.accounting_status||'').toLowerCase()));
 
-    const sum = (arr) => arr.reduce((s,b) => s + parseFloat(b.total_amount||0), 0);
+    // Cuadrados: revenue_recognized=true OR accounting_status reconciled/closed/locked
+    const reconciled   = bookings.filter(b =>
+        b.revenue_recognized === true ||
+        RECONCILED.includes((b.accounting_status||'').toLowerCase())
+    );
+    // Sin cuadrar: non-cancelled AND not cuadrado
+    const unreconciled = nonCancelled.filter(b =>
+        b.revenue_recognized !== true &&
+        !RECONCILED.includes((b.accounting_status||'').toLowerCase())
+    );
 
-    const revenueOperational  = sum(executed);
-    const revenueCancelled    = sum(cancelled);
-    const revenuePending      = sum(pending);
-    const revenueRecognized   = sum(bookings.filter(b => b.revenue_recognized === true));
-    const revenueUnrecognized = sum(nonCancelled.filter(b => !b.revenue_recognized));
-    const totalCosts          = bookings.reduce((s,b) => s + parseFloat(b.total_costs||0), 0);
-    const profit              = revenueOperational - totalCosts;
-    const margin              = revenueOperational > 0 ? (profit / revenueOperational * 100) : 0;
+    const sum      = (arr) => arr.reduce((s,b) => s + parseFloat(b.total_amount||0), 0);
+    const sumCosts = (arr) => arr.reduce((s,b) => s + parseFloat(b.total_costs_combined||b.total_costs||0), 0);
+
+    // ── STATUS KPIs ──
+    const totalCount        = bookings.length;
+    const executedCount     = executed.length;
+    const pendingCount      = pending.length;
+    const cancelledCount    = cancelled.length;
+    const inProgressCount   = inProgress.length;
+    const reconciledCount   = reconciled.length;
+    const unreconciledCount = unreconciled.length;
+
+    // ── FINANCIAL KPIs ──
+    // A) Revenue Operativo Reconocido: executed AND revenue_recognized=true
+    const executedRecognized      = executed.filter(b => b.revenue_recognized === true);
+    const revenueOpReconocido     = sum(executedRecognized);
+
+    // B) Revenue Pendiente: pending (not executed, not cancelled)
+    const revenuePending          = sum(pending);
+
+    // C) Revenue Cancelado: cancelled bookings — perdido, no ingreso
+    const revenueCancelled        = sum(cancelled);
+
+    // D) Costo Operativo Real: boat_expenses + captain_payables for non-cancelled bookings
+    const costoOperativoReal      = sumCosts(nonCancelled);
+    const costosCancelados        = sumCosts(cancelled);
+
+    // E) Profit Reconocido: recognized revenue - costs of recognized bookings only
+    const costosReconocidos       = sumCosts(executedRecognized);
+    const profitReconocido        = revenueOpReconocido - costosReconocidos;
+    const margenReconocido        = revenueOpReconocido > 0
+        ? (profitReconocido / revenueOpReconocido * 100) : 0;
+
+    // F) Profit Provisional: all non-cancelled expected revenue - all actual costs (incl. pending)
+    const revenueProvisional      = sum(nonCancelled);
+    const profitProvisional       = revenueProvisional - costoOperativoReal;
+    const margenProvisional       = revenueProvisional > 0
+        ? (profitProvisional / revenueProvisional * 100) : 0;
+
+    // G) PAST_BOOKING_NOT_COMPLETED: service_date < today AND status still pending/confirmed
+    const pastNotCompleted = bookings.filter(b => {
+        const svc = b.service_date
+            ? new Date(b.service_date).toISOString().split('T')[0]
+            : null;
+        return svc && svc < TODAY && PENDING.includes((b.status||'').toLowerCase());
+    });
 
     const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+    const fmtAmt = (n, showPlus) => {
+        const abs = fmt(Math.abs(n));
+        if (showPlus) return (n >= 0 ? '+$' : '-$') + abs;
+        return '$' + abs;
+    };
 
-    // Status KPIs
-    set('stat-total',        bookings.length);
-    set('stat-executed',     executed.length);
-    set('stat-pending',      pending.length);
-    set('stat-cancelled',    cancelled.length);
-    set('stat-inprogress',   inProgress.length);
-    set('stat-reconciled',   reconciled.length);
-    set('stat-unreconciled', unreconciled.length);
+    // ── SET STATUS KPIs ──
+    set('stat-total',        totalCount);
+    set('stat-executed',     executedCount);
+    set('stat-pending',      pendingCount);
+    set('stat-cancelled',    cancelledCount);
+    set('stat-inprogress',   inProgressCount);
+    set('stat-reconciled',   reconciledCount);
+    set('stat-unreconciled', unreconciledCount);
 
-    // Financial KPIs
-    set('stat-rev-operational',  '$' + fmt(revenueOperational));
-    set('stat-rev-cancelled',    '$' + fmt(revenueCancelled));
-    set('stat-rev-pending',      '$' + fmt(revenuePending));
-    set('stat-rev-recognized',   '$' + fmt(revenueRecognized));
-    set('stat-rev-unrecognized', '$' + fmt(revenueUnrecognized));
-    set('stat-profit',           (profit >= 0 ? '+$' : '-$') + fmt(Math.abs(profit)));
-    set('stat-costs',            '$' + fmt(totalCosts));
-    set('stat-margin',           margin.toFixed(1) + '%');
+    // ── SET FINANCIAL KPIs ──
+    set('stat-rev-operational',    fmtAmt(revenueOpReconocido));
+    set('stat-rev-pending',        fmtAmt(revenuePending));
+    set('stat-rev-cancelled',      fmtAmt(revenueCancelled));
+    set('stat-costs',              fmtAmt(costoOperativoReal));
+    set('stat-profit-recognized',  fmtAmt(profitReconocido, true));
+    set('stat-profit-provisional', fmtAmt(profitProvisional, true));
+    set('stat-margin-recognized',  margenReconocido.toFixed(1) + '%');
+    set('stat-margin-provisional', margenProvisional.toFixed(1) + '%');
 
-    // Dynamic profit card color
-    const profitCard = document.getElementById('stat-card-profit');
-    if (profitCard) {
-        profitCard.className = 'stat-card ' + (profit < 0 ? 'red' : 'green');
+    // ── DYNAMIC CARD COLORS ──
+    const profitRecCard = document.getElementById('stat-card-profit-rec');
+    if (profitRecCard) profitRecCard.className = 'stat-card ' + (profitReconocido < 0 ? 'red' : 'green');
+
+    const profitProvCard = document.getElementById('stat-card-profit-prov');
+    if (profitProvCard) profitProvCard.className = 'stat-card ' + (profitProvisional < 0 ? 'red' : profitProvisional > 0 ? 'teal' : '');
+
+    const marginRecEl = document.getElementById('stat-margin-recognized');
+    if (marginRecEl) {
+        const card = marginRecEl.closest('.stat-card');
+        if (card) card.className = 'stat-card ' + (margenReconocido >= 30 ? 'purple' : margenReconocido >= 15 ? 'amber' : margenReconocido > 0 ? 'sky' : '');
     }
-    // Dynamic margin color
-    const marginEl = document.getElementById('stat-margin');
-    if (marginEl) {
-        const marginCard = marginEl.closest('.stat-card');
-        if (marginCard) marginCard.className = 'stat-card ' + (margin >= 30 ? 'purple' : margin >= 15 ? 'amber' : 'red');
+    const marginProvEl = document.getElementById('stat-margin-provisional');
+    if (marginProvEl) {
+        const card = marginProvEl.closest('.stat-card');
+        if (card) card.className = 'stat-card ' + (margenProvisional >= 30 ? 'purple' : margenProvisional >= 15 ? 'amber' : margenProvisional > 0 ? 'sky' : '');
     }
+
+    // ── PAST BOOKING ALERT ──
+    const alertBanner = document.getElementById('past-bookings-alert');
+    const alertMsg    = document.getElementById('past-bookings-alert-msg');
+    if (alertBanner && alertMsg) {
+        if (pastNotCompleted.length > 0) {
+            const names = pastNotCompleted.map(b => b.customer_name || b.id).slice(0, 5).join(', ');
+            alertMsg.textContent = ` ${pastNotCompleted.length} booking(s) con fecha de servicio pasada siguen como Pendiente/Confirmado: ${names}`;
+            alertBanner.style.display = 'block';
+        } else {
+            alertBanner.style.display = 'none';
+        }
+    }
+
+    // ── DEBUG SUMMARY (console only) ──
+    console.group('[KPI Audit]');
+    console.log('Filter period bookings:', totalCount, '| executed:', executedCount, '| pending:', pendingCount, '| cancelled:', cancelledCount);
+    console.log('Rev Op Reconocido:', revenueOpReconocido, '| Rev Pendiente:', revenuePending, '| Rev Cancelado:', revenueCancelled);
+    console.log('Costo Op Real:', costoOperativoReal, '| Costos Cancelados:', costosCancelados, '(NOT in operational costs)');
+    console.log('Profit Reconocido:', profitReconocido, '| Margen Rec:', margenReconocido.toFixed(1) + '%');
+    console.log('Profit Provisional:', profitProvisional, '| Margen Prov:', margenProvisional.toFixed(1) + '%');
+    console.log('Cuadrados:', reconciledCount, '| Sin cuadrar:', unreconciledCount, '| Past not completed:', pastNotCompleted.length);
+    if (pastNotCompleted.length) console.warn('PAST_BOOKING_NOT_COMPLETED:', pastNotCompleted.map(b => ({ id: b.id, svc: b.service_date, status: b.status })));
+    console.groupEnd();
 }
 
 function renderTable(bookings) {

@@ -3528,7 +3528,10 @@ app.get('/api/bookings', isAuthenticated, async (req, res) => {
              COALESCE(b.assigned_captain_name, cap.name)    AS captain_name,
              COALESCE(bt.name, b.boat_type)                 AS boat_name,
              bl.accounting_status,
-             lcs.kanban_status                              AS legacy_cleanup_status
+             lcs.kanban_status                              AS legacy_cleanup_status,
+             be_sum.total_costs,
+             cap_sum.captain_costs,
+             (COALESCE(be_sum.total_costs,0) + COALESCE(cap_sum.captain_costs,0)) AS total_costs_combined
       FROM bookings b
       LEFT JOIN captains cap ON cap.id = b.assigned_captain_id
       LEFT JOIN boats bt     ON bt.id = b.boat_id
@@ -3537,6 +3540,18 @@ app.get('/api/bookings', isAuthenticated, async (req, res) => {
         WHERE notes LIKE 'booking:' || b.id || '%' LIMIT 1
       ) bl ON true
       LEFT JOIN legacy_cleanup_status lcs ON lcs.booking_id = b.id
+      LEFT JOIN LATERAL (
+        SELECT COALESCE(SUM(be.amount),0)::numeric AS total_costs
+        FROM boat_expenses be
+        WHERE be.booking_id = b.id
+          AND LOWER(COALESCE(be.status,'active')) NOT IN ('cancelled','void','reversed')
+      ) be_sum ON true
+      LEFT JOIN LATERAL (
+        SELECT COALESCE(SUM(bcp.total_due),0)::numeric AS captain_costs
+        FROM booking_captain_payables bcp
+        WHERE bcp.booking_id = b.id
+          AND LOWER(COALESCE(bcp.status,'pending')) NOT IN ('cancelled','void','rejected')
+      ) cap_sum ON true
       WHERE 1=1`;
     const params = [];
     let paramIndex = 1;
