@@ -10439,8 +10439,8 @@ app.get('/api/accounting/reports/profit-loss', isAuthenticated, (req, res) => {
 // ── FASE 26: Full Corporate Balance Sheet ──────────────────────────────────
 app.get('/api/accounting/balance-sheet', isAuthenticated, async (req, res) => {
   try {
-    const { as_of_date } = req.query;
-    const date = as_of_date || new Date().toISOString().split('T')[0];
+    const { as_of_date, as_of } = req.query;
+    const date = as_of_date || as_of || new Date().toISOString().split('T')[0];
 
     // Cash/bank accounts — balance from transactions (income=Dr cash, expense=Cr cash)
     const { rows: cashRows } = await pool.query(`
@@ -10476,7 +10476,7 @@ app.get('/api/accounting/balance-sheet', isAuthenticated, async (req, res) => {
     const { rows: cpRows }  = await pool.query(`SELECT COALESCE(SUM(balance_due),0) as bal FROM corporate_payables WHERE status NOT IN ('paid','cancelled')`);
     const { rows: bpRows }  = await pool.query(`SELECT COALESCE(SUM(balance_due),0) as bal FROM booking_payables WHERE status NOT IN ('paid','cancelled')`);
     const { rows: capRows } = await pool.query(`SELECT COALESCE(SUM(balance_due),0) as bal FROM booking_captain_payables WHERE status NOT IN ('paid','cancelled')`);
-    const { rows: depRows } = await pool.query(`SELECT COALESCE(SUM(deposit_amount),0) as bal FROM booking_deposits WHERE status='pending'`);
+    const { rows: depRows } = await pool.query(`SELECT COALESCE(SUM(amount),0) as bal FROM booking_deposits WHERE status='pending'`);
     const liabilities = [
       { account_code:'2000', account_name:'Accounts Payable (Corporate)',  balance: parseFloat(cpRows[0].bal)||0 },
       { account_code:'2010', account_name:'Captain Payable',               balance: parseFloat(capRows[0].bal)||0 },
@@ -10528,8 +10528,10 @@ app.get('/api/accounting/reports/balance-sheet', isAuthenticated, (req, res) => 
 // ── FASE 26: Full Corporate Cash Flow ──────────────────────────────────────
 app.get('/api/accounting/cash-flow', isAuthenticated, async (req, res) => {
   try {
-    const { start_date, end_date } = req.query;
-    if (!start_date || !end_date) { return res.status(400).json({ error: 'start_date and end_date are required' }); }
+    const { start_date, end_date, period } = req.query;
+    let sd = start_date, ed = end_date;
+    if (period && !sd) { sd = period + '-01'; ed = period + '-31'; }
+    if (!sd || !ed) { return res.status(400).json({ error: 'start_date and end_date are required' }); }
 
     // Cash inflows = income transactions on cash accounts
     const { rows: inflows } = await pool.query(`

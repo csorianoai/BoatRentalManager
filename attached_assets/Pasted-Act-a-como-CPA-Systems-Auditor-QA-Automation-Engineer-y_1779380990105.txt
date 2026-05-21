@@ -1,0 +1,296 @@
+Actúa como CPA Systems Auditor, QA Automation Engineer y Enterprise Controller.
+
+Necesito ejecutar una auditoría completa de FASE 26 — Corporate Accounting Layer.
+
+NO modificar código primero.
+Primero auditar, probar y reportar.
+Solo si encuentras fallos críticos, proponer patch.
+
+OBJETIVO:
+Confirmar con evidencia que la capa de contabilidad corporativa funciona correctamente y no rompió nada existente.
+
+==================================================
+1. EJECUTAR QA SUITE CORPORATIVA
+==================================================
+
+Ejecutar endpoint o script:
+GET /api/accounting/qa/corporate-layer-test
+
+Debe validar:
+- Corporate expenses paid
+- Corporate expenses payable
+- Prepaid expenses
+- AP creation
+- AP partial/full payment
+- Other income
+- Payroll paid
+- Payroll payable
+- General Ledger
+- Reversal entries
+- Trial Balance
+- Profit & Loss
+- Balance Sheet
+- Cash Flow
+- Period lock
+- Legacy protection
+- Cancelled booking protection
+- Matej regression
+- Dashboard regression
+
+Reportar:
+PASS / FAIL por prueba.
+
+==================================================
+2. VALIDAR PARTIDA DOBLE
+==================================================
+
+Auditar journal_entries y journal_entry_lines.
+
+Para cada journal_entry_id:
+- total_debits
+- total_credits
+- difference
+
+Resultado esperado:
+difference = 0 para todos.
+
+Reportar:
+- total journal entries
+- balanced entries
+- unbalanced entries
+- worst difference
+
+==================================================
+3. VALIDAR CHART OF ACCOUNTS
+==================================================
+
+Confirmar que todas las cuentas críticas existen y están activas:
+
+1010, 1015, 1100, 1200,
+2000, 2010, 2020, 2030, 2110, 2130, 2500,
+3000, 3100, 3200,
+4010, 4020, 4090, 4500,
+5010, 5020, 5030, 5040, 5050, 5060,
+6010, 6020, 6030, 6040, 6050, 6060, 6070,
+6080, 6090, 6100, 6110, 6120, 6130,
+6900
+
+Reportar:
+- missing accounts
+- inactive accounts
+- duplicate account codes
+
+==================================================
+4. VALIDAR ESTADOS FINANCIEROS
+==================================================
+
+Ejecutar:
+
+GET /api/accounting/reports/profit-loss?period=2026-05
+GET /api/accounting/reports/balance-sheet?as_of=2026-05-31
+GET /api/accounting/reports/cash-flow?period=2026-05
+GET /api/accounting/reports/trial-balance?period=2026-05
+
+Validar:
+
+P&L:
+- Booking Revenue
+- Other Income
+- Direct Costs
+- Operating Expenses
+- Net Income
+
+Balance Sheet:
+- Assets
+- Liabilities
+- Equity
+- Assets = Liabilities + Equity
+
+Cash Flow:
+- Beginning Cash
+- Inflows
+- Outflows
+- Ending Cash
+
+Trial Balance:
+- Total debits = total credits
+
+==================================================
+5. VALIDAR FLUJOS CORPORATIVOS
+==================================================
+
+Crear pruebas QA con rollback o source_type='qa_test':
+
+A) Corporate expense paid:
+Office rent $100
+Dr 6080
+Cr 1010
+
+B) Utility payable:
+Dr 6090
+Cr 2000
+Luego pago:
+Dr 2000
+Cr 1010
+
+C) Telephone:
+Dr 6100
+Cr 1010
+
+D) Payroll:
+Dr 6110
+Cr 1010
+
+E) Payroll payable:
+Dr 6110
+Cr 2110
+
+F) Other income:
+Dr 1010
+Cr 4500
+
+G) Prepaid:
+Dr 1200
+Cr 1010
+Luego amortización:
+Dr 6040
+Cr 1200
+
+H) Reversal:
+Crear gasto y reversarlo.
+Confirmar original intacto + reversal inverso.
+
+==================================================
+6. VALIDAR QUE NO ROMPIÓ BOOKINGS
+==================================================
+
+Revisar booking:
+book_dDgO83lgF1
+
+Debe seguir:
+- booking_total = 699.99
+- expenses = 560.99
+- profit = 139.00
+- cash_clearing = 0.00
+- captain payable paid
+- no duplicate expenses
+
+Validar:
+GET /api/bookings/book_dDgO83lgF1/reconciliation
+
+==================================================
+7. VALIDAR CANCELLED BOOKINGS
+==================================================
+
+Ejecutar:
+GET /api/audit/cancelled-bookings
+
+Debe devolver:
+- critical_issues = 0
+- cancelled_affecting_current_financials = 0
+
+Probar:
+- cancelados no generan revenue operativo
+- no generan AR
+- no permiten payment/revenue/lock normal
+
+==================================================
+8. VALIDAR LEGACY LOCK
+==================================================
+
+Ejecutar auditoría de legacy:
+
+- no transactions legacy en 1015
+- legacy no aparece en reportes current
+- bookings antes de 2026-04-27 están legacy_locked
+- Matej 2026-04-27 sigue current
+
+==================================================
+9. VALIDAR AP CORPORATIVO
+==================================================
+
+Ejecutar:
+GET /api/accounting/payables-aging
+GET /api/accounting/payables-summary
+
+Debe mostrar:
+- AP abiertas
+- AP pagadas
+- AP vencidas
+- corporate AP
+- booking AP
+- captain/broker/vendor payables si existen
+
+Validar:
+- pagos parciales no duplican gasto
+- pagos reducen liability
+- AP balance correcto
+
+==================================================
+10. VALIDAR COMPATIBILIDAD BANK TRANSACTIONS
+==================================================
+
+Como postJournalEntry sincroniza cuentas cash con transactions, validar:
+
+- cada movimiento en 1010/1015 tiene transacción compatible
+- no duplica registros
+- no rompe bank reconciliation
+- source_type correcto
+- reference_id correcto
+
+==================================================
+11. VALIDAR UI
+==================================================
+
+Verificar que existen y cargan sin errores:
+
+Accounting tabs:
+- Gastos Corp.
+- AP Corporativo
+- Otros Ingresos
+- Nómina
+- General Ledger
+- Trial Balance
+- P&L Completo
+
+Cada tab debe:
+- cargar datos
+- permitir filtro de periodo
+- mostrar errores claramente
+- no romper tabs existentes
+
+==================================================
+12. REPORTE FINAL
+==================================================
+
+Entregar reporte con:
+
+1. QA suite resultado general
+2. Pruebas PASS/FAIL
+3. Journal entries balanceadas
+4. Cuentas faltantes/inactivas
+5. P&L validado
+6. Balance Sheet validado
+7. Cash Flow validado
+8. Trial Balance validado
+9. Matej regression
+10. Cancelled regression
+11. Legacy regression
+12. AP regression
+13. UI regression
+14. Errores encontrados
+15. Patches recomendados si aplica
+
+CRITERIO DE ÉXITO:
+Solo declarar FASE 26 correcta si:
+
+- 100% journal entries balanceadas
+- Trial Balance cuadra
+- Balance Sheet cuadra
+- P&L muestra revenue/costos/gastos correctamente
+- Cash Flow cuadra
+- AP aging funciona
+- Bookings siguen correctos
+- Cancelled no afectan contabilidad
+- Legacy no contamina current
+- UI carga sin errores
