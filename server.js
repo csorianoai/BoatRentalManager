@@ -2556,6 +2556,101 @@ async function initializeDatabase() {
     }
     // ── END FASE 24 ──────────────────────────────────────────────────────────
 
+    // ── FASE 25: Accounts Payable — General Booking Payables ─────────────────
+    try {
+      const { nanoid } = await import('nanoid');
+      // 1. Rename 2010 to "Captain Payable" (was incorrectly named "Accounts Payable")
+      await pool.query(`UPDATE chart_of_accounts SET account_name='Captain Payable' WHERE account_code='2010' AND account_name='Accounts Payable'`);
+
+      // 2. Get 2000 (parent AP account) ID for sub-account references
+      const { rows: p2000 } = await pool.query(`SELECT id FROM chart_of_accounts WHERE account_code='2000' LIMIT 1`);
+      const ap2000Id = p2000[0]?.id || null;
+
+      // 3. Create 2020 Broker Commission Payable
+      await pool.query(`
+        INSERT INTO chart_of_accounts (id, account_code, account_name, account_type, parent_account_id, description, is_active)
+        SELECT $1,'2020','Broker Commission Payable','liability',$2,'Comisiones pendientes de pago a brokers y plataformas',1
+        WHERE NOT EXISTS (SELECT 1 FROM chart_of_accounts WHERE account_code='2020')
+      `, ['acc_2020_' + nanoid(6), ap2000Id]);
+
+      // 4. Create 2030 Vendor Payable
+      await pool.query(`
+        INSERT INTO chart_of_accounts (id, account_code, account_name, account_type, parent_account_id, description, is_active)
+        SELECT $1,'2030','Vendor Payable','liability',$2,'Cuentas por pagar a proveedores: limpieza, marina, mantenimiento, otros',1
+        WHERE NOT EXISTS (SELECT 1 FROM chart_of_accounts WHERE account_code='2030')
+      `, ['acc_2030_' + nanoid(6), ap2000Id]);
+
+      // 5. Create booking_payables table (general AP for all non-captain types)
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS booking_payables (
+          id TEXT PRIMARY KEY,
+          booking_id TEXT NOT NULL,
+          payable_type TEXT NOT NULL DEFAULT 'other',
+          vendor_name TEXT NOT NULL,
+          vendor_id TEXT,
+          description TEXT,
+          expense_account_code TEXT NOT NULL DEFAULT '6900',
+          payable_account_code TEXT NOT NULL DEFAULT '2000',
+          total_due NUMERIC(12,2) NOT NULL DEFAULT 0,
+          total_paid NUMERIC(12,2) NOT NULL DEFAULT 0,
+          balance_due NUMERIC(12,2) NOT NULL DEFAULT 0,
+          status TEXT NOT NULL DEFAULT 'pending',
+          due_date DATE,
+          service_date DATE,
+          source TEXT DEFAULT 'booking_wizard',
+          created_by TEXT,
+          audit_notes TEXT,
+          obligation_tx_dr TEXT,
+          obligation_tx_cr TEXT,
+          created_at TIMESTAMP DEFAULT NOW(),
+          updated_at TIMESTAMP DEFAULT NOW()
+        )
+      `);
+
+      // 6. Create booking_payable_payments table
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS booking_payable_payments (
+          id TEXT PRIMARY KEY,
+          payable_id TEXT NOT NULL,
+          booking_id TEXT NOT NULL,
+          amount NUMERIC(12,2) NOT NULL,
+          payment_method TEXT NOT NULL DEFAULT 'cash',
+          payment_account_code TEXT NOT NULL DEFAULT '1015',
+          payment_date DATE NOT NULL,
+          notes TEXT,
+          transaction_id_dr TEXT,
+          transaction_id_cr TEXT,
+          created_by TEXT,
+          created_at TIMESTAMP DEFAULT NOW()
+        )
+      `);
+
+      // 7. Expand transactions.reference_type constraint to include booking_payable types
+      try {
+        await pool.query(`ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_reference_type_check`);
+        await pool.query(`ALTER TABLE transactions ADD CONSTRAINT transactions_reference_type_check CHECK (
+          reference_type = ANY (ARRAY[
+            'booking','commission','fuel','maintenance','manual','bank_transfer','other','asset',
+            'captain_payment','cash_clearing','booking_complete','booking_expense','manual_adjustment',
+            'booking_payable','booking_payable_payment'
+          ])
+        )`);
+      } catch(ce) {
+        console.warn('⚠️ FASE 25: constraint expand skipped (non-critical):', ce.message);
+      }
+
+      // 8. Indexes for performance
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_booking_payables_booking_id ON booking_payables(booking_id)`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_booking_payables_status ON booking_payables(status)`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_bpp_payable_id ON booking_payable_payments(payable_id)`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_bpp_booking_id ON booking_payable_payments(booking_id)`);
+
+      console.log('✅ FASE 25: AP system ready (booking_payables, booking_payable_payments, 2010 renamed, 2020/2030 created)');
+    } catch(e) {
+      console.warn('⚠️ FASE 25 (non-critical):', e.message);
+    }
+    // ── END FASE 25 ──────────────────────────────────────────────────────────
+
     // ── END FASE 23 ──────────────────────────────────────────────────────────
 
     console.log('✅ Database schema initialized successfully (all 10 phases + authentication)');
@@ -15067,6 +15162,37 @@ async function checkBookingIntegrity(bookingId) {
     : captainPayablePaid > 0 ? 'partially_paid'
     : 'pending';
 
+  // ── General Payables (booking_payables table) ──────────────────────────
+  const { rows: genPayRows } = await pool.query(
+    `SELECT payable_type,
+            COALESCE(SUM(total_due),0) as total_due,
+            COALESCE(SUM(total_paid),0) as total_paid,
+            COALESCE(SUM(balance_due),0) as balance_due,
+            COUNT(*) as cnt
+     FROM booking_payables
+     WHERE booking_id=$1 AND status != 'cancelled'
+     GROUP BY payable_type`,
+    [bookingId]
+  ).catch(() => ({ rows: [] }));
+
+  const genPaySummary = { total_due: 0, total_paid: 0, balance_due: 0, cnt: 0, by_type: {} };
+  for (const r of genPayRows) {
+    genPaySummary.total_due    += parseFloat(r.total_due);
+    genPaySummary.total_paid   += parseFloat(r.total_paid);
+    genPaySummary.balance_due  += parseFloat(r.balance_due);
+    genPaySummary.cnt          += parseInt(r.cnt);
+    genPaySummary.by_type[r.payable_type] = {
+      total_due:   parseFloat(r.total_due),
+      total_paid:  parseFloat(r.total_paid),
+      balance_due: parseFloat(r.balance_due),
+      cnt:         parseInt(r.cnt)
+    };
+  }
+  const genPayStatus = genPaySummary.cnt === 0 ? 'none'
+    : genPaySummary.balance_due <= 0.005 ? 'paid'
+    : genPaySummary.total_paid > 0 ? 'partially_paid'
+    : 'pending';
+
   // ── accounting_status — strict rules (cannot be 'reconciled' with open items) ─
   let accountingStatus = bk.accounting_status || 'not_started';
   if (bk.accounting_status === 'locked' || bk.accounting_status === 'legacy_locked') {
@@ -15217,6 +15343,29 @@ async function checkBookingIntegrity(bookingId) {
       captain_overpayment: captainPayablePaid - captainPayableDue });
   }
 
+  // ── General Payables alerts (ALLOW_CLOSE_WITH_OPEN_PAYABLES = true) ────
+  const ALLOW_CLOSE_WITH_OPEN_PAYABLES = true;
+  if (genPaySummary.balance_due > 0.01) {
+    const pendingTypes = Object.entries(genPaySummary.by_type)
+      .filter(([, v]) => v.balance_due > 0.01)
+      .map(([t, v]) => `${t}: $${v.balance_due.toFixed(2)}`).join(', ');
+    alerts.push({
+      severity: ALLOW_CLOSE_WITH_OPEN_PAYABLES ? 'info' : 'high',
+      code: 'PAYABLE_PENDING',
+      message: `Cuentas por pagar pendientes registradas: ${pendingTypes}${ALLOW_CLOSE_WITH_OPEN_PAYABLES ? ' — obligaciones en AP, puede cerrar operativamente' : ' — pagar antes de cerrar'}`,
+      payable_balance_due: genPaySummary.balance_due,
+      can_close_with_open: ALLOW_CLOSE_WITH_OPEN_PAYABLES
+    });
+  }
+  // Check for overpaid general payables
+  for (const [ptype, v] of Object.entries(genPaySummary.by_type)) {
+    if (v.total_paid > v.total_due + 0.01 && v.total_due > 0) {
+      alerts.push({ severity: 'medium', code: 'PAYABLE_OVERPAID',
+        message: `Sobrepago en ${ptype}: $${(v.total_paid - v.total_due).toFixed(2)} — verificar o ajustar`,
+        payable_type: ptype, overpayment: v.total_paid - v.total_due });
+    }
+  }
+
   // ── Suggested next action ──────────────────────────────────────────────
   let suggestedNextAction = '';
   if (accountingStatus === 'locked' || accountingStatus === 'legacy_locked') {
@@ -15280,6 +15429,15 @@ async function checkBookingIntegrity(bookingId) {
     captain_payable_balance:   captainPayableBalance,
     captain_payable_status:    captainPayableStatus,
     captain_payable_count:     captainPayableCount,
+    general_payables_due:      genPaySummary.total_due,
+    general_payables_paid:     genPaySummary.total_paid,
+    general_payables_balance:  genPaySummary.balance_due,
+    general_payables_status:   genPayStatus,
+    general_payables_by_type:  genPaySummary.by_type,
+    total_payables_due:        captainPayableDue + genPaySummary.total_due,
+    total_payables_paid:       captainPayablePaid + genPaySummary.total_paid,
+    total_payables_balance:    captainPayableBalance + genPaySummary.balance_due,
+    can_close_with_open_payables: true,
     alerts,
     suggested_next_action:     suggestedNextAction,
   };
@@ -15793,6 +15951,312 @@ app.post('/api/bookings/:id/captain-payable/:payable_id/payments', isAuthenticat
   } finally { pg.release(); }
 });
 
+// ── FASE 25: General Payables AP Endpoints ────────────────────────────────
+
+// Payable type → default expense/payable account codes
+const PAYABLE_TYPE_ACCOUNTS = {
+  captain:           { expense: '5010', payable: '2010' },
+  broker_commission: { expense: '5060', payable: '2020' },
+  cleaning:          { expense: '5040', payable: '2030' },
+  marina:            { expense: '5050', payable: '2030' },
+  maintenance:       { expense: '6020', payable: '2030' },
+  vendor:            { expense: '6900', payable: '2030' },
+  other:             { expense: '6900', payable: '2000' },
+};
+
+// GET /api/bookings/:id/payables — all general payables + captain summary
+app.get('/api/bookings/:id/payables', isAuthenticated, async (req, res) => {
+  try {
+    const bookingId = req.params.id;
+    const { rows: payables } = await pool.query(
+      `SELECT bp.*, bpp_agg.payments_count, bpp_agg.last_payment_date
+       FROM booking_payables bp
+       LEFT JOIN LATERAL (
+         SELECT COUNT(*) as payments_count, MAX(payment_date) as last_payment_date
+         FROM booking_payable_payments WHERE payable_id = bp.id
+       ) bpp_agg ON true
+       WHERE bp.booking_id = $1
+       ORDER BY bp.created_at ASC`,
+      [bookingId]
+    );
+    const { rows: payments } = await pool.query(
+      `SELECT bpp.*, bp.payable_type, bp.vendor_name
+       FROM booking_payable_payments bpp
+       JOIN booking_payables bp ON bp.id = bpp.payable_id
+       WHERE bpp.booking_id = $1
+       ORDER BY bpp.created_at ASC`,
+      [bookingId]
+    );
+    const totalDue  = payables.reduce((s, p) => s + parseFloat(p.total_due  || 0), 0);
+    const totalPaid = payables.reduce((s, p) => s + parseFloat(p.total_paid || 0), 0);
+    res.json({ payables, payments, total_due: totalDue, total_paid: totalPaid, balance_due: totalDue - totalPaid });
+  } catch (err) {
+    console.error('GET booking payables error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/bookings/:id/payables — create new general payable obligation
+app.post('/api/bookings/:id/payables', isAuthenticated, async (req, res) => {
+  const pg = await pool.connect();
+  try {
+    const bookingId = req.params.id;
+    const { payable_type, vendor_name, description, total_due, expense_account_code, payable_account_code, due_date, service_date, notes } = req.body;
+    if (!vendor_name?.trim()) return res.status(400).json({ error: 'vendor_name es requerido' });
+    const amount = parseFloat(total_due);
+    if (!amount || amount <= 0) return res.status(400).json({ error: 'total_due debe ser > 0' });
+    const ptype = payable_type || 'other';
+    const typeAccounts = PAYABLE_TYPE_ACCOUNTS[ptype] || PAYABLE_TYPE_ACCOUNTS.other;
+    const expCode = expense_account_code || typeAccounts.expense;
+    const payCode = payable_account_code  || typeAccounts.payable;
+
+    // Verify booking exists and is not cancelled
+    const { rows: bkRows } = await pool.query(`SELECT service_date, booking_date, status FROM bookings WHERE id=$1`, [bookingId]);
+    if (!bkRows.length) return res.status(404).json({ error: 'Booking no encontrado' });
+    const bk = bkRows[0];
+    if (['cancelled','canceled','cancelado'].includes((bk.status||'').toLowerCase())) {
+      return res.status(409).json({ error: 'BOOKING_CANCELLED', message: 'Booking cancelado — no se pueden crear payables' });
+    }
+    const txDate = service_date || bk.service_date || bk.booking_date || new Date().toISOString().split('T')[0];
+
+    const [expAcctId, payAcctId] = await Promise.all([
+      resolveAccountId(expCode),
+      resolveAccountId(payCode),
+    ]);
+
+    const { nanoid } = await import('nanoid');
+    const payableId = 'bpay_' + nanoid(10);
+    const drTxId    = 'tx_bpay_dr_' + nanoid(8);
+    const crTxId    = 'tx_bpay_cr_' + nanoid(8);
+
+    await pg.query('BEGIN');
+
+    // Dr expense account
+    await pg.query(`
+      INSERT INTO transactions (id, transaction_date, account_id, amount, transaction_type,
+        description, reference_id, reference_type, booking_id, notes, source_system)
+      VALUES ($1,$2,$3,$4,'expense',$5,$6,'booking_payable',$7,$8,'booking_wizard')
+    `, [drTxId, txDate, expAcctId, amount,
+        `Dr ${expCode} ${ptype} — ${vendor_name.trim()}${description ? ': '+description : ''}`,
+        payableId, bookingId, `${ptype} obligation obligation_dr`]);
+
+    // Cr payable account
+    await pg.query(`
+      INSERT INTO transactions (id, transaction_date, account_id, amount, transaction_type,
+        description, reference_id, reference_type, booking_id, notes, source_system)
+      VALUES ($1,$2,$3,$4,'expense',$5,$6,'booking_payable',$7,$8,'booking_wizard')
+    `, [crTxId, txDate, payAcctId, amount,
+        `Cr ${payCode} AP — Obligación ${ptype} ${vendor_name.trim()}`,
+        payableId, bookingId, `${ptype} obligation obligation_cr`]);
+
+    // Insert payable record
+    await pg.query(`
+      INSERT INTO booking_payables
+        (id, booking_id, payable_type, vendor_name, description, expense_account_code, payable_account_code,
+         total_due, total_paid, balance_due, status, due_date, service_date, obligation_tx_dr, obligation_tx_cr)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,0,$8,'pending',$9,$10,$11,$12)
+    `, [payableId, bookingId, ptype, vendor_name.trim(), description||null, expCode, payCode,
+        amount, due_date||null, txDate, drTxId, crTxId]);
+
+    await pg.query('COMMIT');
+    console.log(`✅ booking_payable created: ${payableId} booking=${bookingId} type=${ptype} vendor=${vendor_name} amount=${amount}`);
+    const { rows: created } = await pool.query(`SELECT * FROM booking_payables WHERE id=$1`, [payableId]);
+    res.json({ payable: created[0], created: true,
+               journal: `Dr ${expCode} $${amount.toFixed(2)} / Cr ${payCode} $${amount.toFixed(2)}` });
+  } catch (err) {
+    await pg.query('ROLLBACK').catch(() => {});
+    console.error('POST booking-payable error:', err);
+    res.status(500).json({ error: err.message });
+  } finally { pg.release(); }
+});
+
+// POST /api/bookings/:id/payables/:payable_id/payments — register partial/full payment
+app.post('/api/bookings/:id/payables/:payable_id/payments', isAuthenticated, async (req, res) => {
+  const pg = await pool.connect();
+  try {
+    const { id: bookingId, payable_id: payableId } = req.params;
+    const { amount, payment_method, payment_date, payment_account_code, notes } = req.body;
+    const pmtAmount = parseFloat(amount);
+    if (!pmtAmount || pmtAmount <= 0) return res.status(400).json({ error: 'amount debe ser > 0' });
+
+    const { rows: payRows } = await pool.query(
+      `SELECT * FROM booking_payables WHERE id=$1 AND booking_id=$2`, [payableId, bookingId]
+    );
+    if (!payRows.length) return res.status(404).json({ error: 'Payable no encontrado' });
+    const payable = payRows[0];
+    if (payable.status === 'cancelled') return res.status(409).json({ error: 'Payable cancelado' });
+
+    const method = (payment_method || 'cash').toLowerCase();
+    // Determine credit account: cash→1015, everything else→1010
+    const crCode  = payment_account_code || (method === 'cash' ? '1015' : '1010');
+    const crLabel = crCode === '1015' ? '1015 Cash Clearing' : '1010 Wells Fargo Checking';
+
+    const [payAcctId, crAcctId] = await Promise.all([
+      resolveAccountId(payable.payable_account_code),
+      resolveAccountId(crCode),
+    ]);
+
+    const newTotalPaid  = parseFloat(payable.total_paid) + pmtAmount;
+    const newBalanceDue = parseFloat(payable.total_due)  - newTotalPaid;
+    const newStatus     = newTotalPaid >= parseFloat(payable.total_due) - 0.005
+      ? (newTotalPaid > parseFloat(payable.total_due) + 0.005 ? 'overpaid' : 'paid')
+      : 'partially_paid';
+
+    const { nanoid } = await import('nanoid');
+    const pmtId  = 'bpmt_' + nanoid(10);
+    const drTxId = 'tx_bpmt_dr_' + nanoid(8);
+    const crTxId = 'tx_bpmt_cr_' + nanoid(8);
+    const txDate = payment_date || new Date().toISOString().split('T')[0];
+
+    await pg.query('BEGIN');
+
+    // Dr payable account (reduces the liability)
+    await pg.query(`
+      INSERT INTO transactions (id, transaction_date, account_id, amount, transaction_type,
+        description, reference_id, reference_type, booking_id, notes, source_system)
+      VALUES ($1,$2,$3,$4,'expense',$5,$6,'booking_payable_payment',$7,$8,'booking_wizard')
+    `, [drTxId, txDate, payAcctId, pmtAmount,
+        `Dr ${payable.payable_account_code} AP — Abono ${payable.payable_type} ${payable.vendor_name} (${method})`,
+        pmtId, bookingId, `${payable.payable_type} payment_dr`]);
+
+    // Cr cash/bank account
+    await pg.query(`
+      INSERT INTO transactions (id, transaction_date, account_id, amount, transaction_type,
+        description, reference_id, reference_type, booking_id, notes, source_system)
+      VALUES ($1,$2,$3,$4,'expense',$5,$6,'booking_payable_payment',$7,$8,'booking_wizard')
+    `, [crTxId, txDate, crAcctId, pmtAmount,
+        `Cr ${crLabel} — Abono ${payable.payable_type} ${payable.vendor_name}`,
+        pmtId, bookingId, `${payable.payable_type} payment_cr`]);
+
+    // Insert payment record
+    await pg.query(`
+      INSERT INTO booking_payable_payments
+        (id, payable_id, booking_id, amount, payment_method, payment_account_code,
+         payment_date, notes, transaction_id_dr, transaction_id_cr)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+    `, [pmtId, payableId, bookingId, pmtAmount, method, crCode, txDate, notes||null, drTxId, crTxId]);
+
+    // Update payable aggregate totals
+    await pg.query(`
+      UPDATE booking_payables SET total_paid=$1, balance_due=$2, status=$3, updated_at=NOW() WHERE id=$4
+    `, [newTotalPaid, Math.max(0, newBalanceDue), newStatus, payableId]);
+
+    await pg.query('COMMIT');
+    console.log(`✅ booking_payable payment: ${pmtId} payable=${payableId} amount=${pmtAmount} method=${method} status→${newStatus}`);
+
+    const { rows: updated  } = await pool.query(`SELECT * FROM booking_payables WHERE id=$1`, [payableId]);
+    const { rows: payments } = await pool.query(
+      `SELECT * FROM booking_payable_payments WHERE payable_id=$1 ORDER BY created_at ASC`, [payableId]
+    );
+    res.json({ payable: updated[0], payments, payment_id: pmtId, new_status: newStatus });
+  } catch (err) {
+    await pg.query('ROLLBACK').catch(() => {});
+    console.error('POST booking-payable-payment error:', err);
+    res.status(500).json({ error: err.message });
+  } finally { pg.release(); }
+});
+
+// GET /api/accounting/payables-aging — AP aging report
+app.get('/api/accounting/payables-aging', isAuthenticated, async (req, res) => {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const { rows: genRows } = await pool.query(`
+      SELECT bp.id, bp.booking_id, bp.payable_type, bp.vendor_name, bp.description,
+             bp.total_due, bp.total_paid, bp.balance_due, bp.status, bp.due_date,
+             b.customer_name, b.service_date as booking_service_date,
+             CASE
+               WHEN bp.due_date IS NULL THEN 'current'
+               WHEN bp.due_date::date >= $1::date THEN 'current'
+               WHEN ($1::date - bp.due_date::date) BETWEEN 1 AND 30 THEN '1-30'
+               WHEN ($1::date - bp.due_date::date) BETWEEN 31 AND 60 THEN '31-60'
+               WHEN ($1::date - bp.due_date::date) BETWEEN 61 AND 90 THEN '61-90'
+               ELSE '90+'
+             END as aging_bucket
+      FROM booking_payables bp
+      JOIN bookings b ON b.id = bp.booking_id
+      WHERE bp.status IN ('pending','partially_paid') AND bp.balance_due > 0.005
+      ORDER BY bp.due_date ASC NULLS LAST
+    `, [today]);
+
+    const { rows: capRows } = await pool.query(`
+      SELECT bcp.id, bcp.booking_id, 'captain' as payable_type, bcp.captain_name as vendor_name,
+             NULL as description, bcp.total_due, bcp.total_paid, bcp.balance_due, bcp.status,
+             NULL as due_date, b.customer_name, b.service_date as booking_service_date,
+             'current' as aging_bucket
+      FROM booking_captain_payables bcp
+      JOIN bookings b ON b.id = bcp.booking_id
+      WHERE bcp.status IN ('pending','partially_paid') AND bcp.balance_due > 0.005
+      ORDER BY bcp.created_at DESC
+    `);
+
+    const allRows = [...capRows, ...genRows];
+    const buckets = { current: [], '1-30': [], '31-60': [], '61-90': [], '90+': [] };
+    const totals  = { current: 0, '1-30': 0, '31-60': 0, '61-90': 0, '90+': 0, total: 0 };
+    for (const r of allRows) {
+      const b = r.aging_bucket || 'current';
+      if (!buckets[b]) { buckets[b] = []; totals[b] = 0; }
+      buckets[b].push(r);
+      totals[b] += parseFloat(r.balance_due || 0);
+      totals.total += parseFloat(r.balance_due || 0);
+    }
+    res.json({ buckets, totals, total_open: allRows.length, as_of_date: today });
+  } catch (err) {
+    console.error('payables-aging error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/accounting/payables-summary — AP summary by type
+app.get('/api/accounting/payables-summary', isAuthenticated, async (req, res) => {
+  try {
+    const { rows: genRows } = await pool.query(`
+      SELECT payable_type,
+             COALESCE(SUM(total_due),0) as total_due,
+             COALESCE(SUM(total_paid),0) as total_paid,
+             COALESCE(SUM(balance_due),0) as balance_due,
+             COUNT(*) as cnt,
+             COUNT(CASE WHEN status IN ('pending','partially_paid') THEN 1 END) as open_cnt
+      FROM booking_payables WHERE status != 'cancelled'
+      GROUP BY payable_type
+    `);
+    const { rows: capRows } = await pool.query(`
+      SELECT COALESCE(SUM(total_due),0) as total_due,
+             COALESCE(SUM(total_paid),0) as total_paid,
+             COALESCE(SUM(balance_due),0) as balance_due,
+             COUNT(*) as cnt,
+             COUNT(CASE WHEN status IN ('pending','partially_paid') THEN 1 END) as open_cnt
+      FROM booking_captain_payables
+    `);
+    const byType = { captain: {
+      total_due: parseFloat(capRows[0]?.total_due||0), total_paid: parseFloat(capRows[0]?.total_paid||0),
+      balance_due: parseFloat(capRows[0]?.balance_due||0), cnt: parseInt(capRows[0]?.cnt||0),
+      open_cnt: parseInt(capRows[0]?.open_cnt||0)
+    }};
+    for (const r of genRows) {
+      byType[r.payable_type] = {
+        total_due: parseFloat(r.total_due), total_paid: parseFloat(r.total_paid),
+        balance_due: parseFloat(r.balance_due), cnt: parseInt(r.cnt), open_cnt: parseInt(r.open_cnt)
+      };
+    }
+    const totalDue  = Object.values(byType).reduce((s, v) => s + v.total_due, 0);
+    const totalPaid = Object.values(byType).reduce((s, v) => s + v.total_paid, 0);
+    const totalBal  = Object.values(byType).reduce((s, v) => s + v.balance_due, 0);
+    const totalOpen = Object.values(byType).reduce((s, v) => s + v.open_cnt, 0);
+    const vendorBal = ['cleaning','marina','maintenance','vendor','other']
+      .reduce((s, t) => s + (byType[t]?.balance_due || 0), 0);
+    res.json({
+      total_payables: totalDue, total_paid: totalPaid, total_balance: totalBal, open_count: totalOpen,
+      captain_payables: byType.captain?.balance_due || 0,
+      broker_payables:  byType.broker_commission?.balance_due || 0,
+      vendor_payables:  vendorBal,
+      by_type: byType
+    });
+  } catch (err) {
+    console.error('payables-summary error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── FASE 8: POST /api/accounting/manual-entry ─────────────────────────────
 app.post('/api/accounting/manual-entry', isAuthenticated, async (req, res) => {
   const pg = await pool.connect();
@@ -16085,7 +16549,7 @@ app.post('/api/bookings/:id/lock', isAuthenticated, async (req, res) => {
       return res.status(409).json({ error: 'BOOKING_CANCELLED_ACCOUNTING_LOCKED', message: 'Booking cancelado — no se puede bloquear.' });
     }
 
-    // Validation checks
+    // Validation checks — hard blockers
     const errors = [];
     if (integrity.discrepancy_flag) errors.push('Hay discrepancia de pago pendiente');
     if (!integrity.revenue_recognized) errors.push('Revenue no ha sido reconocido');
@@ -16094,12 +16558,25 @@ app.post('/api/bookings/:id/lock', isAuthenticated, async (req, res) => {
     if (parseFloat(integrity.total_ar_pending || 0) > 0.01)
       errors.push('Hay cuentas por cobrar pendientes');
 
+    // General payables — ALLOW_CLOSE_WITH_OPEN_PAYABLES = true
+    // Open payables are NOT hard blockers — they appear as warnings only
+    const genPayBalance = parseFloat(integrity.general_payables_balance || 0);
+    const openPayableWarnings = [];
+    if (genPayBalance > 0.01) {
+      const byType = integrity.general_payables_by_type || {};
+      const pending = Object.entries(byType)
+        .filter(([, v]) => v.balance_due > 0.01)
+        .map(([t, v]) => `${t}: $${parseFloat(v.balance_due).toFixed(2)}`).join(', ');
+      openPayableWarnings.push(`Cuentas por pagar pendientes (registradas en AP): ${pending}`);
+    }
+
     const forceClose = req.body?.force === true;
     if (errors.length > 0 && !forceClose) {
       await pg.query('ROLLBACK');
       return res.status(400).json({
         error: 'No se puede cerrar: hay checks pendientes',
-        errors, force_hint: 'Envía force:true para forzar el cierre'
+        errors, open_payable_warnings: openPayableWarnings,
+        force_hint: 'Envía force:true para forzar el cierre'
       });
     }
 
@@ -16134,7 +16611,7 @@ app.post('/api/bookings/:id/lock', isAuthenticated, async (req, res) => {
     await pg.query('COMMIT');
     const finalIntegrity = await checkBookingIntegrity(bookingId).catch(() => null);
     res.json({ success: true, accounting_status: 'locked', lock_tx_id: lockTxId,
-               warnings: errors, integrity: finalIntegrity });
+               warnings: errors, open_payable_warnings: openPayableWarnings, integrity: finalIntegrity });
   } catch (err) {
     await pg.query('ROLLBACK');
     console.error('Error locking booking:', err);

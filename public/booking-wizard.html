@@ -619,6 +619,78 @@
     </div>
     <!-- ===== END CAPTAIN PAYABLE SECTION ===== -->
 
+    <!-- ===== GENERAL PAYABLES SECTION ===== -->
+    <div class="wiz-card" id="gen-payables-card" style="border:2px solid #7c3aed;">
+      <h2 style="color:#5b21b6;">Otras Cuentas por Pagar del Booking</h2>
+      <p class="sub">Broker/comisión, limpieza, marina, mantenimiento y otros proveedores. Cada obligación genera Dr (gasto) / Cr (payable). Los abonos reducen el pasivo sin crear gasto adicional.</p>
+
+      <!-- Summary bar -->
+      <div id="genpay-summary-bar" style="display:none;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:8px;padding:12px 16px;margin-bottom:16px;">
+        <div class="kpi-grid" id="genpay-kpi" style="margin-bottom:0;"></div>
+      </div>
+
+      <!-- Existing payables list -->
+      <div id="genpay-list" style="margin-bottom:16px;"></div>
+
+      <!-- Add new payable form -->
+      <div id="genpay-add-form">
+        <div style="background:#faf5ff;border:1px solid #e9d5ff;border-radius:8px;padding:14px;margin-bottom:14px;">
+          <div style="font-size:12px;font-weight:700;color:#5b21b6;margin-bottom:10px;">
+            Crear nueva obligación (Dr gasto / Cr payable)
+          </div>
+          <div class="form-row" style="margin-bottom:10px;">
+            <div class="fg">
+              <label>Tipo *</label>
+              <select id="genpay-type" data-testid="select-genpay-type"
+                      style="padding:8px 10px;border:1px solid #c4b5fd;border-radius:7px;font-size:13px;width:100%;background:#fff;"
+                      onchange="updateGenPayAccounts()">
+                <option value="broker_commission">Broker / Comisión — Dr 5060 / Cr 2020</option>
+                <option value="cleaning">Cleaning Crew — Dr 5040 / Cr 2030</option>
+                <option value="marina">Marina / Dock Fee — Dr 5050 / Cr 2030</option>
+                <option value="maintenance">Mantenimiento — Dr 6020 / Cr 2030</option>
+                <option value="vendor">Proveedor — Dr 6900 / Cr 2030</option>
+                <option value="other">Otro — Dr 6900 / Cr 2000</option>
+              </select>
+            </div>
+            <div class="fg">
+              <label>Nombre proveedor / persona *</label>
+              <input type="text" id="genpay-vendor" placeholder="Nombre del proveedor" data-testid="input-genpay-vendor"
+                     style="padding:8px 10px;border:1px solid #c4b5fd;border-radius:7px;font-size:13px;width:100%;">
+            </div>
+            <div class="fg">
+              <label>Monto total debido (USD) *</label>
+              <input type="number" id="genpay-amount" placeholder="0.00" min="0.01" step="0.01" data-testid="input-genpay-amount"
+                     style="padding:8px 10px;border:1px solid #c4b5fd;border-radius:7px;font-size:13px;width:100%;">
+            </div>
+          </div>
+          <div class="form-row" style="margin-bottom:10px;">
+            <div class="fg">
+              <label>Descripción</label>
+              <input type="text" id="genpay-desc" placeholder="Descripción del servicio" data-testid="input-genpay-desc"
+                     style="padding:8px 10px;border:1px solid #c4b5fd;border-radius:7px;font-size:13px;width:100%;">
+            </div>
+            <div class="fg">
+              <label>Fecha vencimiento</label>
+              <input type="date" id="genpay-due-date" data-testid="input-genpay-due-date"
+                     style="padding:8px 10px;border:1px solid #c4b5fd;border-radius:7px;font-size:13px;width:100%;">
+            </div>
+            <div class="fg" style="max-width:260px;">
+              <label>Asiento a crear</label>
+              <div id="genpay-journal-hint" style="padding:8px 10px;background:#ede9fe;border-radius:7px;font-size:12px;color:#5b21b6;font-weight:600;">
+                Dr 5060 / Cr 2020
+              </div>
+            </div>
+          </div>
+          <button class="btn btn-dark" onclick="createGenPayable()" data-testid="button-create-gen-payable"
+                  style="background:#7c3aed;border-color:#7c3aed;">
+            Crear Obligación
+          </button>
+          <span id="genpay-create-msg" style="margin-left:12px;font-size:12px;"></span>
+        </div>
+      </div>
+    </div>
+    <!-- ===== END GENERAL PAYABLES SECTION ===== -->
+
     <div class="wiz-nav">
       <div class="nav-left">
         <button class="btn btn-ghost" onclick="goStep(2)" data-testid="button-step3-back">&#8592; Atrás</button>
@@ -1223,6 +1295,8 @@ function renderStep3() {
   renderExpenseList();
   renderExpenseSummary();
   loadCaptainPayable();
+  loadGenPayables();
+  updateGenPayAccounts();
 }
 
 function renderExpenseList() {
@@ -1887,7 +1961,7 @@ function renderResolvePanel() {
   const panel = document.getElementById('s4-resolve-panel');
   const items = document.getElementById('s4-discrepancy-items');
   if (!panel || !items || !integrity) return;
-  const alerts = (integrity.alerts || []).filter(a => ['PAYMENT_GAP','CAPTAIN_PAY_MISMATCH','CASH_CLEARING_OPEN'].includes(a.code));
+  const alerts = (integrity.alerts || []).filter(a => ['PAYMENT_GAP','CAPTAIN_PAY_MISMATCH','CASH_CLEARING_OPEN','PAYABLE_PENDING','PAYABLE_OVERPAID'].includes(a.code));
   if (!alerts.length) { panel.style.display = 'none'; return; }
   panel.style.display = 'block';
   items.innerHTML = alerts.map(alert => `
@@ -2158,6 +2232,203 @@ async function registerCaptainPayment() {
     await Promise.all([loadCaptainPayable(), loadWizData()]);
     calcExpectedPay();
     renderExpenseList();
+    if (typeof loadIntegrity === 'function') loadIntegrity();
+  } catch (e) {
+    if (msg) { msg.style.color='#dc2626'; msg.textContent = e.message; }
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ========= GENERAL PAYABLES (AP) =========
+const GENPAY_JOURNAL = {
+  broker_commission: 'Dr 5060 Platform/Broker Expense / Cr 2020 Broker Commission Payable',
+  cleaning:          'Dr 5040 Cleaning Expense / Cr 2030 Vendor Payable',
+  marina:            'Dr 5050 Dock/Marina Fees / Cr 2030 Vendor Payable',
+  maintenance:       'Dr 6020 Maintenance Expense / Cr 2030 Vendor Payable',
+  vendor:            'Dr 6900 Misc Expense / Cr 2030 Vendor Payable',
+  other:             'Dr 6900 Misc Expense / Cr 2000 Accounts Payable',
+};
+
+function updateGenPayAccounts() {
+  const type = document.getElementById('genpay-type')?.value || 'other';
+  const hint = document.getElementById('genpay-journal-hint');
+  if (hint) hint.textContent = GENPAY_JOURNAL[type] || GENPAY_JOURNAL.other;
+}
+
+let genPayState = { payables: [], payments: [] };
+
+async function loadGenPayables() {
+  try {
+    const data = await apiFetch(`/api/bookings/${BOOKING_ID}/payables`);
+    genPayState = data;
+    renderGenPayablesList();
+  } catch (e) {
+    console.warn('loadGenPayables error:', e.message);
+  }
+}
+
+function renderGenPayablesList() {
+  const list    = document.getElementById('genpay-list');
+  const bar     = document.getElementById('genpay-summary-bar');
+  const kpiEl   = document.getElementById('genpay-kpi');
+  const payables = genPayState.payables || [];
+  const payments = genPayState.payments || [];
+
+  if (!list) return;
+
+  if (payables.length === 0) {
+    list.innerHTML = '<div style="color:#94a3b8;font-size:13px;padding:8px 0;">Sin obligaciones registradas. Usa el formulario de abajo para crear una.</div>';
+    if (bar) bar.style.display = 'none';
+    return;
+  }
+
+  // Summary KPIs
+  if (bar) bar.style.display = 'block';
+  if (kpiEl) {
+    const td = genPayState.total_due || 0;
+    const tp = genPayState.total_paid || 0;
+    const tb = genPayState.balance_due || 0;
+    kpiEl.innerHTML = `
+      <div class="kpi-card"><div class="kpi-label">Total Obligado</div><div class="kpi-value" style="color:#5b21b6;">$${td.toFixed(2)}</div></div>
+      <div class="kpi-card"><div class="kpi-label">Total Abonado</div><div class="kpi-value" style="color:#059669;">$${tp.toFixed(2)}</div></div>
+      <div class="kpi-card"><div class="kpi-label">Saldo Pendiente</div><div class="kpi-value" style="color:${tb>0.005?'#dc2626':'#059669'};">$${tb.toFixed(2)}</div></div>
+    `;
+  }
+
+  // Build payables list
+  let html = '';
+  for (const p of payables) {
+    const pmts = payments.filter(pmt => pmt.payable_id === p.id);
+    const statusColor = { pending:'#dc2626', partially_paid:'#d97706', paid:'#059669', overpaid:'#7c3aed', cancelled:'#6b7280' }[p.status] || '#374151';
+    const statusLabel = { pending:'Pendiente', partially_paid:'Abono Parcial', paid:'Pagado', overpaid:'Sobrepago', cancelled:'Cancelado' }[p.status] || p.status;
+    const balDue = parseFloat(p.balance_due || 0);
+
+    html += `
+    <div style="border:1px solid #e9d5ff;border-radius:8px;padding:12px 14px;margin-bottom:10px;background:#faf5ff;">
+      <div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;align-items:center;margin-bottom:8px;">
+        <div>
+          <span style="font-size:13px;font-weight:700;color:#1e1b4b;">${p.vendor_name}</span>
+          <span style="margin-left:8px;background:#ede9fe;color:#5b21b6;font-size:11px;font-weight:700;padding:2px 7px;border-radius:12px;">${p.payable_type}</span>
+          ${p.description ? `<span style="margin-left:6px;font-size:12px;color:#64748b;">${p.description}</span>` : ''}
+        </div>
+        <span style="font-size:12px;font-weight:700;color:${statusColor};padding:3px 10px;background:${statusColor}1a;border-radius:12px;">${statusLabel}</span>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:16px;font-size:12px;margin-bottom:8px;">
+        <span>Total: <strong>$${parseFloat(p.total_due).toFixed(2)}</strong></span>
+        <span>Pagado: <strong style="color:#059669;">$${parseFloat(p.total_paid).toFixed(2)}</strong></span>
+        <span>Saldo: <strong style="color:${balDue>0.005?'#dc2626':'#059669'};">$${balDue.toFixed(2)}</strong></span>
+        <span style="color:#94a3b8;">Dr ${p.expense_account_code} / Cr ${p.payable_account_code}</span>
+        ${p.due_date ? `<span style="color:#94a3b8;">Vence: ${p.due_date}</span>` : ''}
+      </div>
+      ${pmts.length > 0 ? `
+      <div style="font-size:11px;color:#64748b;margin-bottom:8px;">
+        Abonos: ${pmts.map(pmt => `<span style="background:#f0fdf4;padding:2px 6px;border-radius:6px;margin-right:4px;">$${parseFloat(pmt.amount).toFixed(2)} (${pmt.payment_method})</span>`).join('')}
+      </div>` : ''}
+      ${p.status !== 'paid' && p.status !== 'cancelled' ? `
+      <div id="genpay-pmt-form-${p.id}" style="display:none;background:#f9fafb;border-radius:6px;padding:10px;margin-top:8px;">
+        <div class="form-row" style="align-items:flex-end;margin-bottom:0;">
+          <div class="fg" style="max-width:120px;">
+            <label style="font-size:11px;">Monto ($) *</label>
+            <input type="number" id="genpmt-amount-${p.id}" placeholder="${balDue.toFixed(2)}" value="${balDue.toFixed(2)}" min="0.01" step="0.01"
+                   style="padding:6px 8px;border:1px solid #c4b5fd;border-radius:6px;font-size:12px;width:100%;">
+          </div>
+          <div class="fg">
+            <label style="font-size:11px;">Método *</label>
+            <select id="genpmt-method-${p.id}" style="padding:6px 8px;border:1px solid #c4b5fd;border-radius:6px;font-size:12px;width:100%;background:#fff;">
+              <option value="cash">Efectivo — Cr 1015</option>
+              <option value="zelle">Zelle — Cr 1010</option>
+              <option value="bank">Banco — Cr 1010</option>
+              <option value="card">Tarjeta — Cr 1010</option>
+              <option value="other">Otro — Cr 1010</option>
+            </select>
+          </div>
+          <div class="fg" style="max-width:140px;">
+            <label style="font-size:11px;">Fecha</label>
+            <input type="date" id="genpmt-date-${p.id}" value="${new Date().toISOString().split('T')[0]}"
+                   style="padding:6px 8px;border:1px solid #c4b5fd;border-radius:6px;font-size:12px;width:100%;">
+          </div>
+          <div class="fg">
+            <label style="font-size:11px;">Notas</label>
+            <input type="text" id="genpmt-notes-${p.id}" placeholder="Opcional"
+                   style="padding:6px 8px;border:1px solid #c4b5fd;border-radius:6px;font-size:12px;width:100%;">
+          </div>
+          <div style="flex:0 0 auto;">
+            <button class="btn btn-primary" style="font-size:12px;" onclick="registerGenPayment('${p.id}')"
+                    data-testid="button-register-gen-payment-${p.id}">Registrar Abono</button>
+            <span id="genpmt-msg-${p.id}" style="display:block;font-size:11px;margin-top:4px;"></span>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:6px;">
+        <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px;"
+                onclick="toggleGenPmtForm('${p.id}')" data-testid="button-toggle-gen-pmt-${p.id}">
+          + Registrar Abono
+        </button>
+      </div>` : ''}
+    </div>`;
+  }
+  list.innerHTML = html;
+}
+
+function toggleGenPmtForm(payableId) {
+  const form = document.getElementById(`genpay-pmt-form-${payableId}`);
+  if (form) form.style.display = form.style.display === 'none' ? 'block' : 'none';
+}
+
+async function createGenPayable() {
+  const btn = document.getElementById('button-create-gen-payable') || document.querySelector('[data-testid="button-create-gen-payable"]');
+  const msg = document.getElementById('genpay-create-msg');
+  const type       = document.getElementById('genpay-type')?.value;
+  const vendor     = document.getElementById('genpay-vendor')?.value?.trim();
+  const amount     = parseFloat(document.getElementById('genpay-amount')?.value);
+  const desc       = document.getElementById('genpay-desc')?.value?.trim();
+  const dueDate    = document.getElementById('genpay-due-date')?.value;
+
+  if (!vendor) { if (msg) { msg.style.color='#dc2626'; msg.textContent='Nombre proveedor requerido'; } return; }
+  if (!amount || amount <= 0) { if (msg) { msg.style.color='#dc2626'; msg.textContent='Monto inválido'; } return; }
+
+  if (btn) btn.disabled = true;
+  if (msg) { msg.style.color='#6b7280'; msg.textContent='Creando obligación...'; }
+  try {
+    const data = await apiFetch(`/api/bookings/${BOOKING_ID}/payables`, {
+      method: 'POST',
+      body: JSON.stringify({ payable_type: type, vendor_name: vendor, total_due: amount,
+                             description: desc || null, due_date: dueDate || null })
+    });
+    if (msg) { msg.style.color='#059669'; msg.textContent = `Obligación creada — ${data.journal}`; }
+    // Reset form
+    ['genpay-vendor','genpay-amount','genpay-desc','genpay-due-date'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+    updateGenPayAccounts();
+    await loadGenPayables();
+    if (typeof loadIntegrity === 'function') loadIntegrity();
+  } catch (e) {
+    if (msg) { msg.style.color='#dc2626'; msg.textContent = e.message; }
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function registerGenPayment(payableId) {
+  const btn = document.querySelector(`[data-testid="button-register-gen-payment-${payableId}"]`);
+  const msg = document.getElementById(`genpmt-msg-${payableId}`);
+  const amount  = parseFloat(document.getElementById(`genpmt-amount-${payableId}`)?.value);
+  const method  = document.getElementById(`genpmt-method-${payableId}`)?.value || 'cash';
+  const date    = document.getElementById(`genpmt-date-${payableId}`)?.value;
+  const notes   = document.getElementById(`genpmt-notes-${payableId}`)?.value?.trim();
+
+  if (!amount || amount <= 0) { if (msg) { msg.style.color='#dc2626'; msg.textContent='Monto inválido'; } return; }
+  if (btn) btn.disabled = true;
+  if (msg) { msg.style.color='#6b7280'; msg.textContent='Registrando...'; }
+  try {
+    const data = await apiFetch(`/api/bookings/${BOOKING_ID}/payables/${payableId}/payments`, {
+      method: 'POST',
+      body: JSON.stringify({ amount, payment_method: method, payment_date: date || null, notes: notes || null })
+    });
+    if (msg) { msg.style.color='#059669'; msg.textContent = `Abono $${amount.toFixed(2)} registrado — estado: ${data.new_status}`; }
+    await loadGenPayables();
     if (typeof loadIntegrity === 'function') loadIntegrity();
   } catch (e) {
     if (msg) { msg.style.color='#dc2626'; msg.textContent = e.message; }

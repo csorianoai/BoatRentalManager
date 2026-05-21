@@ -1,0 +1,513 @@
+Actúa como Principal Accounting Systems Architect, CPA Audit-Readiness Engineer, Backend Engineer y QA Automation Engineer para gestion.nadakiexcursions.
+
+MISIÓN:
+Verificar si ya existe un flujo formal de Accounts Payable por booking. Si no existe o está incompleto, implementarlo inmediatamente sin romper nada existente.
+
+OBJETIVO:
+Permitir cerrar un booking aunque queden cuentas por pagar pendientes derivadas del booking, como:
+- Capitán
+- Broker / comisión
+- Cleaning crew
+- Marina / dock fee
+- Maintenance vendor
+- Otros proveedores asociados al booking
+
+REGLA CONTABLE:
+El booking puede cerrarse si:
+1. El servicio fue realizado
+2. El revenue fue reconocido correctamente
+3. El cash clearing está cuadrado
+4. Los gastos fueron reconocidos
+5. Las deudas pendientes quedaron registradas como Accounts Payable
+6. El sistema puede rastrear quién debe ser pagado, cuánto, cuándo y por qué
+
+NO romper:
+- Booking Wizard existente
+- Cash Clearing 1015
+- Revenue Recognition
+- Manual Adjustments
+- Legacy Lock
+- Cancelled Booking Lock
+- Current/Legacy period filters
+- Existing expenses
+- Existing captain payment logic
+
+==================================================
+FASE 0 — AUDITORÍA ANTES DE TOCAR CÓDIGO
+==================================================
+
+Primero verificar si ya existe algo similar:
+
+Buscar:
+- booking_captain_payables
+- captain_payable
+- accounts_payable
+- booking_payables
+- vendor_payables
+- broker_commission
+- commission_payable
+- captain_payments
+- payable_status
+- AP aging
+- account 2000
+- account 2010
+- account 2020
+- account 2030
+
+Responder primero:
+1. ¿Existe flujo formal de AP por booking? Sí/No/Parcial
+2. ¿Existe cuenta 2000 Accounts Payable?
+3. ¿Existe cuenta específica Captain Payable?
+4. ¿Existe cuenta específica Broker Commission Payable?
+5. ¿El wizard permite cerrar con payable pendiente?
+6. ¿El balance sheet refleja AP pendiente?
+7. ¿Existe AP Aging report?
+8. ¿Qué falta exactamente?
+
+Si existe parcialmente, NO duplicar tablas ni endpoints. Extender lo existente.
+
+==================================================
+FASE 1 — CUENTAS CONTABLES REQUERIDAS
+==================================================
+
+Verificar o crear/activar estas cuentas:
+
+LIABILITIES:
+2000 - Accounts Payable - liability - Current Liabilities
+2010 - Captain Payable - liability - Current Liabilities
+2020 - Broker Commission Payable - liability - Current Liabilities
+2030 - Vendor Payable - liability - Current Liabilities
+
+EXPENSES:
+5010 - Captain Labor Expense - expense - Cost of Services
+5060 - Platform / Broker Commission Expense - expense - Cost of Services
+5040 - Cleaning Expense - expense - Cost of Services
+5050 - Dock / Marina Fees - expense - Cost of Services
+6020 - Maintenance Expense - expense - Operating Expenses
+6900 - Miscellaneous Expense - expense - Operating Expenses
+
+ASSETS:
+1010 - Wells Fargo Checking - asset - Bank
+1015 - Cash Clearing / Operating Cash - asset - Cash
+
+Regla:
+No crear duplicados.
+Si existen inactivas, activar.
+Si existe 2000 genérica pero no 2010/2020/2030, crear las subcuentas.
+
+==================================================
+FASE 2 — MODELO GENERAL: BOOKING PAYABLES
+==================================================
+
+Crear una estructura general, no solo para capitán.
+
+Tabla sugerida:
+booking_payables
+
+Campos:
+- id
+- booking_id
+- payable_type:
+  - captain
+  - broker_commission
+  - cleaning
+  - marina
+  - maintenance
+  - vendor
+  - other
+- vendor_name
+- vendor_id nullable
+- description
+- expense_account_code
+- payable_account_code
+- total_due
+- total_paid
+- balance_due
+- status:
+  - pending
+  - partially_paid
+  - paid
+  - overpaid
+  - cancelled
+- due_date nullable
+- service_date
+- source:
+  - booking_wizard
+  - manual_entry
+  - system
+- created_by
+- created_at
+- updated_at
+- audit_notes
+
+Tabla:
+booking_payable_payments
+
+Campos:
+- id
+- payable_id
+- booking_id
+- amount
+- payment_method:
+  - cash
+  - zelle
+  - bank
+  - card
+  - other
+- payment_account_code
+- payment_date
+- notes
+- transaction_id
+- created_by
+- created_at
+
+==================================================
+FASE 3 — ASIENTOS CONTABLES CORRECTOS
+==================================================
+
+A) Al crear una obligación por pagar:
+
+Capitán:
+Dr 5010 Captain Labor Expense
+Cr 2010 Captain Payable
+
+Broker:
+Dr 5060 Broker / Commission Expense
+Cr 2020 Broker Commission Payable
+
+Cleaning:
+Dr 5040 Cleaning Expense
+Cr 2030 Vendor Payable
+
+Marina:
+Dr 5050 Dock / Marina Fees
+Cr 2030 Vendor Payable
+
+Maintenance:
+Dr 6020 Maintenance Expense
+Cr 2030 Vendor Payable
+
+Other:
+Dr 6900 Misc Expense
+Cr 2000 Accounts Payable
+
+B) Al pagar parcial o total:
+
+Si cash:
+Dr payable_account
+Cr 1015 Cash Clearing
+
+Si zelle/bank:
+Dr payable_account
+Cr 1010 Wells Fargo Checking
+
+Si card:
+Dr payable_account
+Cr credit card payable / selected account
+
+IMPORTANTE:
+El pago del payable NO debe crear gasto nuevamente.
+Solo reduce el pasivo.
+
+==================================================
+FASE 4 — ENDPOINTS
+==================================================
+
+Crear o adaptar:
+
+GET /api/bookings/:id/payables
+Devuelve todas las cuentas por pagar del booking.
+
+POST /api/bookings/:id/payables
+Crea obligación AP.
+
+Body:
+{
+  "payable_type": "captain",
+  "vendor_name": "Pablo Escobar",
+  "description": "Captain service 5 hours",
+  "total_due": 250,
+  "expense_account_code": "5010",
+  "payable_account_code": "2010",
+  "due_date": "2026-04-30",
+  "notes": "5 hours x 50"
+}
+
+Debe crear asiento:
+Dr expense_account_code
+Cr payable_account_code
+
+POST /api/bookings/:id/payables/:payable_id/payments
+Registra pago parcial o total.
+
+Body:
+{
+  "amount": 106,
+  "payment_method": "zelle",
+  "payment_account_code": "1010",
+  "payment_date": "2026-04-30",
+  "notes": "Final payment to captain"
+}
+
+Debe crear asiento:
+Dr payable_account_code
+Cr payment_account_code
+
+GET /api/accounting/payables-aging
+Devuelve AP aging general:
+- current
+- 1-30
+- 31-60
+- 61-90
+- 90+
+
+GET /api/accounting/payables-summary
+Devuelve:
+- total_payables
+- captain_payables
+- broker_payables
+- vendor_payables
+- overdue_payables
+- paid_this_period
+
+==================================================
+FASE 5 — BOOKING WIZARD UI
+==================================================
+
+En booking-wizard.html agregar sección:
+
+“Cuentas por Pagar del Booking”
+
+Debe permitir:
+
+1. Crear payable:
+Campos:
+- Tipo:
+  - Capitán
+  - Broker / Comisión
+  - Cleaning
+  - Marina
+  - Maintenance
+  - Otro
+- Nombre proveedor/persona
+- Descripción
+- Monto total debido
+- Fecha vencimiento
+- Cuenta gasto
+- Cuenta payable
+
+2. Registrar abonos:
+- Monto
+- Método de pago
+- Fecha
+- Cuenta de pago
+- Nota
+
+3. Ver resumen:
+- Total debido
+- Total pagado
+- Pendiente
+- Estado
+- Lista de pagos
+
+4. Botones:
+- Crear obligación
+- Registrar abono
+- Usar saldo pendiente
+- Marcar como pagado si balance = 0
+
+==================================================
+FASE 6 — CIERRE DE BOOKING CON AP PENDIENTE
+==================================================
+
+Modificar closeBooking() y close_readiness.
+
+Permitir cerrar booking con AP pendiente SI:
+
+- Revenue reconocido = booking total
+- Cash Clearing = 0 o dentro de tolerancia $0.01
+- Payments del cliente cuadran
+- Gastos fueron reconocidos
+- Payables pendientes están formalmente registrados
+- No hay discrepancias críticas sin resolver
+
+Si hay AP pendiente, mostrar:
+
+“Este booking tiene cuentas por pagar pendientes:
+- Capitán Pablo: $106
+- Broker Juan: $75
+
+Puedes cerrar el booking porque las obligaciones están registradas en Accounts Payable.”
+
+Estado permitido:
+booking accounting_status = reconciled_with_open_payables
+
+NO permitir locked final si la política de negocio exige AP pagadas.
+Pero permitir close operativo si AP está documentado.
+
+Agregar opción configurable:
+ALLOW_CLOSE_WITH_OPEN_PAYABLES = true
+
+==================================================
+FASE 7 — INTEGRITY CHECK
+==================================================
+
+Actualizar checkBookingIntegrity(booking_id):
+
+Debe calcular:
+- total_payables_due
+- total_payables_paid
+- total_payables_balance
+- captain_payable_balance
+- broker_payable_balance
+- vendor_payable_balance
+- payable_status
+- can_close_with_open_payables
+
+Alertas:
+- PAYABLE_PENDING: informativa si AP está registrada
+- PAYABLE_UNREGISTERED: crítica si gasto esperado no tiene AP ni pago
+- PAYABLE_OVERPAID: crítica si pagado > total_due
+- PAYABLE_PAYMENT_WITHOUT_OBLIGATION: crítica si hay pago sin payable
+- CASH_CLEARING_USED_FOR_NON_CASH_PAYMENT: crítica
+
+Regla:
+AP pendiente registrada NO debe bloquear cierre operativo.
+AP no registrada sí debe bloquear cierre.
+
+==================================================
+FASE 8 — CASO DE PRUEBA CAPITÁN
+==================================================
+
+Booking test:
+book_dDgO83lgF1
+
+Escenario:
+Capitán Pablo
+5 horas x $50 = $250
+
+Crear payable:
+Dr 5010 Captain Labor Expense 250
+Cr 2010 Captain Payable 250
+
+Pago cash parcial:
+Dr 2010 Captain Payable 144
+Cr 1015 Cash Clearing 144
+
+Pago zelle pendiente:
+Dr 2010 Captain Payable 106
+Cr 1010 Wells Fargo Checking 106
+
+Resultado:
+- total_due = 250
+- total_paid = 250
+- balance_due = 0
+- captain payable status = paid
+- expense recognized once = 250
+- no duplicate expense
+- cash clearing solo afectado por $144
+- zelle no afecta cash clearing
+
+==================================================
+FASE 9 — CASO DE PRUEBA BROKER
+==================================================
+
+Crear booking QA o usar uno de prueba current.
+
+Broker commission:
+- broker_name = Test Broker
+- commission_due = 100
+
+Crear payable:
+Dr 5060 Broker Commission Expense 100
+Cr 2020 Broker Commission Payable 100
+
+Pago parcial:
+Dr 2020 Broker Commission Payable 40
+Cr 1010 Wells Fargo 40
+
+Debe quedar:
+- total_due = 100
+- total_paid = 40
+- balance_due = 60
+- status = partially_paid
+
+Permitir cerrar booking con:
+reconciled_with_open_payables
+
+AP Aging debe mostrar:
+Broker Test: $60 pendiente
+
+==================================================
+FASE 10 — PRUEBAS OBLIGATORIAS ANTES DE DECIR TERMINADO
+==================================================
+
+No declarar terminado sin ejecutar:
+
+1. Cuenta 2010 existe activa.
+2. Cuenta 2020 existe activa.
+3. Cuenta 2030 existe activa.
+4. Crear captain payable funciona.
+5. Pagar captain parcial cash funciona.
+6. Pagar captain zelle funciona.
+7. Captain expense no se duplica.
+8. Cash clearing solo baja por pagos cash.
+9. Zelle/bank no toca 1015.
+10. Crear broker payable funciona.
+11. Pago parcial broker funciona.
+12. AP aging muestra saldos.
+13. Close booking con AP pendiente permite cierre operativo si ALLOW_CLOSE_WITH_OPEN_PAYABLES=true.
+14. Close booking bloquea si hay payable no registrado.
+15. Cancelled bookings no permiten AP normal salvo audit mode.
+16. Legacy bookings no permiten AP normal salvo prior period adjustment.
+17. Manual adjustments siguen funcionando.
+18. Matej sigue mostrando:
+    total expenses correcto
+    cash clearing correcto
+    no duplicate captain expense
+
+==================================================
+FASE 11 — NO ROMPER LO EXISTENTE
+==================================================
+
+Antes y después ejecutar regression checks:
+
+- Booking Matej reconciliation
+- Cancelled booking lock
+- Legacy lock
+- Cash Clearing calculation
+- Expense mapping
+- Multiple expenses entry
+- Multiple payments entry
+- Revenue recognition
+- Manual entry balanced validation
+- Bookings dashboard KPIs
+
+Si algo falla, no marcar terminado.
+
+==================================================
+FASE 12 — ENTREGABLE FINAL
+==================================================
+
+Reportar:
+
+1. Si ya existía AP por booking o fue creado.
+2. Tablas creadas/modificadas.
+3. Cuentas creadas/activadas.
+4. Endpoints creados.
+5. UI agregada.
+6. Resultado prueba capitán.
+7. Resultado prueba broker.
+8. Resultado AP Aging.
+9. Resultado close booking con AP pendiente.
+10. Confirmación de que no se duplican gastos.
+11. Confirmación de que Cash Clearing no se contamina.
+12. Confirmación de que cancelled/legacy siguen protegidos.
+13. Riesgos pendientes.
+
+CRITERIO DE ÉXITO:
+El sistema queda correcto solo si puedo:
+- cerrar un booking con una cuenta por pagar formal pendiente,
+- ver esa deuda en AP Aging,
+- pagarla luego parcial o totalmente,
+- y que el booking mantenga profit correcto sin duplicar gastos.
