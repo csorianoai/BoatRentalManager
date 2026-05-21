@@ -1,0 +1,434 @@
+Actúa como Principal Production Firefighter, CPA Ledger Auditor, Backend Debugging Engineer y QA Automation Engineer para gestion.nadakiexcursions.
+
+PROBLEMA:
+Los reversos/anulaciones contables siguen sin funcionar correctamente. El sistema borra o cambia visualmente registros, pero el impacto contable sigue vivo en ledger, saldos, cash clearing, AP, profit o reportes.
+
+MISIÓN:
+Forzar el arreglo real del flujo delete/void/reversal en producción. No quiero otra implementación parcial.
+
+NO declarar terminado hasta ejecutar 10 autopruebas reales y mostrar evidencia.
+
+==================================================
+REGLA ABSOLUTA
+==================================================
+
+Ningún registro financiero posteado se borra físicamente.
+
+Toda corrección debe crear reverso contable exacto:
+
+Original:
+Dr A
+Cr B
+
+Reverso:
+Dr B
+Cr A
+
+Y además:
+- marcar original como reversed/voided/cancelled
+- marcar source visual como voided/cancelled
+- excluded_from_ledger = true si aplica
+- actualizar booking ledger
+- actualizar AP
+- actualizar cash clearing
+- actualizar P&L
+- actualizar trial balance
+- guardar audit trail
+
+==================================================
+FASE 1 — DETECTAR POR QUÉ SIGUE FALLANDO
+==================================================
+
+Buscar y auditar todos los botones/endpoints que eliminan o cancelan:
+
+Frontend:
+- deletePayment
+- removePayment
+- deleteExpense
+- removeExpense
+- deleteCaptainPayment
+- removeCaptainPayment
+- deletePayable
+- removePayable
+- voidPayment
+- voidExpense
+- cancelExpense
+- deleteTransaction
+- deleteManualEntry
+
+Backend:
+- DELETE /api/*
+- /delete
+- /remove
+- /cancel
+- /void
+- /reverse
+
+Para cada uno reportar:
+- archivo
+- función
+- endpoint
+- si solo borra UI
+- si borra DB
+- si crea reversal
+- si recalcula ledger
+- si deja audit trail
+
+CORREGIR todos los que no creen reversal.
+
+==================================================
+FASE 2 — CREAR MOTOR ÚNICO DE REVERSO
+==================================================
+
+Crear función única:
+
+reverseAccountingImpact({
+  source_type,
+  source_id,
+  booking_id,
+  reason,
+  reversed_by
+})
+
+Debe:
+1. Encontrar journal_entries, transactions o records vinculados.
+2. Crear asiento reverso exacto.
+3. Marcar original reversed/voided.
+4. Marcar source visual cancelled/voided.
+5. Marcar excluded_from_ledger=true.
+6. Recalcular saldos.
+7. Guardar audit log.
+8. Evitar doble reverso.
+
+Si no encuentra impacto contable:
+- debe devolver warning claro:
+NO_ACCOUNTING_IMPACT_FOUND
+- no decir success falso.
+
+==================================================
+FASE 3 — ENDPOINT ÚNICO
+==================================================
+
+Crear o corregir:
+
+POST /api/accounting/reverse
+
+Body:
+{
+  "source_type": "captain_payment | booking_expense | booking_payment | payable | payable_payment | corporate_expense | corporate_payable | corporate_payment | other_income | revenue_recognition | manual_entry",
+  "source_id": "string",
+  "booking_id": "optional",
+  "reason": "required",
+  "reversed_by": "system/admin"
+}
+
+Debe devolver:
+{
+  "success": true,
+  "reversal_created": true,
+  "reversal_journal_entry_id": "...",
+  "affected_accounts": [],
+  "before": {},
+  "after": {},
+  "updated_ledger": {}
+}
+
+==================================================
+FASE 4 — BLOQUEAR HARD DELETE
+==================================================
+
+Todo endpoint DELETE financiero debe:
+- rechazar hard delete
+- devolver mensaje:
+"Use /api/accounting/reverse instead"
+
+O internamente llamar reverseAccountingImpact.
+
+No permitir:
+- DELETE directo de payments
+- DELETE directo de expenses
+- DELETE directo de payables
+- DELETE directo de journal entries
+- DELETE directo de transactions
+
+==================================================
+FASE 5 — 10 AUTOPRUEBAS OBLIGATORIAS
+==================================================
+
+Crear endpoint:
+
+POST /api/accounting/qa/reversal-stress-test
+
+Debe crear datos QA en periodo seguro:
+2099-02
+source_type='qa_reversal_test'
+excluded_from_reports=true
+
+Debe ejecutar estas 10 pruebas reales:
+
+--------------------------------------------------
+TEST 1 — Reverse Captain Cash Payment
+--------------------------------------------------
+
+Crear captain payable:
+Dr 5010 250
+Cr 2010 250
+
+Pagar cash:
+Dr 2010 144
+Cr 1015 144
+
+Reversar pago cash:
+Dr 1015 144
+Cr 2010 144
+
+Validar:
+- total_paid vuelve a 0
+- balance_due vuelve a 250
+- cash clearing vuelve al estado anterior
+- captain expense sigue 250
+PASS/FAIL
+
+--------------------------------------------------
+TEST 2 — Reverse Captain Zelle Payment
+--------------------------------------------------
+
+Pagar zelle:
+Dr 2010 106
+Cr 1010 106
+
+Reversar:
+Dr 1010 106
+Cr 2010 106
+
+Validar:
+- AP sube
+- bank se reversa
+- cash clearing NO cambia
+PASS/FAIL
+
+--------------------------------------------------
+TEST 3 — Reverse Fuel Cash Expense
+--------------------------------------------------
+
+Crear fuel cash:
+Dr 5020 300
+Cr 1015 300
+
+Reversar:
+Dr 1015 300
+Cr 5020 300
+
+Validar:
+- total expenses baja 300
+- cash clearing se ajusta
+- profit recalcula
+PASS/FAIL
+
+--------------------------------------------------
+TEST 4 — Reverse Ice Cash Expense
+--------------------------------------------------
+
+Crear ice cash:
+Dr 5030 5.99
+Cr 1015 5.99
+
+Reversar:
+Dr 1015 5.99
+Cr 5030 5.99
+
+Validar:
+- 5030 deja de afectar gastos
+- cash clearing correcto
+PASS/FAIL
+
+--------------------------------------------------
+TEST 5 — Reverse Customer Cash Payment
+--------------------------------------------------
+
+Crear pago cliente cash:
+Dr 1015 450
+Cr 2500 450
+
+Reversar:
+Dr 2500 450
+Cr 1015 450
+
+Validar:
+- total_collected baja
+- cash clearing baja
+- deferred/AR se recalcula
+PASS/FAIL
+
+--------------------------------------------------
+TEST 6 — Reverse Customer Bank Payment
+--------------------------------------------------
+
+Crear pago banco:
+Dr 1010 250
+Cr 2500 250
+
+Reversar:
+Dr 2500 250
+Cr 1010 250
+
+Validar:
+- bank se reversa
+- cash clearing NO cambia
+- collected baja
+PASS/FAIL
+
+--------------------------------------------------
+TEST 7 — Reverse Corporate Expense
+--------------------------------------------------
+
+Crear rent:
+Dr 6080 100
+Cr 1010 100
+
+Reversar:
+Dr 1010 100
+Cr 6080 100
+
+Validar:
+- OpEx baja
+- bank se reversa
+- trial balance sigue cuadrado
+PASS/FAIL
+
+--------------------------------------------------
+TEST 8 — Reverse Other Income
+--------------------------------------------------
+
+Crear other income:
+Dr 1010 120
+Cr 4500 120
+
+Reversar:
+Dr 4500 120
+Cr 1010 120
+
+Validar:
+- other income baja
+- bank se reversa
+- P&L se actualiza
+PASS/FAIL
+
+--------------------------------------------------
+TEST 9 — Prevent Double Reversal
+--------------------------------------------------
+
+Tomar cualquier source ya reversado e intentar reversarlo otra vez.
+
+Esperado:
+HTTP 409
+ALREADY_REVERSED
+
+Validar:
+- no crea doble reversal
+- no altera ledger
+PASS/FAIL
+
+--------------------------------------------------
+TEST 10 — Visual Delete Must Affect Ledger
+--------------------------------------------------
+
+Simular desde el mismo endpoint que usa la UI para eliminar/anular un captain payment o expense.
+
+Validar:
+- UI source queda cancelled/voided
+- ledger crea reversal
+- amount deja de afectar totals
+- audit log existe
+PASS/FAIL
+
+==================================================
+FASE 6 — VALIDACIÓN GLOBAL POST-TEST
+==================================================
+
+Después de las 10 pruebas:
+
+1. Trial Balance QA debe cuadrar.
+2. No journal entry desbalanceado.
+3. No source visual cancelado con ledger activo.
+4. No ledger reversed con source visual activo.
+5. No cash clearing incorrecto por non-cash.
+6. No AP mismatch.
+
+Ejecutar:
+GET /api/accounting/audit/delete-vs-ledger-integrity
+GET /api/accounting/audit/ledger-integrity
+GET /api/accounting/reports/trial-balance?period=2099-02
+
+Esperado:
+critical_issues = 0
+
+==================================================
+FASE 7 — REPARAR CASOS EXISTENTES
+==================================================
+
+Buscar registros existentes donde:
+- status visual = cancelled/voided/deleted
+pero ledger sigue activo
+
+Corregirlos:
+- crear reversal si falta
+- marcar excluded_from_ledger
+- recalcular saldos
+
+No borrar nada.
+
+==================================================
+FASE 8 — UI
+==================================================
+
+Cambiar botones:
+“Eliminar” → “Anular / Reversar”
+
+El modal debe exigir:
+- motivo obligatorio
+- confirmación
+
+Después de reversar:
+- refrescar ledger
+- refrescar cash clearing
+- refrescar AP
+- refrescar profit
+- mostrar reversal ID
+
+==================================================
+FASE 9 — CRITERIO DE ÉXITO
+==================================================
+
+No declarar terminado hasta que:
+
+- Las 10 autopruebas pasen.
+- delete-vs-ledger audit tenga 0 critical issues.
+- ledger-integrity tenga 0 critical issues.
+- trial balance cuadre.
+- UI ya no haga borrado visual falso.
+- Reversar pago de capitán realmente afecta AP y cash/bank.
+- Reversar gasto realmente baja gastos.
+- Reversar ingreso realmente baja ingresos.
+- Doble reverso sea bloqueado.
+
+==================================================
+FASE 10 — REPORTE FINAL
+==================================================
+
+Entregar:
+
+1. Causa raíz exacta de por qué no funcionaba.
+2. Endpoints corregidos.
+3. Funciones UI corregidas.
+4. Motor reverseAccountingImpact creado.
+5. Resultado de las 10 autopruebas:
+   PASS/FAIL una por una.
+6. Resultado delete-vs-ledger audit.
+7. Resultado ledger integrity audit.
+8. Resultado trial balance.
+9. Reversal IDs creados.
+10. Casos existentes corregidos.
+11. Riesgos pendientes.
+
+Si una sola autoprueba falla, NO declarar terminado.

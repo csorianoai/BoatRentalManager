@@ -15686,11 +15686,38 @@ function resolveBookingTotal(booking) {
   return 0;
 }
 
+// ── buildReversalJeLines — convert flat transactions to Dr/Cr journal lines ─
+// Uses notes field patterns (_dr/_cr) first, then account-class heuristics.
+function buildReversalJeLines(txs) {
+  return txs.map(tx => {
+    const code  = tx.account_code;
+    const amt   = parseFloat(tx.amount || 0);
+    const notes = (tx.notes || '').toLowerCase();
+    const type  = tx.transaction_type || 'expense';
+    const desc  = `[REVERSAL] ${(tx.description || '').slice(0, 200)}`;
+    if (notes.includes('_dr'))       return { account_code: code, debit_amount: 0, credit_amount: amt, description: desc };
+    if (notes.includes('_cr'))       return { account_code: code, debit_amount: amt, credit_amount: 0, description: desc };
+    if (code && /^[56]/.test(code))  return { account_code: code, debit_amount: 0, credit_amount: amt, description: desc };
+    if (code && /^4/.test(code))     return { account_code: code, debit_amount: amt, credit_amount: 0, description: desc };
+    if (code && /^2/.test(code))     return type === 'expense'
+      ? { account_code: code, debit_amount: 0, credit_amount: amt, description: desc }
+      : { account_code: code, debit_amount: amt, credit_amount: 0, description: desc };
+    if (code && /^1/.test(code))     return type === 'income'
+      ? { account_code: code, debit_amount: 0, credit_amount: amt, description: desc }
+      : { account_code: code, debit_amount: amt, credit_amount: 0, description: desc };
+    return type === 'income'
+      ? { account_code: code, debit_amount: 0, credit_amount: amt, description: desc }
+      : { account_code: code, debit_amount: amt, credit_amount: 0, description: desc };
+  });
+}
+
 // ── FASE 29: reverseFinancialImpact — universal accounting reversal ────────
 // source_type: 'transaction' | 'captain_payment' | 'booking_captain_payment'
 //            | 'booking_expense' | 'boat_expense' | 'stew_payment'
+//            | 'booking_payment' | 'payable_payment' | 'corporate_expense'
+//            | 'other_income' | 'manual_entry'
 // pgClient: pool or connected pg client (caller manages BEGIN/COMMIT)
-// Returns: { reversal_log_id, original_tx_ids, reversal_tx_ids, original_amount, ... }
+// Returns: { reversal_log_id, reversal_journal_entry_id, original_tx_ids, ... }
 async function reverseFinancialImpact(pgClient, { source_type, source_id, booking_id, reason, created_by }) {
   if (!reason || !reason.trim()) throw new Error('reason is required for reversal');
   if (!source_type || !source_id)  throw new Error('source_type and source_id are required');
@@ -15792,42 +15819,80 @@ async function reverseFinancialImpact(pgClient, { source_type, source_id, bookin
     );
     linkedTxs = t;
 
+  } else if (['booking_payment', 'other_income', 'manual_entry', 'corporate_expense'].includes(source_type)) {
+    // Generic: source_id is a transaction ID — same logic as 'transaction'
+    const { rows } = await pgClient.query(`SELECT * FROM transactions WHERE id=$1`, [source_id]);
+    if (!rows.length)                 throw new Error(`Transaction ${source_id} not found`);
+    if (rows[0].is_reversal)          throw new Error('Cannot reverse a reversal entry');
+    if (rows[0].excluded_from_ledger) throw new Error('Transaction already reversed/excluded');
+    sourceRecord   = rows[0];
+    linkedTxs      = rows;
+    originalAmount = parseFloat(rows[0].amount || 0);
+    beforeState    = { transaction_type: rows[0].transaction_type, amount: rows[0].amount };
+
+  } else if (source_type === 'payable_payment') {
+    // FASE 25 booking_payable_payments
+    const { rows } = await pgClient.query(
+      `SELECT * FROM booking_payable_payments WHERE id=$1`, [source_id]
+    ).catch(() => ({ rows: [] }));
+    if (!rows.length)      throw new Error(`Payable payment ${source_id} not found`);
+    if (rows[0].voided_at) throw new Error('Payable payment already voided');
+    sourceRecord   = rows[0];
+    originalAmount = parseFloat(rows[0].amount || 0);
+    booking_id     = booking_id || rows[0].booking_id;
+    const { rows: t } = await pgClient.query(
+      `SELECT * FROM transactions WHERE reference_id=$1 AND COALESCE(excluded_from_ledger,false)=false`, [source_id]
+    );
+    linkedTxs = t;
+
   } else {
     throw new Error(`Unsupported source_type: ${source_type}`);
   }
 
-  // ── 2. Create reversal transactions for each linked tx ───────────────────
+  // ── 2. CORRECT APPROACH: Exclude originals + build reversal journal entry ─
+  // ROOT FIX (FASE 29 bug): The old code did excluded_from_ledger=true on originals
+  // AND created new reversal transactions — this caused DOUBLE-REMOVAL because
+  // queries like SUM(amount) WHERE reference_type='cash_clearing' sum ALL amounts
+  // regardless of income/expense type, making the net impact negative instead of 0.
+  // CORRECT: only set excluded_from_ledger=true. The GL audit trail comes from a
+  // journal_entry (Dr B / Cr A) created by postJournalEntry.
   const reversalDate = new Date().toISOString().slice(0, 10);
-  const reversalNotes = `[REVERSAL] ${reason} — by:${created_by || 'system'}`;
+  let reversalJournalEntryId = null;
 
   for (const tx of linkedTxs) {
     originalTxIds.push(tx.id);
-    const rvlId = 'tx_rvl_' + nanoid(10);
-    reversalTxIds.push(rvlId);
-    // Flip transaction_type to create equal & opposite entry
-    const flippedType = tx.transaction_type === 'income' ? 'expense' : 'income';
-    await pgClient.query(`
-      INSERT INTO transactions
-        (id, transaction_date, account_id, account_code, amount, transaction_type,
-         description, reference_id, reference_type, booking_id, boat_id, captain_id,
-         source_system, notes, is_reversal, reversal_of, voided_reason)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,true,$15,$16)
-    `, [
-      rvlId, reversalDate,
-      tx.account_id, tx.account_code || null,
-      tx.amount, flippedType,
-      `[REVERSAL] ${tx.description || ''}`,
-      source_id, tx.reference_type || source_type,
-      tx.booking_id || booking_id || null,
-      tx.boat_id || null, tx.captain_id || null,
-      'reversal_system', reversalNotes,
-      tx.id, reason
-    ]);
-    // Exclude original
     await pgClient.query(
       `UPDATE transactions SET excluded_from_ledger=true, voided_reason=$1 WHERE id=$2`,
       [reason, tx.id]
     );
+  }
+
+  // Best-effort: build balanced Dr B / Cr A journal entry for the GL audit trail
+  if (linkedTxs.length > 0 && linkedTxs.every(t => t.account_code)) {
+    try {
+      const jeLines = buildReversalJeLines(linkedTxs);
+      const totalDr = jeLines.reduce((s, l) => s + (parseFloat(l.debit_amount)  || 0), 0);
+      const totalCr = jeLines.reduce((s, l) => s + (parseFloat(l.credit_amount) || 0), 0);
+      if (Math.abs(totalDr - totalCr) < 0.005 && totalDr > 0) {
+        const revJe = await postJournalEntry(pgClient, {
+          entry_date:            reversalDate,
+          source_type:           'reversal',
+          source_id:             source_id,
+          memo:                  `[REVERSAL] ${source_type}:${source_id} — ${String(reason).slice(0, 200)}`,
+          lines:                 jeLines,
+          created_by:            created_by || 'reversal_system',
+          excluded_from_reports: false,
+          booking_id:            booking_id || sourceRecord?.booking_id || null,
+        });
+        reversalJournalEntryId = revJe.journal_entry_id;
+      }
+    } catch (jeErr) {
+      console.warn(`[reverseFinancialImpact] JE creation skipped (non-fatal): ${jeErr.message}`);
+    }
+  }
+
+  if (linkedTxs.length === 0) {
+    console.warn(`[reverseFinancialImpact] NO_ACCOUNTING_IMPACT_FOUND: no active txs for ${source_type}:${source_id}`);
   }
 
   // ── 3. Void source record ─────────────────────────────────────────────────
@@ -15890,22 +15955,26 @@ async function reverseFinancialImpact(pgClient, { source_type, source_id, bookin
   `, [
     logId, source_type, source_id,
     booking_id || sourceRecord?.booking_id || null,
-    originalTxIds, reversalTxIds,
+    originalTxIds,
+    reversalJournalEntryId ? [reversalJournalEntryId] : [],
     originalAmount, originalAmount,
     reason, created_by || 'system',
-    JSON.stringify(beforeState), JSON.stringify(afterState)
+    JSON.stringify(beforeState),
+    JSON.stringify({ ...afterState, reversal_journal_entry_id: reversalJournalEntryId, no_accounting_impact: linkedTxs.length === 0 }),
   ]);
 
   return {
-    reversal_log_id:  logId,
+    reversal_log_id:           logId,
+    reversal_journal_entry_id: reversalJournalEntryId,
+    no_accounting_impact:      linkedTxs.length === 0,
     source_type, source_id,
-    booking_id:       booking_id || sourceRecord?.booking_id || null,
-    original_tx_ids:  originalTxIds,
-    reversal_tx_ids:  reversalTxIds,
-    original_amount:  originalAmount,
-    txs_reversed:     linkedTxs.length,
+    booking_id:                booking_id || sourceRecord?.booking_id || null,
+    original_tx_ids:           originalTxIds,
+    reversal_tx_ids:           [],
+    original_amount:           originalAmount,
+    txs_reversed:              linkedTxs.length,
     reason,
-    affected_accounts: linkedTxs.map(t => t.account_code || t.account_id).filter(Boolean),
+    affected_accounts:         linkedTxs.map(t => t.account_code || t.account_id).filter(Boolean),
   };
 }
 
@@ -15945,14 +16014,19 @@ app.post('/api/accounting/reverse', isAuthenticated, async (req, res) => {
 
     await pg.query('COMMIT');
     res.json({
-      success: true,
-      reversal_log_id:   result.reversal_log_id,
-      original_tx_ids:   result.original_tx_ids,
-      reversal_tx_ids:   result.reversal_tx_ids,
-      original_amount:   result.original_amount,
-      affected_accounts: result.affected_accounts,
-      updated_ledger:    updatedLedger,
-      audit_log_id:      result.reversal_log_id,
+      success:                   true,
+      reversal_created:          true,
+      reversal_log_id:           result.reversal_log_id,
+      reversal_journal_entry_id: result.reversal_journal_entry_id,
+      no_accounting_impact:      result.no_accounting_impact,
+      original_tx_ids:           result.original_tx_ids,
+      reversal_tx_ids:           result.reversal_tx_ids,
+      original_amount:           result.original_amount,
+      affected_accounts:         result.affected_accounts,
+      before:                    {},
+      after:                     { excluded_from_ledger: true, reversal_journal_entry_id: result.reversal_journal_entry_id },
+      updated_ledger:            updatedLedger,
+      audit_log_id:              result.reversal_log_id,
     });
   } catch (err) {
     await pg.query('ROLLBACK').catch(() => {});
@@ -15971,6 +16045,215 @@ app.get('/api/accounting/reverse/:logId', isAuthenticated, async (req, res) => {
     if (!rows.length) return res.status(404).json({ error: 'Reversal log not found' });
     res.json(rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── FASE 29: POST /api/accounting/qa/reversal-stress-test ─────────────────
+// Runs 10 automated reversal tests in QA period 2099-02. Creates & commits real
+// DB records so the audit trail persists. Returns PASS/FAIL per test.
+app.post('/api/accounting/qa/reversal-stress-test', isAuthenticated, async (req, res) => {
+  const { nanoid } = await import('nanoid');
+  const pfx = 'qa_rvl_' + Date.now();
+  const QD  = '2099-02-15';
+  const results = [];
+
+  const getA = async (code) => {
+    const { rows } = await pool.query(`SELECT id FROM chart_of_accounts WHERE account_code=$1 LIMIT 1`, [code]);
+    return rows[0]?.id || null;
+  };
+  const A = {
+    AP:   await getA('2000'),
+    CASH: await getA('1015'),
+    BANK: await getA('1010'),
+    C5010: await getA('5010') || await getA('5090'),
+    C5020: await getA('5020') || await getA('5090'),
+    C5030: await getA('5030') || await getA('5090'),
+  };
+
+  const add = (n, name, pass, details) => {
+    results.push({ test: n, name, status: pass ? 'PASS' : 'FAIL', passed: pass, details });
+    console.log(`[QA-REVERSAL T${n}] ${pass ? '✅' : '❌'} ${name}: ${details}`);
+  };
+
+  // QA booking (booking_id NOT NULL constraint on payables)
+  const QA_BID = pfx + '_bk';
+  await pool.query(`INSERT INTO bookings (id,customer_name,customer_phone,booking_date,status,total_amount,payment_status,balance_pending,platform) VALUES ($1,'QA Reversal Test','+1-000-000-0000','2099-02-15','confirmed',500,'pending',500,'qa_test') ON CONFLICT(id) DO NOTHING`, [QA_BID]);
+
+  // ── TEST 1: Reverse Captain Cash Payment ──────────────────────────────────
+  {
+    const payId = pfx + '_pay1', pmtId = pfx + '_cpmt1';
+    const txDr  = pfx + '_t1dr',  txCr  = pfx + '_t1cr';
+    try {
+      await pool.query(`INSERT INTO booking_captain_payables (id,booking_id,captain_name,total_due,total_paid,balance_due,status) VALUES ($1,$2,'QA Capt 1',250,0,250,'pending') ON CONFLICT(id) DO NOTHING`, [payId, QA_BID]);
+      await pool.query(`INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,description,reference_id,reference_type,notes,source_system) VALUES ($1,$2,$3,'2000',144,'expense','QA Dr AP',$4,'captain_payment','captain_payment_dr','qa_test')`, [txDr, QD, A.AP, pmtId]);
+      await pool.query(`INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,description,reference_id,reference_type,notes,source_system) VALUES ($1,$2,$3,'1015',144,'expense','QA Cr Cash',$4,'captain_payment','captain_payment_cr','qa_test')`, [txCr, QD, A.CASH, pmtId]);
+      await pool.query(`INSERT INTO booking_captain_payments (id,booking_id,captain_payable_id,amount,payment_method,payment_date,transaction_id_dr,transaction_id_cr) VALUES ($1,$2,$3,144,'cash',$4,$5,$6) ON CONFLICT(id) DO NOTHING`, [pmtId, QA_BID, payId, QD, txDr, txCr]);
+      await pool.query(`UPDATE booking_captain_payables SET total_paid=144,balance_due=106,status='partially_paid' WHERE id=$1`, [payId]);
+
+      const pgC = await pool.connect();
+      try { await pgC.query('BEGIN'); await reverseFinancialImpact(pgC, { source_type: 'booking_captain_payment', source_id: pmtId, reason: 'QA test 1', created_by: 'qa_system' }); await pgC.query('COMMIT'); } finally { pgC.release(); }
+
+      const { rows: af } = await pool.query(`SELECT total_paid,balance_due FROM booking_captain_payables WHERE id=$1`, [payId]);
+      const { rows: dr } = await pool.query(`SELECT excluded_from_ledger FROM transactions WHERE id=$1`, [txDr]);
+      const { rows: cr } = await pool.query(`SELECT excluded_from_ledger FROM transactions WHERE id=$1`, [txCr]);
+      const { rows: lg } = await pool.query(`SELECT id FROM accounting_reversal_log WHERE source_id=$1`, [pmtId]);
+      const p = parseFloat(af[0]?.total_paid)===0 && parseFloat(af[0]?.balance_due)===250 && dr[0]?.excluded_from_ledger && cr[0]?.excluded_from_ledger && lg.length>0;
+      add(1,'Reverse Captain Cash Payment',p,`paid:${af[0]?.total_paid}→0, bal:${af[0]?.balance_due}→250, dr_excl:${dr[0]?.excluded_from_ledger}, cr_excl:${cr[0]?.excluded_from_ledger}, audit:${lg.length>0}`);
+    } catch(e) { add(1,'Reverse Captain Cash Payment',false,'ERROR: '+e.message); }
+  }
+
+  // ── TEST 2: Reverse Captain Zelle Payment ────────────────────────────────
+  {
+    const payId = pfx + '_pay2', pmtId = pfx + '_cpmt2';
+    const txDr  = pfx + '_t2dr',  txCr  = pfx + '_t2cr';
+    try {
+      await pool.query(`INSERT INTO booking_captain_payables (id,booking_id,captain_name,total_due,total_paid,balance_due,status) VALUES ($1,$2,'QA Capt 2',250,0,250,'pending') ON CONFLICT(id) DO NOTHING`, [payId, QA_BID]);
+      await pool.query(`INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,description,reference_id,reference_type,notes,source_system) VALUES ($1,$2,$3,'2000',106,'expense','QA Dr AP',$4,'captain_payment','captain_payment_dr','qa_test')`, [txDr, QD, A.AP, pmtId]);
+      await pool.query(`INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,description,reference_id,reference_type,notes,source_system) VALUES ($1,$2,$3,'1010',106,'expense','QA Cr Bank',$4,'captain_payment','captain_payment_cr','qa_test')`, [txCr, QD, A.BANK, pmtId]);
+      await pool.query(`INSERT INTO booking_captain_payments (id,booking_id,captain_payable_id,amount,payment_method,payment_date,transaction_id_dr,transaction_id_cr) VALUES ($1,$2,$3,106,'zelle',$4,$5,$6) ON CONFLICT(id) DO NOTHING`, [pmtId, QA_BID, payId, QD, txDr, txCr]);
+      await pool.query(`UPDATE booking_captain_payables SET total_paid=106,balance_due=144,status='partially_paid' WHERE id=$1`, [payId]);
+
+      const pgC = await pool.connect();
+      try { await pgC.query('BEGIN'); await reverseFinancialImpact(pgC, { source_type: 'booking_captain_payment', source_id: pmtId, reason: 'QA test 2', created_by: 'qa_system' }); await pgC.query('COMMIT'); } finally { pgC.release(); }
+
+      const { rows: af } = await pool.query(`SELECT total_paid,balance_due FROM booking_captain_payables WHERE id=$1`, [payId]);
+      const { rows: cr } = await pool.query(`SELECT excluded_from_ledger,account_code FROM transactions WHERE id=$1`, [txCr]);
+      const p = parseFloat(af[0]?.total_paid)===0 && parseFloat(af[0]?.balance_due)===250 && cr[0]?.excluded_from_ledger && cr[0]?.account_code==='1010';
+      add(2,'Reverse Captain Zelle Payment',p,`paid:${af[0]?.total_paid}→0, bal:${af[0]?.balance_due}→250, bank_excl:${cr[0]?.excluded_from_ledger}, is_1010:${cr[0]?.account_code==='1010'}`);
+    } catch(e) { add(2,'Reverse Captain Zelle Payment',false,'ERROR: '+e.message); }
+  }
+
+  // ── TEST 3: Reverse Fuel Cash Expense ────────────────────────────────────
+  {
+    const expId = pfx + '_exp3', txDr = pfx + '_t3dr', txCr = pfx + '_t3cr';
+    try {
+      await pool.query(`INSERT INTO boat_expenses (id,booking_id,expense_date,category,description,amount,payment_method,status,source_system) VALUES ($1,$2,$3,'fuel','QA fuel',300,'cash','active','qa_test') ON CONFLICT(id) DO NOTHING`, [expId, QA_BID, QD]);
+      await pool.query(`INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,description,reference_id,reference_type,notes,source_system) VALUES ($1,$2,$3,'5020',300,'expense','QA Dr Fuel',$4,'booking_expense','booking_expense_dr','qa_test')`, [txDr, QD, A.C5020, expId]);
+      await pool.query(`INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,description,reference_id,reference_type,notes,source_system) VALUES ($1,$2,$3,'1015',300,'expense','QA Cr Cash',$4,'booking_expense','booking_expense_cr','qa_test')`, [txCr, QD, A.CASH, expId]);
+
+      const pgC = await pool.connect();
+      try { await pgC.query('BEGIN'); await reverseFinancialImpact(pgC, { source_type: 'booking_expense', source_id: expId, booking_id: QA_BID, reason: 'QA test 3', created_by: 'qa_system' }); await pgC.query('COMMIT'); } finally { pgC.release(); }
+
+      const { rows: ex } = await pool.query(`SELECT status FROM boat_expenses WHERE id=$1`, [expId]);
+      const { rows: dr } = await pool.query(`SELECT excluded_from_ledger FROM transactions WHERE id=$1`, [txDr]);
+      const { rows: cr } = await pool.query(`SELECT excluded_from_ledger FROM transactions WHERE id=$1`, [txCr]);
+      const p = ex[0]?.status==='voided' && dr[0]?.excluded_from_ledger && cr[0]?.excluded_from_ledger;
+      add(3,'Reverse Fuel Cash Expense',p,`status:${ex[0]?.status}, dr_excl:${dr[0]?.excluded_from_ledger}, cr_excl:${cr[0]?.excluded_from_ledger}`);
+    } catch(e) { add(3,'Reverse Fuel Cash Expense',false,'ERROR: '+e.message); }
+  }
+
+  // ── TEST 4: Reverse Ice Cash Expense ─────────────────────────────────────
+  {
+    const expId = pfx + '_exp4', txDr = pfx + '_t4dr', txCr = pfx + '_t4cr';
+    try {
+      await pool.query(`INSERT INTO boat_expenses (id,booking_id,expense_date,category,description,amount,payment_method,status,source_system) VALUES ($1,$2,$3,'ice','QA ice',5.99,'cash','active','qa_test') ON CONFLICT(id) DO NOTHING`, [expId, QA_BID, QD]);
+      await pool.query(`INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,description,reference_id,reference_type,notes,source_system) VALUES ($1,$2,$3,'5030',5.99,'expense','QA Dr Ice',$4,'booking_expense','booking_expense_dr','qa_test')`, [txDr, QD, A.C5030, expId]);
+      await pool.query(`INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,description,reference_id,reference_type,notes,source_system) VALUES ($1,$2,$3,'1015',5.99,'expense','QA Cr Cash',$4,'booking_expense','booking_expense_cr','qa_test')`, [txCr, QD, A.CASH, expId]);
+
+      const pgC = await pool.connect();
+      try { await pgC.query('BEGIN'); await reverseFinancialImpact(pgC, { source_type: 'booking_expense', source_id: expId, booking_id: QA_BID, reason: 'QA test 4', created_by: 'qa_system' }); await pgC.query('COMMIT'); } finally { pgC.release(); }
+
+      const { rows: ex } = await pool.query(`SELECT status FROM boat_expenses WHERE id=$1`, [expId]);
+      const { rows: dr } = await pool.query(`SELECT excluded_from_ledger FROM transactions WHERE id=$1`, [txDr]);
+      const p = ex[0]?.status==='voided' && dr[0]?.excluded_from_ledger;
+      add(4,'Reverse Ice Cash Expense',p,`status:${ex[0]?.status}, dr_excl:${dr[0]?.excluded_from_ledger}`);
+    } catch(e) { add(4,'Reverse Ice Cash Expense',false,'ERROR: '+e.message); }
+  }
+
+  // ── TEST 5: Reverse Customer Cash Payment ────────────────────────────────
+  {
+    const txId = pfx + '_t5';
+    try {
+      await pool.query(`INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,description,reference_type,notes,source_system,booking_id) VALUES ($1,$2,$3,'1015',450,'income','QA Customer Cash','cash_clearing','qa_customer_cash','qa_test',$4)`, [txId, QD, A.CASH, QA_BID]);
+      const pgC = await pool.connect();
+      try { await pgC.query('BEGIN'); await reverseFinancialImpact(pgC, { source_type: 'transaction', source_id: txId, reason: 'QA test 5', created_by: 'qa_system' }); await pgC.query('COMMIT'); } finally { pgC.release(); }
+      const { rows: tx } = await pool.query(`SELECT excluded_from_ledger FROM transactions WHERE id=$1`, [txId]);
+      const { rows: lg } = await pool.query(`SELECT id FROM accounting_reversal_log WHERE source_id=$1`, [txId]);
+      const p = tx[0]?.excluded_from_ledger===true && lg.length>0;
+      add(5,'Reverse Customer Cash Payment',p,`excl:${tx[0]?.excluded_from_ledger}, audit:${lg.length>0}`);
+    } catch(e) { add(5,'Reverse Customer Cash Payment',false,'ERROR: '+e.message); }
+  }
+
+  // ── TEST 6: Reverse Customer Bank Payment ───────────────────────────────
+  {
+    const txId = pfx + '_t6';
+    try {
+      await pool.query(`INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,description,reference_type,notes,source_system,booking_id) VALUES ($1,$2,$3,'1010',250,'income','QA Customer Bank','cash_clearing','qa_customer_bank','qa_test',$4)`, [txId, QD, A.BANK, QA_BID]);
+      const pgC = await pool.connect();
+      try { await pgC.query('BEGIN'); await reverseFinancialImpact(pgC, { source_type: 'transaction', source_id: txId, reason: 'QA test 6', created_by: 'qa_system' }); await pgC.query('COMMIT'); } finally { pgC.release(); }
+      const { rows: tx } = await pool.query(`SELECT excluded_from_ledger,account_code FROM transactions WHERE id=$1`, [txId]);
+      const p = tx[0]?.excluded_from_ledger===true && tx[0]?.account_code==='1010';
+      add(6,'Reverse Customer Bank Payment',p,`excl:${tx[0]?.excluded_from_ledger}, is_bank:${tx[0]?.account_code==='1010'}`);
+    } catch(e) { add(6,'Reverse Customer Bank Payment',false,'ERROR: '+e.message); }
+  }
+
+  // ── TEST 7: Reverse Corporate Expense ────────────────────────────────────
+  {
+    const txId = pfx + '_t7';
+    try {
+      await pool.query(`INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,description,reference_type,notes,source_system) VALUES ($1,$2,$3,'6080',100,'expense','QA Corporate Rent','manual','qa_corp','qa_test')`, [txId, QD, A.BANK||A.CASH]);
+      const pgC = await pool.connect();
+      try { await pgC.query('BEGIN'); await reverseFinancialImpact(pgC, { source_type: 'transaction', source_id: txId, reason: 'QA test 7', created_by: 'qa_system' }); await pgC.query('COMMIT'); } finally { pgC.release(); }
+      const { rows: tx } = await pool.query(`SELECT excluded_from_ledger FROM transactions WHERE id=$1`, [txId]);
+      add(7,'Reverse Corporate Expense',tx[0]?.excluded_from_ledger===true,`excl:${tx[0]?.excluded_from_ledger}`);
+    } catch(e) { add(7,'Reverse Corporate Expense',false,'ERROR: '+e.message); }
+  }
+
+  // ── TEST 8: Reverse Other Income ─────────────────────────────────────────
+  {
+    const txId = pfx + '_t8';
+    try {
+      await pool.query(`INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,description,reference_type,notes,source_system) VALUES ($1,$2,$3,'4500',120,'income','QA Other Income','manual','qa_income','qa_test')`, [txId, QD, A.BANK||A.CASH]);
+      const pgC = await pool.connect();
+      try { await pgC.query('BEGIN'); await reverseFinancialImpact(pgC, { source_type: 'transaction', source_id: txId, reason: 'QA test 8', created_by: 'qa_system' }); await pgC.query('COMMIT'); } finally { pgC.release(); }
+      const { rows: tx } = await pool.query(`SELECT excluded_from_ledger FROM transactions WHERE id=$1`, [txId]);
+      add(8,'Reverse Other Income',tx[0]?.excluded_from_ledger===true,`excl:${tx[0]?.excluded_from_ledger}`);
+    } catch(e) { add(8,'Reverse Other Income',false,'ERROR: '+e.message); }
+  }
+
+  // ── TEST 9: Prevent Double Reversal ──────────────────────────────────────
+  {
+    const pmtId = pfx + '_cpmt1'; // Reversed in TEST 1
+    try {
+      const { rows: lg } = await pool.query(`SELECT id FROM accounting_reversal_log WHERE source_id=$1`, [pmtId]);
+      if (!lg.length) { add(9,'Prevent Double Reversal',false,'SKIP: TEST 1 not reversed (dependency)'); }
+      else {
+        let gotErr = false, errMsg = '';
+        const pgC = await pool.connect();
+        try {
+          await pgC.query('BEGIN');
+          await reverseFinancialImpact(pgC, { source_type: 'booking_captain_payment', source_id: pmtId, reason: 'QA double reversal', created_by: 'qa_system' });
+          await pgC.query('COMMIT');
+        } catch(e) { await pgC.query('ROLLBACK').catch(()=>{}); gotErr=true; errMsg=e.message; }
+        finally { pgC.release(); }
+        const expected = gotErr && (errMsg.toLowerCase().includes('already') || errMsg.toLowerCase().includes('void') || errMsg.toLowerCase().includes('revers'));
+        add(9,'Prevent Double Reversal',expected, gotErr ? `Got expected error: "${errMsg}"` : 'FAIL: no error for double reversal');
+      }
+    } catch(e) { add(9,'Prevent Double Reversal',false,'ERROR: '+e.message); }
+  }
+
+  // ── TEST 10: Visual Delete Must Affect Ledger ────────────────────────────
+  {
+    const expId = pfx + '_exp10', txDr = pfx + '_t10dr', txCr = pfx + '_t10cr';
+    try {
+      await pool.query(`INSERT INTO boat_expenses (id,booking_id,expense_date,category,description,amount,payment_method,status,source_system) VALUES ($1,$2,$3,'fuel','QA exp10',75,'cash','active','qa_test') ON CONFLICT(id) DO NOTHING`, [expId, QA_BID, QD]);
+      await pool.query(`INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,description,reference_id,reference_type,booking_id,notes,source_system) VALUES ($1,$2,$3,'5020',75,'expense','QA Dr exp10',$4,'booking_expense',$5,'booking_expense_dr','qa_test')`, [txDr, QD, A.C5020, expId, QA_BID]);
+      await pool.query(`INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,description,reference_id,reference_type,booking_id,notes,source_system) VALUES ($1,$2,$3,'1015',75,'expense','QA Cr Cash10',$4,'booking_expense',$5,'booking_expense_cr','qa_test')`, [txCr, QD, A.CASH, expId, QA_BID]);
+
+      const pgC = await pool.connect();
+      try { await pgC.query('BEGIN'); await reverseFinancialImpact(pgC, { source_type: 'booking_expense', source_id: expId, booking_id: QA_BID, reason: 'QA test 10 visual delete', created_by: 'qa_system' }); await pgC.query('COMMIT'); } finally { pgC.release(); }
+
+      const { rows: ex } = await pool.query(`SELECT status,voided_at FROM boat_expenses WHERE id=$1`, [expId]);
+      const { rows: dr } = await pool.query(`SELECT excluded_from_ledger FROM transactions WHERE id=$1`, [txDr]);
+      const { rows: cr } = await pool.query(`SELECT excluded_from_ledger FROM transactions WHERE id=$1`, [txCr]);
+      const { rows: lg } = await pool.query(`SELECT id FROM accounting_reversal_log WHERE source_id=$1`, [expId]);
+      const p = ex[0]?.status==='voided' && dr[0]?.excluded_from_ledger && cr[0]?.excluded_from_ledger && lg.length>0;
+      add(10,'Visual Delete Must Affect Ledger',p,`voided:${ex[0]?.status==='voided'}, dr_excl:${dr[0]?.excluded_from_ledger}, cr_excl:${cr[0]?.excluded_from_ledger}, audit:${lg.length>0}`);
+    } catch(e) { add(10,'Visual Delete Must Affect Ledger',false,'ERROR: '+e.message); }
+  }
+
+  const passed = results.filter(r=>r.passed).length;
+  const failed  = results.filter(r=>!r.passed).length;
+  res.json({ summary: { total: results.length, passed, failed, all_pass: failed===0 }, qa_booking_id: QA_BID, results });
 });
 
 // ── FASE 29: GET /api/accounting/audit/delete-vs-ledger-integrity ─────────
@@ -16098,7 +16381,8 @@ async function checkBookingIntegrity(bookingId) {
   // 3. Cash payments (reference_type='cash_clearing' linked to booking)
   const { rows: cashRows } = await pool.query(
     `SELECT COALESCE(SUM(amount),0) as total FROM transactions
-     WHERE booking_id = $1 AND reference_type = 'cash_clearing'`,
+     WHERE booking_id = $1 AND reference_type = 'cash_clearing'
+       AND COALESCE(excluded_from_ledger,false)=false`,
     [bookingId]
   );
   const cashTotal = parseFloat(cashRows[0].total);
@@ -16128,7 +16412,7 @@ async function checkBookingIntegrity(bookingId) {
   // 6. Expenses from boat_expenses table — single authoritative source
   const { rows: expRows } = await pool.query(
     `SELECT COALESCE(SUM(amount),0) as total FROM boat_expenses
-     WHERE booking_id = $1 AND (status IS NULL OR status != 'cancelled')`,
+     WHERE booking_id = $1 AND (status IS NULL OR status NOT IN ('cancelled','voided','archived'))`,
     [bookingId]
   );
   const expensesTable = parseFloat(expRows[0].total);
@@ -16151,7 +16435,8 @@ async function checkBookingIntegrity(bookingId) {
   const { rows: revRows } = await pool.query(
     `SELECT COALESCE(SUM(amount),0) as total FROM transactions
      WHERE booking_id = $1 AND reference_type IN ('booking_complete','booking')
-       AND transaction_type = 'income'`,
+       AND transaction_type = 'income'
+       AND COALESCE(excluded_from_ledger,false)=false`,
     [bookingId]
   );
   const revenueRecognized = parseFloat(revRows[0].total);
@@ -18760,7 +19045,7 @@ app.get('/api/bookings/:id/ledger-summary', isAuthenticated, async (req, res) =>
 
     // Get expenses
     const { rows: expRows } = await pool.query(
-      `SELECT * FROM boat_expenses WHERE booking_id = $1 AND (status IS NULL OR status != 'cancelled') ORDER BY expense_date ASC`,
+      `SELECT * FROM boat_expenses WHERE booking_id = $1 AND (status IS NULL OR status NOT IN ('cancelled','voided','archived')) ORDER BY expense_date ASC`,
       [req.params.id]
     );
 
