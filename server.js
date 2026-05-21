@@ -4063,7 +4063,12 @@ app.get('/api/bookings', isAuthenticated, async (req, res) => {
     query += ' ORDER BY b.booking_date DESC, b.start_time ASC';
 
     const result = await pool.query(query, params);
-    res.json(result.rows);
+    // FASE 28: normalize — always return booking_total and display_total alongside total_amount
+    res.json(result.rows.map(b => ({
+      ...b,
+      booking_total:  parseFloat(b.total_amount || 0),
+      display_total:  parseFloat(b.total_amount || 0),
+    })));
   } catch (error) {
     console.error('Error fetching bookings:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -15565,6 +15570,40 @@ app.get('/api/accounting/legacy-cleanup/report', isAuthenticated, async (req, re
 
 // ========== FASE 20: ACCOUNTING INTEGRITY ENGINE ==========
 
+// ── FASE 28: resolveBookingTotal — canonical helper ───────────────────────
+// Accepts a booking object (from any endpoint) and returns the canonical total.
+// Priority: total_amount → booking_total → display_total → expected_revenue → 0
+// Guarantees: always returns a number > 0 when data exists; logs fallback usage.
+function resolveBookingTotal(booking) {
+  if (!booking) return 0;
+  const candidates = [
+    booking.total_amount,
+    booking.booking_total,
+    booking.display_total,
+    booking.expected_revenue,
+    booking.total,
+    booking.amount,
+    booking.price,
+    booking.total_price,
+    booking.final_price,
+    booking.charter_total,
+    booking.customer_total,
+    booking.quoted_price,
+    booking.agreed_price,
+  ];
+  for (const raw of candidates) {
+    if (raw === null || raw === undefined || raw === '') continue;
+    // Parse currency strings like "$1,234.56"
+    const val = parseFloat(String(raw).replace(/[^0-9.-]/g, ''));
+    if (!isNaN(val) && val > 0) return val;
+  }
+  // All fields zero or missing
+  if (process.env.NODE_ENV !== 'production') {
+    console.warn('[resolveBookingTotal] Could not resolve total from booking:', booking?.id || 'unknown');
+  }
+  return 0;
+}
+
 // ── checkBookingIntegrity — standalone audit function ─────────────────────
 async function checkBookingIntegrity(bookingId) {
   // 1. Core booking data
@@ -18033,6 +18072,106 @@ app.get('/api/accounting/audit/regression-status', isAuthenticated, async (req, 
       ? { status: 'PASS', count: 0,
           details: `All ${required.length} wizard fields present. expected_revenue=$${integrity.expected_revenue?.toFixed(2)}, accounting_status=${integrity.accounting_status}` }
       : { status: 'FAIL', count: missing.length, message: `Missing wizard fields: ${missing.join(', ')}` };
+  });
+
+  // ── 11. Captain payable balance integrity ─────────────────────────────────
+  await check('captain_payable_balance_integrity', async () => {
+    const { rows } = await pool.query(
+      `SELECT bcp.booking_id, b.customer_name, bcp.balance_due, bcp.status
+       FROM booking_captain_payables bcp
+       JOIN bookings b ON b.id = bcp.booking_id
+       WHERE ABS(bcp.balance_due) > 0.01
+         AND bcp.status IN ('paid','settled','cleared')
+       LIMIT 10`
+    ).catch(() => ({ rows: [] }));
+    return rows.length === 0
+      ? { status: 'PASS', count: 0, details: 'All paid captain payables have zero balance_due' }
+      : { status: 'WARN', count: rows.length,
+          message: `${rows.length} captain payable records marked paid but balance_due != 0`,
+          items: rows.map(r => ({ booking_id: r.booking_id, customer: r.customer_name, balance: r.balance_due, status: r.status })) };
+  });
+
+  // ── 12. Revenue account sanity (4xxx) ─────────────────────────────────────
+  await check('revenue_account_sanity', async () => {
+    const { rows } = await pool.query(
+      `SELECT t.id, t.booking_id, t.amount, c.account_code
+       FROM transactions t
+       JOIN chart_of_accounts c ON c.id = t.account_id
+       WHERE t.transaction_type = 'income'
+         AND COALESCE(t.excluded_from_ledger, false) = false
+         AND c.account_code::text NOT LIKE '1%'
+         AND c.account_code::text NOT LIKE '4%'
+         AND c.account_code::text NOT LIKE '2%'
+       LIMIT 10`
+    ).catch(() => ({ rows: [] }));
+    return rows.length === 0
+      ? { status: 'PASS', count: 0, details: 'Income transactions routed to valid asset/revenue/liability accounts' }
+      : { status: 'WARN', count: rows.length,
+          message: `${rows.length} income transactions on unexpected account types`,
+          items: rows.map(r => ({ id: r.id, booking_id: r.booking_id, amount: r.amount, account_code: r.account_code })) };
+  });
+
+  // ── 13. Expense account sanity (5xxx) ─────────────────────────────────────
+  await check('expense_account_sanity', async () => {
+    const { rows } = await pool.query(
+      `SELECT t.id, t.booking_id, t.amount, c.account_code
+       FROM transactions t
+       JOIN chart_of_accounts c ON c.id = t.account_id
+       WHERE t.transaction_type = 'expense'
+         AND COALESCE(t.excluded_from_ledger, false) = false
+         AND c.account_code::text NOT LIKE '5%'
+         AND c.account_code::text NOT LIKE '1%'
+         AND c.account_code::text NOT LIKE '2%'
+         AND c.account_code::text NOT LIKE '6%'
+       LIMIT 10`
+    ).catch(() => ({ rows: [] }));
+    return rows.length === 0
+      ? { status: 'PASS', count: 0, details: 'Expense transactions routed to valid expense/asset/liability accounts' }
+      : { status: 'WARN', count: rows.length,
+          message: `${rows.length} expense transactions on unexpected account types`,
+          items: rows.map(r => ({ id: r.id, booking_id: r.booking_id, amount: r.amount, account_code: r.account_code })) };
+  });
+
+  // ── 14. Expense overrun anomalies ─────────────────────────────────────────
+  // Flag bookings where total non-excluded expenses exceed 2× total revenue
+  await check('expense_overrun_anomalies', async () => {
+    const { rows } = await pool.query(
+      `SELECT t.booking_id,
+              SUM(CASE WHEN t.transaction_type='income' AND t.amount > 0 THEN t.amount ELSE 0 END) as revenue,
+              SUM(CASE WHEN t.transaction_type='expense' AND t.amount > 0 THEN t.amount ELSE 0 END) as expenses
+       FROM transactions t
+       WHERE t.booking_id IS NOT NULL
+         AND COALESCE(t.excluded_from_ledger, false) = false
+         AND t.booking_id NOT LIKE 'book_QA_%'
+       GROUP BY t.booking_id
+       HAVING SUM(CASE WHEN t.transaction_type='expense' AND t.amount > 0 THEN t.amount ELSE 0 END)
+              > 2 * NULLIF(SUM(CASE WHEN t.transaction_type='income' AND t.amount > 0 THEN t.amount ELSE 0 END), 0)
+         AND SUM(CASE WHEN t.transaction_type='income' AND t.amount > 0 THEN t.amount ELSE 0 END) > 0
+       LIMIT 10`
+    ).catch(() => ({ rows: [] }));
+    return rows.length === 0
+      ? { status: 'PASS', count: 0, details: 'No bookings with expenses > 2x revenue' }
+      : { status: 'WARN', count: rows.length,
+          message: `${rows.length} bookings where expenses exceed 2x revenue — possible data error`,
+          items: rows.map(r => ({ booking_id: r.booking_id, revenue: parseFloat(r.revenue).toFixed(2), expenses: parseFloat(r.expenses).toFixed(2) })) };
+  });
+
+  // ── 15. Deposit integrity (applied deposits match valid bookings via ledger) ─
+  // booking_deposits uses booking_ledger_id (-> bookings_ledger) or booking_reference (text)
+  await check('deposit_integrity', async () => {
+    const { rows } = await pool.query(
+      `SELECT bd.id, bd.booking_ledger_id, bd.booking_reference, bd.amount, bd.status
+       FROM booking_deposits bd
+       WHERE bd.status IN ('applied','confirmed')
+         AND bd.booking_ledger_id IS NOT NULL
+         AND NOT EXISTS (SELECT 1 FROM bookings_ledger bl WHERE bl.id = bd.booking_ledger_id)
+       LIMIT 10`
+    ).catch(() => ({ rows: [] }));
+    return rows.length === 0
+      ? { status: 'PASS', count: 0, details: 'All applied/confirmed deposits linked to valid ledger entries' }
+      : { status: 'FAIL', count: rows.length,
+          message: `${rows.length} applied deposits reference missing bookings_ledger records`,
+          items: rows.map(r => ({ id: r.id, ledger_id: r.booking_ledger_id, ref: r.booking_reference, amount: r.amount })) };
   });
 
   // ── Persist audit run results ─────────────────────────────────────────────

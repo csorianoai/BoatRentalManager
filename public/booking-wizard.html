@@ -872,6 +872,35 @@ async function loadAll() {
   renderStep1();
 }
 
+// ── FASE 28: resolveClientBookingTotal — canonical frontend helper ─────────
+// Mirrors backend resolveBookingTotal(). Accepts any booking/wizData object
+// and returns a numeric total, trying multiple field names in priority order.
+// Use wherever a "booking total" must be displayed or compared.
+function resolveClientBookingTotal(booking) {
+  if (!booking) return 0;
+  const candidates = [
+    booking.total_amount,
+    booking.booking_total,
+    booking.display_total,
+    booking.expected_revenue,
+    booking.total,
+    booking.amount,
+    booking.price,
+    booking.total_price,
+    booking.final_price,
+    booking.charter_total,
+    booking.customer_total,
+    booking.quoted_price,
+    booking.agreed_price,
+  ];
+  for (const raw of candidates) {
+    if (raw === null || raw === undefined || raw === '') continue;
+    const val = parseFloat(String(raw).replace(/[^0-9.-]/g, ''));
+    if (!isNaN(val) && val > 0) return val;
+  }
+  return 0;
+}
+
 const CUTOVER_DATE = new Date('2026-04-27');
 let isLegacyBooking   = false;
 let isCancelledBooking = false;
