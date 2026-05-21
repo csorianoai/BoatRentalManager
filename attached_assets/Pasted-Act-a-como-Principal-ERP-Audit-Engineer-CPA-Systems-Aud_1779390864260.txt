@@ -1,0 +1,530 @@
+Actúa como Principal ERP Audit Engineer, CPA Systems Auditor, Financial Integrity Architect, Ledger Reliability Engineer, QA Automation Engineer y Full-Stack Booking Accounting Architect para gestion.nadakiexcursions.
+
+MISIÓN:
+Ejecutar una auditoría integral y regression audit COMPLETA después de todas las implementaciones recientes:
+- FASE 21 (Period Control / Legacy Lock)
+- Booking Reconciliation
+- Cash Clearing
+- Cancelled Booking Lock
+- Captain/Broker/Vendor Payables
+- Corporate Accounting Layer (FASE 26)
+- Ledger Sanitization (FASE 27)
+- KPI Financial Dashboard
+- Fleet Profitability
+- Booking Wizard
+- Multiple Expenses / Multiple Payments
+- Revenue Recognition
+- General Ledger
+- AP Aging
+- Financial Statements
+- Other Income
+- Payroll
+- Corporate Expenses
+
+Además, corregir el bug crítico actual:
+
+🚨 CALENDAR → BOOKING RECONCILIATION TOTAL BUG
+El calendario muestra el booking amount correcto pero el Booking Reconciliation Wizard recibe booking_total = 0.
+
+OBJETIVO:
+1. Corregir el bug del monto del booking.
+2. Revisar TODO el flujo contable end-to-end.
+3. Detectar cualquier regresión causada por las implementaciones recientes.
+4. Validar que los estados financieros y el ledger sigan correctos.
+5. Ejecutar auto-pruebas completas antes de declarar terminado.
+
+NO romper:
+- legacy lock
+- cancelled lock
+- booking reconciliation
+- cash clearing
+- payables
+- corporate accounting
+- trial balance
+- booking wizard
+- dashboards
+- reports
+- period close
+- financial statements
+
+==================================================
+FASE 0 — MODO AUDITORÍA TOTAL
+==================================================
+
+ANTES de tocar código:
+
+1. Crear audit run:
+accounting_system_audit_runs
+
+Campos:
+- run_id
+- started_at
+- started_by
+- environment
+- scope
+- status
+- critical_issues
+- warnings
+- completed_at
+
+2. Crear logs:
+accounting_regression_audit_log
+
+Campos:
+- run_id
+- module
+- issue_type
+- severity
+- entity_id
+- booking_id
+- before_state
+- after_state
+- recommended_fix
+- fix_applied
+- created_at
+
+3. NO aplicar fixes destructivos.
+4. NO borrar data.
+5. Todo fix debe tener before/after.
+
+==================================================
+FASE 1 — BOOKING TOTAL BUG
+==================================================
+
+PROBLEMA:
+Calendar muestra monto correcto.
+Booking Reconciliation Wizard muestra booking_total = 0.
+
+==================================================
+1A. AUDITORÍA DE CAMPOS DE MONTO
+==================================================
+
+Buscar TODOS los campos usados:
+
+- total_amount
+- booking_total
+- total
+- amount
+- price
+- total_price
+- final_price
+- sale_price
+- customer_total
+- quoted_price
+- agreed_price
+- charter_total
+
+Reportar:
+- archivo
+- endpoint
+- frontend component
+- backend mapper
+- source of truth
+
+==================================================
+1B. AUDITORÍA END-TO-END
+==================================================
+
+Para booking real problemático comparar:
+
+A) Calendar endpoint
+B) bookings list endpoint
+C) booking detail endpoint
+D) reconciliation endpoint
+E) wizard frontend render
+
+Debe reportar:
+
+{
+  booking_id,
+  calendar_amount,
+  bookings_list_amount,
+  booking_detail_amount,
+  reconciliation_amount,
+  wizard_render_amount,
+  resolved_amount,
+  mismatch_detected
+}
+
+==================================================
+1C. CREAR RESOLVER CENTRAL
+==================================================
+
+Backend helper:
+
+resolveBookingTotal(booking)
+
+Debe:
+- aceptar múltiples nombres de campo
+- parsear currency strings
+- ignorar null/undefined
+- priorizar valores > 0
+- loggear fallback usage
+
+Frontend helper:
+resolveClientBookingTotal(data)
+
+NO permitir:
+calendar > 0 y reconciliation = 0
+
+==================================================
+1D. NORMALIZAR RESPUESTAS
+==================================================
+
+Endpoints:
+GET /api/bookings/:id
+GET /api/bookings/:id/reconciliation
+GET /api/bookings
+GET calendar endpoints
+
+Deben devolver:
+{
+  total_amount,
+  booking_total,
+  display_total
+}
+
+Todos iguales.
+
+==================================================
+1E. VALIDACIÓN
+==================================================
+
+Probar booking real:
+- calendar amount correcto
+- wizard amount correcto
+- reconciliation amount correcto
+- booking detail correcto
+
+==================================================
+FASE 2 — REGRESSION AUDIT COMPLETA
+==================================================
+
+Ejecutar auditoría TOTAL del sistema contable.
+
+==================================================
+2A. BOOKING ACCOUNTING FLOW
+==================================================
+
+Validar:
+- booking creation
+- booking payments
+- booking expenses
+- multiple expenses
+- multiple payments
+- captain payable
+- broker payable
+- vendor payable
+- close booking
+- reconciliation
+- revenue recognition
+- lock booking
+- unlock booking if allowed
+- partial payments
+- AP pending close
+- profit calculation
+- cash clearing
+
+==================================================
+2B. CASH CLEARING AUDIT
+==================================================
+
+Validar:
+1015 only used for:
+- cash inflows
+- cash outflows
+
+NO:
+- zelle
+- bank
+- card
+
+Recalcular:
+cash_in
+cash_out
+cash_balance
+
+Matej:
+cash clearing = 0.00
+
+==================================================
+2C. CANCELLED BOOKINGS AUDIT
+==================================================
+
+Ejecutar:
+GET /api/audit/cancelled-bookings
+
+Debe validar:
+- no revenue contamination
+- no AR contamination
+- no operational KPIs contamination
+- no AP corruption
+- no cash clearing contamination
+
+Validar HTTP 409 locks.
+
+==================================================
+2D. LEGACY LOCK AUDIT
+==================================================
+
+Validar:
+- pre-2026-04-27 isolated
+- no current contamination
+- legacy adjustments only
+- period lock respected
+
+==================================================
+2E. CORPORATE ACCOUNTING AUDIT
+==================================================
+
+Validar:
+- corporate expenses
+- AP corporate
+- payroll
+- prepaid expenses
+- other income
+- reversals
+- journal entries
+- trial balance
+- GL posting
+- account mapping
+- AP aging
+
+==================================================
+2F. LEDGER SANITIZATION AUDIT
+==================================================
+
+Ejecutar:
+GET /api/accounting/audit/ledger-integrity
+
+Debe validar:
+- no invalid account ids
+- no orphan transactions
+- no duplicate entries
+- no unbalanced journal entries
+- no cash contamination
+- no duplicate payables
+
+==================================================
+2G. KPI / DASHBOARD AUDIT
+==================================================
+
+Validar:
+- executed bookings
+- pending bookings
+- cancelled bookings
+- revenue pending
+- revenue cancelled
+- operational profit
+- provisional profit
+- cost operational
+- fleet profitability
+
+Verificar:
+cancelled no afectan métricas operativas.
+
+==================================================
+2H. FINANCIAL STATEMENTS AUDIT
+==================================================
+
+Validar:
+
+P&L:
+- booking revenue
+- other income
+- direct costs
+- operating expenses
+- net income
+
+Balance Sheet:
+- assets
+- liabilities
+- equity
+- assets = liabilities + equity
+
+Cash Flow:
+- inflows
+- outflows
+- AP
+- AR
+- payroll
+- expenses
+
+Trial Balance:
+- debits = credits
+
+==================================================
+FASE 3 — AUTO-QA REAL
+==================================================
+
+Ejecutar pruebas reales con rollback QA:
+
+==================================================
+3A. BOOKING FLOW QA
+==================================================
+
+Crear QA booking:
+- revenue
+- fuel
+- captain payable
+- broker payable
+- partial captain payment
+- zelle payment
+- multiple expenses
+- multiple income methods
+- close booking
+
+Validar:
+- profit correcto
+- cash clearing correcto
+- AP correcto
+
+==================================================
+3B. CORPORATE QA
+==================================================
+
+Crear:
+- office rent
+- utilities payable
+- payroll
+- software
+- marketing
+- other income
+- prepaid expense
+
+Validar:
+- GL
+- AP
+- P&L
+- cash flow
+
+==================================================
+3C. REGRESSION MATEJ
+==================================================
+
+Debe terminar:
+
+booking_total = 699.99/700
+expenses = 560.99
+profit = 139.00
+cash_clearing = 0
+captain payable = 0
+no duplicate expense
+no duplicate payable
+
+==================================================
+3D. CANCELLED QA
+==================================================
+
+Booking cancelado:
+- no revenue
+- no AP contamination
+- no dashboard contamination
+- no close/payment allowed
+
+==================================================
+3E. LEGACY QA
+==================================================
+
+Booking legacy:
+- no contamination current
+- adjustments only
+
+==================================================
+FASE 4 — DETECCIÓN AUTOMÁTICA DE REGRESIONES
+==================================================
+
+Crear regression engine:
+
+GET /api/accounting/audit/regression-status
+
+Debe revisar:
+- booking totals mismatch
+- invalid GL balances
+- duplicate expenses
+- duplicate payables
+- negative cash anomalies
+- orphan transactions
+- invalid account mapping
+- dashboard/report mismatch
+- booking revenue mismatch
+- reconciliation mismatch
+
+==================================================
+FASE 5 — VALIDACIÓN UI
+==================================================
+
+Validar:
+- accounting.html tabs
+- booking-wizard
+- bookings.html
+- calendar
+- AP screens
+- P&L
+- Balance Sheet
+- Trial Balance
+- Fleet Profitability
+
+Debe:
+- cargar sin JS errors
+- mostrar datos correctos
+- no mostrar NaN/0 incorrectos
+- no romper filtros
+
+==================================================
+FASE 6 — CRITERIOS DE ÉXITO
+==================================================
+
+NO declarar terminado hasta que:
+
+1. Calendar y Wizard muestran mismo booking amount.
+2. Reconciliation no muestra booking_total = 0.
+3. Trial Balance cuadra.
+4. Balance Sheet cuadra.
+5. P&L correcto.
+6. Cash Flow correcto.
+7. Matej correcto.
+8. Cancelled bookings aislados.
+9. Legacy aislado.
+10. AP aging correcto.
+11. No invalid account ids.
+12. No orphan transactions.
+13. No duplicate active expenses.
+14. No duplicate active payables.
+15. QA corporativo PASS.
+16. Regression engine PASS.
+17. UI PASS.
+18. No JS errors.
+
+==================================================
+FASE 7 — ENTREGABLE FINAL
+==================================================
+
+Reportar:
+
+1. Root cause booking_total=0
+2. Campos usados antes/después
+3. Endpoints corregidos
+4. Helpers creados
+5. Regresiones detectadas
+6. Regresiones corregidas
+7. Resultado QA booking flow
+8. Resultado QA corporate flow
+9. Resultado QA cancelled
+10. Resultado QA legacy
+11. Resultado ledger integrity
+12. Resultado trial balance
+13. Resultado balance sheet
+14. Resultado cash flow
+15. Resultado regression engine
+16. Resultado UI audit
+17. Riesgos pendientes
+18. Confirmación de que nada funcional fue roto
+
+IMPORTANTE:
+No decir “todo está bien” sin:
+- pruebas reales
+- JSON reales
+- logs reales
+- comparaciones before/after
+- regression audit PASS

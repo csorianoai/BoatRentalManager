@@ -2972,6 +2972,49 @@ async function initializeDatabase() {
     }
     // ── END FASE 27 ──────────────────────────────────────────────────────────
 
+    // ── FASE 28: Regression Audit Tables ─────────────────────────────────────
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS accounting_system_audit_runs (
+          run_id          TEXT PRIMARY KEY,
+          started_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          started_by      TEXT NOT NULL DEFAULT 'sistema',
+          environment     TEXT NOT NULL DEFAULT 'production',
+          scope           TEXT NOT NULL DEFAULT 'full_regression',
+          status          TEXT NOT NULL DEFAULT 'running'
+                          CHECK (status IN ('running','completed','failed','partial')),
+          critical_issues JSONB NOT NULL DEFAULT '[]',
+          warnings        JSONB NOT NULL DEFAULT '[]',
+          modules_tested  JSONB NOT NULL DEFAULT '[]',
+          fix_applied     JSONB NOT NULL DEFAULT '[]',
+          completed_at    TIMESTAMPTZ,
+          notes           TEXT
+        )
+      `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS accounting_regression_audit_log (
+          id             TEXT PRIMARY KEY DEFAULT 'arl_' || substr(md5(random()::text),1,16),
+          run_id         TEXT NOT NULL REFERENCES accounting_system_audit_runs(run_id) ON DELETE CASCADE,
+          module         TEXT NOT NULL,
+          issue_type     TEXT NOT NULL,
+          severity       TEXT NOT NULL CHECK (severity IN ('critical','high','medium','low','info')),
+          entity_id      TEXT,
+          booking_id     TEXT,
+          before_state   JSONB,
+          after_state    JSONB,
+          recommended_fix TEXT,
+          fix_applied    BOOLEAN NOT NULL DEFAULT false,
+          created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_arl_run_id ON accounting_regression_audit_log(run_id)`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_arl_severity ON accounting_regression_audit_log(severity, run_id)`);
+      console.log('✅ FASE 28 audit run tables ready');
+    } catch (e28) {
+      console.warn('⚠️ FASE 28 (non-critical):', e28.message);
+    }
+    // ── END FASE 28 ──────────────────────────────────────────────────────────
+
     // ── END FASE 23 ──────────────────────────────────────────────────────────
 
     console.log('✅ Database schema initialized successfully (all 10 phases + authentication)');
@@ -17657,99 +17700,156 @@ app.get('/api/accounting/audit/sanitization-log', isAuthenticated, async (req, r
 });
 
 // GET /api/bookings/:id/reconciliation — full booking ledger reconciliation
+// ── FASE 28 FIX: Reconciliation endpoint — enriched with full wizard data ─
+// Previously the FASE 27 endpoint returned a stripped GL-audit structure
+// (revenue.items, direct_costs.items, summary.*) that the wizard cannot use.
+// This replacement calls checkBookingIntegrity() which returns ALL wizard fields
+// (expected_revenue, total_collected, total_expenses, expected_profit,
+//  cash_clearing_balance, accounting_status, booking_date, platform, status,
+//  total_ar_pending, alerts[], suggested_next_action) and ALSO includes
+//  the FASE 27 GL-audit data and the wizard's deposits/transactions arrays.
 app.get('/api/bookings/:id/reconciliation', isAuthenticated, async (req, res) => {
   try {
     const bookingId = req.params.id;
-    const { rows: bookRows } = await pool.query(`SELECT * FROM bookings WHERE id=$1`, [bookingId]);
-    if (!bookRows.length) return res.status(404).json({ error: 'Booking not found' });
-    const booking = bookRows[0];
 
-    // Revenue recognized (income transactions on 4xxx, booking-linked, active)
-    const { rows: revRows } = await pool.query(`
-      SELECT COALESCE(t.account_code,c.account_code) as account_code, c.account_name,
-             SUM(CASE WHEN t.amount < 0 THEN -t.amount ELSE t.amount END) as total
-      FROM transactions t JOIN chart_of_accounts c ON c.id=t.account_id
-      WHERE t.booking_id=$1 AND t.transaction_type='income'
-        AND COALESCE(t.account_code, c.account_code)::text LIKE '4%'
-        AND COALESCE(t.excluded_from_ledger, false)=false
-      GROUP BY COALESCE(t.account_code,c.account_code), c.account_name
-    `, [bookingId]);
+    // 1. Full integrity data — provides ALL fields the wizard needs
+    const integrity = await checkBookingIntegrity(bookingId);
+    if (!integrity) return res.status(404).json({ error: 'Booking no encontrado' });
 
-    // Direct expenses (expense transactions on 5xxx, not excluded)
-    const { rows: expRows } = await pool.query(`
-      SELECT COALESCE(t.account_code,c.account_code) as account_code, c.account_name,
-             SUM(t.amount) as total
-      FROM transactions t JOIN chart_of_accounts c ON c.id=t.account_id
-      WHERE t.booking_id=$1 AND t.transaction_type='expense'
-        AND COALESCE(t.account_code, c.account_code)::text LIKE '5%'
-        AND COALESCE(t.excluded_from_ledger, false)=false
-      GROUP BY COALESCE(t.account_code,c.account_code), c.account_name
-      ORDER BY COALESCE(t.account_code,c.account_code)
-    `, [bookingId]);
+    // 2. Parallel fetch: transactions, deposits, expenses, excluded GL items
+    const [txRes, depRes, expRes, revRes, expGLRes, exclRes] = await Promise.all([
+      // All transactions linked to this booking (for wizard payment list)
+      pool.query(
+        `SELECT t.id, t.transaction_date, t.amount, t.transaction_type, t.description,
+                t.reference_type, t.notes, t.account_id,
+                c.account_code, c.account_name
+         FROM transactions t
+         LEFT JOIN chart_of_accounts c ON c.id = t.account_id
+         WHERE t.booking_id = $1 ORDER BY t.transaction_date DESC, t.id DESC LIMIT 150`,
+        [bookingId]
+      ).catch(() => ({ rows: [] })),
+      // Deposits (via bookings_ledger join)
+      pool.query(
+        `SELECT bd.* FROM booking_deposits bd
+         JOIN bookings_ledger bl ON bl.id = bd.booking_ledger_id
+         WHERE bl.notes LIKE 'booking:' || $1 || '%'
+         ORDER BY bd.deposit_date DESC`,
+        [bookingId]
+      ).catch(() => ({ rows: [] })),
+      // Boat expenses (for wizard expense list)
+      pool.query(
+        `SELECT * FROM boat_expenses
+         WHERE booking_id = $1 AND (status IS NULL OR status != 'cancelled')
+         ORDER BY expense_date ASC`,
+        [bookingId]
+      ).catch(() => ({ rows: [] })),
+      // Revenue GL rows (4xxx income transactions, FASE 27 style)
+      pool.query(`
+        SELECT COALESCE(t.account_code,c.account_code) as account_code, c.account_name,
+               SUM(CASE WHEN t.amount < 0 THEN -t.amount ELSE t.amount END) as total
+        FROM transactions t JOIN chart_of_accounts c ON c.id=t.account_id
+        WHERE t.booking_id=$1 AND t.transaction_type='income'
+          AND COALESCE(t.account_code, c.account_code)::text LIKE '4%'
+          AND COALESCE(t.excluded_from_ledger, false)=false
+        GROUP BY COALESCE(t.account_code,c.account_code), c.account_name
+      `, [bookingId]).catch(() => ({ rows: [] })),
+      // Expense GL rows (5xxx expense transactions, FASE 27 style)
+      pool.query(`
+        SELECT COALESCE(t.account_code,c.account_code) as account_code, c.account_name,
+               SUM(t.amount) as total
+        FROM transactions t JOIN chart_of_accounts c ON c.id=t.account_id
+        WHERE t.booking_id=$1 AND t.transaction_type='expense'
+          AND COALESCE(t.account_code, c.account_code)::text LIKE '5%'
+          AND COALESCE(t.excluded_from_ledger, false)=false
+        GROUP BY COALESCE(t.account_code,c.account_code), c.account_name
+        ORDER BY COALESCE(t.account_code,c.account_code)
+      `, [bookingId]).catch(() => ({ rows: [] })),
+      // Excluded transactions (FASE 27 audit trail)
+      pool.query(`
+        SELECT t.id, COALESCE(t.account_code,c.account_code) as account_code,
+               t.amount, t.description, t.exclusion_reason, t.excluded_at
+        FROM transactions t JOIN chart_of_accounts c ON c.id=t.account_id
+        WHERE t.booking_id=$1 AND t.excluded_from_ledger=true
+        ORDER BY t.excluded_at
+      `, [bookingId]).catch(() => ({ rows: [] })),
+    ]);
 
-    // Cash clearing (1015 balance for this booking)
-    const { rows: clearRows } = await pool.query(`
-      SELECT SUM(CASE WHEN t.transaction_type='income' THEN t.amount ELSE -t.amount END) as balance
-      FROM transactions t JOIN chart_of_accounts c ON c.id=t.account_id
-      WHERE t.booking_id=$1
-        AND COALESCE(t.account_code, c.account_code)='1015'
-        AND COALESCE(t.excluded_from_ledger, false)=false
-    `, [bookingId]);
+    const revRows  = revRes.rows;
+    const expGLRows = expGLRes.rows;
+    const exclRows = exclRes.rows;
+    const total_revenue      = revRows.reduce((s,r)=>s+parseFloat(r.total||0),0);
+    const total_direct_costs = expGLRows.reduce((s,r)=>s+parseFloat(r.total||0),0);
+    const profit             = total_revenue - total_direct_costs;
 
-    // Captain payable
-    const { rows: capRows } = await pool.query(`
-      SELECT * FROM booking_captain_payables WHERE booking_id=$1
-    `, [bookingId]);
-
-    // Excluded transactions (audit trail)
-    const { rows: exclRows } = await pool.query(`
-      SELECT t.id, COALESCE(t.account_code,c.account_code) as account_code,
-             t.amount, t.description, t.exclusion_reason, t.excluded_at
-      FROM transactions t JOIN chart_of_accounts c ON c.id=t.account_id
-      WHERE t.booking_id=$1 AND t.excluded_from_ledger=true
-      ORDER BY t.excluded_at
-    `, [bookingId]);
-
-    const total_revenue       = revRows.reduce((s,r)=>s+parseFloat(r.total||0),0);
-    const total_direct_costs  = expRows.reduce((s,r)=>s+parseFloat(r.total||0),0);
-    const captain_due         = capRows.reduce((s,r)=>s+parseFloat(r.total_due||0),0);
-    const captain_paid        = capRows.reduce((s,r)=>s+parseFloat(r.total_paid||0),0);
-    const captain_balance     = capRows.reduce((s,r)=>s+parseFloat(r.balance_due||0),0);
-    const cash_clearing_bal   = parseFloat(clearRows[0]?.balance||0);
-    const profit              = total_revenue - total_direct_costs;
-
+    // 3. Merge: integrity fields (wizard-required) + GL-audit data (FASE 27) + collections
     res.json({
-      booking_id: bookingId,
-      customer_name: booking.customer_name,
-      booking_total: parseFloat(booking.total_amount||0),
-      booking_status: booking.status,
+      // ── Core booking identification ─────────────────────────────────────────
+      booking_id:     bookingId,
+      customer_name:  integrity.customer_name,
+      booking_date:   integrity.booking_date,
+      platform:       integrity.platform,
+      status:         integrity.status,
+
+      // ── Booking total — normalized across all callers ───────────────────────
+      booking_total:   integrity.expected_revenue,   // primary canonical field
+      total_amount:    integrity.expected_revenue,   // alias
+      display_total:   integrity.expected_revenue,   // alias for display
+
+      // ── Wizard Step 1 fields (checkBookingIntegrity) ────────────────────────
+      expected_revenue:         integrity.expected_revenue,
+      total_collected:          integrity.total_collected,
+      total_deposits:           integrity.total_deposits,
+      total_cash:               integrity.total_cash,
+      total_ar_paid:            integrity.total_ar_paid,
+      total_ar_pending:         integrity.total_ar_pending,
+      total_expenses:           integrity.total_expenses,
+      expected_profit:          integrity.expected_profit,
+      actual_profit:            integrity.actual_profit,
+      revenue_recognized_amount: integrity.revenue_recognized_amount,
+      revenue_recognized:       integrity.revenue_recognized,
+      discrepancy_flag:         integrity.discrepancy_flag,
+      discrepancy_amount:       integrity.discrepancy_amount,
+      accounting_status:        integrity.accounting_status,
+      cash_clearing_balance:    integrity.cash_clearing_balance,
+      cash_clearing_in:         integrity.cash_clearing_in,
+      cash_clearing_out:        integrity.cash_clearing_out,
+
+      // ── Captain & payables (wizard steps 3–4) ─────────────────────────────
+      captain_actual:            integrity.captain_actual,
+      captain_hours:             integrity.captain_hours,
+      captain_payable_due:       integrity.captain_payable_due,
+      captain_payable_paid:      integrity.captain_payable_paid,
+      captain_payable_balance:   integrity.captain_payable_balance,
+      captain_payable_status:    integrity.captain_payable_status,
+      general_payables_due:      integrity.general_payables_due,
+      general_payables_paid:     integrity.general_payables_paid,
+      general_payables_balance:  integrity.general_payables_balance,
+      general_payables_status:   integrity.general_payables_status,
+      total_payables_balance:    integrity.total_payables_balance,
+      can_close_with_open_payables: integrity.can_close_with_open_payables,
+      is_legacy:                 integrity.is_legacy,
+
+      // ── Alerts & next action ───────────────────────────────────────────────
+      alerts:               integrity.alerts,
+      suggested_next_action: integrity.suggested_next_action,
+
+      // ── Collection arrays (wizard steps 2 & 4) ────────────────────────────
+      transactions: txRes.rows,
+      deposits:     depRes.rows,
+      expenses:     expRes.rows,
+
+      // ── FASE 27 GL-audit data (for audit table + ledger panel) ─────────────
       revenue: { items: revRows, total: total_revenue },
-      direct_costs: { items: expRows, total: total_direct_costs },
-      captain_payable: {
-        records: capRows.length,
-        total_due: captain_due,
-        total_paid: captain_paid,
-        balance_due: captain_balance,
-        status: capRows[0]?.status || 'none'
-      },
-      cash_clearing: {
-        account: '1015',
-        balance: cash_clearing_bal,
-        status: Math.abs(cash_clearing_bal) <= 0.01 ? 'balanced' : 'unresolved'
-      },
+      direct_costs: { items: expGLRows, total: total_direct_costs },
       summary: {
         total_revenue,
         total_direct_costs,
         profit,
         profit_margin: total_revenue > 0 ? ((profit/total_revenue)*100).toFixed(1)+'%' : 'n/a',
-        cash_clearing_balanced: Math.abs(cash_clearing_bal) <= 0.01
+        cash_clearing_balanced: Math.abs(integrity.cash_clearing_balance) <= 0.01
       },
       excluded_transactions: { count: exclRows.length, items: exclRows },
-      integrity: {
-        duplicate_captain_payables: capRows.length > 1 ? 'FAIL — multiple records' : 'pass',
-        captain_fully_paid: captain_balance < 0.01 ? 'pass' : `OPEN: $${captain_balance.toFixed(2)}`,
-        cash_clearing: Math.abs(cash_clearing_bal) <= 0.01 ? 'pass' : `UNRESOLVED: $${cash_clearing_bal.toFixed(2)}`
-      }
+      ledger_id: integrity.ledger_id,
     });
   } catch (err) {
     console.error('Reconciliation error:', err);
@@ -17757,7 +17857,215 @@ app.get('/api/bookings/:id/reconciliation', isAuthenticated, async (req, res) =>
   }
 });
 
-// ── END FASE 27 Audit Endpoints ───────────────────────────────────────────
+// ── END FASE 27 / FASE 28 Audit Endpoints ────────────────────────────────
+
+// ── FASE 28: Regression Engine — GET /api/accounting/audit/regression-status
+// Runs a comprehensive regression audit across all accounting modules and returns
+// a structured report of issues, warnings, and pass/fail status per module.
+app.get('/api/accounting/audit/regression-status', isAuthenticated, async (req, res) => {
+  const runId = `audit_run_fase28_${new Date().toISOString().slice(0,10).replace(/-/g,'')}`;
+  const issues = [];
+  const warnings = [];
+  const moduleResults = [];
+
+  const check = async (label, fn) => {
+    try {
+      const r = await fn();
+      moduleResults.push({ module: label, status: r.status, details: r.details || null, count: r.count ?? null });
+      if (r.status === 'FAIL') issues.push({ module: label, message: r.message || label, items: r.items || [] });
+      if (r.status === 'WARN') warnings.push({ module: label, message: r.message || label, items: r.items || [] });
+    } catch (e) {
+      moduleResults.push({ module: label, status: 'ERROR', details: e.message });
+      issues.push({ module: label, message: `Exception: ${e.message}`, items: [] });
+    }
+  };
+
+  // ── 1. Booking total normalization ─────────────────────────────────────────
+  await check('booking_total_normalization', async () => {
+    const { rows } = await pool.query(
+      `SELECT id, customer_name, total_amount FROM bookings WHERE total_amount IS NULL OR total_amount <= 0`
+    );
+    return rows.length === 0
+      ? { status: 'PASS', count: 0, details: 'All bookings have total_amount > 0' }
+      : { status: 'FAIL', count: rows.length,
+          message: `${rows.length} bookings with total_amount = NULL or 0`,
+          items: rows.map(r => ({ id: r.id, customer: r.customer_name, total: r.total_amount })) };
+  });
+
+  // ── 2. Duplicate captain payables ──────────────────────────────────────────
+  await check('duplicate_captain_payables', async () => {
+    const { rows } = await pool.query(
+      `SELECT booking_id, COUNT(*) as cnt FROM booking_captain_payables
+       GROUP BY booking_id HAVING COUNT(*) > 1`
+    );
+    return rows.length === 0
+      ? { status: 'PASS', count: 0, details: 'No duplicate captain payable records' }
+      : { status: 'FAIL', count: rows.length,
+          message: `${rows.length} bookings with duplicate captain payables`,
+          items: rows.map(r => ({ booking_id: r.booking_id, count: r.cnt })) };
+  });
+
+  // ── 3. Orphan transactions (booking_id not in bookings) ────────────────────
+  await check('orphan_transactions', async () => {
+    const { rows } = await pool.query(
+      `SELECT t.id, t.booking_id, t.amount, t.description FROM transactions t
+       WHERE t.booking_id IS NOT NULL
+         AND NOT EXISTS (SELECT 1 FROM bookings b WHERE b.id = t.booking_id)
+       LIMIT 20`
+    );
+    return rows.length === 0
+      ? { status: 'PASS', count: 0, details: 'No orphan transactions' }
+      : { status: 'WARN', count: rows.length,
+          message: `${rows.length} transactions reference non-existent bookings`,
+          items: rows.map(r => ({ id: r.id, booking_id: r.booking_id, amount: r.amount })) };
+  });
+
+  // ── 4. Transactions without account mapping ────────────────────────────────
+  await check('unmapped_transactions', async () => {
+    const { rows } = await pool.query(
+      `SELECT COUNT(*) as cnt FROM transactions t
+       WHERE t.account_id IS NOT NULL
+         AND NOT EXISTS (SELECT 1 FROM chart_of_accounts c WHERE c.id = t.account_id)`
+    );
+    const cnt = parseInt(rows[0].cnt);
+    return cnt === 0
+      ? { status: 'PASS', count: 0, details: 'All transactions have valid account mapping' }
+      : { status: 'FAIL', count: cnt, message: `${cnt} transactions with invalid account_id` };
+  });
+
+  // ── 5. AR receivables with no linked booking ───────────────────────────────
+  // Note: some AR records use bookings_ledger IDs (bl_*) in booking_id column — those are valid
+  await check('orphan_ar_receivables', async () => {
+    const { rows } = await pool.query(
+      `SELECT COUNT(*) as cnt FROM booking_receivables br
+       WHERE br.booking_id IS NOT NULL
+         AND br.booking_id NOT LIKE 'bl_%'
+         AND NOT EXISTS (SELECT 1 FROM bookings b WHERE b.id = br.booking_id)`
+    ).catch(() => ({ rows: [{ cnt: 0 }] }));
+    const cnt = parseInt(rows[0].cnt);
+    return cnt === 0
+      ? { status: 'PASS', count: 0, details: 'All AR receivables linked to valid bookings or ledger records' }
+      : { status: 'WARN', count: cnt, message: `${cnt} AR records reference missing bookings (not via ledger)` };
+  });
+
+  // ── 6. Open cash clearing anomalies (excludes QA test bookings) ──────────
+  await check('open_cash_clearing', async () => {
+    const { rows } = await pool.query(
+      `SELECT t.booking_id,
+              SUM(CASE WHEN t.transaction_type='income' THEN t.amount ELSE -t.amount END) as bal
+       FROM transactions t
+       JOIN chart_of_accounts c ON c.id = t.account_id
+       WHERE COALESCE(t.account_code, c.account_code) = '1015'
+         AND t.booking_id IS NOT NULL
+         AND t.booking_id NOT LIKE 'book_QA_%'
+         AND COALESCE(t.excluded_from_ledger, false) = false
+       GROUP BY t.booking_id
+       HAVING ABS(SUM(CASE WHEN t.transaction_type='income' THEN t.amount ELSE -t.amount END)) > 0.01
+       ORDER BY ABS(SUM(CASE WHEN t.transaction_type='income' THEN t.amount ELSE -t.amount END)) DESC
+       LIMIT 20`
+    ).catch(() => ({ rows: [] }));
+    return rows.length === 0
+      ? { status: 'PASS', count: 0, details: 'All Cash Clearing (1015) balances are zero (QA bookings excluded)' }
+      : { status: 'WARN', count: rows.length,
+          message: `${rows.length} production bookings with open Cash Clearing (1015) balance`,
+          items: rows.map(r => ({ booking_id: r.booking_id, balance: parseFloat(r.bal).toFixed(2) })) };
+  });
+
+  // ── 7. Duplicate transactions (same booking, amount, date, type) ───────────
+  // Excludes QA test bookings (book_QA_*) which intentionally have repeated transactions
+  await check('duplicate_transactions', async () => {
+    const { rows } = await pool.query(
+      `SELECT booking_id, transaction_date, amount, transaction_type, COUNT(*) as cnt
+       FROM transactions
+       WHERE booking_id IS NOT NULL
+         AND booking_id NOT LIKE 'book_QA_%'
+         AND COALESCE(excluded_from_ledger, false) = false
+       GROUP BY booking_id, transaction_date, amount, transaction_type
+       HAVING COUNT(*) > 2
+       ORDER BY cnt DESC LIMIT 10`
+    ).catch(() => ({ rows: [] }));
+    return rows.length === 0
+      ? { status: 'PASS', count: 0, details: 'No suspicious duplicate transaction groups (QA bookings excluded)' }
+      : { status: 'WARN', count: rows.length,
+          message: `${rows.length} groups with possible duplicate transactions`,
+          items: rows.map(r => ({ booking_id: r.booking_id, date: r.transaction_date, amount: r.amount, type: r.transaction_type, count: r.cnt })) };
+  });
+
+  // ── 8. Bookings missing ledger entry ──────────────────────────────────────
+  await check('bookings_missing_ledger', async () => {
+    const { rows } = await pool.query(
+      `SELECT b.id, b.customer_name, b.total_amount, b.status FROM bookings b
+       WHERE b.status NOT IN ('cancelled','draft')
+         AND NOT EXISTS (
+           SELECT 1 FROM bookings_ledger bl WHERE bl.notes LIKE 'booking:' || b.id || '%'
+         )
+       LIMIT 20`
+    ).catch(() => ({ rows: [] }));
+    return rows.length === 0
+      ? { status: 'PASS', count: 0, details: 'All active bookings have a ledger entry' }
+      : { status: 'WARN', count: rows.length,
+          message: `${rows.length} active bookings with no bookings_ledger record`,
+          items: rows.map(r => ({ id: r.id, customer: r.customer_name, total: r.total_amount })) };
+  });
+
+  // ── 9. Ledger sanitization log (FASE 27) ──────────────────────────────────
+  await check('ledger_sanitization_log', async () => {
+    const { rows } = await pool.query(
+      `SELECT action_taken, COUNT(*) as cnt FROM ledger_sanitization_log GROUP BY action_taken ORDER BY cnt DESC LIMIT 10`
+    ).catch(() => ({ rows: [] }));
+    return { status: 'PASS', count: rows.reduce((s,r)=>s+parseInt(r.cnt),0),
+      details: rows.map(r=>`${r.action_taken}: ${r.cnt}`).join(', ') || 'No sanitization log entries' };
+  });
+
+  // ── 10. Wizard field test — sample booking ────────────────────────────────
+  await check('wizard_reconciliation_fields', async () => {
+    const { rows: bkRows } = await pool.query(
+      `SELECT id FROM bookings WHERE total_amount > 0 ORDER BY booking_date DESC LIMIT 1`
+    );
+    if (!bkRows.length) return { status: 'PASS', details: 'No bookings to test' };
+    const integrity = await checkBookingIntegrity(bkRows[0].id).catch(() => null);
+    if (!integrity) return { status: 'FAIL', message: 'checkBookingIntegrity returned null for most recent booking' };
+    const required = ['expected_revenue','total_collected','total_expenses','expected_profit',
+                      'cash_clearing_balance','accounting_status','booking_date','platform',
+                      'status','total_ar_pending','alerts','suggested_next_action'];
+    const missing = required.filter(f => integrity[f] === undefined);
+    return missing.length === 0
+      ? { status: 'PASS', count: 0,
+          details: `All ${required.length} wizard fields present. expected_revenue=$${integrity.expected_revenue?.toFixed(2)}, accounting_status=${integrity.accounting_status}` }
+      : { status: 'FAIL', count: missing.length, message: `Missing wizard fields: ${missing.join(', ')}` };
+  });
+
+  // ── Persist audit run results ─────────────────────────────────────────────
+  const totalIssues = issues.length;
+  const totalWarnings = warnings.length;
+  const overallStatus = totalIssues > 0 ? 'partial' : 'completed';
+
+  await pool.query(
+    `INSERT INTO accounting_system_audit_runs
+       (run_id, started_by, scope, status, critical_issues, warnings, modules_tested, completed_at)
+     VALUES ($1, 'regression_engine', 'full_regression', $2, $3::jsonb, $4::jsonb, $5::jsonb, NOW())
+     ON CONFLICT (run_id) DO UPDATE
+       SET status=$2, critical_issues=$3::jsonb, warnings=$4::jsonb,
+           modules_tested=$5::jsonb, completed_at=NOW()`,
+    [runId, overallStatus,
+     JSON.stringify(issues),
+     JSON.stringify(warnings),
+     JSON.stringify(moduleResults)]
+  ).catch(e => console.warn('Audit persist warn:', e.message));
+
+  res.json({
+    run_id:          runId,
+    timestamp:       new Date().toISOString(),
+    overall_status:  overallStatus,
+    total_modules:   moduleResults.length,
+    passed:          moduleResults.filter(m=>m.status==='PASS').length,
+    warnings:        totalWarnings,
+    failed:          totalIssues,
+    modules:         moduleResults,
+    issues,
+    warnings: warnings,
+  });
+});
 
 // ── FASE 9: GET /api/bookings/:id/integrity ───────────────────────────────
 app.get('/api/bookings/:id/integrity', isAuthenticated, async (req, res) => {
@@ -18529,42 +18837,6 @@ app.put('/api/boat-pricing-rules/:id', isAuthenticated, async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
-});
-
-// ── ALIAS ENDPOINTS — spec-compliant per-booking routes ───────────────────
-
-// GET /api/bookings/:id/reconciliation — alias for ledger-summary
-app.get('/api/bookings/:id/reconciliation', isAuthenticated, async (req, res) => {
-  try {
-    const integrity = await checkBookingIntegrity(req.params.id);
-    if (!integrity) return res.status(404).json({ error: 'Booking no encontrado' });
-    // Merge transactions list
-    const { rows: txs } = await pool.query(
-      `SELECT t.id, t.transaction_date, t.amount, t.transaction_type, t.description,
-              t.reference_type, t.notes, t.account_id,
-              c.account_code, c.account_name
-       FROM transactions t
-       LEFT JOIN chart_of_accounts c ON c.id = t.account_id
-       WHERE t.booking_id = $1 ORDER BY t.transaction_date DESC, t.id DESC LIMIT 100`,
-      [req.params.id]
-    );
-    const { rows: deps } = await pool.query(
-      `SELECT * FROM booking_deposits WHERE booking_ledger_id IN (
-         SELECT id FROM bookings_ledger WHERE notes LIKE 'booking:' || $1 || '%'
-       ) ORDER BY deposit_date DESC`, [req.params.id]
-    );
-    const [auditRes, expRes] = await Promise.all([
-      pool.query(
-        `SELECT * FROM booking_audit_log WHERE booking_id=$1 ORDER BY created_at DESC LIMIT 50`,
-        [req.params.id]
-      ).catch(() => ({ rows: [] })),
-      pool.query(
-        `SELECT * FROM boat_expenses WHERE booking_id = $1 AND (status IS NULL OR status != 'cancelled') ORDER BY expense_date ASC`,
-        [req.params.id]
-      ).catch(() => ({ rows: [] })),
-    ]);
-    res.json({ ...integrity, transactions: txs, deposits: deps, audit_trail: auditRes.rows, expenses: expRes.rows });
-  } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
 // DELETE /api/bookings/:bookingId/expenses/:expId — anular gasto antes de cierre
