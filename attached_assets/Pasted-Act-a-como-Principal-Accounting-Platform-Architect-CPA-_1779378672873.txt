@@ -1,0 +1,829 @@
+Actúa como Principal Accounting Platform Architect, CPA Audit-Readiness Engineer, Enterprise Controller, SOX Controls Engineer, Backend Engineer, BI Engineer y QA Automation Engineer para gestion.nadakiexcursions.
+
+MISIÓN:
+Diseñar e implementar la capa faltante de contabilidad corporativa completa sobre el sistema actual, sin romper nada de lo que ya funciona en bookings, booking reconciliation, cash clearing, legacy lock, cancelled booking lock, captain/broker payables, KPI dashboard y financial statements existentes.
+
+OBJETIVO:
+Crear una capa de General Ledger / Corporate Accounting capaz de soportar auditorías profesionales tipo Big Four, McKinsey operational review, IRS audit-readiness y controles internos de empresa multinacional.
+
+NO ROMPER:
+- Booking Reconciliation Wizard
+- Booking payments
+- Booking expenses
+- Cash Clearing 1015
+- Revenue Recognition
+- Booking Payables
+- Captain Payables
+- Broker Payables
+- Legacy period lock
+- Cancelled booking lock
+- Current/legacy filters
+- Manual entries existentes
+- KPI dashboard
+- Existing reports
+- Existing transactions
+
+==================================================
+FASE 0 — AUDITORÍA INICIAL ANTES DE IMPLEMENTAR
+==================================================
+
+Antes de tocar código, inspeccionar y reportar:
+
+1. Chart of Accounts actual
+2. Existing transactions schema
+3. Existing manual entry flow
+4. Existing booking expenses flow
+5. Existing booking payables flow
+6. Existing financial reports
+7. Existing AP/AR structures
+8. Existing period close logic
+9. Existing dashboard/KPI endpoints
+10. Gaps detectados para Corporate Accounting
+
+NO duplicar tablas si ya existen equivalentes.
+Si existe algo parcial, extenderlo de forma backward compatible.
+
+Entregar primero:
+- Qué existe
+- Qué falta
+- Qué se va a crear
+- Qué no se tocará
+
+==================================================
+FASE 1 — PLAN DE CUENTAS CORPORATIVO
+==================================================
+
+Verificar, crear o activar estas cuentas sin duplicar.
+
+ASSETS:
+1000 Cash / Bank
+1010 Wells Fargo Checking
+1015 Cash Clearing / Operating Cash
+1020 Credit Card Clearing
+1030 Payment Processor Clearing
+1100 Accounts Receivable
+1200 Prepaid Expenses
+1300 Security Deposits Paid
+1400 Inventory / Supplies
+1500 Boats / Equipment
+1510 Vehicles / Trailers
+1520 Furniture & Fixtures
+1600 Accumulated Depreciation
+
+LIABILITIES:
+2000 Accounts Payable
+2010 Captain Payable
+2020 Broker Commission Payable
+2030 Vendor Payable
+2100 Credit Cards Payable
+2110 Payroll Payable
+2120 Sales Tax Payable
+2130 Payroll Taxes Payable
+2200 Loans Payable
+2300 Customer Refunds Payable
+2500 Deferred Booking Deposits
+2999 Legacy Booking Balancing Account
+
+EQUITY:
+3000 Owner Equity
+3010 Owner Contributions
+3020 Owner Draws / Distributions
+3100 Retained Earnings
+3200 Current Year Earnings
+3999 Prior Period Adjustment
+
+REVENUE:
+4010 Revenue - Tours
+4020 Revenue - Rentals
+4030 Platform Revenue
+4040 Cancellation Fee Revenue
+4050 Service Fee Revenue
+4090 Other Income
+4500 Non-Booking Income
+
+COST OF SERVICES:
+5010 Captain Labor Expense
+5020 Fuel Expense
+5030 Ice / Supplies Expense
+5040 Cleaning Expense
+5050 Dock / Marina Fees
+5060 Platform / Broker Commission Expense
+5070 Crew Expense
+5080 Guest Supplies Expense
+5090 Direct Booking Misc Expense
+
+OPERATING EXPENSES:
+6010 Insurance Expense
+6020 Maintenance & Repairs
+6030 Marketing & Advertising
+6040 Software Subscriptions
+6050 Bank Fees
+6060 Office / Admin Expense
+6070 Legal / Professional Fees
+6080 Office Rent
+6090 Utilities
+6100 Telephone / Internet
+6110 Payroll Expense
+6120 Payroll Taxes
+6130 Accounting / Bookkeeping
+6140 Licenses & Permits
+6150 Meals & Entertainment
+6160 Travel Expense
+6170 Vehicle Expense
+6180 Depreciation Expense
+6190 Interest Expense
+6900 Miscellaneous Expense
+
+Crear metadata:
+- account_code
+- account_name
+- account_type
+- account_category
+- normal_balance: debit/credit
+- active
+- is_system_account
+- allow_manual_entry
+- created_at
+- updated_at
+
+==================================================
+FASE 2 — GENERAL LEDGER CORPORATIVO
+==================================================
+
+Crear o reforzar tabla general_ledger_entries o journal_entries si no existe.
+
+Estructura recomendada:
+
+journal_entries:
+- id
+- journal_entry_id
+- entry_date
+- accounting_date
+- accounting_period YYYY-MM
+- source_type:
+  - booking
+  - booking_expense
+  - booking_payable
+  - corporate_expense
+  - corporate_income
+  - manual_entry
+  - bank_transaction
+  - payroll
+  - refund
+  - adjustment
+  - reversal
+  - system
+- source_id nullable
+- reference_type
+- reference_id
+- memo
+- status:
+  - draft
+  - posted
+  - reversed
+  - voided
+  - locked
+- period_type:
+  - legacy
+  - current
+- created_by
+- created_at
+- approved_by nullable
+- approved_at nullable
+- reversed_entry_id nullable
+- locked boolean default false
+
+journal_entry_lines:
+- id
+- journal_entry_id
+- line_number
+- account_code
+- debit_amount
+- credit_amount
+- description
+- entity_type optional
+- entity_id optional
+- booking_id nullable
+- boat_id nullable
+- vendor_id nullable
+- customer_id nullable
+- department:
+  - booking_ops
+  - corporate
+  - marketing
+  - admin
+  - fleet
+  - finance
+- class:
+  - direct_cost
+  - overhead
+  - non_booking_income
+  - asset
+  - liability
+- created_at
+
+Reglas obligatorias:
+- Total debits = total credits
+- No entry con cuenta inexistente
+- No postear en periodo locked
+- No editar posted entry; corregir con reversal
+- No hard delete
+- Audit trail obligatorio
+
+==================================================
+FASE 3 — CORPORATE EXPENSES
+==================================================
+
+Crear módulo:
+Accounting → Corporate Expenses
+
+Usos:
+- Marina general no ligada a booking
+- Teléfonos
+- Internet
+- Renta oficina
+- Luz / utilities
+- Sueldos administrativos
+- Software
+- Marketing general
+- Seguros
+- Mantenimiento general
+- Legal/professional
+- Otros
+
+Diferenciar:
+A) Expense paid immediately
+B) Expense payable / unpaid
+C) Prepaid expense
+D) Recurring expense
+
+Endpoint:
+POST /api/accounting/corporate-expenses
+
+Body:
+{
+  "expense_date": "YYYY-MM-DD",
+  "vendor_name": "string",
+  "expense_category": "utilities",
+  "account_code": "6090",
+  "amount": 500,
+  "payment_status": "paid | payable | prepaid",
+  "payment_method": "bank | zelle | cash | card | other",
+  "payment_account_code": "1010",
+  "due_date": "YYYY-MM-DD optional",
+  "memo": "string",
+  "department": "corporate",
+  "attachment_url": "optional"
+}
+
+Contabilidad:
+Si paid bank:
+Dr Expense
+Cr 1010 Bank
+
+Si paid cash:
+Dr Expense
+Cr 1015 Cash Clearing only if legitimate operating cash
+Prefer default corporate cash account if available
+
+Si payable:
+Dr Expense
+Cr 2000/2030 Accounts Payable
+
+Si prepaid:
+Dr 1200 Prepaid Expenses
+Cr 1010 Bank
+
+Luego amortización:
+Dr Expense
+Cr 1200 Prepaid Expenses
+
+==================================================
+FASE 4 — CORPORATE ACCOUNTS PAYABLE
+==================================================
+
+Crear módulo:
+Accounting → Accounts Payable
+
+Debe manejar:
+- Vendor bills
+- Broker commissions no ligadas a booking
+- Utilities bills
+- Office rent payable
+- Payroll payable
+- Marina invoices
+- Maintenance vendors
+
+Tabla:
+corporate_payables
+
+Campos:
+- id
+- vendor_name
+- vendor_type
+- bill_date
+- due_date
+- account_code_expense
+- account_code_payable
+- total_due
+- total_paid
+- balance_due
+- status:
+  - open
+  - partially_paid
+  - paid
+  - overdue
+  - cancelled
+- memo
+- source_type
+- source_id
+- created_by
+- created_at
+
+Tabla:
+corporate_payable_payments
+
+Campos:
+- id
+- payable_id
+- payment_date
+- amount
+- payment_method
+- payment_account_code
+- transaction_id
+- notes
+- created_by
+- created_at
+
+Endpoints:
+POST /api/accounting/payables
+POST /api/accounting/payables/:id/payments
+GET /api/accounting/payables
+GET /api/accounting/payables-aging
+
+Reglas:
+Crear bill:
+Dr Expense
+Cr Accounts Payable
+
+Pagar bill:
+Dr Accounts Payable
+Cr Bank/Cash/Card
+
+No duplicar expense al pagar.
+
+==================================================
+FASE 5 — OTHER / NON-BOOKING INCOME
+==================================================
+
+Crear módulo:
+Accounting → Other Income
+
+Usos:
+- Cancellation fee
+- Sponsorship
+- Merchandise
+- Affiliate income
+- Consulting
+- Equipment rental
+- Service fee no ligada a booking
+- Reimbursements
+- Misc income
+
+Endpoint:
+POST /api/accounting/other-income
+
+Body:
+{
+  "income_date": "YYYY-MM-DD",
+  "income_type": "cancellation_fee | sponsorship | merchandise | consulting | equipment_rental | reimbursement | other",
+  "account_code": "4500",
+  "amount": 500,
+  "payment_method": "bank | zelle | cash | card | platform | other",
+  "deposit_account_code": "1010",
+  "payer_name": "string",
+  "memo": "string",
+  "attachment_url": "optional"
+}
+
+Accounting:
+Dr Cash/Bank/Clearing
+Cr Other Income account
+
+Rules:
+- Non-booking income must not attach to booking revenue.
+- It must appear in P&L under Other Income / Non-Booking Income.
+- It must affect cash flow and bank balance.
+
+==================================================
+FASE 6 — PAYROLL / SUELDOS
+==================================================
+
+Crear mínimo viable:
+Accounting → Payroll / Salaries
+
+Para sueldos administrativos:
+Dr 6110 Payroll Expense
+Cr 1010 Bank si pagado
+
+Si pendiente:
+Dr 6110 Payroll Expense
+Cr 2110 Payroll Payable
+
+Impuestos:
+Dr 6120 Payroll Taxes
+Cr 2130 Payroll Taxes Payable
+
+No implementar cálculo fiscal complejo todavía.
+Solo registrar gasto y payable.
+
+Endpoints:
+POST /api/accounting/payroll-expense
+GET /api/accounting/payroll-summary
+
+==================================================
+FASE 7 — EXPENSE ALLOCATION / RENTABILIDAD
+==================================================
+
+Regla:
+Corporate overhead NO descuenta directamente del profit individual del booking.
+
+Debe afectar:
+- Company Net Profit
+- Fleet profitability allocated view opcional
+
+Crear dos niveles:
+
+A) Direct Booking Profit:
+booking revenue - direct booking costs
+
+B) Company Net Profit:
+all revenue - direct costs - corporate overhead
+
+C) Allocated Profit optional:
+distribuir overhead por:
+- hours
+- revenue share
+- boat usage
+- equal allocation
+
+Crear módulo:
+Accounting → Allocation Rules
+
+Tabla:
+expense_allocation_rules:
+- id
+- expense_account_code
+- allocation_method:
+  - none
+  - by_boat_hours
+  - by_booking_revenue
+  - equal_per_booking
+  - manual
+- active
+
+Por defecto:
+Corporate expenses allocation_method = none
+No contaminar booking profit.
+
+==================================================
+FASE 8 — FINANCIAL STATEMENTS ENGINE
+==================================================
+
+Actualizar reportes:
+
+1. Profit & Loss:
+Revenue:
+- Booking Revenue
+- Other Income
+
+Cost of Services:
+- Direct booking costs
+
+Gross Profit
+
+Operating Expenses:
+- corporate expenses
+
+Net Operating Profit
+
+Other Income/Expense
+
+Net Income
+
+2. Balance Sheet:
+Assets
+Liabilities
+Equity
+
+Debe incluir:
+- Accounts Payable
+- Payables por booking
+- Corporate payables
+- Prepaids
+- Owner equity
+- Current year earnings
+
+3. Cash Flow:
+Operating inflows
+Operating outflows
+AP payments
+Non-booking income
+Owner contributions/draws
+
+4. Trial Balance:
+All accounts debit/credit totals
+Debe cuadrar en cero.
+
+Endpoints:
+GET /api/accounting/reports/profit-loss?period=YYYY-MM
+GET /api/accounting/reports/balance-sheet?as_of=YYYY-MM-DD
+GET /api/accounting/reports/cash-flow?period=YYYY-MM
+GET /api/accounting/reports/trial-balance?period=YYYY-MM
+
+==================================================
+FASE 9 — UI / DASHBOARD
+==================================================
+
+Agregar en accounting.html:
+
+Tabs:
+1. Corporate Expenses
+2. Accounts Payable
+3. Other Income
+4. Payroll
+5. General Ledger
+6. Trial Balance
+7. Profit & Loss
+8. Balance Sheet
+9. Cash Flow
+10. Allocation Rules
+
+Cada tab debe tener:
+- filtros por periodo
+- search
+- export CSV
+- status badges
+- audit trail links
+
+Corporate Expenses UI:
+- registrar gasto
+- pagado vs payable
+- proveedor
+- cuenta contable
+- cuenta de pago
+- adjunto opcional
+
+Other Income UI:
+- registrar ingreso no-booking
+- método de pago
+- cuenta ingreso
+- deposit account
+
+AP UI:
+- bills abiertos
+- pagos parciales
+- aging
+- overdue
+
+General Ledger UI:
+- journal entries
+- lines
+- source_type
+- ability to reverse, not delete
+
+==================================================
+FASE 10 — CONTROLES INTERNOS AUDIT-READY
+==================================================
+
+Implementar:
+
+1. No hard delete for accounting records.
+2. Reversal entries only.
+3. Manual entries require reason.
+4. Posted entries locked after period close.
+5. Account code validation everywhere.
+6. Debits = credits validation.
+7. Audit trail for every financial action.
+8. User/time/source on every entry.
+9. Period lock respected.
+10. Legacy excluded by default.
+11. Cancelled booking lock respected.
+12. Cash clearing cannot be used casually for corporate expenses unless explicitly selected and reason provided.
+13. Attachments optional but supported.
+14. Exportable audit report.
+
+==================================================
+FASE 11 — AUTO-PRUEBAS POR CUENTA
+==================================================
+
+Antes de declarar terminado, crear y ejecutar QA script:
+
+/api/accounting/qa/corporate-layer-test
+or internal script.
+
+Debe hacer pruebas reales con rollback o QA period.
+
+Usar periodo QA:
+2099-01
+o source_type='qa_test'
+y luego revertir o marcar excluded_from_reports.
+
+Pruebas obligatorias:
+
+1. Crear cuenta faltante y verificar active.
+2. Registrar Office Rent:
+Dr 6080
+Cr 1010
+amount 100
+Verificar P&L operating expense.
+
+3. Registrar Utilities payable:
+Dr 6090
+Cr 2000
+amount 80
+Verificar AP Aging.
+
+4. Pagar Utilities:
+Dr 2000
+Cr 1010
+amount 80
+Verificar AP balance = 0.
+
+5. Registrar Telephone:
+Dr 6100
+Cr 1010
+amount 40
+
+6. Registrar Payroll paid:
+Dr 6110
+Cr 1010
+amount 300
+
+7. Registrar Payroll payable:
+Dr 6110
+Cr 2110
+amount 200
+Verificar Payroll Payable.
+
+8. Registrar Marketing:
+Dr 6030
+Cr 1010
+amount 75
+
+9. Registrar Software:
+Dr 6040
+Cr 1010
+amount 55
+
+10. Registrar Other Income:
+Dr 1010
+Cr 4500
+amount 120
+
+11. Registrar Prepaid:
+Dr 1200
+Cr 1010
+amount 240
+
+12. Amortizar prepaid:
+Dr 6040
+Cr 1200
+amount 20
+
+13. Trial Balance debe cuadrar:
+total_debits = total_credits
+
+14. Profit & Loss debe incluir:
+Other Income
+Operating Expenses
+Net Income correcto
+
+15. Balance Sheet debe cuadrar:
+Assets = Liabilities + Equity
+
+16. Cash Flow debe mostrar:
+cash inflows/outflows correctos
+
+17. Period lock:
+crear periodo locked e intentar postear
+Debe rechazar.
+
+18. Reversal:
+crear reversal de un corporate expense
+Debe no borrar original y crear entry inversa.
+
+19. Legacy protection:
+intentar postear corporate expense con accounting_date < 2026-04-27 sin prior_period_adjustment
+Debe rechazar o clasificar como legacy adjustment.
+
+20. Cancelled booking protection:
+confirmar que esta capa no reabre bookings cancelados.
+
+21. Booking regression:
+Matej sigue con:
+expenses 560.99
+cash clearing 0
+profit 139
+sin contaminarse por corporate expenses.
+
+22. Dashboard regression:
+booking KPIs siguen funcionando.
+
+No declarar terminado si alguna prueba falla.
+
+==================================================
+FASE 12 — QA MATRIX DE CUENTAS
+==================================================
+
+Generar matriz:
+
+Account Code | Test Posted? | Debit/Credit Works? | Report Appears? | Balance Correct? | PASS/FAIL
+
+Incluir mínimo:
+1010
+1015
+1100
+1200
+2000
+2010
+2020
+2030
+2110
+2500
+4010
+4020
+4090
+4500
+5010
+5020
+5030
+5040
+5050
+5060
+6010
+6020
+6030
+6040
+6050
+6060
+6070
+6080
+6090
+6100
+6110
+6120
+6130
+6900
+
+==================================================
+FASE 13 — CRITERIOS DE ÉXITO
+==================================================
+
+Solo marcar completado si:
+
+- Corporate expenses pueden registrarse.
+- Corporate payables pueden crearse y pagarse parcialmente.
+- Other income funciona.
+- Payroll básico funciona.
+- Trial balance cuadra.
+- P&L muestra booking revenue + other income + direct costs + overhead.
+- Balance sheet cuadra.
+- Cash flow refleja movimientos.
+- AP aging muestra saldos.
+- Reversals funcionan.
+- No se rompe booking accounting.
+- No se contaminan bookings con overhead.
+- Legacy/cancelled protections siguen activas.
+- QA matrix pasa.
+
+==================================================
+FASE 14 — ENTREGABLE FINAL
+==================================================
+
+Al terminar entregar:
+
+1. Qué existía antes.
+2. Qué se creó.
+3. Tablas nuevas.
+4. Cuentas creadas/activadas.
+5. Endpoints creados.
+6. UI tabs creados.
+7. Flujo de gastos corporativos.
+8. Flujo de ingresos no-booking.
+9. Flujo AP corporativo.
+10. Flujo payroll.
+11. Resultados del QA script.
+12. Trial balance final.
+13. P&L QA final.
+14. Balance sheet QA final.
+15. Cash flow QA final.
+16. Regression result Matej.
+17. Regression result cancelled bookings.
+18. Regression result legacy period.
+19. Riesgos pendientes.
+20. Confirmación de que nada existente fue roto.
+
+IMPORTANTE:
+Si algo no puede implementarse completo en una sola corrida, implementar primero backend + QA + endpoints, luego UI.
+Pero NO declarar terminado sin pruebas reales.

@@ -389,6 +389,27 @@
             <button class="tab" data-tab="legacy-cleanup" data-testid="tab-legacy-cleanup" onclick="loadLegacyCleanup()">
                 Cuadre Legacy
             </button>
+            <button class="tab" data-tab="corp-expenses" data-testid="tab-corp-expenses" onclick="loadCorpExpenses()">
+                Gastos Corp.
+            </button>
+            <button class="tab" data-tab="corp-payables" data-testid="tab-corp-payables" onclick="loadCorpPayables()">
+                AP Corporativo
+            </button>
+            <button class="tab" data-tab="other-income" data-testid="tab-other-income" onclick="loadOtherIncome()">
+                Otros Ingresos
+            </button>
+            <button class="tab" data-tab="payroll" data-testid="tab-payroll" onclick="loadPayroll()">
+                Nomina
+            </button>
+            <button class="tab" data-tab="general-ledger" data-testid="tab-general-ledger" onclick="loadGeneralLedger()">
+                General Ledger
+            </button>
+            <button class="tab" data-tab="trial-balance" data-testid="tab-trial-balance" onclick="loadTrialBalance()">
+                Trial Balance
+            </button>
+            <button class="tab" data-tab="pnl-completo" data-testid="tab-pnl-completo" onclick="loadPnLCompleto()">
+                P&amp;L Completo
+            </button>
         </div>
     </div>
 
@@ -5181,5 +5202,886 @@ document.querySelectorAll('.tab[data-tab="period-control"]').forEach(btn => {
     </div>
 </div>
 <!-- ========== END LEGACY WIZARD MODAL ========== -->
+
+<!-- ========== CORPORATE ACCOUNTING TABS ========== -->
+
+<!-- TAB: Gastos Corporativos -->
+<div class="tab-content" id="corp-expenses" data-testid="tab-content-corp-expenses" style="display:none;padding:24px 30px;max-width:1280px;margin:0 auto;">
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px 24px;margin-bottom:20px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+            <div>
+                <h2 style="margin:0 0 4px;font-size:18px;font-weight:800;color:#1a1a2e;">Gastos Corporativos</h2>
+                <p style="margin:0;font-size:13px;color:#64748b;">OpEx de la empresa: renta, servicios, contabilidad, tecnología, etc.</p>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button onclick="loadCorpExpenses()" data-testid="button-ce-refresh" style="padding:8px 16px;background:#0ea5e9;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;">Actualizar</button>
+                <button onclick="showCorpExpenseForm()" data-testid="button-ce-new" style="padding:8px 16px;background:#16a34a;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;">+ Nuevo Gasto</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- New Expense Form (hidden by default) -->
+    <div id="corp-expense-form" style="display:none;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px 24px;margin-bottom:20px;">
+        <h3 style="margin:0 0 16px;font-size:15px;font-weight:700;color:#1a1a2e;">Registrar Gasto Corporativo</h3>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;">
+            <div><label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Fecha</label>
+                <input type="date" id="ce-date" data-testid="input-ce-date" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;"></div>
+            <div><label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Proveedor</label>
+                <input type="text" id="ce-vendor" data-testid="input-ce-vendor" placeholder="Nombre proveedor" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;"></div>
+            <div><label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Cuenta Gasto</label>
+                <select id="ce-account" data-testid="select-ce-account" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;">
+                    <option value="6000">6000 – Rent / Marina</option>
+                    <option value="6010">6010 – Insurance</option>
+                    <option value="6020">6020 – Fuel (Corporate)</option>
+                    <option value="6030">6030 – Marketing</option>
+                    <option value="6040">6040 – Software / IT</option>
+                    <option value="6050">6050 – Bank Fees</option>
+                    <option value="6060">6060 – Professional Fees</option>
+                    <option value="6070">6070 – Supplies</option>
+                    <option value="6080">6080 – Office Rent</option>
+                    <option value="6090">6090 – Utilities</option>
+                    <option value="6100">6100 – Telephone / Internet</option>
+                    <option value="6110">6110 – Payroll</option>
+                    <option value="6120">6120 – Payroll Taxes</option>
+                    <option value="6130">6130 – Accounting</option>
+                    <option value="6140">6140 – Licenses</option>
+                    <option value="6150">6150 – Meals & Entertainment</option>
+                    <option value="6160">6160 – Travel</option>
+                    <option value="6170">6170 – Vehicle</option>
+                    <option value="6180">6180 – Depreciation</option>
+                    <option value="6190">6190 – Interest</option>
+                </select></div>
+            <div><label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Monto $</label>
+                <input type="number" id="ce-amount" data-testid="input-ce-amount" placeholder="0.00" step="0.01" min="0" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;"></div>
+            <div><label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Estado</label>
+                <select id="ce-status" data-testid="select-ce-status" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;">
+                    <option value="paid">Pagado</option>
+                    <option value="payable">Por Pagar (AP)</option>
+                    <option value="prepaid">Prepagado</option>
+                </select></div>
+            <div><label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Cuenta Pago</label>
+                <select id="ce-pay-acct" data-testid="select-ce-pay-acct" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;">
+                    <option value="1010">1010 – Chase Checking</option>
+                    <option value="1015">1015 – Operating Account</option>
+                    <option value="1020">1020 – Savings</option>
+                </select></div>
+            <div style="grid-column:1/-1;"><label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Descripción</label>
+                <input type="text" id="ce-memo" data-testid="input-ce-memo" placeholder="Descripción del gasto" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;"></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:16px;">
+            <button onclick="submitCorpExpense()" data-testid="button-ce-submit" style="padding:9px 20px;background:#16a34a;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;">Guardar Gasto</button>
+            <button onclick="document.getElementById('corp-expense-form').style.display='none'" data-testid="button-ce-cancel" style="padding:9px 20px;background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;border-radius:7px;font-size:13px;cursor:pointer;">Cancelar</button>
+        </div>
+        <div id="ce-form-msg" style="margin-top:10px;font-size:13px;font-weight:600;"></div>
+    </div>
+
+    <!-- Summary KPIs -->
+    <div id="ce-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:20px;"></div>
+
+    <!-- Expenses Table -->
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
+        <div style="padding:14px 20px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <span style="font-size:13px;font-weight:700;color:#1a1a2e;">Journal Entries — Gastos Corporativos</span>
+            <input type="month" id="ce-period-filter" data-testid="input-ce-period" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:12px;" onchange="loadCorpExpenses()">
+        </div>
+        <div style="overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                <thead><tr style="background:#f8fafc;">
+                    <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;border-bottom:1px solid #e5e7eb;">Fecha</th>
+                    <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;border-bottom:1px solid #e5e7eb;">Descripción</th>
+                    <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;border-bottom:1px solid #e5e7eb;">Tipo</th>
+                    <th style="padding:10px 14px;text-align:right;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;border-bottom:1px solid #e5e7eb;">Monto</th>
+                    <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;border-bottom:1px solid #e5e7eb;">Estado</th>
+                    <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;border-bottom:1px solid #e5e7eb;">JE ID</th>
+                </tr></thead>
+                <tbody id="ce-table-body"><tr><td colspan="6" style="text-align:center;padding:24px;color:#94a3b8;">Cargando...</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- TAB: AP Corporativo -->
+<div class="tab-content" id="corp-payables" data-testid="tab-content-corp-payables" style="display:none;padding:24px 30px;max-width:1280px;margin:0 auto;">
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px 24px;margin-bottom:20px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+            <div>
+                <h2 style="margin:0 0 4px;font-size:18px;font-weight:800;color:#1a1a2e;">Cuentas por Pagar — Corporativo</h2>
+                <p style="margin:0;font-size:13px;color:#64748b;">Bills de proveedores, control de vencimientos y aging de AP corporativo.</p>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button onclick="loadCorpPayables()" data-testid="button-cp-refresh" style="padding:8px 16px;background:#0ea5e9;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;">Actualizar</button>
+                <button onclick="showCorpPayableForm()" data-testid="button-cp-new" style="padding:8px 16px;background:#16a34a;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;">+ Nuevo Bill</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- New Bill Form -->
+    <div id="corp-payable-form" style="display:none;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px 24px;margin-bottom:20px;">
+        <h3 style="margin:0 0 16px;font-size:15px;font-weight:700;color:#1a1a2e;">Nuevo Bill / Cuenta por Pagar</h3>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;">
+            <div><label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Proveedor</label>
+                <input type="text" id="cp-vendor" data-testid="input-cp-vendor" placeholder="Nombre proveedor" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;"></div>
+            <div><label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Tipo</label>
+                <input type="text" id="cp-type" data-testid="input-cp-type" placeholder="vendor / utility / rent..." style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;"></div>
+            <div><label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Fecha Bill</label>
+                <input type="date" id="cp-bill-date" data-testid="input-cp-bill-date" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;"></div>
+            <div><label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Vence</label>
+                <input type="date" id="cp-due" data-testid="input-cp-due" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;"></div>
+            <div><label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Cuenta Gasto</label>
+                <input type="text" id="cp-exp-acct" data-testid="input-cp-exp-acct" placeholder="6000" value="6000" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;"></div>
+            <div><label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Monto $</label>
+                <input type="number" id="cp-amount" data-testid="input-cp-amount" placeholder="0.00" step="0.01" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;"></div>
+            <div style="grid-column:1/-1;"><label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Descripción</label>
+                <input type="text" id="cp-memo" data-testid="input-cp-memo" placeholder="Descripción" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;"></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:16px;">
+            <button onclick="submitCorpPayable()" data-testid="button-cp-submit" style="padding:9px 20px;background:#16a34a;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;">Guardar Bill</button>
+            <button onclick="document.getElementById('corp-payable-form').style.display='none'" data-testid="button-cp-cancel" style="padding:9px 20px;background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;border-radius:7px;font-size:13px;cursor:pointer;">Cancelar</button>
+        </div>
+        <div id="cp-form-msg" style="margin-top:10px;font-size:13px;font-weight:600;"></div>
+    </div>
+
+    <!-- Aging Summary -->
+    <div id="cp-aging" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:20px;"></div>
+
+    <!-- Payables Table -->
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
+        <div style="padding:14px 20px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <span style="font-size:13px;font-weight:700;color:#1a1a2e;">Bills Pendientes</span>
+            <select id="cp-status-filter" data-testid="select-cp-status" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:12px;" onchange="loadCorpPayables()">
+                <option value="">Todos</option>
+                <option value="open">Abierto</option>
+                <option value="partially_paid">Parcial</option>
+                <option value="paid">Pagado</option>
+            </select>
+        </div>
+        <div style="overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                <thead><tr style="background:#f8fafc;">
+                    <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;border-bottom:1px solid #e5e7eb;">Proveedor</th>
+                    <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;border-bottom:1px solid #e5e7eb;">Bill Date</th>
+                    <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;border-bottom:1px solid #e5e7eb;">Vence</th>
+                    <th style="padding:10px 14px;text-align:right;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;border-bottom:1px solid #e5e7eb;">Total</th>
+                    <th style="padding:10px 14px;text-align:right;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;border-bottom:1px solid #e5e7eb;">Pagado</th>
+                    <th style="padding:10px 14px;text-align:right;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;border-bottom:1px solid #e5e7eb;">Saldo</th>
+                    <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;border-bottom:1px solid #e5e7eb;">Estado</th>
+                    <th style="padding:10px 14px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;border-bottom:1px solid #e5e7eb;">Acción</th>
+                </tr></thead>
+                <tbody id="cp-table-body"><tr><td colspan="8" style="text-align:center;padding:24px;color:#94a3b8;">Cargando...</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Payment Modal -->
+    <div id="cp-payment-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:none;align-items:center;justify-content:center;">
+        <div style="background:#fff;border-radius:12px;padding:24px;width:380px;max-width:95vw;">
+            <h3 style="margin:0 0 16px;font-size:16px;font-weight:800;color:#1a1a2e;">Registrar Pago</h3>
+            <input type="hidden" id="cp-pay-id">
+            <div style="display:flex;flex-direction:column;gap:10px;">
+                <div><label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:3px;">Fecha</label>
+                    <input type="date" id="cp-pay-date" data-testid="input-cp-pay-date" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;"></div>
+                <div><label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:3px;">Monto $</label>
+                    <input type="number" id="cp-pay-amount" data-testid="input-cp-pay-amount" placeholder="0.00" step="0.01" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;"></div>
+                <div><label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:3px;">Cuenta</label>
+                    <select id="cp-pay-acct-sel" data-testid="select-cp-pay-acct" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;">
+                        <option value="1010">1010 – Chase Checking</option>
+                        <option value="1015">1015 – Operating</option>
+                    </select></div>
+                <div><label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:3px;">Método</label>
+                    <select id="cp-pay-method" data-testid="select-cp-pay-method" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;">
+                        <option value="bank">Bank Transfer</option>
+                        <option value="check">Check</option>
+                        <option value="credit_card">Credit Card</option>
+                        <option value="cash">Cash</option>
+                    </select></div>
+                <div><label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:3px;">Notas</label>
+                    <input type="text" id="cp-pay-notes" data-testid="input-cp-pay-notes" placeholder="Notas opcionales" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;"></div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:16px;">
+                <button onclick="submitCorpPayment()" data-testid="button-cp-pay-submit" style="flex:1;padding:9px;background:#16a34a;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;">Pagar</button>
+                <button onclick="closeCpPayModal()" data-testid="button-cp-pay-cancel" style="flex:1;padding:9px;background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;border-radius:7px;font-size:13px;cursor:pointer;">Cancelar</button>
+            </div>
+            <div id="cp-pay-msg" style="margin-top:10px;font-size:13px;font-weight:600;"></div>
+        </div>
+    </div>
+</div>
+
+<!-- TAB: Otros Ingresos -->
+<div class="tab-content" id="other-income" data-testid="tab-content-other-income" style="display:none;padding:24px 30px;max-width:1280px;margin:0 auto;">
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px 24px;margin-bottom:20px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+            <div>
+                <h2 style="margin:0 0 4px;font-size:18px;font-weight:800;color:#1a1a2e;">Otros Ingresos (No-Booking)</h2>
+                <p style="margin:0;font-size:13px;color:#64748b;">Ingresos fuera de plataformas: subvenciones, intereses, venta de activos, etc.</p>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button onclick="loadOtherIncome()" data-testid="button-oi-refresh" style="padding:8px 16px;background:#0ea5e9;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;">Actualizar</button>
+                <button onclick="showOtherIncomeForm()" data-testid="button-oi-new" style="padding:8px 16px;background:#16a34a;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;">+ Nuevo Ingreso</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Form -->
+    <div id="other-income-form" style="display:none;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px 24px;margin-bottom:20px;">
+        <h3 style="margin:0 0 16px;font-size:15px;font-weight:700;color:#1a1a2e;">Registrar Otro Ingreso</h3>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;">
+            <div><label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Fecha</label>
+                <input type="date" id="oi-date" data-testid="input-oi-date" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;"></div>
+            <div><label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Tipo de Ingreso</label>
+                <input type="text" id="oi-type" data-testid="input-oi-type" placeholder="Interés, Subsidio, Venta activo..." style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;"></div>
+            <div><label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Pagador / Fuente</label>
+                <input type="text" id="oi-payer" data-testid="input-oi-payer" placeholder="Fuente del ingreso" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;"></div>
+            <div><label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Monto $</label>
+                <input type="number" id="oi-amount" data-testid="input-oi-amount" placeholder="0.00" step="0.01" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;"></div>
+            <div><label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Cuenta Ingreso</label>
+                <select id="oi-account" data-testid="select-oi-account" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;">
+                    <option value="4500">4500 – Non-Booking Income</option>
+                    <option value="4050">4050 – Service Fee Revenue</option>
+                </select></div>
+            <div><label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Depositar en</label>
+                <select id="oi-deposit" data-testid="select-oi-deposit" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;">
+                    <option value="1010">1010 – Chase Checking</option>
+                    <option value="1015">1015 – Operating</option>
+                </select></div>
+            <div style="grid-column:1/-1;"><label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Descripción</label>
+                <input type="text" id="oi-memo" data-testid="input-oi-memo" placeholder="Descripción" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;"></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:16px;">
+            <button onclick="submitOtherIncome()" data-testid="button-oi-submit" style="padding:9px 20px;background:#16a34a;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;">Guardar</button>
+            <button onclick="document.getElementById('other-income-form').style.display='none'" data-testid="button-oi-cancel" style="padding:9px 20px;background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;border-radius:7px;font-size:13px;cursor:pointer;">Cancelar</button>
+        </div>
+        <div id="oi-form-msg" style="margin-top:10px;font-size:13px;font-weight:600;"></div>
+    </div>
+
+    <!-- KPI -->
+    <div id="oi-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:20px;"></div>
+
+    <!-- Table -->
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
+        <div style="padding:14px 20px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <span style="font-size:13px;font-weight:700;color:#1a1a2e;">Historial de Otros Ingresos</span>
+            <input type="month" id="oi-period-filter" data-testid="input-oi-period" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:12px;" onchange="loadOtherIncome()">
+        </div>
+        <div style="overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                <thead><tr style="background:#f8fafc;">
+                    <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;border-bottom:1px solid #e5e7eb;">Fecha</th>
+                    <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;border-bottom:1px solid #e5e7eb;">Descripción</th>
+                    <th style="padding:10px 14px;text-align:right;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;border-bottom:1px solid #e5e7eb;">Ingreso</th>
+                    <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;border-bottom:1px solid #e5e7eb;">Periodo</th>
+                </tr></thead>
+                <tbody id="oi-table-body"><tr><td colspan="4" style="text-align:center;padding:24px;color:#94a3b8;">Cargando...</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- TAB: Nomina -->
+<div class="tab-content" id="payroll" data-testid="tab-content-payroll" style="display:none;padding:24px 30px;max-width:1280px;margin:0 auto;">
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px 24px;margin-bottom:20px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+            <div>
+                <h2 style="margin:0 0 4px;font-size:18px;font-weight:800;color:#1a1a2e;">Nomina (Payroll)</h2>
+                <p style="margin:0;font-size:13px;color:#64748b;">Registro de sueldos y cargas patronales. No incluye comisiones de capitanes (en Comisiones).</p>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button onclick="loadPayroll()" data-testid="button-pr-refresh" style="padding:8px 16px;background:#0ea5e9;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;">Actualizar</button>
+                <button onclick="showPayrollForm()" data-testid="button-pr-new" style="padding:8px 16px;background:#16a34a;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;">+ Registrar Nomina</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Form -->
+    <div id="payroll-form" style="display:none;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px 24px;margin-bottom:20px;">
+        <h3 style="margin:0 0 16px;font-size:15px;font-weight:700;color:#1a1a2e;">Registrar Pago de Nomina</h3>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;">
+            <div><label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Fecha</label>
+                <input type="date" id="pr-date" data-testid="input-pr-date" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;"></div>
+            <div><label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Empleado</label>
+                <input type="text" id="pr-employee" data-testid="input-pr-employee" placeholder="Nombre o ID empleado" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;"></div>
+            <div><label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Tipo</label>
+                <select id="pr-type" data-testid="select-pr-type" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;">
+                    <option value="salary">Salario (6110)</option>
+                    <option value="payroll_tax">Carga Patronal (6120)</option>
+                    <option value="bonus">Bono (6110)</option>
+                </select></div>
+            <div><label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Monto $</label>
+                <input type="number" id="pr-amount" data-testid="input-pr-amount" placeholder="0.00" step="0.01" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;"></div>
+            <div><label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Estado</label>
+                <select id="pr-status" data-testid="select-pr-status" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;">
+                    <option value="paid">Pagado</option>
+                    <option value="payable">Por Pagar (2200)</option>
+                </select></div>
+            <div><label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Cuenta Bancaria</label>
+                <select id="pr-acct" data-testid="select-pr-acct" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;">
+                    <option value="1010">1010 – Chase Checking</option>
+                    <option value="1015">1015 – Operating</option>
+                </select></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:16px;">
+            <button onclick="submitPayroll()" data-testid="button-pr-submit" style="padding:9px 20px;background:#16a34a;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;">Guardar</button>
+            <button onclick="document.getElementById('payroll-form').style.display='none'" data-testid="button-pr-cancel" style="padding:9px 20px;background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;border-radius:7px;font-size:13px;cursor:pointer;">Cancelar</button>
+        </div>
+        <div id="pr-form-msg" style="margin-top:10px;font-size:13px;font-weight:600;"></div>
+    </div>
+
+    <!-- KPIs -->
+    <div id="pr-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:20px;"></div>
+
+    <!-- Table -->
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
+        <div style="padding:14px 20px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <span style="font-size:13px;font-weight:700;color:#1a1a2e;">Historial de Nomina</span>
+            <input type="month" id="pr-period-filter" data-testid="input-pr-period" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:12px;" onchange="loadPayroll()">
+        </div>
+        <div style="overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                <thead><tr style="background:#f8fafc;">
+                    <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;border-bottom:1px solid #e5e7eb;">Fecha</th>
+                    <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;border-bottom:1px solid #e5e7eb;">Descripción</th>
+                    <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;border-bottom:1px solid #e5e7eb;">Periodo</th>
+                    <th style="padding:10px 14px;text-align:right;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;border-bottom:1px solid #e5e7eb;">Gasto</th>
+                </tr></thead>
+                <tbody id="pr-table-body"><tr><td colspan="4" style="text-align:center;padding:24px;color:#94a3b8;">Cargando...</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- TAB: General Ledger -->
+<div class="tab-content" id="general-ledger" data-testid="tab-content-general-ledger" style="display:none;padding:24px 30px;max-width:1280px;margin:0 auto;">
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px 24px;margin-bottom:20px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+            <div>
+                <h2 style="margin:0 0 4px;font-size:18px;font-weight:800;color:#1a1a2e;">General Ledger — Diario Contable</h2>
+                <p style="margin:0;font-size:13px;color:#64748b;">Todos los asientos de doble entrada del sistema. Dr = Cr en cada asiento.</p>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button onclick="loadGeneralLedger()" data-testid="button-gl-refresh" style="padding:8px 16px;background:#0ea5e9;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;">Actualizar</button>
+                <button onclick="runQATest()" data-testid="button-gl-qa" style="padding:8px 16px;background:#7c3aed;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;">Correr QA (18 tests)</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- QA Results -->
+    <div id="gl-qa-results" style="display:none;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px 24px;margin-bottom:20px;"></div>
+
+    <!-- Filters -->
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 20px;margin-bottom:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <input type="month" id="gl-period-filter" data-testid="input-gl-period" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:12px;" onchange="loadGeneralLedger()">
+        <select id="gl-source-filter" data-testid="select-gl-source" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:12px;" onchange="loadGeneralLedger()">
+            <option value="">Todos los tipos</option>
+            <option value="corporate_expense">Gasto Corporativo</option>
+            <option value="corporate_payable">AP Corporativo</option>
+            <option value="corporate_payment">Pago AP</option>
+            <option value="other_income">Otro Ingreso</option>
+            <option value="payroll">Nomina</option>
+            <option value="reversal">Reversal</option>
+            <option value="manual_entry">Manual</option>
+        </select>
+        <select id="gl-status-filter" data-testid="select-gl-status" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:12px;" onchange="loadGeneralLedger()">
+            <option value="">Todos estados</option>
+            <option value="posted">Publicado</option>
+            <option value="reversed">Reversado</option>
+        </select>
+    </div>
+
+    <!-- Journal Entries Table -->
+    <div id="gl-entries-container"></div>
+</div>
+
+<!-- TAB: Trial Balance -->
+<div class="tab-content" id="trial-balance" data-testid="tab-content-trial-balance" style="display:none;padding:24px 30px;max-width:1280px;margin:0 auto;">
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px 24px;margin-bottom:20px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+            <div>
+                <h2 style="margin:0 0 4px;font-size:18px;font-weight:800;color:#1a1a2e;">Trial Balance — Balanza de Comprobacion</h2>
+                <p style="margin:0;font-size:13px;color:#64748b;">Suma de todos los debitos y creditos del GL. Debe cuadrar: Total Dr = Total Cr.</p>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <input type="month" id="tb-period-filter" data-testid="input-tb-period" style="padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;" onchange="loadTrialBalance()">
+                <button onclick="loadTrialBalance()" data-testid="button-tb-refresh" style="padding:8px 16px;background:#0ea5e9;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;">Actualizar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Balance status banner -->
+    <div id="tb-status-banner" style="display:none;border-radius:10px;padding:14px 20px;margin-bottom:20px;font-size:14px;font-weight:700;"></div>
+
+    <!-- Totals row -->
+    <div id="tb-totals" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;"></div>
+
+    <!-- Table -->
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
+        <div style="overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                <thead><tr style="background:#f8fafc;">
+                    <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;border-bottom:1px solid #e5e7eb;white-space:nowrap;">Cuenta</th>
+                    <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;border-bottom:1px solid #e5e7eb;">Nombre</th>
+                    <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;border-bottom:1px solid #e5e7eb;">Tipo</th>
+                    <th style="padding:10px 14px;text-align:right;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;border-bottom:1px solid #e5e7eb;">Dr Total</th>
+                    <th style="padding:10px 14px;text-align:right;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;border-bottom:1px solid #e5e7eb;">Cr Total</th>
+                    <th style="padding:10px 14px;text-align:right;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;border-bottom:1px solid #e5e7eb;">Balance</th>
+                </tr></thead>
+                <tbody id="tb-table-body"><tr><td colspan="6" style="text-align:center;padding:24px;color:#94a3b8;">Selecciona periodo para ver el balance</td></tr></tbody>
+                <tfoot id="tb-table-foot"></tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- TAB: P&L Completo -->
+<div class="tab-content" id="pnl-completo" data-testid="tab-content-pnl-completo" style="display:none;padding:24px 30px;max-width:1280px;margin:0 auto;">
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px 24px;margin-bottom:20px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+            <div>
+                <h2 style="margin:0 0 4px;font-size:18px;font-weight:800;color:#1a1a2e;">Estado de Resultados Completo</h2>
+                <p style="margin:0;font-size:13px;color:#64748b;">Booking Revenue + Otros Ingresos − Costos Directos − OpEx = Utilidad Neta</p>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <input type="month" id="pnl-period" data-testid="input-pnl-period" style="padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;" onchange="loadPnLCompleto()">
+                <button onclick="loadPnLCompleto()" data-testid="button-pnl-refresh" style="padding:8px 16px;background:#0ea5e9;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;">Actualizar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- P&L Report container -->
+    <div id="pnl-report-container">
+        <div style="text-align:center;padding:40px;color:#94a3b8;">Selecciona un periodo para ver el P&amp;L</div>
+    </div>
+</div>
+
+<!-- ========== CORPORATE ACCOUNTING JAVASCRIPT ========== -->
+<script>
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function corpFmt(n) { return '$' + (parseFloat(n)||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function corpDate() { return new Date().toISOString().slice(0,10); }
+function corpKpiCard(label, value, color) {
+    return `<div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:14px 16px;">
+        <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">${label}</div>
+        <div style="font-size:20px;font-weight:800;color:${color||'#1a1a2e'};">${value}</div>
+    </div>`;
+}
+function statusBadge(s) {
+    const map = {open:'#dc2626',partially_paid:'#d97706',paid:'#16a34a',posted:'#16a34a',reversed:'#64748b',cancelled:'#94a3b8'};
+    const label = {open:'Abierto',partially_paid:'Parcial',paid:'Pagado',posted:'Publicado',reversed:'Reversado',cancelled:'Cancelado'};
+    const c = map[s]||'#64748b';
+    return `<span style="display:inline-block;padding:2px 8px;background:${c}20;color:${c};border-radius:12px;font-size:11px;font-weight:700;">${label[s]||s}</span>`;
+}
+function getMonthRange(period) {
+    if (!period) return {};
+    const [y,m] = period.split('-');
+    const last = new Date(y, m, 0).getDate();
+    return { start_date:`${period}-01`, end_date:`${period}-${last}` };
+}
+
+// ── Tab switcher wiring ───────────────────────────────────────────────────────
+['corp-expenses','corp-payables','other-income','payroll','general-ledger','trial-balance','pnl-completo'].forEach(id => {
+    const tab = document.querySelector(`[data-tab="${id}"]`);
+    if (tab) tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab-content').forEach(el => el.style.display='none');
+        document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+        const content = document.getElementById(id);
+        if (content) content.style.display='block';
+        tab.classList.add('active');
+    });
+});
+
+// ── GASTOS CORPORATIVOS ───────────────────────────────────────────────────────
+function showCorpExpenseForm() {
+    document.getElementById('corp-expense-form').style.display = 'block';
+    document.getElementById('ce-date').value = corpDate();
+}
+async function loadCorpExpenses() {
+    const period = document.getElementById('ce-period-filter')?.value;
+    const { start_date, end_date } = getMonthRange(period);
+    const params = new URLSearchParams({ source_type:'corporate_expense' });
+    if (start_date) params.set('start_date', start_date);
+    if (end_date)   params.set('end_date', end_date);
+    try {
+        const r = await fetch('/api/accounting/journal-entries?' + params);
+        const d = await r.json();
+        const tbody = document.getElementById('ce-table-body');
+        const entries = d.entries || [];
+        const expEntries = entries.filter(e => ['corporate_expense','corporate_payable','prepaid'].includes(e.source_type));
+        if (!expEntries.length) { tbody.innerHTML='<tr><td colspan="6" style="text-align:center;padding:24px;color:#94a3b8;">Sin gastos en este periodo</td></tr>'; return; }
+        let total = 0;
+        tbody.innerHTML = expEntries.map(e => {
+            const debitLine = (e.lines||[]).find(l=>parseFloat(l.debit_amount)>0 && l.account_code.startsWith('6'));
+            const amt = parseFloat(debitLine?.debit_amount||0);
+            total += amt;
+            return `<tr style="border-bottom:1px solid #f1f5f9;">
+                <td style="padding:10px 14px;color:#374151;">${e.entry_date||''}</td>
+                <td style="padding:10px 14px;color:#374151;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${e.memo||''}</td>
+                <td style="padding:10px 14px;">${statusBadge(e.source_type==='corporate_payable'?'open':'posted')}</td>
+                <td style="padding:10px 14px;text-align:right;font-weight:700;color:#dc2626;">${corpFmt(amt)}</td>
+                <td style="padding:10px 14px;">${statusBadge(e.status)}</td>
+                <td style="padding:10px 14px;font-size:11px;color:#94a3b8;font-family:monospace;">${e.id}</td>
+            </tr>`;
+        }).join('');
+        const kpis = document.getElementById('ce-kpis');
+        if (kpis) kpis.innerHTML = corpKpiCard('Total Gastos', corpFmt(total), '#dc2626') + corpKpiCard('Asientos', expEntries.length, '#1a1a2e');
+    } catch(err) { console.error(err); }
+}
+async function submitCorpExpense() {
+    const body = {
+        expense_date: document.getElementById('ce-date').value,
+        vendor_name: document.getElementById('ce-vendor').value,
+        expense_category: document.getElementById('ce-account').options[document.getElementById('ce-account').selectedIndex]?.text,
+        account_code: document.getElementById('ce-account').value,
+        amount: document.getElementById('ce-amount').value,
+        payment_status: document.getElementById('ce-status').value,
+        payment_account_code: document.getElementById('ce-pay-acct').value,
+        memo: document.getElementById('ce-memo').value
+    };
+    if (!body.expense_date||!body.amount||parseFloat(body.amount)<=0) {
+        document.getElementById('ce-form-msg').innerHTML='<span style="color:#dc2626;">Fecha y monto requeridos</span>'; return; }
+    const msg = document.getElementById('ce-form-msg');
+    msg.innerHTML='<span style="color:#0ea5e9;">Guardando...</span>';
+    try {
+        const r = await fetch('/api/accounting/corporate-expenses',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+        const d = await r.json();
+        if (!r.ok) { msg.innerHTML=`<span style="color:#dc2626;">${d.error||'Error'}</span>`; return; }
+        msg.innerHTML=`<span style="color:#16a34a;">Guardado — JE: ${d.journal_entry_id}</span>`;
+        document.getElementById('corp-expense-form').style.display='none';
+        loadCorpExpenses();
+    } catch(e) { msg.innerHTML=`<span style="color:#dc2626;">${e.message}</span>`; }
+}
+
+// ── AP CORPORATIVO ────────────────────────────────────────────────────────────
+function showCorpPayableForm() { document.getElementById('corp-payable-form').style.display='block'; document.getElementById('cp-bill-date').value=corpDate(); }
+async function loadCorpPayables() {
+    const status = document.getElementById('cp-status-filter')?.value || '';
+    const params = new URLSearchParams();
+    if (status) params.set('status', status);
+    try {
+        const [pr, ar] = await Promise.all([
+            fetch('/api/accounting/corporate-payables?'+params).then(r=>r.json()),
+            fetch('/api/accounting/corporate-payables-aging').then(r=>r.json())
+        ]);
+        const aging = ar.aging_buckets||{};
+        const agingEl = document.getElementById('cp-aging');
+        if (agingEl) agingEl.innerHTML = [
+            ['Vigente','current','#16a34a'],['1-30d','1_30_days','#d97706'],['31-60d','31_60_days','#ea580c'],['61-90d','61_90_days','#dc2626'],['90+ días','over_90_days','#7f1d1d']
+        ].map(([l,k,c])=>corpKpiCard(l,corpFmt(aging[k]||0),c)).join('');
+        const tbody = document.getElementById('cp-table-body');
+        const rows = pr.payables||[];
+        if (!rows.length) { tbody.innerHTML='<tr><td colspan="8" style="text-align:center;padding:24px;color:#94a3b8;">Sin cuentas por pagar</td></tr>'; return; }
+        tbody.innerHTML = rows.map(r=>`<tr style="border-bottom:1px solid #f1f5f9;">
+            <td style="padding:10px 14px;color:#374151;font-weight:600;">${r.vendor_name}</td>
+            <td style="padding:10px 14px;color:#374151;">${r.bill_date}</td>
+            <td style="padding:10px 14px;color:${r.due_date&&r.due_date<corpDate()?'#dc2626':'#374151'};">${r.due_date||'—'}</td>
+            <td style="padding:10px 14px;text-align:right;">${corpFmt(r.total_due)}</td>
+            <td style="padding:10px 14px;text-align:right;color:#16a34a;">${corpFmt(r.total_paid)}</td>
+            <td style="padding:10px 14px;text-align:right;font-weight:700;color:#dc2626;">${corpFmt(r.balance_due)}</td>
+            <td style="padding:10px 14px;">${statusBadge(r.status)}</td>
+            <td style="padding:10px 14px;text-align:center;">
+                ${parseFloat(r.balance_due)>0.005?`<button onclick="openCpPayModal('${r.id}',${parseFloat(r.balance_due).toFixed(2)})" data-testid="button-cp-pay-${r.id}" style="padding:5px 12px;background:#0ea5e9;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;">Pagar</button>`:'<span style="color:#94a3b8;font-size:12px;">Pagado</span>'}
+            </td>
+        </tr>`).join('');
+        const s = pr.summary||{};
+        const agingEl2 = document.getElementById('cp-aging');
+        if (agingEl2 && Object.values(aging).some(v=>v>0)) {
+            const totCard = corpKpiCard('TOTAL PENDIENTE', corpFmt(ar.total_outstanding||0), '#dc2626');
+            agingEl2.innerHTML += totCard;
+        }
+    } catch(err) { console.error(err); }
+}
+async function submitCorpPayable() {
+    const body = { vendor_name:document.getElementById('cp-vendor').value, vendor_type:document.getElementById('cp-type').value, bill_date:document.getElementById('cp-bill-date').value, due_date:document.getElementById('cp-due').value||undefined, expense_account_code:document.getElementById('cp-exp-acct').value||'6000', amount:document.getElementById('cp-amount').value, memo:document.getElementById('cp-memo').value };
+    if (!body.vendor_name||!body.bill_date||!body.amount) { document.getElementById('cp-form-msg').innerHTML='<span style="color:#dc2626;">Proveedor, fecha y monto requeridos</span>'; return; }
+    const msg = document.getElementById('cp-form-msg'); msg.innerHTML='<span style="color:#0ea5e9;">Guardando...</span>';
+    try {
+        const r = await fetch('/api/accounting/corporate-payables',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+        const d = await r.json();
+        if (!r.ok) { msg.innerHTML=`<span style="color:#dc2626;">${d.error}</span>`; return; }
+        msg.innerHTML=`<span style="color:#16a34a;">Bill registrado — ID: ${d.corporate_payable_id}</span>`;
+        document.getElementById('corp-payable-form').style.display='none';
+        loadCorpPayables();
+    } catch(e) { msg.innerHTML=`<span style="color:#dc2626;">${e.message}</span>`; }
+}
+function openCpPayModal(id, balance) {
+    document.getElementById('cp-pay-id').value = id;
+    document.getElementById('cp-pay-amount').value = balance;
+    document.getElementById('cp-pay-date').value = corpDate();
+    const m = document.getElementById('cp-payment-modal');
+    m.style.display='flex'; m.style.alignItems='center'; m.style.justifyContent='center';
+}
+function closeCpPayModal() { document.getElementById('cp-payment-modal').style.display='none'; }
+async function submitCorpPayment() {
+    const id = document.getElementById('cp-pay-id').value;
+    const body = { payment_date:document.getElementById('cp-pay-date').value, amount:document.getElementById('cp-pay-amount').value, payment_method:document.getElementById('cp-pay-method').value, payment_account_code:document.getElementById('cp-pay-acct-sel').value, notes:document.getElementById('cp-pay-notes').value };
+    const msg = document.getElementById('cp-pay-msg'); msg.innerHTML='<span style="color:#0ea5e9;">Procesando...</span>';
+    try {
+        const r = await fetch(`/api/accounting/corporate-payables/${id}/payments`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+        const d = await r.json();
+        if (!r.ok) { msg.innerHTML=`<span style="color:#dc2626;">${d.error}</span>`; return; }
+        msg.innerHTML=`<span style="color:#16a34a;">Pago aplicado — saldo: ${corpFmt(d.new_balance)}</span>`;
+        setTimeout(()=>{ closeCpPayModal(); loadCorpPayables(); },1200);
+    } catch(e) { msg.innerHTML=`<span style="color:#dc2626;">${e.message}</span>`; }
+}
+
+// ── OTROS INGRESOS ────────────────────────────────────────────────────────────
+function showOtherIncomeForm() { document.getElementById('other-income-form').style.display='block'; document.getElementById('oi-date').value=corpDate(); }
+async function loadOtherIncome() {
+    const period = document.getElementById('oi-period-filter')?.value;
+    const { start_date, end_date } = getMonthRange(period);
+    const params = new URLSearchParams();
+    if (start_date) params.set('start_date', start_date);
+    if (end_date)   params.set('end_date', end_date);
+    try {
+        const r = await fetch('/api/accounting/other-income?'+params);
+        const d = await r.json();
+        const entries = d.entries||[];
+        const tbody = document.getElementById('oi-table-body');
+        if (!entries.length) { tbody.innerHTML='<tr><td colspan="4" style="text-align:center;padding:24px;color:#94a3b8;">Sin ingresos en este periodo</td></tr>'; return; }
+        tbody.innerHTML = entries.map(e=>`<tr style="border-bottom:1px solid #f1f5f9;">
+            <td style="padding:10px 14px;color:#374151;">${e.entry_date||''}</td>
+            <td style="padding:10px 14px;color:#374151;">${e.memo||''}</td>
+            <td style="padding:10px 14px;text-align:right;font-weight:700;color:#16a34a;">${corpFmt(e.total_income)}</td>
+            <td style="padding:10px 14px;color:#64748b;">${e.accounting_period||''}</td>
+        </tr>`).join('');
+        const kpis = document.getElementById('oi-kpis');
+        if (kpis) kpis.innerHTML = corpKpiCard('Total Otros Ingresos',corpFmt(d.total),'#16a34a') + corpKpiCard('Asientos',entries.length,'#1a1a2e');
+    } catch(err) { console.error(err); }
+}
+async function submitOtherIncome() {
+    const body = { income_date:document.getElementById('oi-date').value, income_type:document.getElementById('oi-type').value, payer_name:document.getElementById('oi-payer').value, amount:document.getElementById('oi-amount').value, account_code:document.getElementById('oi-account').value, deposit_account_code:document.getElementById('oi-deposit').value, memo:document.getElementById('oi-memo').value };
+    if (!body.income_date||!body.amount||parseFloat(body.amount)<=0) { document.getElementById('oi-form-msg').innerHTML='<span style="color:#dc2626;">Fecha y monto requeridos</span>'; return; }
+    const msg=document.getElementById('oi-form-msg'); msg.innerHTML='<span style="color:#0ea5e9;">Guardando...</span>';
+    try {
+        const r = await fetch('/api/accounting/other-income',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+        const d = await r.json();
+        if (!r.ok) { msg.innerHTML=`<span style="color:#dc2626;">${d.error}</span>`; return; }
+        msg.innerHTML=`<span style="color:#16a34a;">Guardado — JE: ${d.journal_entry_id}</span>`;
+        document.getElementById('other-income-form').style.display='none';
+        loadOtherIncome();
+    } catch(e) { msg.innerHTML=`<span style="color:#dc2626;">${e.message}</span>`; }
+}
+
+// ── NOMINA ────────────────────────────────────────────────────────────────────
+function showPayrollForm() { document.getElementById('payroll-form').style.display='block'; document.getElementById('pr-date').value=corpDate(); }
+async function loadPayroll() {
+    const period = document.getElementById('pr-period-filter')?.value;
+    const { start_date, end_date } = getMonthRange(period);
+    const params = new URLSearchParams();
+    if (start_date) params.set('start_date',start_date);
+    if (end_date)   params.set('end_date',end_date);
+    try {
+        const r = await fetch('/api/accounting/payroll-summary?'+params);
+        const d = await r.json();
+        const entries = d.entries||[];
+        const tbody = document.getElementById('pr-table-body');
+        if (!entries.length) { tbody.innerHTML='<tr><td colspan="4" style="text-align:center;padding:24px;color:#94a3b8;">Sin nomina en este periodo</td></tr>'; return; }
+        tbody.innerHTML = entries.map(e=>`<tr style="border-bottom:1px solid #f1f5f9;">
+            <td style="padding:10px 14px;color:#374151;">${e.entry_date||''}</td>
+            <td style="padding:10px 14px;color:#374151;">${e.memo||''}</td>
+            <td style="padding:10px 14px;color:#64748b;">${e.accounting_period||''}</td>
+            <td style="padding:10px 14px;text-align:right;font-weight:700;color:#dc2626;">${corpFmt(e.total_expense)}</td>
+        </tr>`).join('');
+        const kpis = document.getElementById('pr-kpis');
+        if (kpis) kpis.innerHTML = corpKpiCard('Total Nomina',corpFmt(d.total_payroll_expense),'#dc2626') + corpKpiCard('Pagos',entries.length,'#1a1a2e');
+    } catch(err) { console.error(err); }
+}
+async function submitPayroll() {
+    const body = { payroll_date:document.getElementById('pr-date').value, employee_name:document.getElementById('pr-employee').value, payroll_type:document.getElementById('pr-type').value.replace('salary','salary').replace('bonus','salary'), amount:document.getElementById('pr-amount').value, payment_status:document.getElementById('pr-status').value, payment_account_code:document.getElementById('pr-acct').value };
+    if (!body.payroll_date||!body.amount||parseFloat(body.amount)<=0) { document.getElementById('pr-form-msg').innerHTML='<span style="color:#dc2626;">Fecha y monto requeridos</span>'; return; }
+    const msg=document.getElementById('pr-form-msg'); msg.innerHTML='<span style="color:#0ea5e9;">Guardando...</span>';
+    try {
+        const r = await fetch('/api/accounting/payroll-expense',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+        const d = await r.json();
+        if (!r.ok) { msg.innerHTML=`<span style="color:#dc2626;">${d.error}</span>`; return; }
+        msg.innerHTML=`<span style="color:#16a34a;">Guardado — JE: ${d.journal_entry_id}</span>`;
+        document.getElementById('payroll-form').style.display='none';
+        loadPayroll();
+    } catch(e) { msg.innerHTML=`<span style="color:#dc2626;">${e.message}</span>`; }
+}
+
+// ── GENERAL LEDGER ────────────────────────────────────────────────────────────
+async function loadGeneralLedger() {
+    const period = document.getElementById('gl-period-filter')?.value;
+    const source  = document.getElementById('gl-source-filter')?.value;
+    const status  = document.getElementById('gl-status-filter')?.value;
+    const { start_date, end_date } = getMonthRange(period);
+    const params = new URLSearchParams();
+    if (start_date) params.set('start_date',start_date);
+    if (end_date)   params.set('end_date',end_date);
+    if (source)     params.set('source_type',source);
+    if (status)     params.set('status',status);
+    const container = document.getElementById('gl-entries-container');
+    container.innerHTML = '<div style="text-align:center;padding:24px;color:#94a3b8;">Cargando...</div>';
+    try {
+        const r = await fetch('/api/accounting/journal-entries?'+params);
+        const d = await r.json();
+        const entries = d.entries||[];
+        if (!entries.length) { container.innerHTML='<div style="text-align:center;padding:40px;color:#94a3b8;">Sin asientos en este periodo</div>'; return; }
+        container.innerHTML = entries.map(e=>{
+            const totDr = (e.lines||[]).reduce((s,l)=>s+(parseFloat(l.debit_amount)||0),0);
+            const totCr = (e.lines||[]).reduce((s,l)=>s+(parseFloat(l.credit_amount)||0),0);
+            const balanced = Math.abs(totDr-totCr)<0.01;
+            return `<div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;margin-bottom:12px;overflow:hidden;">
+                <div style="padding:12px 16px;background:#f8fafc;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <span style="font-size:11px;font-family:monospace;color:#94a3b8;">${e.id}</span>
+                        <span style="font-size:13px;font-weight:700;color:#1a1a2e;">${e.memo||''}</span>
+                        ${statusBadge(e.status)}
+                    </div>
+                    <div style="display:flex;align-items:center;gap:12px;">
+                        <span style="font-size:12px;color:#64748b;">${e.entry_date} · ${e.source_type}</span>
+                        <span style="font-size:12px;font-weight:700;color:${balanced?'#16a34a':'#dc2626'};">${balanced?'CUADRA':'NO CUADRA'}</span>
+                        ${e.status==='posted'?`<button onclick="reverseJE('${e.id}')" data-testid="button-gl-reverse-${e.id}" style="padding:4px 10px;background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;">Reversar</button>`:''}
+                    </div>
+                </div>
+                <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                    <thead><tr style="background:#fafafa;"><th style="padding:7px 14px;text-align:left;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;border-bottom:1px solid #f1f5f9;">Cuenta</th><th style="padding:7px 14px;text-align:left;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;border-bottom:1px solid #f1f5f9;">Descripción</th><th style="padding:7px 14px;text-align:right;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;border-bottom:1px solid #f1f5f9;">Debe</th><th style="padding:7px 14px;text-align:right;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;border-bottom:1px solid #f1f5f9;">Haber</th></tr></thead>
+                    <tbody>${(e.lines||[]).map(l=>`<tr style="border-bottom:1px solid #f8fafc;"><td style="padding:7px 14px;font-weight:${parseFloat(l.debit_amount)>0?'600':'400'};color:#374151;white-space:nowrap;">${l.account_code}</td><td style="padding:7px 14px;color:#64748b;">${l.description||''}</td><td style="padding:7px 14px;text-align:right;font-weight:700;color:${parseFloat(l.debit_amount)>0?'#1a1a2e':'#e5e7eb'};">${parseFloat(l.debit_amount)>0?corpFmt(l.debit_amount):'—'}</td><td style="padding:7px 14px;text-align:right;font-weight:700;color:${parseFloat(l.credit_amount)>0?'#1a1a2e':'#e5e7eb'};">${parseFloat(l.credit_amount)>0?corpFmt(l.credit_amount):'—'}</td></tr>`).join('')}</tbody>
+                    <tfoot><tr style="background:#f8fafc;"><td colspan="2" style="padding:7px 14px;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;">Total</td><td style="padding:7px 14px;text-align:right;font-weight:800;color:#1a1a2e;">${corpFmt(totDr)}</td><td style="padding:7px 14px;text-align:right;font-weight:800;color:#1a1a2e;">${corpFmt(totCr)}</td></tr></tfoot>
+                </table>
+            </div>`;
+        }).join('');
+    } catch(err) { container.innerHTML=`<div style="text-align:center;padding:24px;color:#dc2626;">Error: ${err.message}</div>`; }
+}
+async function reverseJE(id) {
+    if (!confirm('¿Reversar este asiento? Se creará un asiento opuesto.')) return;
+    try {
+        const r = await fetch(`/api/accounting/journal-entries/${id}/reverse`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reversal_date:corpDate()})});
+        const d = await r.json();
+        if (!r.ok) { alert('Error: '+d.error); return; }
+        alert('Reversal creado: ' + d.reversal_journal_entry_id);
+        loadGeneralLedger();
+    } catch(e) { alert('Error: '+e.message); }
+}
+async function runQATest() {
+    const el = document.getElementById('gl-qa-results');
+    el.style.display='block';
+    el.innerHTML='<div style="color:#0ea5e9;font-weight:600;">Ejecutando 18 tests QA...</div>';
+    try {
+        const r = await fetch('/api/accounting/qa/corporate-layer-test');
+        const d = await r.json();
+        const pct = Math.round((d.summary.passed/d.summary.total)*100);
+        el.innerHTML = `
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
+                <span style="font-size:16px;font-weight:800;color:${d.summary.all_pass?'#16a34a':'#dc2626'};">QA: ${d.summary.passed}/${d.summary.total} PASS (${pct}%)</span>
+                <span style="font-size:13px;color:#64748b;">Periodo: ${d.qa_period} — datos rolados automáticamente</span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:8px;">
+            ${(d.results||[]).map(t=>`<div style="padding:8px 12px;background:${t.status==='PASS'?'#f0fdf4':'#fef2f2'};border:1px solid ${t.status==='PASS'?'#86efac':'#fca5a5'};border-radius:7px;display:flex;align-items:flex-start;gap:8px;">
+                <span style="font-size:12px;font-weight:700;color:${t.status==='PASS'?'#16a34a':'#dc2626'};flex-shrink:0;">${t.status}</span>
+                <span style="font-size:12px;color:#374151;"><strong>${t.test}</strong> — ${t.message}</span>
+            </div>`).join('')}
+            </div>`;
+    } catch(e) { el.innerHTML=`<div style="color:#dc2626;">Error: ${e.message}</div>`; }
+}
+
+// ── TRIAL BALANCE ─────────────────────────────────────────────────────────────
+async function loadTrialBalance() {
+    const period = document.getElementById('tb-period-filter')?.value;
+    const { start_date, end_date } = getMonthRange(period);
+    const params = new URLSearchParams();
+    if (start_date) params.set('start_date',start_date);
+    if (end_date)   params.set('end_date',end_date);
+    try {
+        const r = await fetch('/api/accounting/reports/trial-balance?'+params);
+        const d = await r.json();
+        const accounts = d.accounts||[];
+        const s = d.summary||{};
+        const banner = document.getElementById('tb-status-banner');
+        banner.style.display='block';
+        if (s.balanced) {
+            banner.style.background='#f0fdf4'; banner.style.border='1px solid #86efac'; banner.style.color='#15803d';
+            banner.textContent = `CUADRA — Total Dr: ${corpFmt(s.total_debits)} = Total Cr: ${corpFmt(s.total_credits)} (diferencia: $${s.difference.toFixed(4)})`;
+        } else {
+            banner.style.background='#fef2f2'; banner.style.border='1px solid #fca5a5'; banner.style.color='#dc2626';
+            banner.textContent = `NO CUADRA — Dr: ${corpFmt(s.total_debits)} ≠ Cr: ${corpFmt(s.total_credits)} | Diferencia: ${corpFmt(s.difference)}`;
+        }
+        const totals = document.getElementById('tb-totals');
+        totals.innerHTML = corpKpiCard('Total Debitos',corpFmt(s.total_debits),'#1a1a2e') + corpKpiCard('Total Creditos',corpFmt(s.total_credits),'#1a1a2e') + corpKpiCard('Cuentas',s.account_count,'#0ea5e9');
+        const tbody = document.getElementById('tb-table-body');
+        if (!accounts.length) { tbody.innerHTML='<tr><td colspan="6" style="text-align:center;padding:24px;color:#94a3b8;">Sin movimientos en este periodo</td></tr>'; return; }
+        const typeColor = {asset:'#0ea5e9',liability:'#d97706',equity:'#7c3aed',revenue:'#16a34a',expense:'#dc2626',direct_cost:'#ea580c',operating_expense:'#dc2626',unknown:'#94a3b8'};
+        tbody.innerHTML = accounts.map(a=>`<tr style="border-bottom:1px solid #f1f5f9;">
+            <td style="padding:9px 14px;font-family:monospace;font-size:12px;font-weight:700;color:#374151;white-space:nowrap;">${a.account_code}</td>
+            <td style="padding:9px 14px;color:#374151;">${a.account_name}</td>
+            <td style="padding:9px 14px;"><span style="padding:2px 7px;background:${(typeColor[a.account_type]||'#94a3b8')}20;color:${typeColor[a.account_type]||'#94a3b8'};border-radius:10px;font-size:11px;font-weight:600;">${a.account_type}</span></td>
+            <td style="padding:9px 14px;text-align:right;font-weight:600;color:#1a1a2e;">${corpFmt(a.total_debits)}</td>
+            <td style="padding:9px 14px;text-align:right;font-weight:600;color:#1a1a2e;">${corpFmt(a.total_credits)}</td>
+            <td style="padding:9px 14px;text-align:right;font-weight:700;color:${a.net_balance>=0?'#1a1a2e':'#dc2626'};">${corpFmt(a.net_balance)}</td>
+        </tr>`).join('');
+        const tfoot = document.getElementById('tb-table-foot');
+        tfoot.innerHTML = `<tr style="background:#f1f5f9;border-top:2px solid #e5e7eb;">
+            <td colspan="3" style="padding:10px 14px;font-size:13px;font-weight:800;color:#1a1a2e;text-transform:uppercase;">TOTAL</td>
+            <td style="padding:10px 14px;text-align:right;font-size:14px;font-weight:800;color:#1a1a2e;">${corpFmt(s.total_debits)}</td>
+            <td style="padding:10px 14px;text-align:right;font-size:14px;font-weight:800;color:#1a1a2e;">${corpFmt(s.total_credits)}</td>
+            <td style="padding:10px 14px;text-align:right;font-size:14px;font-weight:800;color:${s.balanced?'#16a34a':'#dc2626'};">${corpFmt(s.difference)}</td>
+        </tr>`;
+    } catch(err) { console.error(err); }
+}
+
+// ── P&L COMPLETO ──────────────────────────────────────────────────────────────
+async function loadPnLCompleto() {
+    const period = document.getElementById('pnl-period')?.value;
+    const { start_date, end_date } = getMonthRange(period);
+    if (!start_date) { document.getElementById('pnl-report-container').innerHTML='<div style="text-align:center;padding:40px;color:#94a3b8;">Selecciona un periodo</div>'; return; }
+    document.getElementById('pnl-report-container').innerHTML='<div style="text-align:center;padding:40px;color:#94a3b8;">Calculando...</div>';
+    try {
+        const r = await fetch(`/api/accounting/profit-loss?start_date=${start_date}&end_date=${end_date}`);
+        const d = await r.json();
+        const s = d.summary||{};
+        const section = (title, rows, color, isExpense) => {
+            if (!rows.length) return '';
+            const total = rows.reduce((sum,r)=>sum+(parseFloat(r.total)||0),0);
+            return `<div style="margin-bottom:16px;">
+                <div style="font-size:11px;font-weight:800;color:${color};text-transform:uppercase;letter-spacing:.7px;padding:0 0 8px;border-bottom:1px solid #f1f5f9;margin-bottom:8px;">${title}</div>
+                ${rows.filter(r=>(parseFloat(r.total)||0)>0.005).map(r=>`<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px;gap:8px;"><span style="color:#374151;">${r.account_code} — ${r.account_name}</span><span style="font-weight:600;color:${isExpense?'#dc2626':'#16a34a'};white-space:nowrap;">${corpFmt(r.total)}</span></div>`).join('')}
+                <div style="display:flex;justify-content:space-between;padding:8px 0 4px;font-size:14px;font-weight:800;border-top:1px solid #e5e7eb;margin-top:4px;">
+                    <span style="color:#1a1a2e;">Total ${title}</span>
+                    <span style="color:${isExpense?'#dc2626':'#16a34a'};">${corpFmt(total)}</span>
+                </div>
+            </div>`;
+        };
+        const subtotal = (label, val, bold, borderTop) => `<div style="display:flex;justify-content:space-between;padding:${bold?'10':'6'}px 0;font-size:${bold?'15':'13'}px;font-weight:${bold?800:600};${borderTop?'border-top:2px solid #1a1a2e;':''};margin-top:${bold?4:0}px;">
+            <span style="color:#1a1a2e;">${label}</span>
+            <span style="color:${val>=0?'#1a1a2e':'#dc2626'};">${corpFmt(val)}</span>
+        </div>`;
+        document.getElementById('pnl-report-container').innerHTML = `
+            <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:28px 32px;max-width:700px;margin:0 auto;">
+                <div style="text-align:center;margin-bottom:24px;">
+                    <div style="font-size:20px;font-weight:800;color:#1a1a2e;">Nadaki Excursions</div>
+                    <div style="font-size:14px;color:#64748b;margin-top:4px;">Estado de Resultados — ${period}</div>
+                    <div style="font-size:12px;color:#94a3b8;">${start_date} al ${end_date}</div>
+                </div>
+                <div style="border-top:2px solid #1a1a2e;padding-top:16px;">
+                    ${section('Ingresos de Reservas (Booking Revenue)', d.booking_revenue||[], '#16a34a', false)}
+                    ${section('Otros Ingresos (Non-Booking)', d.other_income||[], '#0ea5e9', false)}
+                    ${subtotal('INGRESOS TOTALES', s.total_revenue||0, false)}
+                    <div style="margin:12px 0;border-top:1px solid #e5e7eb;"></div>
+                    ${section('Costos Directos de Reservas', d.direct_costs||[], '#ea580c', true)}
+                    ${subtotal('UTILIDAD BRUTA', s.gross_profit||0, false)}
+                    ${s.gross_margin!==undefined?`<div style="font-size:12px;color:#64748b;text-align:right;margin-bottom:12px;">Margen Bruto: ${(s.gross_margin||0).toFixed(1)}%</div>`:''}
+                    <div style="margin:12px 0;border-top:1px solid #e5e7eb;"></div>
+                    ${section('Gastos Operativos (OpEx)', d.operating_expenses||[], '#dc2626', true)}
+                    <div style="margin:8px 0;border-top:1px solid #e5e7eb;"></div>
+                    ${subtotal('UTILIDAD NETA', s.net_income||0, true, true)}
+                    ${s.net_margin!==undefined?`<div style="font-size:12px;color:#64748b;text-align:right;margin-top:4px;">Margen Neto: ${(s.net_margin||0).toFixed(1)}%</div>`:''}
+                </div>
+            </div>`;
+    } catch(err) { document.getElementById('pnl-report-container').innerHTML=`<div style="text-align:center;padding:24px;color:#dc2626;">Error: ${err.message}</div>`; }
+}
+
+// Pre-load tab data when switching
+document.querySelectorAll('[data-tab="corp-expenses"]').forEach(btn=>btn.addEventListener('click',()=>setTimeout(loadCorpExpenses,100)));
+document.querySelectorAll('[data-tab="corp-payables"]').forEach(btn=>btn.addEventListener('click',()=>setTimeout(loadCorpPayables,100)));
+document.querySelectorAll('[data-tab="other-income"]').forEach(btn=>btn.addEventListener('click',()=>setTimeout(loadOtherIncome,100)));
+document.querySelectorAll('[data-tab="payroll"]').forEach(btn=>btn.addEventListener('click',()=>setTimeout(loadPayroll,100)));
+document.querySelectorAll('[data-tab="general-ledger"]').forEach(btn=>btn.addEventListener('click',()=>setTimeout(loadGeneralLedger,100)));
+
+// Set default periods for filters
+(function initCorpPeriods(){
+    const now = new Date().toISOString().slice(0,7);
+    ['ce-period-filter','oi-period-filter','pr-period-filter','gl-period-filter','tb-period-filter','pnl-period'].forEach(id=>{
+        const el=document.getElementById(id); if(el&&!el.value) el.value=now;
+    });
+})();
+</script>
 </body>
 </html>
