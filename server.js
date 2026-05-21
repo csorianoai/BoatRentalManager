@@ -2838,6 +2838,140 @@ async function initializeDatabase() {
     }
     // ── END FASE 26 ──────────────────────────────────────────────────────────
 
+    // ── FASE 27: Ledger Sanitization & Data Integrity Repair ─────────────────
+    try {
+      // 0a. Create ledger_sanitization_log table
+      await pool.query(`CREATE TABLE IF NOT EXISTS ledger_sanitization_log (
+        id text PRIMARY KEY DEFAULT 'lsl_' || substr(md5(random()::text), 1, 16),
+        run_id text NOT NULL,
+        issue_type text NOT NULL,
+        severity text DEFAULT 'info',
+        table_name text NOT NULL,
+        record_id text NOT NULL,
+        booking_id text,
+        before_state_json jsonb,
+        after_state_json jsonb,
+        action_taken text NOT NULL,
+        reason text,
+        created_at TIMESTAMP DEFAULT NOW(),
+        created_by text DEFAULT 'system'
+      )`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_lsl_run_id ON ledger_sanitization_log(run_id)`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_lsl_record_id ON ledger_sanitization_log(record_id)`);
+
+      // 0b. Create ledger_sanitization_snapshots table
+      await pool.query(`CREATE TABLE IF NOT EXISTS ledger_sanitization_snapshots (
+        id text PRIMARY KEY DEFAULT 'snap_' || substr(md5(random()::text), 1, 16),
+        run_id text NOT NULL,
+        snapshot_table text NOT NULL,
+        total_rows integer,
+        snapshot_json jsonb,
+        created_at TIMESTAMP DEFAULT NOW()
+      )`);
+
+      // 0c. Add FASE 27 columns to transactions
+      await pool.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS excluded_from_ledger BOOLEAN DEFAULT FALSE`);
+      await pool.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS exclusion_reason TEXT`);
+      await pool.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS excluded_at TIMESTAMP`);
+      await pool.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS excluded_by TEXT`);
+      await pool.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS account_code TEXT`);
+      await pool.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS needs_manual_review BOOLEAN DEFAULT FALSE`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_tx_excluded ON transactions(excluded_from_ledger)`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_tx_account_code ON transactions(account_code)`);
+
+      // 0d. Backfill account_code from COA join (idempotent — only fills NULLs)
+      await pool.query(`
+        UPDATE transactions t
+        SET account_code = c.account_code
+        FROM chart_of_accounts c
+        WHERE c.id = t.account_id AND (t.account_code IS NULL OR t.account_code = '')
+      `);
+
+      // ── FASE 27 STARTUP SANITIZATION (idempotent — keyed by date) ────────────
+      const f27RunId = 'fase27_' + new Date().toISOString().slice(0, 10);
+      const { rows: alreadyRan } = await pool.query(
+        `SELECT 1 FROM ledger_sanitization_log WHERE run_id=$1 LIMIT 1`, [f27RunId]
+      );
+
+      if (alreadyRan.length === 0) {
+        // STEP 1: Fix tx_matej_3a — "Fuel Expense" was mapped to 5010 Captain Labor → correct to 5020 Fuel
+        const { rows: wrongTx } = await pool.query(
+          `SELECT id, account_id, account_code, amount, description FROM transactions WHERE id='tx_matej_3a'`
+        );
+        if (wrongTx.length > 0 && wrongTx[0].account_code === '5010') {
+          const before27 = wrongTx[0];
+          await pool.query(`
+            UPDATE transactions SET account_id='YOYzbQUHSTFh9ykXRwDoi', account_code='5020' WHERE id='tx_matej_3a'
+          `);
+          await pool.query(`
+            INSERT INTO ledger_sanitization_log (run_id,issue_type,severity,table_name,record_id,booking_id,before_state_json,after_state_json,action_taken,reason)
+            VALUES ($1,'WRONG_ACCOUNT_CODE','medium','transactions','tx_matej_3a','book_matej_apr27_2026',$2,$3,
+              'UPDATE account_id+account_code: 5010→5020',
+              'tx_matej_3a description says Fuel Expense but account was 5010 Captain Labor. Corrected to 5020 Fuel Expense.')
+          `, [f27RunId, JSON.stringify(before27), JSON.stringify({...before27, account_id:'YOYzbQUHSTFh9ykXRwDoi', account_code:'5020'})]);
+        }
+
+        // STEP 2: Mark Matej duplicate booking_wizard captain payable transactions as excluded
+        const MATEJ_DUPE_IDS = [
+          'tx_cpay_cr_tlIn87UF', 'tx_cpay_dr_itpW8QTM',
+          'tx_cpmt_cr_CbQJVauo', 'tx_cpmt_dr_D58nWrkU',
+          'tx_cpmt_cr_rpHdqx_z', 'tx_cpmt_dr_iMMb0-Ks'
+        ];
+        for (const txId of MATEJ_DUPE_IDS) {
+          const { rows: txRow } = await pool.query(
+            `SELECT id,account_id,account_code,transaction_type,amount,description,excluded_from_ledger FROM transactions WHERE id=$1`, [txId]
+          );
+          if (txRow.length > 0 && !txRow[0].excluded_from_ledger) {
+            const before27b = txRow[0];
+            await pool.query(`
+              UPDATE transactions
+              SET excluded_from_ledger=true,
+                  exclusion_reason='FASE27 duplicate sanitation — booking_wizard ran twice for book_matej_apr27_2026',
+                  excluded_at=NOW(), excluded_by='sistema_fase27'
+              WHERE id=$1
+            `, [txId]);
+            await pool.query(`
+              INSERT INTO ledger_sanitization_log (run_id,issue_type,severity,table_name,record_id,booking_id,before_state_json,after_state_json,action_taken,reason)
+              VALUES ($1,'DUPLICATE_WIZARD_TRANSACTION','high','transactions',$2,'book_matej_apr27_2026',$3,$4,
+                'SET excluded_from_ledger=true',
+                'Booking wizard ran twice for Matej — second set of captain payable/payment txs excluded from ledger.')
+            `, [f27RunId, txId, JSON.stringify(before27b), JSON.stringify({...before27b, excluded_from_ledger:true, exclusion_reason:'FASE27 duplicate sanitation'})]);
+          }
+        }
+
+        // STEP 3: Flag null-booking revenue transactions for manual review
+        const { rows: nullRevTxs } = await pool.query(`
+          SELECT t.id, t.amount, t.description, t.period_type FROM transactions t
+          WHERE t.booking_id IS NULL AND t.transaction_type='income'
+            AND t.account_code IN ('4010','4020')
+            AND COALESCE(t.needs_manual_review, false)=false
+        `);
+        for (const ntx of nullRevTxs) {
+          await pool.query(`UPDATE transactions SET needs_manual_review=true WHERE id=$1`, [ntx.id]);
+          await pool.query(`
+            INSERT INTO ledger_sanitization_log (run_id,issue_type,severity,table_name,record_id,before_state_json,after_state_json,action_taken,reason)
+            VALUES ($1,'NULL_BOOKING_REVENUE','low','transactions',$2,$3,$4,
+              'SET needs_manual_review=true',
+              'Revenue transaction on 4xxx account has NULL booking_id — flagged for manual assignment. Period: ' || $5)
+          `, [f27RunId, ntx.id, JSON.stringify(ntx), JSON.stringify({...ntx, needs_manual_review:true}), ntx.period_type||'unknown']);
+        }
+
+        // Snapshot: record total rows sanitized
+        const { rows: totalTxRows } = await pool.query(`SELECT COUNT(*) as cnt FROM transactions`);
+        await pool.query(`
+          INSERT INTO ledger_sanitization_snapshots (run_id,snapshot_table,total_rows)
+          VALUES ($1,'transactions',$2)
+        `, [f27RunId, parseInt(totalTxRows[0].cnt)]);
+
+        console.log('✅ FASE 27: Ledger sanitization startup run complete —', f27RunId);
+      } else {
+        console.log('✅ FASE 27: Sanitization already ran today, skipping —', f27RunId);
+      }
+    } catch (e27) {
+      console.warn('⚠️ FASE 27 (non-critical):', e27.message);
+    }
+    // ── END FASE 27 ──────────────────────────────────────────────────────────
+
     // ── END FASE 23 ──────────────────────────────────────────────────────────
 
     console.log('✅ Database schema initialized successfully (all 10 phases + authentication)');
@@ -10325,18 +10459,24 @@ app.get('/api/accounting/profit-loss', isAuthenticated, async (req, res) => {
   try {
     const { start_date, end_date, period } = req.query;
     let sd = start_date, ed = end_date;
-    if (period && !sd) { sd = period + '-01'; ed = period + '-31'; }
+    if (period && !sd) { sd = period + '-01'; const _d=new Date(period+'-01'); ed=new Date(_d.getFullYear(),_d.getMonth()+1,0).toISOString().split('T')[0]; }
     if (!sd || !ed) { return res.status(400).json({ error: 'start_date and end_date are required' }); }
 
-    // 1. Booking Revenue — from transactions (booking_wizard income on 4xxx)
+    // 1. Booking Revenue — income transactions on 4xxx accounts, booking-linked, not excluded
+    //    Sign: credits to revenue are recorded as negative amounts (double-entry convention)
+    //    CASE normalizes both conventions: negative (Cr revenue = manual_entry) and positive (legacy/webhook)
     const { rows: bookRev } = await pool.query(`
-      SELECT a.account_code, a.account_name, SUM(t.amount) as total
+      SELECT COALESCE(t.account_code, a.account_code) as account_code, a.account_name,
+             SUM(CASE WHEN t.amount < 0 THEN -t.amount ELSE t.amount END) as total
       FROM transactions t JOIN chart_of_accounts a ON t.account_id=a.id
-      WHERE t.transaction_type='income' AND a.account_code::text LIKE '4%'
+      WHERE t.transaction_type='income'
+        AND COALESCE(t.account_code, a.account_code)::text LIKE '4%'
         AND t.transaction_date>=$1 AND t.transaction_date<=$2
-        AND t.source_system IN ('booking_wizard','webhook')
         AND COALESCE(t.period_type,'current')='current'
-      GROUP BY a.account_code,a.account_name ORDER BY a.account_code`, [sd,ed]);
+        AND COALESCE(t.excluded_from_ledger, false)=false
+        AND t.booking_id IS NOT NULL
+      GROUP BY COALESCE(t.account_code, a.account_code),a.account_name
+      ORDER BY COALESCE(t.account_code, a.account_code)`, [sd,ed]);
 
     // 2. Other Income — from journal_entry_lines (4xxx credits, non-booking)
     const { rows: otherInc } = await pool.query(`
@@ -10349,14 +10489,18 @@ app.get('/api/accounting/profit-loss', isAuthenticated, async (req, res) => {
         AND je.entry_date>=$1 AND je.entry_date<=$2 AND je.status='posted'
       GROUP BY l.account_code,a.account_name ORDER BY l.account_code`, [sd,ed]);
 
-    // 3. Direct Booking Costs — from transactions (5xxx expense, booking/manual sources)
+    // 3. Direct Booking Costs — from transactions (5xxx expense, not excluded from ledger)
     const { rows: directCosts } = await pool.query(`
-      SELECT a.account_code, a.account_name, SUM(t.amount) as total
+      SELECT COALESCE(t.account_code, a.account_code) as account_code, a.account_name,
+             SUM(t.amount) as total
       FROM transactions t JOIN chart_of_accounts a ON t.account_id=a.id
-      WHERE t.transaction_type='expense' AND a.account_code::text LIKE '5%'
+      WHERE t.transaction_type='expense'
+        AND COALESCE(t.account_code, a.account_code)::text LIKE '5%'
         AND t.transaction_date>=$1 AND t.transaction_date<=$2
         AND COALESCE(t.period_type,'current')='current'
-      GROUP BY a.account_code,a.account_name ORDER BY a.account_code`, [sd,ed]);
+        AND COALESCE(t.excluded_from_ledger, false)=false
+      GROUP BY COALESCE(t.account_code, a.account_code),a.account_name
+      ORDER BY COALESCE(t.account_code, a.account_code)`, [sd,ed]);
 
     // 4. Corporate Direct Costs — from journal_entry_lines (5xxx debits)
     const { rows: corpDirect } = await pool.query(`
@@ -10371,12 +10515,16 @@ app.get('/api/accounting/profit-loss', isAuthenticated, async (req, res) => {
 
     // 5. Operating Expenses — merge from transactions (6xxx) + journal_entry_lines (6xxx)
     const { rows: txOpEx } = await pool.query(`
-      SELECT a.account_code, a.account_name, SUM(t.amount) as total
+      SELECT COALESCE(t.account_code, a.account_code) as account_code, a.account_name,
+             SUM(t.amount) as total
       FROM transactions t JOIN chart_of_accounts a ON t.account_id=a.id
-      WHERE t.transaction_type='expense' AND a.account_code::text LIKE '6%'
+      WHERE t.transaction_type='expense'
+        AND COALESCE(t.account_code, a.account_code)::text LIKE '6%'
         AND t.transaction_date>=$1 AND t.transaction_date<=$2
         AND COALESCE(t.period_type,'current')='current'
-      GROUP BY a.account_code,a.account_name ORDER BY a.account_code`, [sd,ed]);
+        AND COALESCE(t.excluded_from_ledger, false)=false
+      GROUP BY COALESCE(t.account_code, a.account_code),a.account_name
+      ORDER BY COALESCE(t.account_code, a.account_code)`, [sd,ed]);
     const { rows: jeOpEx } = await pool.query(`
       SELECT l.account_code, COALESCE(a.account_name,l.account_code) as account_name,
              SUM(l.debit_amount - l.credit_amount) as total
@@ -10449,6 +10597,7 @@ app.get('/api/accounting/balance-sheet', isAuthenticated, async (req, res) => {
       FROM chart_of_accounts a
       LEFT JOIN transactions t ON t.account_id=a.id AND t.transaction_date<=$1
         AND COALESCE(t.period_type,'current')='current'
+        AND COALESCE(t.excluded_from_ledger, false)=false
       WHERE a.account_type='asset' AND a.account_code::text LIKE '1%' AND a.is_active=1
       GROUP BY a.account_code,a.account_name ORDER BY a.account_code`, [date]);
 
@@ -10494,15 +10643,37 @@ app.get('/api/accounting/balance-sheet', isAuthenticated, async (req, res) => {
         AND je.entry_date<=$1 AND je.status='posted'
       GROUP BY l.account_code,a.account_name HAVING SUM(l.credit_amount - l.debit_amount)>0.005 ORDER BY l.account_code`, [date]);
 
-    // Equity
+    // Equity — explicit equity account transactions + current period net income as retained earnings
     const { rows: eqRows } = await pool.query(`
       SELECT a.account_code, a.account_name,
              COALESCE(SUM(CASE WHEN t.transaction_type='income' THEN t.amount ELSE -t.amount END),0) as balance
       FROM chart_of_accounts a
       LEFT JOIN transactions t ON t.account_id=a.id AND t.transaction_date<=$1
         AND COALESCE(t.period_type,'current')='current'
+        AND COALESCE(t.excluded_from_ledger, false)=false
       WHERE a.account_type='equity' AND a.is_active=1
       GROUP BY a.account_code,a.account_name ORDER BY a.account_code`, [date]);
+    // Add current period net income (revenue - expenses from transactions) as Current Year Earnings
+    const { rows: netIncRows } = await pool.query(`
+      SELECT
+        COALESCE(SUM(CASE WHEN t.transaction_type='income'
+          AND COALESCE(t.account_code,a.account_code)::text LIKE '4%'
+          AND t.booking_id IS NOT NULL
+          THEN (CASE WHEN t.amount < 0 THEN -t.amount ELSE t.amount END) ELSE 0 END),0)
+        -
+        COALESCE(SUM(CASE WHEN t.transaction_type='expense'
+          AND COALESCE(t.account_code,a.account_code)::text SIMILAR TO '[56]%'
+          THEN t.amount ELSE 0 END),0) as net_income
+      FROM transactions t
+      JOIN chart_of_accounts a ON a.id = t.account_id
+      WHERE t.transaction_date<=$1
+        AND COALESCE(t.period_type,'current')='current'
+        AND COALESCE(t.excluded_from_ledger, false)=false
+    `, [date]);
+    const currentNetIncome = parseFloat(netIncRows[0]?.net_income || 0);
+    if (Math.abs(currentNetIncome) > 0.005) {
+      eqRows.push({ account_code: '3200', account_name: 'Current Year Earnings (Net Income)', balance: currentNetIncome });
+    }
 
     const total_assets = assets.reduce((s,r)=>s+(r.balance||0),0);
     const total_liabilities = [...liabilities,...liabJE].reduce((s,r)=>s+(parseFloat(r.balance)||0),0);
@@ -10530,26 +10701,34 @@ app.get('/api/accounting/cash-flow', isAuthenticated, async (req, res) => {
   try {
     const { start_date, end_date, period } = req.query;
     let sd = start_date, ed = end_date;
-    if (period && !sd) { sd = period + '-01'; ed = period + '-31'; }
+    if (period && !sd) { sd = period + '-01'; const _d=new Date(period+'-01'); ed=new Date(_d.getFullYear(),_d.getMonth()+1,0).toISOString().split('T')[0]; }
     if (!sd || !ed) { return res.status(400).json({ error: 'start_date and end_date are required' }); }
 
-    // Cash inflows = income transactions on cash accounts
+    // Cash inflows = income transactions on cash accounts (use sd/ed after period parse, exclude excluded_from_ledger)
     const { rows: inflows } = await pool.query(`
-      SELECT a.account_code, a.account_name, SUM(t.amount) as total
+      SELECT COALESCE(t.account_code, a.account_code) as account_code, a.account_name,
+             SUM(t.amount) as total
       FROM transactions t JOIN chart_of_accounts a ON t.account_id=a.id
-      WHERE t.transaction_type='income' AND a.account_code IN ('1010','1015','1020','1030')
+      WHERE t.transaction_type='income'
+        AND COALESCE(t.account_code, a.account_code) IN ('1010','1015','1020','1030')
         AND t.transaction_date>=$1 AND t.transaction_date<=$2
         AND COALESCE(t.period_type,'current')='current'
-      GROUP BY a.account_code,a.account_name ORDER BY a.account_code`, [start_date, end_date]);
+        AND COALESCE(t.excluded_from_ledger, false)=false
+      GROUP BY COALESCE(t.account_code, a.account_code),a.account_name
+      ORDER BY COALESCE(t.account_code, a.account_code)`, [sd, ed]);
 
-    // Cash outflows = expense transactions on cash accounts
+    // Cash outflows = expense transactions on cash accounts (use sd/ed after period parse)
     const { rows: outflows } = await pool.query(`
-      SELECT a.account_code, a.account_name, SUM(t.amount) as total
+      SELECT COALESCE(t.account_code, a.account_code) as account_code, a.account_name,
+             SUM(t.amount) as total
       FROM transactions t JOIN chart_of_accounts a ON t.account_id=a.id
-      WHERE t.transaction_type='expense' AND a.account_code IN ('1010','1015','1020','1030')
+      WHERE t.transaction_type='expense'
+        AND COALESCE(t.account_code, a.account_code) IN ('1010','1015','1020','1030')
         AND t.transaction_date>=$1 AND t.transaction_date<=$2
         AND COALESCE(t.period_type,'current')='current'
-      GROUP BY a.account_code,a.account_name ORDER BY a.account_code`, [start_date, end_date]);
+        AND COALESCE(t.excluded_from_ledger, false)=false
+      GROUP BY COALESCE(t.account_code, a.account_code),a.account_name
+      ORDER BY COALESCE(t.account_code, a.account_code)`, [sd, ed]);
 
     // AP payments (outflows from payables)
     const { rows: apPmts } = await pool.query(`
@@ -10592,7 +10771,7 @@ app.get('/api/accounting/reports/trial-balance', isAuthenticated, async (req, re
   try {
     const { period, start_date, end_date } = req.query;
     let sd = start_date, ed = end_date;
-    if (period && !sd) { sd = period + '-01'; ed = period + '-31'; }
+    if (period && !sd) { sd = period + '-01'; const _d=new Date(period+'-01'); ed=new Date(_d.getFullYear(),_d.getMonth()+1,0).toISOString().split('T')[0]; }
 
     const whereClause = sd && ed ? `AND je.entry_date>='${sd}' AND je.entry_date<='${ed}'` : '';
 
@@ -17144,6 +17323,441 @@ app.get('/api/accounting/qa/corporate-layer-test', isAuthenticated, async (req, 
 });
 
 // ── END FASE 26 Corporate Endpoints ──────────────────────────────────────
+
+// ── FASE 27: Ledger Audit & Sanitization Endpoints ───────────────────────
+
+// GET /api/accounting/audit/ledger-integrity
+app.get('/api/accounting/audit/ledger-integrity', isAuthenticated, async (req, res) => {
+  try {
+    // 1. Invalid account_ids (transactions not joining COA, excluding already-excluded)
+    const { rows: invalidIds } = await pool.query(`
+      SELECT COUNT(*) as cnt FROM transactions t
+      LEFT JOIN chart_of_accounts c ON c.id = t.account_id
+      WHERE c.id IS NULL AND COALESCE(t.excluded_from_ledger, false)=false
+    `);
+
+    // 2. Orphan transactions — missing account_code after backfill
+    const { rows: orphanTx } = await pool.query(`
+      SELECT COUNT(*) as cnt FROM transactions
+      WHERE (account_code IS NULL OR account_code='')
+        AND COALESCE(excluded_from_ledger, false)=false
+    `);
+
+    // 3. Duplicate entry groups (same booking+account_code+amount+date, active)
+    const { rows: dupEntries } = await pool.query(`
+      SELECT COUNT(*) as cnt FROM (
+        SELECT booking_id, account_code, amount, transaction_date::date
+        FROM transactions
+        WHERE COALESCE(excluded_from_ledger, false)=false
+          AND booking_id IS NOT NULL AND account_code IS NOT NULL
+        GROUP BY booking_id, account_code, amount, transaction_date::date
+        HAVING COUNT(*) > 1
+      ) x
+    `);
+
+    // 4. Cash clearing issues per booking (1015 balance ≠ 0)
+    const { rows: cashClearIssues } = await pool.query(`
+      SELECT COUNT(DISTINCT t.booking_id) as cnt
+      FROM transactions t
+      JOIN chart_of_accounts c ON c.id = t.account_id
+      WHERE c.account_code = '1015'
+        AND COALESCE(t.period_type,'current')='current'
+        AND COALESCE(t.excluded_from_ledger, false)=false
+        AND t.booking_id IS NOT NULL
+      GROUP BY t.booking_id
+      HAVING ABS(SUM(CASE WHEN t.transaction_type='income' THEN t.amount ELSE -t.amount END)) > 0.01
+    `);
+
+    // 5. Unbalanced journal entries (Dr ≠ Cr)
+    const { rows: unbalJE } = await pool.query(`
+      SELECT COUNT(*) as cnt FROM journal_entries je
+      JOIN (
+        SELECT journal_entry_id,
+               ABS(SUM(debit_amount) - SUM(credit_amount)) as diff
+        FROM journal_entry_lines GROUP BY journal_entry_id
+      ) x ON x.journal_entry_id = je.id
+      WHERE x.diff > 0.01
+        AND (je.excluded_from_reports=false OR je.excluded_from_reports IS NULL)
+    `);
+
+    // 6. Legacy transactions contaminating current P&L (revenue/expense accounts)
+    const { rows: legacyCont } = await pool.query(`
+      SELECT COUNT(*) as cnt FROM transactions t
+      JOIN chart_of_accounts c ON c.id = t.account_id
+      WHERE t.period_type='legacy'
+        AND c.account_type IN ('revenue','expense')
+        AND COALESCE(t.excluded_from_ledger, false)=false
+    `);
+
+    // 7. Transactions linked to cancelled bookings
+    const { rows: cancelCont } = await pool.query(`
+      SELECT COUNT(*) as cnt FROM transactions t
+      JOIN bookings b ON b.id = t.booking_id
+      WHERE b.status='cancelled'
+        AND COALESCE(t.excluded_from_ledger, false)=false
+    `);
+
+    // 8. Matej regression: 1 captain payable record, fully paid
+    const { rows: matejRows } = await pool.query(`
+      SELECT COUNT(DISTINCT bcp.id) as payable_records,
+             COALESCE(SUM(bcp.balance_due),0) as balance_due,
+             b.total_amount
+      FROM bookings b
+      LEFT JOIN booking_captain_payables bcp ON bcp.booking_id=b.id
+      WHERE b.id='book_matej_apr27_2026'
+      GROUP BY b.total_amount
+    `);
+    const matejOk = matejRows.length > 0 &&
+      parseInt(matejRows[0].payable_records) === 1 &&
+      parseFloat(matejRows[0].balance_due) < 0.01;
+
+    // 9. Trial balance check (posted journal entries)
+    const { rows: tbRows } = await pool.query(`
+      SELECT ABS(COALESCE(SUM(debit_amount),0) - COALESCE(SUM(credit_amount),0)) as diff
+      FROM journal_entry_lines l
+      JOIN journal_entries je ON je.id=l.journal_entry_id
+      WHERE je.excluded_from_reports=false AND je.status='posted'
+    `);
+    const tbBalanced = parseFloat(tbRows[0]?.diff || 0) < 0.01;
+
+    // 10. Transactions flagged for manual review
+    const { rows: manualReview } = await pool.query(`
+      SELECT COUNT(*) as cnt FROM transactions WHERE needs_manual_review=true
+    `);
+
+    // 11. Excluded transactions count (sanitation done)
+    const { rows: excludedCount } = await pool.query(`
+      SELECT COUNT(*) as cnt FROM transactions WHERE excluded_from_ledger=true
+    `);
+
+    // 12. Last sanitization log
+    const { rows: lastRun } = await pool.query(`
+      SELECT run_id, MAX(created_at) as run_at, COUNT(*) as issues_found
+      FROM ledger_sanitization_log
+      GROUP BY run_id ORDER BY MAX(created_at) DESC LIMIT 1
+    `);
+
+    const invalidIdCount    = parseInt(invalidIds[0].cnt);
+    const orphanTxCount     = parseInt(orphanTx[0].cnt);
+    const dupEntriesCount   = parseInt(dupEntries[0].cnt);
+    const cashClearCount    = cashClearIssues.length;
+    const unbalJECount      = parseInt(unbalJE[0].cnt);
+    const legacyContCount   = parseInt(legacyCont[0].cnt);
+    const cancelContCount   = parseInt(cancelCont[0].cnt);
+    const manualReviewCount = parseInt(manualReview[0].cnt);
+    const excludedTotal     = parseInt(excludedCount[0].cnt);
+
+    const criticalIssues = [];
+    const warnings = [];
+
+    if (invalidIdCount > 0)  criticalIssues.push(`${invalidIdCount} active transactions with invalid account_id (no COA match)`);
+    if (orphanTxCount > 0)   criticalIssues.push(`${orphanTxCount} active transactions missing account_code`);
+    if (unbalJECount > 0)    criticalIssues.push(`${unbalJECount} unbalanced journal entries (Dr ≠ Cr)`);
+    if (!matejOk)            criticalIssues.push('Matej booking regression: captain payable count or balance mismatch');
+    if (!tbBalanced)         criticalIssues.push('Trial balance does not balance (posted JEs Dr ≠ Cr)');
+
+    if (dupEntriesCount > 0)   warnings.push(`${dupEntriesCount} duplicate entry groups in active ledger`);
+    if (cashClearCount > 0)    warnings.push(`${cashClearCount} bookings with unresolved cash clearing balance (1015)`);
+    if (legacyContCount > 0)   warnings.push(`${legacyContCount} legacy transactions on active revenue/expense accounts`);
+    if (cancelContCount > 0)   warnings.push(`${cancelContCount} transactions linked to cancelled bookings`);
+    if (manualReviewCount > 0) warnings.push(`${manualReviewCount} transactions flagged for manual review (null booking_id on revenue)`);
+
+    const overallStatus = criticalIssues.length > 0 ? 'fail' :
+                          warnings.length > 0 ? 'warning' : 'pass';
+
+    res.json({
+      status: overallStatus,
+      timestamp: new Date().toISOString(),
+      invalid_account_ids: invalidIdCount,
+      orphan_transactions: orphanTxCount,
+      duplicate_entries: dupEntriesCount,
+      cash_clearing_issues: cashClearCount,
+      unbalanced_journal_entries: unbalJECount,
+      legacy_contamination: legacyContCount,
+      cancelled_contamination: cancelContCount,
+      needs_manual_review: manualReviewCount,
+      excluded_from_ledger_total: excludedTotal,
+      matej_regression: matejOk ? 'pass' : 'fail',
+      trial_balance: tbBalanced ? 'pass' : 'fail',
+      balance_sheet: 'see /api/accounting/reports/balance-sheet',
+      critical_issues: criticalIssues,
+      warnings,
+      last_run_id: lastRun.length > 0 ? lastRun[0].run_id : null,
+      last_run_at: lastRun.length > 0 ? lastRun[0].run_at : null,
+      last_run_issues_logged: lastRun.length > 0 ? parseInt(lastRun[0].issues_found) : 0
+    });
+  } catch (err) {
+    console.error('Ledger integrity check error:', err);
+    res.status(500).json({ error: 'Failed to run ledger integrity check', details: err.message });
+  }
+});
+
+// POST /api/accounting/audit/ledger-sanitize
+app.post('/api/accounting/audit/ledger-sanitize', isAuthenticated, async (req, res) => {
+  const { dry_run = true, scope = 'all', created_by = 'admin' } = req.body;
+  const runId = 'sanitize_' + Date.now();
+  const actions = [];
+
+  const pg = await pool.connect();
+  try {
+    if (!dry_run) await pg.query('BEGIN');
+
+    // STEP 1: Backfill account_code for transactions that are missing it
+    if (scope === 'all' || scope === 'account_ids') {
+      const { rows: needsFill } = await pg.query(`
+        SELECT t.id, c.account_code, c.account_name
+        FROM transactions t
+        JOIN chart_of_accounts c ON c.id=t.account_id
+        WHERE t.account_code IS NULL OR t.account_code=''
+      `);
+      for (const tx of needsFill) {
+        actions.push({ action: 'BACKFILL_ACCOUNT_CODE', table: 'transactions', record_id: tx.id, account_code: tx.account_code, dry_run });
+        if (!dry_run) {
+          await pg.query(`UPDATE transactions SET account_code=$1 WHERE id=$2`, [tx.account_code, tx.id]);
+          await pg.query(`
+            INSERT INTO ledger_sanitization_log (run_id,issue_type,severity,table_name,record_id,action_taken,reason,created_by)
+            VALUES ($1,'MISSING_ACCOUNT_CODE','low','transactions',$2,'SET account_code from COA join','Backfill missing account_code',$3)
+          `, [runId, tx.id, created_by]);
+        }
+      }
+    }
+
+    // STEP 2: Fix known wrong account mappings
+    if (scope === 'all' || scope === 'account_ids') {
+      const wrongMappings = [
+        { id: 'tx_matej_3a', correct_code: '5020', correct_id: 'YOYzbQUHSTFh9ykXRwDoi',
+          reason: 'Description says Fuel Expense but account_code was 5010 Captain Labor — corrected to 5020' }
+      ];
+      for (const fix of wrongMappings) {
+        const { rows: txData } = await pg.query(`SELECT id, account_code, account_id FROM transactions WHERE id=$1`, [fix.id]);
+        if (txData.length > 0 && txData[0].account_code !== fix.correct_code) {
+          actions.push({ action: 'FIX_WRONG_ACCOUNT', table: 'transactions', record_id: fix.id,
+            from_code: txData[0].account_code, to_code: fix.correct_code, reason: fix.reason, dry_run });
+          if (!dry_run) {
+            await pg.query(`UPDATE transactions SET account_code=$1, account_id=$2 WHERE id=$3`,
+              [fix.correct_code, fix.correct_id, fix.id]);
+            await pg.query(`
+              INSERT INTO ledger_sanitization_log (run_id,issue_type,severity,table_name,record_id,booking_id,before_state_json,after_state_json,action_taken,reason,created_by)
+              VALUES ($1,'WRONG_ACCOUNT_CODE','medium','transactions',$2,'book_matej_apr27_2026',$3,$4,'UPDATE account_code',$5,$6)
+            `, [runId, fix.id, JSON.stringify(txData[0]),
+               JSON.stringify({...txData[0], account_code: fix.correct_code, account_id: fix.correct_id}),
+               fix.reason, created_by]);
+          }
+        }
+      }
+    }
+
+    // STEP 3: Mark duplicate wizard transactions as excluded_from_ledger
+    if (scope === 'all' || scope === 'duplicates' || scope === 'matej') {
+      const DUPE_IDS = [
+        'tx_cpay_cr_tlIn87UF','tx_cpay_dr_itpW8QTM',
+        'tx_cpmt_cr_CbQJVauo','tx_cpmt_dr_D58nWrkU',
+        'tx_cpmt_cr_rpHdqx_z','tx_cpmt_dr_iMMb0-Ks'
+      ];
+      for (const txId of DUPE_IDS) {
+        const { rows: txData } = await pg.query(
+          `SELECT id, excluded_from_ledger, account_code, amount, description FROM transactions WHERE id=$1`, [txId]);
+        if (txData.length > 0 && !txData[0].excluded_from_ledger) {
+          actions.push({ action: 'EXCLUDE_DUPLICATE', table: 'transactions', record_id: txId,
+            amount: parseFloat(txData[0].amount), account_code: txData[0].account_code,
+            reason: 'Booking wizard ran twice for book_matej_apr27_2026 — second set excluded', dry_run });
+          if (!dry_run) {
+            await pg.query(`
+              UPDATE transactions SET excluded_from_ledger=true,
+                exclusion_reason='FASE27 duplicate sanitation — booking_wizard ran twice for book_matej_apr27_2026',
+                excluded_at=NOW(), excluded_by=$1
+              WHERE id=$2
+            `, [created_by, txId]);
+            await pg.query(`
+              INSERT INTO ledger_sanitization_log (run_id,issue_type,severity,table_name,record_id,booking_id,before_state_json,after_state_json,action_taken,reason,created_by)
+              VALUES ($1,'DUPLICATE_WIZARD_TRANSACTION','high','transactions',$2,'book_matej_apr27_2026',$3,$4,'SET excluded_from_ledger=true','Booking wizard ran twice for Matej',$5)
+            `, [runId, txId, JSON.stringify(txData[0]),
+               JSON.stringify({...txData[0], excluded_from_ledger: true}), created_by]);
+          }
+        }
+      }
+    }
+
+    // STEP 4: Flag null-booking revenue transactions for manual review
+    if (scope === 'all') {
+      const { rows: nullRev } = await pg.query(`
+        SELECT id, amount, description FROM transactions
+        WHERE booking_id IS NULL AND transaction_type='income'
+          AND account_code IN ('4010','4020')
+          AND COALESCE(needs_manual_review, false)=false
+      `);
+      for (const tx of nullRev) {
+        actions.push({ action: 'FLAG_MANUAL_REVIEW', table: 'transactions', record_id: tx.id,
+          amount: parseFloat(tx.amount), reason: 'Revenue transaction with NULL booking_id', dry_run });
+        if (!dry_run) {
+          await pg.query(`UPDATE transactions SET needs_manual_review=true WHERE id=$1`, [tx.id]);
+          await pg.query(`
+            INSERT INTO ledger_sanitization_log (run_id,issue_type,severity,table_name,record_id,action_taken,reason,created_by)
+            VALUES ($1,'NULL_BOOKING_REVENUE','low','transactions',$2,'SET needs_manual_review=true','Revenue with no booking_id',$3)
+          `, [runId, tx.id, created_by]);
+        }
+      }
+    }
+
+    if (!dry_run) {
+      await pg.query('COMMIT');
+      const { rows: totalRows } = await pg.query(`SELECT COUNT(*) as cnt FROM transactions`);
+      await pg.query(`
+        INSERT INTO ledger_sanitization_snapshots (run_id, snapshot_table, total_rows)
+        VALUES ($1, 'transactions', $2)
+      `, [runId, parseInt(totalRows[0].cnt)]);
+    }
+
+    const byAction = {};
+    actions.forEach(a => { byAction[a.action] = (byAction[a.action]||0)+1; });
+
+    res.json({
+      dry_run,
+      run_id: dry_run ? 'DRY_RUN_' + runId : runId,
+      scope,
+      created_by,
+      actions_count: actions.length,
+      actions_by_type: byAction,
+      actions,
+      status: dry_run ? 'dry_run_complete' : 'sanitization_applied',
+      message: dry_run
+        ? `Dry run complete — ${actions.length} action(s) would be applied. Call with dry_run=false to apply.`
+        : `Sanitization applied — ${actions.length} change(s) logged to ledger_sanitization_log.`
+    });
+  } catch (err) {
+    if (!dry_run) await pg.query('ROLLBACK').catch(()=>{});
+    console.error('Ledger sanitize error:', err);
+    res.status(500).json({ error: 'Sanitization failed', details: err.message });
+  } finally { pg.release(); }
+});
+
+// GET /api/accounting/audit/sanitization-log — review what was changed
+app.get('/api/accounting/audit/sanitization-log', isAuthenticated, async (req, res) => {
+  try {
+    const { run_id, limit = 50, severity } = req.query;
+    let where = 'WHERE 1=1';
+    const params = [];
+    if (run_id)   { params.push(run_id);   where += ` AND run_id=$${params.length}`; }
+    if (severity) { params.push(severity); where += ` AND severity=$${params.length}`; }
+    const { rows: logs } = await pool.query(`
+      SELECT * FROM ledger_sanitization_log ${where}
+      ORDER BY created_at DESC LIMIT $${params.length+1}
+    `, [...params, parseInt(limit)]);
+    const { rows: runs } = await pool.query(`
+      SELECT run_id, COUNT(*) as total, MAX(created_at) as run_at,
+             COUNT(CASE WHEN severity='high' THEN 1 END) as high_count,
+             COUNT(CASE WHEN severity='medium' THEN 1 END) as medium_count,
+             COUNT(CASE WHEN severity='low' THEN 1 END) as low_count
+      FROM ledger_sanitization_log GROUP BY run_id ORDER BY MAX(created_at) DESC LIMIT 10
+    `);
+    res.json({ runs, logs, total: logs.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/bookings/:id/reconciliation — full booking ledger reconciliation
+app.get('/api/bookings/:id/reconciliation', isAuthenticated, async (req, res) => {
+  try {
+    const bookingId = req.params.id;
+    const { rows: bookRows } = await pool.query(`SELECT * FROM bookings WHERE id=$1`, [bookingId]);
+    if (!bookRows.length) return res.status(404).json({ error: 'Booking not found' });
+    const booking = bookRows[0];
+
+    // Revenue recognized (income transactions on 4xxx, booking-linked, active)
+    const { rows: revRows } = await pool.query(`
+      SELECT COALESCE(t.account_code,c.account_code) as account_code, c.account_name,
+             SUM(CASE WHEN t.amount < 0 THEN -t.amount ELSE t.amount END) as total
+      FROM transactions t JOIN chart_of_accounts c ON c.id=t.account_id
+      WHERE t.booking_id=$1 AND t.transaction_type='income'
+        AND COALESCE(t.account_code, c.account_code)::text LIKE '4%'
+        AND COALESCE(t.excluded_from_ledger, false)=false
+      GROUP BY COALESCE(t.account_code,c.account_code), c.account_name
+    `, [bookingId]);
+
+    // Direct expenses (expense transactions on 5xxx, not excluded)
+    const { rows: expRows } = await pool.query(`
+      SELECT COALESCE(t.account_code,c.account_code) as account_code, c.account_name,
+             SUM(t.amount) as total
+      FROM transactions t JOIN chart_of_accounts c ON c.id=t.account_id
+      WHERE t.booking_id=$1 AND t.transaction_type='expense'
+        AND COALESCE(t.account_code, c.account_code)::text LIKE '5%'
+        AND COALESCE(t.excluded_from_ledger, false)=false
+      GROUP BY COALESCE(t.account_code,c.account_code), c.account_name
+      ORDER BY COALESCE(t.account_code,c.account_code)
+    `, [bookingId]);
+
+    // Cash clearing (1015 balance for this booking)
+    const { rows: clearRows } = await pool.query(`
+      SELECT SUM(CASE WHEN t.transaction_type='income' THEN t.amount ELSE -t.amount END) as balance
+      FROM transactions t JOIN chart_of_accounts c ON c.id=t.account_id
+      WHERE t.booking_id=$1
+        AND COALESCE(t.account_code, c.account_code)='1015'
+        AND COALESCE(t.excluded_from_ledger, false)=false
+    `, [bookingId]);
+
+    // Captain payable
+    const { rows: capRows } = await pool.query(`
+      SELECT * FROM booking_captain_payables WHERE booking_id=$1
+    `, [bookingId]);
+
+    // Excluded transactions (audit trail)
+    const { rows: exclRows } = await pool.query(`
+      SELECT t.id, COALESCE(t.account_code,c.account_code) as account_code,
+             t.amount, t.description, t.exclusion_reason, t.excluded_at
+      FROM transactions t JOIN chart_of_accounts c ON c.id=t.account_id
+      WHERE t.booking_id=$1 AND t.excluded_from_ledger=true
+      ORDER BY t.excluded_at
+    `, [bookingId]);
+
+    const total_revenue       = revRows.reduce((s,r)=>s+parseFloat(r.total||0),0);
+    const total_direct_costs  = expRows.reduce((s,r)=>s+parseFloat(r.total||0),0);
+    const captain_due         = capRows.reduce((s,r)=>s+parseFloat(r.total_due||0),0);
+    const captain_paid        = capRows.reduce((s,r)=>s+parseFloat(r.total_paid||0),0);
+    const captain_balance     = capRows.reduce((s,r)=>s+parseFloat(r.balance_due||0),0);
+    const cash_clearing_bal   = parseFloat(clearRows[0]?.balance||0);
+    const profit              = total_revenue - total_direct_costs;
+
+    res.json({
+      booking_id: bookingId,
+      customer_name: booking.customer_name,
+      booking_total: parseFloat(booking.total_amount||0),
+      booking_status: booking.status,
+      revenue: { items: revRows, total: total_revenue },
+      direct_costs: { items: expRows, total: total_direct_costs },
+      captain_payable: {
+        records: capRows.length,
+        total_due: captain_due,
+        total_paid: captain_paid,
+        balance_due: captain_balance,
+        status: capRows[0]?.status || 'none'
+      },
+      cash_clearing: {
+        account: '1015',
+        balance: cash_clearing_bal,
+        status: Math.abs(cash_clearing_bal) <= 0.01 ? 'balanced' : 'unresolved'
+      },
+      summary: {
+        total_revenue,
+        total_direct_costs,
+        profit,
+        profit_margin: total_revenue > 0 ? ((profit/total_revenue)*100).toFixed(1)+'%' : 'n/a',
+        cash_clearing_balanced: Math.abs(cash_clearing_bal) <= 0.01
+      },
+      excluded_transactions: { count: exclRows.length, items: exclRows },
+      integrity: {
+        duplicate_captain_payables: capRows.length > 1 ? 'FAIL — multiple records' : 'pass',
+        captain_fully_paid: captain_balance < 0.01 ? 'pass' : `OPEN: $${captain_balance.toFixed(2)}`,
+        cash_clearing: Math.abs(cash_clearing_bal) <= 0.01 ? 'pass' : `UNRESOLVED: $${cash_clearing_bal.toFixed(2)}`
+      }
+    });
+  } catch (err) {
+    console.error('Reconciliation error:', err);
+    res.status(500).json({ error: 'Failed to generate reconciliation', details: err.message });
+  }
+});
+
+// ── END FASE 27 Audit Endpoints ───────────────────────────────────────────
 
 // ── FASE 9: GET /api/bookings/:id/integrity ───────────────────────────────
 app.get('/api/bookings/:id/integrity', isAuthenticated, async (req, res) => {

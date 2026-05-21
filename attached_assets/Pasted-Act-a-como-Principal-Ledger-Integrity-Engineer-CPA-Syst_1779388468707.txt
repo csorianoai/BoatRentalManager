@@ -1,0 +1,503 @@
+Actúa como Principal Ledger Integrity Engineer, CPA Systems Auditor, Forensic Accounting Engineer, Database Reliability Engineer y QA Automation Engineer para gestion.nadakiexcursions.
+
+MISIÓN:
+Ejecutar FASE 27 — Ledger Sanitization & Data Integrity Repair.
+
+Objetivo:
+Reparar la integridad histórica del sistema contable sin romper la arquitectura funcional de FASE 26 ni los flujos actuales de bookings, corporate accounting, payables, legacy lock, cancelled lock y financial statements.
+
+NO crear nuevos features.
+NO rediseñar UI.
+NO borrar data.
+NO hacer fixes superficiales.
+NO declarar terminado sin pruebas reales y evidencia.
+
+CONTEXTO:
+La auditoría de FASE 26 aprobó la arquitectura, pero encontró problemas preexistentes de data:
+
+1. Algunas transacciones del booking wizard usan account_id con nanoids propios que no hacen JOIN contra chart_of_accounts.
+2. Revenue y cash de algunos bookings no aparecen correctamente en P&L / Balance Sheet / Cash Flow.
+3. Cash Clearing 1015 tiene balances contaminados.
+4. Booking Matej tiene duplicación histórica de captain payable / journal entries / expenses.
+5. Balance Sheet queda desbalanceado por data histórica, no por la nueva capa corporativa.
+
+La misión de FASE 27 es limpiar, normalizar, reparar y blindar la data histórica.
+
+==================================================
+FASE 0 — MODO SEGURO
+==================================================
+
+Antes de cualquier corrección:
+
+1. Crear backup lógico de tablas afectadas:
+- transactions
+- journal_entries
+- journal_entry_lines
+- boat_expenses
+- booking_payables
+- booking_payable_payments
+- corporate_payables
+- corporate_payable_payments
+- booking_deposits
+- booking_receivables
+- bookings
+- chart_of_accounts
+
+Si no hay sistema de backup real, crear snapshot JSON/SQL local o tabla audit snapshot:
+ledger_sanitization_snapshots
+
+2. Crear tabla de auditoría:
+ledger_sanitization_log
+
+Campos:
+- id
+- run_id
+- issue_type
+- severity
+- table_name
+- record_id
+- booking_id nullable
+- before_state_json
+- after_state_json
+- action_taken
+- reason
+- created_at
+- created_by
+
+3. Toda corrección debe registrar before/after.
+
+4. No hacer DELETE físico.
+
+==================================================
+FASE 1 — AUDITORÍA FORENSE DE CUENTAS
+==================================================
+
+Crear función/script:
+auditAccountReferentialIntegrity()
+
+Debe revisar:
+
+1. transactions.account_id
+2. transactions.account_code si existe
+3. journal_entry_lines.account_code
+4. boat_expenses.account_code
+5. payables expense/payable/payment account codes
+
+Detectar:
+- account_id que no existe en chart_of_accounts.id
+- account_code que no existe en chart_of_accounts.code
+- account_id nanoid custom
+- transacciones con account_id pero sin account_code
+- transacciones con account_code pero account_id inválido
+- inconsistencias entre account_id y account_code
+- cuentas inactivas usadas en transacciones activas
+
+Reporte:
+{
+  invalid_account_ids: [],
+  missing_account_codes: [],
+  orphan_transactions: [],
+  code_id_mismatches: [],
+  inactive_accounts_used: [],
+  suggested_fixes: []
+}
+
+==================================================
+FASE 2 — NORMALIZAR ACCOUNT_ID + ACCOUNT_CODE
+==================================================
+
+Crear función segura:
+normalizeTransactionAccounts()
+
+Reglas:
+
+1. Si transaction.account_code existe y coincide con chart_of_accounts.code:
+- set account_id = chart_of_accounts.id correcto
+
+2. Si account_id es inválido pero description/account_name permite inferir cuenta:
+- inferir account_code con mapping aprobado
+- set account_code
+- set account_id correcto
+
+3. Si no se puede inferir:
+- marcar como needs_manual_review
+- NO inventar cuenta
+
+Mapping aprobado:
+Revenue Tours → 4010
+Revenue Rentals → 4020
+Other Income → 4500
+Captain Labor → 5010
+Fuel → 5020
+Ice/Supplies → 5030
+Cleaning → 5040
+Dock/Marina → 5050
+Platform/Broker Fees → 5060
+Maintenance → 6020
+Misc → 6900
+Cash Clearing → 1015
+Wells Fargo / Bank → 1010
+Accounts Receivable → 1100
+Deferred Deposits → 2500
+Accounts Payable → 2000
+Captain Payable → 2010
+Broker Payable → 2020
+Vendor Payable → 2030
+
+4. Guardar log before/after en ledger_sanitization_log.
+
+5. No modificar transacciones locked sin crear sanitation note y admin flag.
+
+==================================================
+FASE 3 — DETECTAR DUPLICADOS HISTÓRICOS
+==================================================
+
+Crear función:
+auditDuplicateAccountingEntries()
+
+Detectar duplicados por:
+
+A) Same booking_id + source_type + amount + account_code + transaction_date + memo
+B) Same payable_id + same amount + same account + same date
+C) Same booking expense type + amount + payment_method + created_at cercano
+D) Captain payable duplicado:
+- mismo booking_id
+- mismo captain/vendor
+- mismo total_due
+- más de una obligación activa
+
+E) Revenue duplicado:
+- mismo booking_id
+- cuentas 4010/4020
+- más de una transacción revenue activa
+
+F) Cash clearing duplicado:
+- mismo booking_id
+- mismo amount
+- same source/event
+
+Reporte:
+- duplicate_groups
+- recommended_action:
+  - keep_primary
+  - mark_duplicate_excluded
+  - create_reversal
+  - manual_review
+
+==================================================
+FASE 4 — REPARAR DUPLICADOS SIN BORRAR
+==================================================
+
+Crear función:
+repairDuplicateAccountingEntries(run_id)
+
+Reglas:
+
+1. Nunca hacer DELETE.
+2. Si duplicado es prueba/wizard duplicado evidente:
+- marcar duplicate/excluded_from_ledger = true
+- exclusion_reason = "FASE27 duplicate sanitation"
+- excluded_at
+- excluded_by
+
+3. Si duplicado fue posteado como journal entry real:
+- crear reversing journal entry
+- link reversed_entry_id
+- original status = reversed o duplicate_reversed
+
+4. En boat_expenses:
+- si hay duplicados, status = cancelled
+- cancelled_reason = "FASE27 duplicate sanitation"
+- excluded_from_ledger = true
+
+5. En booking_payables:
+- si hay captain payable duplicado:
+  - mantener el más completo/correcto
+  - cancelar el duplicado
+  - NO duplicar expense
+  - conservar audit trail
+
+6. Registrar before/after en ledger_sanitization_log.
+
+==================================================
+FASE 5 — RECONSTRUIR CASH CLEARING 1015
+==================================================
+
+Crear función:
+rebuildCashClearingByBooking()
+
+Para cada booking current:
+
+cash_in = suma de pagos recibidos con payment_method='cash' y debit account 1015
+
+cash_out = suma de gastos/pagos pagados con payment_method='cash' y credit account 1015
+
+NO incluir:
+- zelle
+- bank
+- card
+- AP payments desde banco
+- journal entries reversadas
+- excluded_from_ledger
+- legacy
+- cancelled audit-only
+
+cash_clearing_balance = cash_in - cash_out
+
+Si abs(balance) <= 0.01:
+- marcar como rounding_difference
+- tratar como 0 para cierre
+
+Si balance != 0:
+- generar issue:
+CASH_CLEARING_UNRESOLVED
+
+Para Matej:
+cash_in = 449.99
+cash_out = 300 + 5.99 + 144 = 449.99
+balance = 0.00
+
+==================================================
+FASE 6 — RECONSTRUIR LEDGER DE BOOKING
+==================================================
+
+Crear función:
+rebuildBookingLedger(booking_id)
+
+Debe recalcular desde fuentes limpias:
+
+- booking_total
+- total_collected
+- revenue_recognized
+- direct_expenses
+- payables_due
+- payables_paid
+- payables_balance
+- cash_clearing_balance
+- accounts_receivable_balance
+- deferred_deposit_balance
+- profit
+- status_recommendation
+
+Reglas de gastos:
+Solo contar:
+- debit accounts 5010-5999 / direct costs
+- debit operating expenses si están asociadas al booking
+- no contar liability payments como expense
+- no contar credits a cash/bank
+- no contar duplicados/excluded/reversed
+
+==================================================
+FASE 7 — CASO MATEJ — SANITIZATION OBLIGATORIA
+==================================================
+
+Auditar y corregir booking Matej:
+
+Identificadores posibles:
+- book_dDgO83lgF1
+- book_matej_apr27_2026
+
+Resultado correcto esperado:
+booking_total = 699.99 o 700.00 según fuente oficial
+total_collected = 699.99 / 700.00
+fuel = 300.00
+ice = 5.99
+review/misc = 5.00
+captain expense = 250.00
+captain paid = 250.00
+captain balance = 0.00
+total_expenses = 560.99
+profit = 139.00
+cash_clearing_balance = 0.00
+revenue recognized according to completed status
+no duplicate captain payable
+no duplicate expense
+no orphan account_id
+no excluded active duplicate
+
+Si existen duplicados:
+- excluir/reversar según reglas
+- documentar exactamente cuál quedó activo y cuál se excluyó/reversó.
+
+==================================================
+FASE 8 — NORMALIZAR FINANCIAL STATEMENTS
+==================================================
+
+Después de limpieza:
+
+Validar:
+
+1. P&L:
+- booking revenue visible si corresponde
+- direct costs visibles
+- corporate overhead separado
+- other income separado
+
+2. Balance Sheet:
+- Assets = Liabilities + Equity
+- Cash accounts correctos
+- AP/AR correctos
+- Retained/current earnings calculados
+
+3. Cash Flow:
+- cash in/out correctos
+- no depende de account_id inválido
+
+4. Trial Balance:
+- debits = credits
+
+Si el sistema todavía tiene legacy historical imbalance:
+- aislarlo en 3999 Prior Period Adjustment
+- documentar como opening balance adjustment
+- no contaminar current.
+
+==================================================
+FASE 9 — BLINDAJE FUTURO
+==================================================
+
+Agregar validaciones preventivas:
+
+1. Ninguna transacción nueva puede crearse sin account_code válido.
+2. Si usa account_id, debe coincidir con COA.
+3. No permitir account_id custom/nanoid si no existe en COA.
+4. No permitir postJournalEntry desbalanceado.
+5. No permitir gasto capitán duplicado si payable ya reconoció expense.
+6. No permitir revenue duplicado para mismo booking.
+7. No permitir cash clearing con payment_method != cash.
+8. No permitir incluir excluded_from_ledger en reportes.
+9. No permitir cancelled bookings en financials operativos.
+10. No permitir legacy en current por defecto.
+
+==================================================
+FASE 10 — ENDPOINT DE AUDITORÍA
+==================================================
+
+Crear endpoint:
+GET /api/accounting/audit/ledger-integrity
+
+Debe devolver:
+
+{
+  "status": "pass | fail | warning",
+  "invalid_account_ids": count,
+  "orphan_transactions": count,
+  "duplicate_entries": count,
+  "cash_clearing_issues": count,
+  "unbalanced_journal_entries": count,
+  "legacy_contamination": count,
+  "cancelled_contamination": count,
+  "matej_regression": pass/fail,
+  "trial_balance": pass/fail,
+  "balance_sheet": pass/fail,
+  "critical_issues": [],
+  "warnings": [],
+  "last_run_id": "..."
+}
+
+Crear endpoint:
+POST /api/accounting/audit/ledger-sanitize
+
+Body:
+{
+  "dry_run": true/false,
+  "scope": "all | matej | account_ids | duplicates | cash_clearing",
+  "created_by": "system/admin"
+}
+
+Primero ejecutar dry_run=true.
+Solo aplicar con dry_run=false si el dry run muestra acciones claras.
+
+==================================================
+FASE 11 — PRUEBAS OBLIGATORIAS
+==================================================
+
+No declarar terminado sin ejecutar:
+
+1. Dry run ledger sanitize:
+POST /api/accounting/audit/ledger-sanitize dry_run=true
+
+2. Aplicación controlada:
+POST /api/accounting/audit/ledger-sanitize dry_run=false
+
+3. Ledger integrity:
+GET /api/accounting/audit/ledger-integrity
+
+Debe mostrar:
+invalid_account_ids = 0
+orphan_transactions = 0
+unbalanced_journal_entries = 0
+critical_issues = 0
+
+4. Matej reconciliation:
+GET /api/bookings/book_dDgO83lgF1/reconciliation
+Debe mostrar:
+expenses = 560.99
+cash_clearing = 0.00
+profit = 139.00
+no duplicate captain payable
+
+5. P&L current period:
+Debe mostrar revenue/costs correctamente o explicar si revenue no reconocido.
+
+6. Balance Sheet:
+Debe no crashear.
+Si hay opening imbalance pre-FASE27, debe estar aislado en 3999.
+
+7. Cash Flow:
+Debe leer cuentas por account_code válido.
+
+8. Trial Balance:
+Debe cuadrar.
+
+9. Cancelled audit:
+critical_issues = 0
+
+10. Legacy audit:
+no contamination current
+
+11. Corporate layer regression:
+GET /api/accounting/qa/corporate-layer-test
+Debe seguir 18/18 PASS
+
+12. Booking wizard regression:
+- payment
+- expense
+- payable
+- close readiness
+sin duplicar entries
+
+==================================================
+FASE 12 — REPORTE FINAL OBLIGATORIO
+==================================================
+
+Al terminar reportar:
+
+1. Backup/snapshot creado.
+2. Run_id de sanitization.
+3. Issues encontrados.
+4. Account IDs normalizados.
+5. Duplicados detectados.
+6. Duplicados excluidos/reversados.
+7. Cash clearing reconstruido.
+8. Matej antes/después.
+9. Balance Sheet antes/después.
+10. P&L antes/después.
+11. Cash Flow antes/después.
+12. Trial Balance.
+13. Ledger integrity endpoint result.
+14. Corporate QA result 18/18.
+15. Cancelled regression.
+16. Legacy regression.
+17. Riesgos pendientes.
+18. Confirmación de que no se borró data.
+
+CRITERIO DE ÉXITO:
+Solo declarar FASE 27 completada si:
+- No hay account_id inválidos activos.
+- No hay duplicados activos afectando ledger.
+- Cash Clearing por booking cuadra.
+- Matej queda correcto.
+- Trial Balance cuadra.
+- Corporate layer sigue pasando.
+- Cancelled y legacy siguen protegidos.
+- Todo cambio tiene audit log.
