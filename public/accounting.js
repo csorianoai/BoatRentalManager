@@ -989,17 +989,38 @@ function buildManualReviewUI(result) {
 }
 
 async function deleteTransaction(id) {
-    if (!confirm('¿Eliminar esta transacción?')) return;
-    
+    // FASE 29: require reason and create proper reversal instead of hard-delete
+    const reason = prompt(
+        '⚠️ Anular transacción contable\n\n' +
+        'Esta acción excluye la transacción del libro mayor y crea una entrada de reversión para auditoría.\n\n' +
+        'Motivo de anulación (requerido):'
+    );
+    if (reason === null) return; // cancelled
+    if (!reason.trim()) {
+        alert('❌ El motivo es requerido para anular una transacción.');
+        return;
+    }
+
     try {
-        const response = await fetch(`/api/accounting/transactions/${id}`, { method: 'DELETE' });
-        if (!response.ok) throw new Error('Delete failed');
-        
-        alert('✅ Transacción eliminada');
+        const response = await fetch(`/api/accounting/transactions/${id}`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reason: reason.trim() }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            if (response.status === 409) {
+                alert('⚠️ ' + (data.error || 'Esta transacción ya fue anulada anteriormente.'));
+                return;
+            }
+            throw new Error(data.error || 'Void failed');
+        }
+
+        alert(`✅ Transacción anulada\nLog de reversión: ${data.reversal_log_id || '—'}`);
         await loadData();
     } catch (error) {
         console.error('Error:', error);
-        alert('❌ Error al eliminar transacción');
+        alert('❌ Error al anular transacción: ' + error.message);
     }
 }
 

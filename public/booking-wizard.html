@@ -1197,32 +1197,62 @@ function renderPaymentList() {
 }
 
 async function voidExpense(expId, amount) {
-  if (!confirm(`¿Anular este gasto de $${parseFloat(amount).toFixed(2)}?\n\nSe cancela el gasto y se revierten los asientos contables asociados. Solo disponible antes del cierre.`)) return;
+  // FASE 29: require reason, creates reversal entry
+  const reason = prompt(
+    `Anular gasto de $${parseFloat(amount).toFixed(2)}\n\n` +
+    `Se cancela el gasto y se crean entradas de reversión contable para auditoría.\n\n` +
+    `Motivo (requerido):`
+  );
+  if (reason === null) return;
+  if (!reason.trim()) { alert('El motivo es requerido para anular un gasto.'); return; }
   try {
-    await apiFetch(`/api/bookings/${BOOKING_ID}/expenses/${expId}`, { method: 'DELETE' });
-    showToast('exp-msg', `Gasto de $${parseFloat(amount).toFixed(2)} anulado correctamente.`, 'success');
+    await apiFetch(`/api/bookings/${BOOKING_ID}/expenses/${expId}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason: reason.trim() }),
+    });
+    showToast('exp-msg', `Gasto de $${parseFloat(amount).toFixed(2)} anulado. Reversión contable registrada.`, 'success');
     await loadWizData();
     renderExpenseList();
     renderExpenseSummary();
     renderStep1();
   } catch(e) {
     console.error('[voidExpense]', e);
-    alert('Error al anular el gasto:\n' + e.message);
+    if (e.message && e.message.includes('ya está anulado')) {
+      alert('Este gasto ya fue anulado anteriormente.');
+    } else {
+      alert('Error al anular el gasto:\n' + e.message);
+    }
   }
 }
 
 async function voidPayment(txId, amount) {
-  if (!confirm(`¿Anular este pago de $${parseFloat(amount).toFixed(2)}?\n\nEsta acción elimina la transacción y restaura el balance del booking. Solo disponible antes del cierre.`)) return;
+  // FASE 29: require reason, creates reversal entry + restores balance
+  const reason = prompt(
+    `Anular pago de $${parseFloat(amount).toFixed(2)}\n\n` +
+    `Se excluye la transacción del libro mayor y se restaura el balance del booking.\n\n` +
+    `Motivo (requerido):`
+  );
+  if (reason === null) return;
+  if (!reason.trim()) { alert('El motivo es requerido para anular un pago.'); return; }
   try {
-    const r = await apiFetch(`/api/bookings/${BOOKING_ID}/transactions/${txId}`, { method: 'DELETE' });
-    showToast('pay-msg', `Pago de $${parseFloat(amount).toFixed(2)} anulado correctamente. Balance restaurado.`, 'success');
+    const r = await apiFetch(`/api/bookings/${BOOKING_ID}/transactions/${txId}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason: reason.trim() }),
+    });
+    showToast('pay-msg', `Pago de $${parseFloat(amount).toFixed(2)} anulado. Balance restaurado.`, 'success');
     await loadWizData();
     renderPaymentList();
     renderPaymentSummary();
     renderStep1();
   } catch(e) {
     console.error('[voidPayment]', e);
-    alert('Error al anular el pago:\n' + e.message);
+    if (e.message && e.message.includes('ya anulada')) {
+      alert('Este pago ya fue anulado anteriormente.');
+    } else {
+      alert('Error al anular el pago:\n' + e.message);
+    }
   }
 }
 

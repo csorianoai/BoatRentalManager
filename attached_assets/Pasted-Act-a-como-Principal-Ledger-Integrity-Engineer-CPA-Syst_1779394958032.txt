@@ -1,0 +1,532 @@
+Actúa como Principal Ledger Integrity Engineer, CPA Systems Auditor, Backend Engineer y QA Automation Engineer para gestion.nadakiexcursions.
+
+MISIÓN:
+Corregir de raíz el problema donde un pago/gasto se elimina visualmente pero sigue afectando la contabilidad.
+
+PROBLEMA:
+Al intentar corregir un pago del capitán ingresado incorrectamente, el sistema lo borra en pantalla pero NO elimina/reversa el efecto contable. El monto sigue afectando balances, gastos, payables, cash clearing o reportes.
+
+OBJETIVO:
+Auditar y corregir TODO el comportamiento de creación, eliminación, cancelación y reverso contable de:
+- pagos de capitán
+- booking expenses
+- booking payments
+- captain/broker/vendor payables
+- corporate expenses
+- corporate payables
+- other income
+- manual entries
+- revenue recognition
+- cash clearing entries
+
+REGLA DE AUDITORÍA:
+En contabilidad NO se debe borrar físicamente una transacción posteada.
+Se debe:
+1. marcar como voided/cancelled/excluded_from_ledger, y/o
+2. crear reversal entry exacto,
+3. actualizar saldos derivados,
+4. dejar audit trail.
+
+==================================================
+FASE 1 — AUDITORÍA DE DELETE / VOID / CANCEL
+==================================================
+
+Buscar en todo el proyecto funciones/endpoints relacionados con:
+
+Frontend:
+- deletePayment
+- removePayment
+- deleteExpense
+- removeExpense
+- deleteCaptainPayment
+- removeCaptainPayment
+- cancelExpense
+- voidPayment
+- deletePayable
+- removePayable
+- deleteManualEntry
+- deleteTransaction
+
+Backend:
+- DELETE /api/...
+- POST .../delete
+- POST .../void
+- POST .../cancel
+- excluded_from_ledger
+- status='cancelled'
+- status='voided'
+- reversed_entry_id
+- is_reversal
+
+Reportar:
+- archivo
+- función
+- endpoint
+- qué borra visualmente
+- qué impacta contablemente
+- si crea reversal
+- si actualiza ledger
+- si deja audit trail
+
+==================================================
+FASE 2 — PRINCIPIO GENERAL DE CORRECCIÓN
+==================================================
+
+Implementar regla universal:
+
+Si un registro financiero ya creó:
+- transaction
+- journal_entry
+- journal_entry_lines
+- payable payment
+- cash clearing movement
+- revenue recognition
+- expense recognition
+
+Entonces NO se puede eliminar solamente de la tabla visual.
+
+Debe ejecutar:
+reverseFinancialImpact(source_type, source_id, reason, user)
+
+Esta función debe:
+
+1. Buscar todos los journal entries / transactions vinculados.
+2. Crear reversal entry exacto:
+   - debits se vuelven credits
+   - credits se vuelven debits
+3. Marcar original:
+   status = reversed / voided
+   reversed_at
+   reversed_by
+   reversal_reason
+4. Marcar registro visual:
+   status = cancelled / voided
+   excluded_from_ledger = true
+5. Recalcular:
+   - booking ledger
+   - cash clearing
+   - AP balance
+   - AR balance
+   - expenses total
+   - profit
+6. Guardar audit trail before/after.
+
+==================================================
+FASE 3 — CAPTAIN PAYMENT DELETE FIX
+==================================================
+
+Caso crítico:
+Pago del capitán incorrecto.
+
+Si se elimina un captain payable payment:
+
+Debe crear reversal:
+
+Si pago original fue cash:
+Original:
+Dr 2010 Captain Payable
+Cr 1015 Cash Clearing
+
+Reversal:
+Dr 1015 Cash Clearing
+Cr 2010 Captain Payable
+
+Si pago original fue zelle/bank:
+Original:
+Dr 2010 Captain Payable
+Cr 1010 Wells Fargo
+
+Reversal:
+Dr 1010 Wells Fargo
+Cr 2010 Captain Payable
+
+Luego:
+- total_paid del payable debe bajar
+- balance_due debe subir
+- status debe recalcular:
+  paid / partially_paid / pending
+- cash clearing debe actualizarse si era cash
+- booking profit NO debe cambiar si solo se reversa pago contra payable
+- AP debe reflejar saldo pendiente nuevamente
+
+IMPORTANTE:
+Si el pago era un abono al capitán, borrar/reversar el pago NO debe borrar el gasto 5010 original, solo reabrir AP.
+
+==================================================
+FASE 4 — CAPTAIN PAYABLE DELETE FIX
+==================================================
+
+Si se elimina/cancela una obligación de capitán completa:
+
+Si NO tiene pagos:
+Reversal:
+Original:
+Dr 5010 Captain Labor Expense
+Cr 2010 Captain Payable
+
+Reversal:
+Dr 2010 Captain Payable
+Cr 5010 Captain Labor Expense
+
+Si TIENE pagos:
+NO permitir cancelar sin primero reversar pagos.
+Mostrar error:
+“Cannot void captain payable with active payments. Reverse payments first.”
+
+==================================================
+FASE 5 — BOOKING EXPENSE DELETE FIX
+==================================================
+
+Si se elimina un gasto directo:
+
+Ejemplo Fuel cash:
+Original:
+Dr 5020 Fuel Expense
+Cr 1015 Cash Clearing
+
+Reversal:
+Dr 1015 Cash Clearing
+Cr 5020 Fuel Expense
+
+Ejemplo Fuel bank:
+Original:
+Dr 5020 Fuel Expense
+Cr 1010 Bank
+
+Reversal:
+Dr 1010 Bank
+Cr 5020 Fuel Expense
+
+Luego:
+- gasto debe desaparecer de total expenses
+- cash clearing debe ajustarse
+- profit debe recalcularse
+- lista visual debe marcar voided/cancelled, no hard delete
+
+==================================================
+FASE 6 — BOOKING PAYMENT DELETE FIX
+==================================================
+
+Si se elimina pago recibido de cliente:
+
+Cash payment original:
+Dr 1015 Cash Clearing
+Cr 2500 Deferred / 1100 AR
+
+Reversal:
+Dr 2500 Deferred / 1100 AR
+Cr 1015 Cash Clearing
+
+Bank/Zelle payment original:
+Dr 1010 Bank
+Cr 2500 Deferred / 1100 AR
+
+Reversal:
+Dr 2500 Deferred / 1100 AR
+Cr 1010 Bank
+
+Luego:
+- total_collected baja
+- AR/deferred se recalcula
+- cash clearing cambia si era cash
+- booking puede volver a partial/unpaid
+- no permitir cierre si ya no cuadra
+
+==================================================
+FASE 7 — REVENUE RECOGNITION REVERSAL
+==================================================
+
+Si se revierte revenue recognition:
+
+Original:
+Dr 2500/1100
+Cr 4010/4020 Revenue
+
+Reversal:
+Dr 4010/4020 Revenue
+Cr 2500/1100
+
+Solo permitir:
+- usuario admin
+- reason obligatorio
+- periodo no locked
+- si periodo locked, crear adjustment en periodo abierto
+
+==================================================
+FASE 8 — CORPORATE EXPENSE / AP / OTHER INCOME DELETE FIX
+==================================================
+
+Corporate expense paid:
+Original:
+Dr Expense
+Cr Bank
+Reversal:
+Dr Bank
+Cr Expense
+
+Corporate payable bill:
+Original:
+Dr Expense
+Cr AP
+Reversal:
+Dr AP
+Cr Expense
+
+Corporate payable payment:
+Original:
+Dr AP
+Cr Bank
+Reversal:
+Dr Bank
+Cr AP
+
+Other income:
+Original:
+Dr Bank
+Cr Other Income
+Reversal:
+Dr Other Income
+Cr Bank
+
+Manual entry:
+No delete.
+Only reverse with exact opposite journal entry.
+
+==================================================
+FASE 9 — CREAR ENDPOINT UNIVERSAL
+==================================================
+
+Crear endpoint:
+
+POST /api/accounting/reverse
+
+Body:
+{
+  "source_type": "captain_payment | captain_payable | booking_expense | booking_payment | revenue_recognition | corporate_expense | corporate_payable | corporate_payable_payment | other_income | manual_entry",
+  "source_id": "string",
+  "booking_id": "optional",
+  "reason": "required",
+  "created_by": "required"
+}
+
+Response:
+{
+  "success": true,
+  "reversal_journal_entry_id": "...",
+  "affected_accounts": [],
+  "updated_ledger": {},
+  "audit_log_id": "..."
+}
+
+Validaciones:
+- reason obligatorio
+- no reversing twice
+- no reverse locked period unless adjustment period
+- source exists
+- source has accounting impact
+- reversal balances Dr=Cr
+
+==================================================
+FASE 10 — AUDIT TRAIL
+==================================================
+
+Crear o usar tabla:
+accounting_reversal_log
+
+Campos:
+- id
+- source_type
+- source_id
+- booking_id
+- original_journal_entry_id
+- reversal_journal_entry_id
+- original_amount
+- reversal_amount
+- reason
+- reversed_by
+- reversed_at
+- before_state_json
+- after_state_json
+
+==================================================
+FASE 11 — UI FIX
+==================================================
+
+En booking-wizard.html y accounting.html:
+
+Cambiar botones “Eliminar” por:
+- “Anular”
+- “Reversar”
+- “Void”
+
+Cuando usuario haga clic:
+Mostrar modal:
+“Esta acción no borrará físicamente el registro. Creará un reverso contable auditado.”
+
+Campos:
+- reason obligatorio
+- confirm checkbox:
+  “Entiendo que se creará un reverso contable”
+
+NO permitir borrar sin razón.
+
+Después de reversar:
+- refrescar ledger
+- refrescar summary
+- refrescar cash clearing
+- refrescar AP
+- refrescar profit
+- mostrar resultado
+
+==================================================
+FASE 12 — RECALCULAR LEDGER DESPUÉS DE REVERSAL
+==================================================
+
+Después de cualquier reversal ejecutar:
+
+- rebuildBookingLedger(booking_id)
+- checkBookingIntegrity(booking_id)
+- updatePayableBalances()
+- updateCashClearing()
+- updateDashboardKPIs()
+
+No confiar en valores cacheados.
+
+==================================================
+FASE 13 — PRUEBAS OBLIGATORIAS
+==================================================
+
+Crear QA suite:
+
+1. Crear captain payable $250
+2. Pagar $144 cash
+3. Reversar pago $144
+Expected:
+- AP balance vuelve a $250
+- total_paid = 0
+- cash clearing regresa
+- no cambia captain expense $250
+
+4. Pagar $106 zelle
+5. Reversar pago $106
+Expected:
+- AP balance sube
+- Bank se reversa
+- cash clearing NO cambia
+
+6. Crear fuel expense $300 cash
+7. Reversar fuel
+Expected:
+- expense baja
+- cash clearing sube
+- profit recalcula
+
+8. Crear customer cash payment $450
+9. Reversar payment
+Expected:
+- total_collected baja
+- cash clearing baja
+- AR/deferred recalcula
+
+10. Crear other income $100
+11. Reversar other income
+Expected:
+- other income baja
+- bank se reversa
+
+12. Manual entry reversal
+Expected:
+- original intacto
+- reversal inverso
+- trial balance sigue cuadrado
+
+13. Intentar reversar mismo source dos veces
+Expected:
+HTTP 409 ALREADY_REVERSED
+
+14. Intentar reversar sin reason
+Expected:
+HTTP 400 reason required
+
+15. Intentar hard delete contable
+Expected:
+bloqueado o redirigido a reversal
+
+==================================================
+FASE 14 — REGRESSION TESTS
+==================================================
+
+Después de implementar:
+
+- Matej sigue correcto
+- Cash clearing correcto
+- AP aging correcto
+- Trial balance cuadrado
+- P&L correcto
+- Balance sheet no rompe
+- Cancelled lock sigue activo
+- Legacy lock sigue activo
+- Corporate QA 18/18 sigue PASS
+- Booking total calendar/wizard sigue corregido
+
+==================================================
+FASE 15 — AUDITORÍA DE ERRORES EXISTENTES
+==================================================
+
+Ejecutar auditoría:
+
+GET /api/accounting/audit/delete-vs-ledger-integrity
+
+Debe detectar:
+- registros visualmente cancelados pero ledger activo
+- registros activos pero journal reversed
+- payments deleted visually but still counted
+- expenses deleted visually but still counted
+- payables paid mismatch
+- transaction orphan active
+
+Para cada issue:
+- source_type
+- source_id
+- booking_id
+- amount
+- ledger_still_active
+- recommended_fix
+
+Aplicar fix si es seguro.
+
+==================================================
+FASE 16 — CRITERIO DE ÉXITO
+==================================================
+
+Solo declarar resuelto si:
+
+1. Ningún delete visual deja ledger activo.
+2. Todo reversal crea asiento inverso.
+3. No hay hard delete contable.
+4. AP balances se actualizan.
+5. Cash clearing se actualiza.
+6. Profit se recalcula.
+7. Trial balance sigue cuadrado.
+8. Delete-vs-ledger audit = 0 critical issues.
+9. Pruebas de reversal pasan.
+10. UI ya no dice eliminar, dice anular/reversar.
+
+==================================================
+FASE 17 — ENTREGABLE FINAL
+==================================================
+
+Reportar:
+
+1. Causa raíz del bug.
+2. Funciones/endpoints encontrados con delete visual.
+3. Qué se corrigió.
+4. Endpoint universal creado.
+5. Pruebas realizadas.
+6. Resultado de reversar pago capitán.
+7. Resultado de reversar expense.
+8. Resultado de reversar payment.
+9. Resultado audit delete-vs-ledger.
+10. Confirmación Trial Balance.
+11. Confirmación Matej.
+12. Riesgos pendientes.

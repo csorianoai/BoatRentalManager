@@ -3015,6 +3015,52 @@ async function initializeDatabase() {
     }
     // ── END FASE 28 ──────────────────────────────────────────────────────────
 
+    // ── FASE 29: Ledger Integrity — Universal Reversal System ────────────────
+    try {
+      // Core audit log for reversals
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS accounting_reversal_log (
+          id               TEXT PRIMARY KEY DEFAULT 'rvl_' || substr(md5(random()::text),1,16),
+          source_type      TEXT NOT NULL,
+          source_id        TEXT NOT NULL,
+          booking_id       TEXT,
+          original_tx_ids  TEXT[] NOT NULL DEFAULT '{}',
+          reversal_tx_ids  TEXT[] NOT NULL DEFAULT '{}',
+          original_amount  NUMERIC(12,2) NOT NULL DEFAULT 0,
+          reversal_amount  NUMERIC(12,2) NOT NULL DEFAULT 0,
+          reason           TEXT NOT NULL,
+          reversed_by      TEXT NOT NULL DEFAULT 'system',
+          reversed_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          before_state     JSONB,
+          after_state      JSONB
+        )
+      `);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_rvl_source ON accounting_reversal_log(source_type, source_id)`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_rvl_booking ON accounting_reversal_log(booking_id)`);
+      // Extend transactions with reversal metadata
+      await pool.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS is_reversal BOOLEAN DEFAULT FALSE`);
+      await pool.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS reversal_of TEXT`);
+      await pool.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS voided_reason TEXT`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_tx_reversal_of ON transactions(reversal_of) WHERE reversal_of IS NOT NULL`);
+      // Extend source tables with void fields
+      await pool.query(`ALTER TABLE boat_expenses ADD COLUMN IF NOT EXISTS voided_reason TEXT`);
+      await pool.query(`ALTER TABLE boat_expenses ADD COLUMN IF NOT EXISTS voided_by TEXT`);
+      await pool.query(`ALTER TABLE boat_expenses ADD COLUMN IF NOT EXISTS voided_at TIMESTAMPTZ`);
+      await pool.query(`ALTER TABLE captain_payments ADD COLUMN IF NOT EXISTS voided_reason TEXT`);
+      await pool.query(`ALTER TABLE captain_payments ADD COLUMN IF NOT EXISTS voided_by TEXT`);
+      await pool.query(`ALTER TABLE captain_payments ADD COLUMN IF NOT EXISTS voided_at TIMESTAMPTZ`);
+      await pool.query(`ALTER TABLE stew_payments ADD COLUMN IF NOT EXISTS voided_reason TEXT`);
+      await pool.query(`ALTER TABLE stew_payments ADD COLUMN IF NOT EXISTS voided_by TEXT`);
+      await pool.query(`ALTER TABLE stew_payments ADD COLUMN IF NOT EXISTS voided_at TIMESTAMPTZ`);
+      await pool.query(`ALTER TABLE booking_captain_payments ADD COLUMN IF NOT EXISTS voided BOOLEAN DEFAULT FALSE`);
+      await pool.query(`ALTER TABLE booking_captain_payments ADD COLUMN IF NOT EXISTS voided_at TIMESTAMPTZ`);
+      await pool.query(`ALTER TABLE booking_captain_payments ADD COLUMN IF NOT EXISTS voided_reason TEXT`);
+      console.log('✅ FASE 29 reversal system tables ready');
+    } catch (e29) {
+      console.warn('⚠️ FASE 29 (non-critical):', e29.message);
+    }
+    // ── END FASE 29 ──────────────────────────────────────────────────────────
+
     // ── END FASE 23 ──────────────────────────────────────────────────────────
 
     console.log('✅ Database schema initialized successfully (all 10 phases + authentication)');
@@ -8060,23 +8106,42 @@ app.put('/api/accounting/transactions/:id', isAuthenticated, async (req, res) =>
 });
 
 // Delete transaction
+// FASE 29: void (not hard-delete) — creates reversal entry, excludes original
 app.delete('/api/accounting/transactions/:id', isAuthenticated, async (req, res) => {
+  const pg = await pool.connect();
   try {
     const { id } = req.params;
-    const result = await pool.query(
-      'DELETE FROM transactions WHERE id = $1 RETURNING *',
-      [id]
-    );
-    
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Transaction not found' });
+    const reason = req.body?.reason || req.query?.reason || 'Voided by admin';
+
+    // Check not already excluded
+    const { rows } = await pg.query(`SELECT * FROM transactions WHERE id=$1`, [id]);
+    if (!rows.length) return res.status(404).json({ error: 'Transaction not found' });
+    if (rows[0].excluded_from_ledger) {
+      return res.status(409).json({ error: 'Transaction already voided/excluded', code: 'ALREADY_VOIDED' });
     }
-    
-    res.json({ success: true });
-  } catch (error) {
-    console.error('Error deleting transaction:', error);
-    res.status(500).json({ error: 'Failed to delete transaction' });
-  }
+
+    // Check for duplicate reversal
+    const { rows: existing } = await pg.query(
+      `SELECT id FROM accounting_reversal_log WHERE source_type='transaction' AND source_id=$1 LIMIT 1`, [id]
+    );
+    if (existing.length) {
+      return res.status(409).json({ error: 'Transaction already reversed', code: 'ALREADY_REVERSED' });
+    }
+
+    await pg.query('BEGIN');
+    const result = await reverseFinancialImpact(pg, {
+      source_type: 'transaction', source_id: id,
+      booking_id: rows[0].booking_id,
+      reason,
+      created_by: req.user?.name || req.user?.email || 'admin',
+    });
+    await pg.query('COMMIT');
+    res.json({ success: true, voided: true, ...result });
+  } catch (err) {
+    await pg.query('ROLLBACK').catch(() => {});
+    console.error('Error voiding transaction:', err);
+    res.status(500).json({ error: err.message || 'Failed to void transaction' });
+  } finally { pg.release(); }
 });
 
 // ===== BANK STATEMENTS =====
@@ -12749,21 +12814,38 @@ app.patch('/api/boat-expenses/:id', async (req, res) => {
 });
 
 // Delete boat expense
-app.delete('/api/boat-expenses/:id', async (req, res) => {
+// FASE 29: void boat expense — soft cancel + reverse linked accounting transactions
+app.delete('/api/boat-expenses/:id', isAuthenticated, async (req, res) => {
+  const pg = await pool.connect();
   try {
     const { id } = req.params;
-    
-    const result = await pool.query('DELETE FROM boat_expenses WHERE id = $1 RETURNING *', [id]);
-    
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Expense not found' });
+    const reason = req.body?.reason || req.query?.reason || 'Boat expense voided';
+
+    const { rows } = await pg.query(`SELECT * FROM boat_expenses WHERE id=$1`, [id]);
+    if (!rows.length) return res.status(404).json({ error: 'Expense not found' });
+    if (['voided','cancelled'].includes(rows[0].status)) {
+      return res.status(409).json({ error: 'Expense already voided', code: 'ALREADY_VOIDED' });
     }
-    
-    res.json({ success: true, deleted: result.rows[0] });
-  } catch (error) {
-    console.error('Error deleting boat expense:', error);
-    res.status(500).json({ error: 'Failed to delete boat expense' });
-  }
+
+    const { rows: existing } = await pg.query(
+      `SELECT id FROM accounting_reversal_log WHERE source_type='boat_expense' AND source_id=$1 LIMIT 1`, [id]
+    );
+    if (existing.length) return res.status(409).json({ error: 'Already reversed', code: 'ALREADY_REVERSED' });
+
+    await pg.query('BEGIN');
+    const result = await reverseFinancialImpact(pg, {
+      source_type: 'boat_expense', source_id: id,
+      booking_id: rows[0].booking_id,
+      reason,
+      created_by: req.user?.name || req.user?.email || 'admin',
+    });
+    await pg.query('COMMIT');
+    res.json({ success: true, voided: true, ...result });
+  } catch (err) {
+    await pg.query('ROLLBACK').catch(() => {});
+    console.error('Error voiding boat expense:', err);
+    res.status(500).json({ error: err.message || 'Failed to void boat expense' });
+  } finally { pg.release(); }
 });
 
 // Get expense analytics
@@ -15604,6 +15686,385 @@ function resolveBookingTotal(booking) {
   return 0;
 }
 
+// ── FASE 29: reverseFinancialImpact — universal accounting reversal ────────
+// source_type: 'transaction' | 'captain_payment' | 'booking_captain_payment'
+//            | 'booking_expense' | 'boat_expense' | 'stew_payment'
+// pgClient: pool or connected pg client (caller manages BEGIN/COMMIT)
+// Returns: { reversal_log_id, original_tx_ids, reversal_tx_ids, original_amount, ... }
+async function reverseFinancialImpact(pgClient, { source_type, source_id, booking_id, reason, created_by }) {
+  if (!reason || !reason.trim()) throw new Error('reason is required for reversal');
+  if (!source_type || !source_id)  throw new Error('source_type and source_id are required');
+
+  const { nanoid } = await import('nanoid');
+  const originalTxIds = [];
+  const reversalTxIds = [];
+  let originalAmount = 0;
+  let beforeState = {};
+  let afterState  = {};
+
+  // ── 1. Fetch source record + linked transactions ──────────────────────────
+  let sourceRecord = null;
+  let linkedTxs    = [];
+
+  if (source_type === 'transaction') {
+    const { rows } = await pgClient.query(`SELECT * FROM transactions WHERE id=$1`, [source_id]);
+    if (!rows.length) throw new Error(`Transaction ${source_id} not found`);
+    if (rows[0].is_reversal)             throw new Error('Cannot reverse a reversal entry');
+    if (rows[0].excluded_from_ledger)    throw new Error('Transaction already reversed/excluded');
+    sourceRecord   = rows[0];
+    linkedTxs      = rows;
+    originalAmount = parseFloat(rows[0].amount || 0);
+
+  } else if (source_type === 'captain_payment') {
+    const { rows } = await pgClient.query(`SELECT * FROM captain_payments WHERE id=$1`, [source_id]);
+    if (!rows.length)      throw new Error(`Captain payment ${source_id} not found`);
+    if (rows[0].voided_at) throw new Error('Captain payment already voided');
+    sourceRecord   = rows[0];
+    originalAmount = parseFloat(rows[0].amount || 0);
+    beforeState    = { status: rows[0].status, amount: rows[0].amount };
+    // find linked transactions (by transaction_id field OR reference_id)
+    const txIds = [rows[0].transaction_id].filter(Boolean);
+    const { rows: byId } = txIds.length
+      ? await pgClient.query(`SELECT * FROM transactions WHERE id=ANY($1) AND COALESCE(excluded_from_ledger,false)=false`, [txIds])
+      : { rows: [] };
+    const { rows: byRef } = await pgClient.query(
+      `SELECT * FROM transactions WHERE reference_id=$1 AND reference_type='captain_payment' AND COALESCE(excluded_from_ledger,false)=false`,
+      [source_id]
+    );
+    linkedTxs = [...new Map([...byId, ...byRef].map(t => [t.id, t])).values()];
+
+  } else if (source_type === 'booking_captain_payment') {
+    const { rows } = await pgClient.query(
+      `SELECT bcp.*, bcp2.captain_name, bcp2.total_due, bcp2.total_paid, bcp2.id as payable_id
+       FROM booking_captain_payments bcp
+       JOIN booking_captain_payables bcp2 ON bcp2.id = bcp.captain_payable_id
+       WHERE bcp.id=$1`, [source_id]
+    );
+    if (!rows.length)     throw new Error(`Captain payable payment ${source_id} not found`);
+    if (rows[0].voided)   throw new Error('Captain payable payment already voided');
+    sourceRecord   = rows[0];
+    originalAmount = parseFloat(rows[0].amount || 0);
+    beforeState    = { total_paid: rows[0].total_paid, balance_due: parseFloat(rows[0].total_due) - parseFloat(rows[0].total_paid) };
+    booking_id     = booking_id || rows[0].booking_id;
+    const txIds    = [rows[0].transaction_id_dr, rows[0].transaction_id_cr].filter(Boolean);
+    if (txIds.length) {
+      const { rows: t } = await pgClient.query(
+        `SELECT * FROM transactions WHERE id=ANY($1) AND COALESCE(excluded_from_ledger,false)=false`, [txIds]
+      );
+      linkedTxs = t;
+    }
+
+  } else if (source_type === 'booking_expense' || source_type === 'boat_expense') {
+    const { rows } = await pgClient.query(`SELECT * FROM boat_expenses WHERE id=$1`, [source_id]);
+    if (!rows.length)                                      throw new Error(`Boat expense ${source_id} not found`);
+    if (['voided','cancelled'].includes(rows[0].status))   throw new Error('Expense already voided/cancelled');
+    sourceRecord   = rows[0];
+    originalAmount = parseFloat(rows[0].amount || 0);
+    beforeState    = { status: rows[0].status, amount: rows[0].amount };
+    booking_id     = booking_id || rows[0].booking_id;
+    const { rows: byRef } = await pgClient.query(
+      `SELECT * FROM transactions WHERE reference_id=$1 AND COALESCE(excluded_from_ledger,false)=false`, [source_id]
+    );
+    let linkedByFallback = [];
+    if (!byRef.length && booking_id) {
+      // legacy: matched by booking_id + reference_type + amount (older records without reference_id)
+      const { rows: fb } = await pgClient.query(
+        `SELECT * FROM transactions
+         WHERE booking_id=$1 AND reference_type='booking_expense'
+           AND ABS(amount - $2::numeric) < 0.01
+           AND COALESCE(excluded_from_ledger,false)=false
+         LIMIT 5`,
+        [booking_id, originalAmount]
+      );
+      linkedByFallback = fb;
+    }
+    linkedTxs = byRef.length ? byRef : linkedByFallback;
+
+  } else if (source_type === 'stew_payment') {
+    const { rows } = await pgClient.query(`SELECT * FROM stew_payments WHERE id=$1`, [source_id]);
+    if (!rows.length)      throw new Error(`Stew payment ${source_id} not found`);
+    if (rows[0].voided_at) throw new Error('Stew payment already voided');
+    sourceRecord   = rows[0];
+    originalAmount = parseFloat(rows[0].amount || 0);
+    beforeState    = { amount: rows[0].amount, status: rows[0].status };
+    const { rows: t } = await pgClient.query(
+      `SELECT * FROM transactions WHERE reference_id=$1 AND COALESCE(excluded_from_ledger,false)=false`, [source_id]
+    );
+    linkedTxs = t;
+
+  } else {
+    throw new Error(`Unsupported source_type: ${source_type}`);
+  }
+
+  // ── 2. Create reversal transactions for each linked tx ───────────────────
+  const reversalDate = new Date().toISOString().slice(0, 10);
+  const reversalNotes = `[REVERSAL] ${reason} — by:${created_by || 'system'}`;
+
+  for (const tx of linkedTxs) {
+    originalTxIds.push(tx.id);
+    const rvlId = 'tx_rvl_' + nanoid(10);
+    reversalTxIds.push(rvlId);
+    // Flip transaction_type to create equal & opposite entry
+    const flippedType = tx.transaction_type === 'income' ? 'expense' : 'income';
+    await pgClient.query(`
+      INSERT INTO transactions
+        (id, transaction_date, account_id, account_code, amount, transaction_type,
+         description, reference_id, reference_type, booking_id, boat_id, captain_id,
+         source_system, notes, is_reversal, reversal_of, voided_reason)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,true,$15,$16)
+    `, [
+      rvlId, reversalDate,
+      tx.account_id, tx.account_code || null,
+      tx.amount, flippedType,
+      `[REVERSAL] ${tx.description || ''}`,
+      source_id, tx.reference_type || source_type,
+      tx.booking_id || booking_id || null,
+      tx.boat_id || null, tx.captain_id || null,
+      'reversal_system', reversalNotes,
+      tx.id, reason
+    ]);
+    // Exclude original
+    await pgClient.query(
+      `UPDATE transactions SET excluded_from_ledger=true, voided_reason=$1 WHERE id=$2`,
+      [reason, tx.id]
+    );
+  }
+
+  // ── 3. Void source record ─────────────────────────────────────────────────
+  if (source_type === 'captain_payment') {
+    await pgClient.query(
+      `UPDATE captain_payments SET status='voided', voided_reason=$1, voided_by=$2, voided_at=NOW() WHERE id=$3`,
+      [reason, created_by || 'system', source_id]
+    );
+    afterState = { status: 'voided' };
+
+  } else if (source_type === 'booking_captain_payment') {
+    await pgClient.query(
+      `UPDATE booking_captain_payments SET voided=true, voided_at=NOW(), voided_reason=$1 WHERE id=$2`,
+      [reason, source_id]
+    );
+    // Recalculate payable totals
+    if (sourceRecord.payable_id) {
+      const { rows: pr } = await pgClient.query(
+        `SELECT total_paid, total_due FROM booking_captain_payables WHERE id=$1`, [sourceRecord.payable_id]
+      );
+      if (pr.length) {
+        const newTotalPaid = Math.max(0, parseFloat(pr[0].total_paid) - originalAmount);
+        const newBalance   = Math.max(0, parseFloat(pr[0].total_due) - newTotalPaid);
+        const newStatus    = newBalance < 0.005 ? 'paid'
+          : newTotalPaid > 0 ? 'partially_paid' : 'pending';
+        await pgClient.query(
+          `UPDATE booking_captain_payables SET total_paid=$1, balance_due=$2, status=$3, updated_at=NOW() WHERE id=$4`,
+          [newTotalPaid, newBalance, newStatus, sourceRecord.payable_id]
+        );
+        afterState = { payable_status: newStatus, total_paid: newTotalPaid, balance_due: newBalance };
+      }
+    }
+
+  } else if (source_type === 'booking_expense' || source_type === 'boat_expense') {
+    await pgClient.query(
+      `UPDATE boat_expenses SET status='voided', voided_reason=$1, voided_by=$2, voided_at=NOW() WHERE id=$3`,
+      [reason, created_by || 'system', source_id]
+    );
+    afterState = { status: 'voided' };
+
+  } else if (source_type === 'stew_payment') {
+    await pgClient.query(
+      `UPDATE stew_payments SET status='voided', voided_reason=$1, voided_by=$2, voided_at=NOW() WHERE id=$3`,
+      [reason, created_by || 'system', source_id]
+    ).catch(() => {}); // graceful if columns added later
+    afterState = { status: 'voided' };
+
+  } else if (source_type === 'transaction') {
+    afterState = { excluded_from_ledger: true };
+  }
+
+  // ── 4. Audit trail ───────────────────────────────────────────────────────
+  const logId = 'rvl_' + nanoid(12);
+  await pgClient.query(`
+    INSERT INTO accounting_reversal_log
+      (id, source_type, source_id, booking_id, original_tx_ids, reversal_tx_ids,
+       original_amount, reversal_amount, reason, reversed_by, before_state, after_state)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb)
+    ON CONFLICT (id) DO NOTHING
+  `, [
+    logId, source_type, source_id,
+    booking_id || sourceRecord?.booking_id || null,
+    originalTxIds, reversalTxIds,
+    originalAmount, originalAmount,
+    reason, created_by || 'system',
+    JSON.stringify(beforeState), JSON.stringify(afterState)
+  ]);
+
+  return {
+    reversal_log_id:  logId,
+    source_type, source_id,
+    booking_id:       booking_id || sourceRecord?.booking_id || null,
+    original_tx_ids:  originalTxIds,
+    reversal_tx_ids:  reversalTxIds,
+    original_amount:  originalAmount,
+    txs_reversed:     linkedTxs.length,
+    reason,
+    affected_accounts: linkedTxs.map(t => t.account_code || t.account_id).filter(Boolean),
+  };
+}
+
+// ── FASE 29: POST /api/accounting/reverse — universal reversal endpoint ───
+app.post('/api/accounting/reverse', isAuthenticated, async (req, res) => {
+  const pg = await pool.connect();
+  try {
+    const { source_type, source_id, booking_id, reason, created_by } = req.body;
+    if (!reason || !reason.trim())   return res.status(400).json({ error: 'reason is required', code: 'REASON_REQUIRED' });
+    if (!source_type || !source_id)  return res.status(400).json({ error: 'source_type and source_id are required' });
+
+    // Check for duplicate reversal
+    const { rows: existing } = await pg.query(
+      `SELECT id FROM accounting_reversal_log WHERE source_type=$1 AND source_id=$2 LIMIT 1`,
+      [source_type, source_id]
+    );
+    if (existing.length) {
+      return res.status(409).json({
+        error: 'This entry has already been reversed',
+        code: 'ALREADY_REVERSED',
+        reversal_log_id: existing[0].id,
+      });
+    }
+
+    await pg.query('BEGIN');
+    const result = await reverseFinancialImpact(pg, {
+      source_type, source_id, booking_id,
+      reason, created_by: created_by || req.user?.name || req.user?.email || 'admin',
+    });
+
+    // If booking involved, refresh integrity snapshot
+    const bookingCtx = result.booking_id || booking_id;
+    let updatedLedger = null;
+    if (bookingCtx) {
+      updatedLedger = await checkBookingIntegrity(bookingCtx).catch(() => null);
+    }
+
+    await pg.query('COMMIT');
+    res.json({
+      success: true,
+      reversal_log_id:   result.reversal_log_id,
+      original_tx_ids:   result.original_tx_ids,
+      reversal_tx_ids:   result.reversal_tx_ids,
+      original_amount:   result.original_amount,
+      affected_accounts: result.affected_accounts,
+      updated_ledger:    updatedLedger,
+      audit_log_id:      result.reversal_log_id,
+    });
+  } catch (err) {
+    await pg.query('ROLLBACK').catch(() => {});
+    const is409 = err.message.includes('already') || err.message.includes('Already');
+    res.status(is409 ? 409 : 400).json({ error: err.message });
+  } finally { pg.release(); }
+});
+
+// ── FASE 29: GET /api/accounting/reverse/:id — reversal status ────────────
+app.get('/api/accounting/reverse/:logId', isAuthenticated, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT * FROM accounting_reversal_log WHERE id=$1 OR source_id=$1 LIMIT 1`,
+      [req.params.logId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Reversal log not found' });
+    res.json(rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── FASE 29: GET /api/accounting/audit/delete-vs-ledger-integrity ─────────
+// Detect: visual cancellations with active ledger, payments deleted but counted, etc.
+app.get('/api/accounting/audit/delete-vs-ledger-integrity', isAuthenticated, async (req, res) => {
+  const issues = [];
+
+  // 1. boat_expenses voided/cancelled but linked transactions still active in ledger
+  const { rows: expIssues } = await pool.query(`
+    SELECT be.id, be.booking_id, be.amount, be.status, be.description,
+           COUNT(t.id) as active_txs,
+           SUM(t.amount) as active_amount
+    FROM boat_expenses be
+    JOIN transactions t ON t.reference_id = be.id
+    WHERE be.status IN ('voided','cancelled','archived')
+      AND COALESCE(t.excluded_from_ledger, false) = false
+      AND COALESCE(t.is_reversal, false) = false
+    GROUP BY be.id, be.booking_id, be.amount, be.status, be.description
+    LIMIT 20
+  `).catch(() => ({ rows: [] }));
+  expIssues.forEach(r => issues.push({
+    source_type: 'boat_expense', source_id: r.id, booking_id: r.booking_id,
+    amount: parseFloat(r.amount), ledger_still_active: true,
+    active_txs: parseInt(r.active_txs), active_amount: parseFloat(r.active_amount),
+    description: r.description,
+    recommended_fix: `POST /api/accounting/reverse with source_type=boat_expense source_id=${r.id}`,
+  }));
+
+  // 2. captain_payments voided but linked transactions still active
+  const { rows: cpIssues } = await pool.query(`
+    SELECT cp.id, cp.booking_id, cp.amount, cp.status,
+           COUNT(t.id) as active_txs, SUM(t.amount) as active_amount
+    FROM captain_payments cp
+    JOIN transactions t ON (t.reference_id = cp.id OR t.id = cp.transaction_id)
+    WHERE cp.status = 'voided'
+      AND COALESCE(t.excluded_from_ledger, false) = false
+      AND COALESCE(t.is_reversal, false) = false
+    GROUP BY cp.id, cp.booking_id, cp.amount, cp.status
+    LIMIT 20
+  `).catch(() => ({ rows: [] }));
+  cpIssues.forEach(r => issues.push({
+    source_type: 'captain_payment', source_id: r.id, booking_id: r.booking_id,
+    amount: parseFloat(r.amount), ledger_still_active: true,
+    recommended_fix: `POST /api/accounting/reverse with source_type=captain_payment source_id=${r.id}`,
+  }));
+
+  // 3. booking_captain_payments voided but dr/cr transactions still active
+  const { rows: bcpIssues } = await pool.query(`
+    SELECT bcp.id, bcp.booking_id, bcp.amount,
+           COUNT(t.id) as active_txs
+    FROM booking_captain_payments bcp
+    JOIN transactions t ON t.id IN (bcp.transaction_id_dr, bcp.transaction_id_cr)
+    WHERE COALESCE(bcp.voided, false) = true
+      AND COALESCE(t.excluded_from_ledger, false) = false
+    GROUP BY bcp.id, bcp.booking_id, bcp.amount
+    LIMIT 20
+  `).catch(() => ({ rows: [] }));
+  bcpIssues.forEach(r => issues.push({
+    source_type: 'booking_captain_payment', source_id: r.id, booking_id: r.booking_id,
+    amount: parseFloat(r.amount), ledger_still_active: true,
+    recommended_fix: `POST /api/accounting/reverse with source_type=booking_captain_payment source_id=${r.id}`,
+  }));
+
+  // 4. Orphan active transactions (reference_id points to voided/cancelled source)
+  const { rows: orphanTxs } = await pool.query(`
+    SELECT t.id, t.booking_id, t.amount, t.reference_type, t.reference_id, t.description
+    FROM transactions t
+    WHERE t.reference_type = 'booking_expense'
+      AND t.reference_id IS NOT NULL
+      AND COALESCE(t.excluded_from_ledger, false) = false
+      AND COALESCE(t.is_reversal, false) = false
+      AND NOT EXISTS (
+        SELECT 1 FROM boat_expenses be
+        WHERE be.id = t.reference_id
+          AND be.status NOT IN ('voided','cancelled','archived')
+      )
+    LIMIT 20
+  `).catch(() => ({ rows: [] }));
+  orphanTxs.forEach(r => issues.push({
+    source_type: 'orphan_transaction', source_id: r.id, booking_id: r.booking_id,
+    amount: parseFloat(r.amount), ledger_still_active: true,
+    reference_type: r.reference_type, reference_id: r.reference_id,
+    description: r.description,
+    recommended_fix: `POST /api/accounting/reverse with source_type=transaction source_id=${r.id} reason="orphan_cleanup"`,
+  }));
+
+  res.json({
+    timestamp: new Date().toISOString(),
+    total_issues: issues.length,
+    issues,
+    clean: issues.length === 0,
+  });
+});
+
 // ── checkBookingIntegrity — standalone audit function ─────────────────────
 async function checkBookingIntegrity(bookingId) {
   // 1. Core booking data
@@ -16541,6 +17002,58 @@ app.post('/api/bookings/:id/captain-payable/:payable_id/payments', isAuthenticat
   } catch (err) {
     await pg.query('ROLLBACK').catch(() => {});
     console.error('POST captain-payment error:', err);
+    res.status(500).json({ error: err.message });
+  } finally { pg.release(); }
+});
+
+// ── FASE 29: DELETE /api/bookings/:id/captain-payments/:pmtId ─────────────
+// Voids a FASE 23 booking_captain_payment and reverses its Dr/Cr ledger legs
+app.delete('/api/bookings/:id/captain-payable/:payable_id/payments/:pmtId', isAuthenticated, async (req, res) => {
+  const pg = await pool.connect();
+  try {
+    const { id: bookingId, pmtId } = req.params;
+    const reason = req.body?.reason || req.query?.reason || 'Captain payable payment voided';
+
+    const { rows } = await pg.query(
+      `SELECT bcp.*, bcp2.captain_name FROM booking_captain_payments bcp
+       JOIN booking_captain_payables bcp2 ON bcp2.id = bcp.captain_payable_id
+       WHERE bcp.id=$1 AND bcp.booking_id=$2`, [pmtId, bookingId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Payment no encontrado' });
+    if (rows[0].voided) return res.status(409).json({ error: 'Payment already voided', code: 'ALREADY_VOIDED' });
+
+    const { rows: existing } = await pg.query(
+      `SELECT id FROM accounting_reversal_log WHERE source_type='booking_captain_payment' AND source_id=$1 LIMIT 1`, [pmtId]
+    );
+    if (existing.length) return res.status(409).json({ error: 'Already reversed', code: 'ALREADY_REVERSED' });
+
+    await pg.query('BEGIN');
+    const result = await reverseFinancialImpact(pg, {
+      source_type: 'booking_captain_payment', source_id: pmtId,
+      booking_id: bookingId, reason,
+      created_by: req.user?.name || req.user?.email || 'admin',
+    });
+
+    await logBookingAudit(pg, {
+      booking_id: bookingId,
+      action_type: 'captain_payment_voided',
+      amount: result.original_amount,
+      notes: `Pago capitán ${rows[0].captain_name} anulado: $${result.original_amount.toFixed(2)} — ${reason}`,
+      user: req.user?.id || 'system',
+    });
+
+    await pg.query('COMMIT');
+    const { rows: updatedPayable } = await pool.query(
+      `SELECT * FROM booking_captain_payables WHERE id=$1`, [rows[0].captain_payable_id]
+    );
+    const { rows: allPayments } = await pool.query(
+      `SELECT * FROM booking_captain_payments WHERE captain_payable_id=$1 ORDER BY created_at ASC`,
+      [rows[0].captain_payable_id]
+    );
+    res.json({ success: true, voided: true, ...result, payable: updatedPayable[0] || null, payments: allPayments });
+  } catch (err) {
+    await pg.query('ROLLBACK').catch(() => {});
+    console.error('DELETE captain payment error:', err);
     res.status(500).json({ error: err.message });
   } finally { pg.release(); }
 });
@@ -18978,12 +19491,13 @@ app.put('/api/boat-pricing-rules/:id', isAuthenticated, async (req, res) => {
   }
 });
 
-// DELETE /api/bookings/:bookingId/expenses/:expId — anular gasto antes de cierre
+// DELETE /api/bookings/:bookingId/expenses/:expId — FASE 29: soft void + reversal
 app.delete('/api/bookings/:bookingId/expenses/:expId', isAuthenticated, async (req, res) => {
   const pg = await pool.connect();
   try {
     await pg.query('BEGIN');
     const { bookingId, expId } = req.params;
+    const reason = req.body?.reason || req.query?.reason || 'Gasto anulado desde booking wizard';
 
     // Block if booking is locked/reconciled
     const { rows: bkRows } = await pg.query(
@@ -19005,40 +19519,57 @@ app.delete('/api/bookings/:bookingId/expenses/:expId', isAuthenticated, async (r
     );
     if (!expRows.length) { await pg.query('ROLLBACK'); return res.status(404).json({ error: 'Gasto no encontrado para este booking' }); }
     const exp = expRows[0];
+    if (['voided','cancelled'].includes(exp.status)) {
+      await pg.query('ROLLBACK');
+      return res.status(409).json({ error: 'El gasto ya está anulado', code: 'ALREADY_VOIDED' });
+    }
     const amt = parseFloat(exp.amount || 0);
 
-    // Delete the associated accounting transactions (both debit and credit legs)
-    await pg.query(
-      `DELETE FROM transactions WHERE booking_id = $1 AND reference_type = 'booking_expense' AND amount = $2`,
-      [bookingId, amt]
+    // FASE 29: Use reverseFinancialImpact instead of dangerous amount-based DELETE
+    // This creates proper reversal transactions and excludes originals by ID (not by amount)
+    const { rows: existingRvl } = await pg.query(
+      `SELECT id FROM accounting_reversal_log WHERE source_type='booking_expense' AND source_id=$1 LIMIT 1`, [expId]
     );
-
-    // Cancel/delete the boat_expense record
-    await pg.query(`UPDATE boat_expenses SET status = 'cancelled' WHERE id = $1`, [expId]);
+    let reversalResult = null;
+    if (!existingRvl.length) {
+      reversalResult = await reverseFinancialImpact(pg, {
+        source_type: 'booking_expense', source_id: expId,
+        booking_id: bookingId, reason,
+        created_by: req.user?.name || req.user?.email || 'system',
+      });
+    } else {
+      // Already reversed via reversal log — just ensure expense is marked voided
+      await pg.query(`UPDATE boat_expenses SET status='voided' WHERE id=$1 AND status NOT IN ('voided','cancelled')`, [expId]);
+    }
 
     // Audit log
     await logBookingAudit(pg, {
       booking_id: bookingId,
       action_type: 'expense_voided',
       amount: amt,
-      notes: `Gasto anulado: ${exp.description || exp.category || expId} ($${amt.toFixed(2)})`,
+      notes: `Gasto anulado: ${exp.description || exp.category || expId} ($${amt.toFixed(2)}) — ${reason}`,
       user: req.user?.id || 'system',
     });
 
     await pg.query('COMMIT');
-    res.json({ success: true, voided_amount: amt, expense_id: expId });
+    res.json({
+      success: true, voided_amount: amt, expense_id: expId,
+      reversal_log_id: reversalResult?.reversal_log_id || existingRvl[0]?.id || null,
+      reversal_tx_ids: reversalResult?.reversal_tx_ids || [],
+    });
   } catch(err) {
     await pg.query('ROLLBACK');
     res.status(500).json({ error: err.message });
   } finally { pg.release(); }
 });
 
-// DELETE /api/bookings/:bookingId/transactions/:txId — anular/eliminar pago antes de cierre
+// DELETE /api/bookings/:bookingId/transactions/:txId — FASE 29: excluded_from_ledger + reversal
 app.delete('/api/bookings/:bookingId/transactions/:txId', isAuthenticated, async (req, res) => {
   const pg = await pool.connect();
   try {
     await pg.query('BEGIN');
     const { bookingId, txId } = req.params;
+    const reason = req.body?.reason || req.query?.reason || 'Pago anulado desde booking wizard';
 
     // Only allow void while booking is not locked
     const { rows: bkRows } = await pg.query(
@@ -19055,10 +19586,9 @@ app.delete('/api/bookings/:bookingId/transactions/:txId', isAuthenticated, async
       return res.status(409).json({ error: 'El booking ya está cerrado/reconciliado. No se puede anular pagos.' });
     }
 
-    // Fetch the transaction to get its amount and type
+    // Fetch the transaction
     const { rows: txRows } = await pg.query(
-      `SELECT id, amount, transaction_type, account_id, description FROM transactions
-       WHERE id = $1 AND booking_id = $2`, [txId, bookingId]
+      `SELECT * FROM transactions WHERE id = $1 AND booking_id = $2`, [txId, bookingId]
     );
     if (!txRows.length) { await pg.query('ROLLBACK'); return res.status(404).json({ error: 'Transacción no encontrada para este booking' }); }
     const tx = txRows[0];
@@ -19066,13 +19596,27 @@ app.delete('/api/bookings/:bookingId/transactions/:txId', isAuthenticated, async
       await pg.query('ROLLBACK');
       return res.status(400).json({ error: 'Solo se pueden anular pagos de ingreso (income) desde el wizard' });
     }
+    if (tx.excluded_from_ledger) {
+      await pg.query('ROLLBACK');
+      return res.status(409).json({ error: 'Transacción ya anulada', code: 'ALREADY_VOIDED' });
+    }
 
     const amt = parseFloat(tx.amount || 0);
 
-    // Delete the transaction (before reconciliation, hard delete is acceptable)
-    await pg.query(`DELETE FROM transactions WHERE id = $1`, [txId]);
+    // FASE 29: Use reverseFinancialImpact — excludes original + creates reversal tx
+    const { rows: existingRvl } = await pg.query(
+      `SELECT id FROM accounting_reversal_log WHERE source_type='transaction' AND source_id=$1 LIMIT 1`, [txId]
+    );
+    let reversalResult = null;
+    if (!existingRvl.length) {
+      reversalResult = await reverseFinancialImpact(pg, {
+        source_type: 'transaction', source_id: txId,
+        booking_id: bookingId, reason,
+        created_by: req.user?.name || req.user?.email || 'system',
+      });
+    }
 
-    // Restore booking balance
+    // Restore booking balance (same logic as before)
     const curBal = parseFloat(bk.balance_pending || 0);
     const newBal = curBal + amt;
     const newStatus = newBal > 0.01 ? (newBal < parseFloat(bk.total_amount || 0) ? 'partial' : 'pending') : 'paid';
@@ -19086,12 +19630,16 @@ app.delete('/api/bookings/:bookingId/transactions/:txId', isAuthenticated, async
       booking_id: bookingId,
       action_type: 'payment_voided',
       amount: amt,
-      notes: `Anulado: ${tx.description || txId}`,
+      notes: `Anulado: ${tx.description || txId} — ${reason}`,
       user: req.user?.id || 'system',
     });
 
     await pg.query('COMMIT');
-    res.json({ success: true, voided_amount: amt, new_balance: newBal });
+    res.json({
+      success: true, voided_amount: amt, new_balance: newBal,
+      reversal_log_id: reversalResult?.reversal_log_id || existingRvl[0]?.id || null,
+      reversal_tx_ids: reversalResult?.reversal_tx_ids || [],
+    });
   } catch(err) {
     await pg.query('ROLLBACK');
     res.status(500).json({ error: err.message });
@@ -20132,12 +20680,35 @@ app.patch('/api/captain-payments/:id', isAuthenticated, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// FASE 29: void captain payment — reverses linked accounting transactions
 app.delete('/api/captain-payments/:id', isAuthenticated, async (req, res) => {
+  const pg = await pool.connect();
   try {
-    const result = await pool.query('DELETE FROM captain_payments WHERE id=$1 RETURNING id', [req.params.id]);
-    if (result.rows.length === 0) return res.status(404).json({ error: 'No encontrado' });
-    res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+    const { id } = req.params;
+    const reason = req.body?.reason || req.query?.reason || 'Captain payment voided';
+
+    const { rows } = await pg.query(`SELECT * FROM captain_payments WHERE id=$1`, [id]);
+    if (!rows.length) return res.status(404).json({ error: 'No encontrado' });
+    if (rows[0].voided_at) return res.status(409).json({ error: 'Captain payment already voided', code: 'ALREADY_VOIDED' });
+
+    const { rows: existing } = await pg.query(
+      `SELECT id FROM accounting_reversal_log WHERE source_type='captain_payment' AND source_id=$1 LIMIT 1`, [id]
+    );
+    if (existing.length) return res.status(409).json({ error: 'Already reversed', code: 'ALREADY_REVERSED' });
+
+    await pg.query('BEGIN');
+    const result = await reverseFinancialImpact(pg, {
+      source_type: 'captain_payment', source_id: id,
+      booking_id: rows[0].booking_id,
+      reason,
+      created_by: req.user?.name || req.user?.email || 'admin',
+    });
+    await pg.query('COMMIT');
+    res.json({ success: true, voided: true, ...result });
+  } catch (err) {
+    await pg.query('ROLLBACK').catch(() => {});
+    res.status(500).json({ error: err.message });
+  } finally { pg.release(); }
 });
 
 // ── Captain Payments: booking-scoped ─────────────────────────────────────
@@ -20288,12 +20859,35 @@ app.patch('/api/stew-payments/:id', isAuthenticated, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// FASE 29: void stew payment — reverses linked accounting transactions
 app.delete('/api/stew-payments/:id', isAuthenticated, async (req, res) => {
+  const pg = await pool.connect();
   try {
-    const result = await pool.query('DELETE FROM stew_payments WHERE id=$1 RETURNING id', [req.params.id]);
-    if (result.rows.length === 0) return res.status(404).json({ error: 'No encontrado' });
-    res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+    const { id } = req.params;
+    const reason = req.body?.reason || req.query?.reason || 'Stew payment voided';
+
+    const { rows } = await pg.query(`SELECT * FROM stew_payments WHERE id=$1`, [id]);
+    if (!rows.length) return res.status(404).json({ error: 'No encontrado' });
+    if (rows[0].voided_at) return res.status(409).json({ error: 'Stew payment already voided', code: 'ALREADY_VOIDED' });
+
+    const { rows: existing } = await pg.query(
+      `SELECT id FROM accounting_reversal_log WHERE source_type='stew_payment' AND source_id=$1 LIMIT 1`, [id]
+    );
+    if (existing.length) return res.status(409).json({ error: 'Already reversed', code: 'ALREADY_REVERSED' });
+
+    await pg.query('BEGIN');
+    const result = await reverseFinancialImpact(pg, {
+      source_type: 'stew_payment', source_id: id,
+      booking_id: rows[0].booking_id || null,
+      reason,
+      created_by: req.user?.name || req.user?.email || 'admin',
+    });
+    await pg.query('COMMIT');
+    res.json({ success: true, voided: true, ...result });
+  } catch (err) {
+    await pg.query('ROLLBACK').catch(() => {});
+    res.status(500).json({ error: err.message });
+  } finally { pg.release(); }
 });
 
 app.get('/api/stew-payments/summary', isAuthenticated, async (req, res) => {
