@@ -1197,28 +1197,43 @@ function renderPaymentList() {
 }
 
 async function voidExpense(expId, amount) {
-  // FASE 29: require reason, creates reversal entry
   const reason = prompt(
     `Anular gasto de $${parseFloat(amount).toFixed(2)}\n\n` +
-    `Se cancela el gasto y se crean entradas de reversión contable para auditoría.\n\n` +
+    `Se excluye el gasto del libro mayor y se crea una entrada de reversión para auditoría.\n\n` +
     `Motivo (requerido):`
   );
   if (reason === null) return;
   if (!reason.trim()) { alert('El motivo es requerido para anular un gasto.'); return; }
   try {
-    await apiFetch(`/api/bookings/${BOOKING_ID}/expenses/${expId}`, {
-      method: 'DELETE',
+    const r = await apiFetch(`/api/accounting/reverse`, {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reason: reason.trim() }),
+      body: JSON.stringify({
+        source_type: 'booking_expense',
+        source_id:   expId,
+        booking_id:  BOOKING_ID,
+        reason:      reason.trim(),
+        reversed_by: 'wizard',
+      }),
     });
-    showToast('exp-msg', `Gasto de $${parseFloat(amount).toFixed(2)} anulado. Reversión contable registrada.`, 'success');
+    if (!r.success || !r.reversal_created) {
+      alert(`Error: el backend no confirmó la reversión.\n${JSON.stringify(r)}`);
+      return;
+    }
     await loadWizData();
     renderExpenseList();
     renderExpenseSummary();
     renderStep1();
+    // Verify: expense must no longer appear in active list
+    const stillActive = (wizData.expenses || []).find(e => e.id === expId);
+    if (stillActive) {
+      alert('Backend reversal failed: source still active. Contacta soporte.');
+    } else {
+      showToast('exp-msg', `Gasto de $${parseFloat(amount).toFixed(2)} anulado. Reversión contable registrada.`, 'success');
+    }
   } catch(e) {
     console.error('[voidExpense]', e);
-    if (e.message && e.message.includes('ya está anulado')) {
+    if (e.message && (e.message.includes('already') || e.message.includes('anulado') || e.message.includes('voided'))) {
       alert('Este gasto ya fue anulado anteriormente.');
     } else {
       alert('Error al anular el gasto:\n' + e.message);
@@ -1227,7 +1242,6 @@ async function voidExpense(expId, amount) {
 }
 
 async function voidPayment(txId, amount) {
-  // FASE 29: require reason, creates reversal entry + restores balance
   const reason = prompt(
     `Anular pago de $${parseFloat(amount).toFixed(2)}\n\n` +
     `Se excluye la transacción del libro mayor y se restaura el balance del booking.\n\n` +
@@ -1236,22 +1250,75 @@ async function voidPayment(txId, amount) {
   if (reason === null) return;
   if (!reason.trim()) { alert('El motivo es requerido para anular un pago.'); return; }
   try {
-    const r = await apiFetch(`/api/bookings/${BOOKING_ID}/transactions/${txId}`, {
-      method: 'DELETE',
+    const r = await apiFetch(`/api/accounting/reverse`, {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reason: reason.trim() }),
+      body: JSON.stringify({
+        source_type: 'transaction',
+        source_id:   txId,
+        booking_id:  BOOKING_ID,
+        reason:      reason.trim(),
+        reversed_by: 'wizard',
+      }),
     });
-    showToast('pay-msg', `Pago de $${parseFloat(amount).toFixed(2)} anulado. Balance restaurado.`, 'success');
+    if (!r.success || !r.reversal_created) {
+      alert(`Error: el backend no confirmó la reversión.\n${JSON.stringify(r)}`);
+      return;
+    }
     await loadWizData();
     renderPaymentList();
     renderPaymentSummary();
     renderStep1();
+    // Verify: payment must no longer appear in active transaction list
+    const stillActive = (wizData.transactions || []).find(t => t.id === txId);
+    if (stillActive) {
+      alert('Backend reversal failed: source still active. Contacta soporte.');
+    } else {
+      showToast('pay-msg', `Pago de $${parseFloat(amount).toFixed(2)} anulado. Balance restaurado.`, 'success');
+    }
   } catch(e) {
     console.error('[voidPayment]', e);
-    if (e.message && e.message.includes('ya anulada')) {
+    if (e.message && (e.message.includes('already') || e.message.includes('anulada') || e.message.includes('voided') || e.message.includes('excluded'))) {
       alert('Este pago ya fue anulado anteriormente.');
     } else {
       alert('Error al anular el pago:\n' + e.message);
+    }
+  }
+}
+
+async function voidCaptainPayment(pmtId, payableId, amount) {
+  const reason = prompt(
+    `Anular pago al capitán de $${parseFloat(amount).toFixed(2)}\n\n` +
+    `Se reversa el débito del AP y el crédito de caja/banco correspondiente.\n\n` +
+    `Motivo (requerido):`
+  );
+  if (reason === null) return;
+  if (!reason.trim()) { alert('El motivo es requerido para anular un pago al capitán.'); return; }
+  try {
+    const r = await apiFetch(`/api/bookings/${BOOKING_ID}/captain-payable/${payableId}/payments/${pmtId}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason: reason.trim() }),
+    });
+    if (!r.success && !r.voided) {
+      alert(`Error: el backend no confirmó la anulación.\n${JSON.stringify(r)}`);
+      return;
+    }
+    await Promise.all([loadWizData(), loadCaptainPayable()]);
+    renderStep1();
+    // Verify: voided payment should appear in payable as voided
+    const payable = r.payable;
+    if (payable && parseFloat(payable.total_paid) === parseFloat(payable.total_paid - amount)) {
+      alert('Backend reversal failed: captain paid amount still includes voided payment. Contacta soporte.');
+    } else {
+      showToast('cpmt-msg', `Pago al capitán de $${parseFloat(amount).toFixed(2)} anulado. AP y cuenta de pago revertidos.`, 'success');
+    }
+  } catch(e) {
+    console.error('[voidCaptainPayment]', e);
+    if (e.message && (e.message.includes('already') || e.message.includes('voided') || e.message.includes('ALREADY'))) {
+      alert('Este pago al capitán ya fue anulado anteriormente.');
+    } else {
+      alert('Error al anular pago al capitán:\n' + e.message);
     }
   }
 }
@@ -2180,13 +2247,19 @@ function renderCaptainPayable(data) {
   } else {
     const methodLabels = { cash:'Efectivo', zelle:'Zelle', bank:'Banco', card:'Tarjeta', other:'Otro' };
     pList.innerHTML = `<table class="mini-table">
-      <thead><tr><th>Fecha</th><th>Método</th><th>Monto</th><th>Cuenta</th><th>Notas</th></tr></thead>
-      <tbody>${payments.map(pm => `<tr>
+      <thead><tr><th>Fecha</th><th>Método</th><th>Monto</th><th>Cuenta</th><th>Notas</th><th></th></tr></thead>
+      <tbody>${payments.map(pm => `<tr${pm.voided ? ' style="opacity:0.45;text-decoration:line-through;"' : ''}>
         <td style="white-space:nowrap;">${String(pm.payment_date||'').slice(0,10)}</td>
         <td><span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:12px;font-size:10px;font-weight:700;">${methodLabels[pm.payment_method]||pm.payment_method}</span></td>
-        <td><strong style="color:#15803d;">$${parseFloat(pm.amount||0).toFixed(2)}</strong></td>
+        <td><strong style="color:${pm.voided?'#94a3b8':'#15803d'};">$${parseFloat(pm.amount||0).toFixed(2)}</strong></td>
         <td style="font-size:11px;font-family:monospace;">${pm.account_credit === 'acc_cash_clearing_1015' ? '1015 Cash Clearing' : '1010 Wells Fargo'}</td>
         <td style="font-size:11px;">${pm.notes||'—'}</td>
+        <td>${pm.voided
+          ? `<span style="background:#fef2f2;color:#991b1b;border:1px solid #fca5a5;border-radius:6px;padding:2px 8px;font-size:10px;font-weight:700;">ANULADO</span>`
+          : (pm.id && p.id ? `<button onclick="voidCaptainPayment('${pm.id}','${p.id}',${parseFloat(pm.amount||0).toFixed(2)})"
+              style="background:#fef2f2;color:#991b1b;border:1px solid #fca5a5;border-radius:6px;padding:2px 10px;font-size:11px;font-weight:700;cursor:pointer;"
+              title="Anular este pago al capitán" data-testid="button-void-captain-payment-${pm.id}">✕ Anular</button>` : '')
+        }</td>
       </tr>`).join('')}</tbody></table>`;
   }
 

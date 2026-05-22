@@ -16076,7 +16076,7 @@ app.post('/api/accounting/qa/reversal-stress-test', isAuthenticated, async (req,
 
   // QA booking (booking_id NOT NULL constraint on payables)
   const QA_BID = pfx + '_bk';
-  await pool.query(`INSERT INTO bookings (id,customer_name,customer_phone,booking_date,status,total_amount,payment_status,balance_pending,platform) VALUES ($1,'QA Reversal Test','+1-000-000-0000','2099-02-15','confirmed',500,'pending',500,'qa_test') ON CONFLICT(id) DO NOTHING`, [QA_BID]);
+  await pool.query(`INSERT INTO bookings (id,customer_name,customer_phone,booking_date,status,total_amount,payment_status,balance_pending,platform,boat_type) VALUES ($1,'QA Reversal Test','+1-000-000-0000','2099-02-15','confirmed',500,'pending',500,'qa_test','unknown') ON CONFLICT(id) DO NOTHING`, [QA_BID]);
 
   // ── TEST 1: Reverse Captain Cash Payment ──────────────────────────────────
   {
@@ -16126,7 +16126,7 @@ app.post('/api/accounting/qa/reversal-stress-test', isAuthenticated, async (req,
   {
     const expId = pfx + '_exp3', txDr = pfx + '_t3dr', txCr = pfx + '_t3cr';
     try {
-      await pool.query(`INSERT INTO boat_expenses (id,booking_id,expense_date,category,description,amount,payment_method,status,source_system) VALUES ($1,$2,$3,'fuel','QA fuel',300,'cash','active','qa_test') ON CONFLICT(id) DO NOTHING`, [expId, QA_BID, QD]);
+      await pool.query(`INSERT INTO boat_expenses (id,booking_id,boat_id,expense_date,category,description,amount,payment_method,status) VALUES ($1,$2,'boat_searay500',$3,'fuel','QA fuel',300,'cash','active') ON CONFLICT(id) DO NOTHING`, [expId, QA_BID, QD]);
       await pool.query(`INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,description,reference_id,reference_type,notes,source_system) VALUES ($1,$2,$3,'5020',300,'expense','QA Dr Fuel',$4,'booking_expense','booking_expense_dr','qa_test')`, [txDr, QD, A.C5020, expId]);
       await pool.query(`INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,description,reference_id,reference_type,notes,source_system) VALUES ($1,$2,$3,'1015',300,'expense','QA Cr Cash',$4,'booking_expense','booking_expense_cr','qa_test')`, [txCr, QD, A.CASH, expId]);
 
@@ -16145,7 +16145,7 @@ app.post('/api/accounting/qa/reversal-stress-test', isAuthenticated, async (req,
   {
     const expId = pfx + '_exp4', txDr = pfx + '_t4dr', txCr = pfx + '_t4cr';
     try {
-      await pool.query(`INSERT INTO boat_expenses (id,booking_id,expense_date,category,description,amount,payment_method,status,source_system) VALUES ($1,$2,$3,'ice','QA ice',5.99,'cash','active','qa_test') ON CONFLICT(id) DO NOTHING`, [expId, QA_BID, QD]);
+      await pool.query(`INSERT INTO boat_expenses (id,booking_id,boat_id,expense_date,category,description,amount,payment_method,status) VALUES ($1,$2,'boat_searay500',$3,'operational','QA ice',5.99,'cash','active') ON CONFLICT(id) DO NOTHING`, [expId, QA_BID, QD]);
       await pool.query(`INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,description,reference_id,reference_type,notes,source_system) VALUES ($1,$2,$3,'5030',5.99,'expense','QA Dr Ice',$4,'booking_expense','booking_expense_dr','qa_test')`, [txDr, QD, A.C5030, expId]);
       await pool.query(`INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,description,reference_id,reference_type,notes,source_system) VALUES ($1,$2,$3,'1015',5.99,'expense','QA Cr Cash',$4,'booking_expense','booking_expense_cr','qa_test')`, [txCr, QD, A.CASH, expId]);
 
@@ -16235,7 +16235,7 @@ app.post('/api/accounting/qa/reversal-stress-test', isAuthenticated, async (req,
   {
     const expId = pfx + '_exp10', txDr = pfx + '_t10dr', txCr = pfx + '_t10cr';
     try {
-      await pool.query(`INSERT INTO boat_expenses (id,booking_id,expense_date,category,description,amount,payment_method,status,source_system) VALUES ($1,$2,$3,'fuel','QA exp10',75,'cash','active','qa_test') ON CONFLICT(id) DO NOTHING`, [expId, QA_BID, QD]);
+      await pool.query(`INSERT INTO boat_expenses (id,booking_id,boat_id,expense_date,category,description,amount,payment_method,status) VALUES ($1,$2,'boat_searay500',$3,'fuel','QA exp10',75,'cash','active') ON CONFLICT(id) DO NOTHING`, [expId, QA_BID, QD]);
       await pool.query(`INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,description,reference_id,reference_type,booking_id,notes,source_system) VALUES ($1,$2,$3,'5020',75,'expense','QA Dr exp10',$4,'booking_expense',$5,'booking_expense_dr','qa_test')`, [txDr, QD, A.C5020, expId, QA_BID]);
       await pool.query(`INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,description,reference_id,reference_type,booking_id,notes,source_system) VALUES ($1,$2,$3,'1015',75,'expense','QA Cr Cash10',$4,'booking_expense',$5,'booking_expense_cr','qa_test')`, [txCr, QD, A.CASH, expId, QA_BID]);
 
@@ -16249,6 +16249,212 @@ app.post('/api/accounting/qa/reversal-stress-test', isAuthenticated, async (req,
       const p = ex[0]?.status==='voided' && dr[0]?.excluded_from_ledger && cr[0]?.excluded_from_ledger && lg.length>0;
       add(10,'Visual Delete Must Affect Ledger',p,`voided:${ex[0]?.status==='voided'}, dr_excl:${dr[0]?.excluded_from_ledger}, cr_excl:${cr[0]?.excluded_from_ledger}, audit:${lg.length>0}`);
     } catch(e) { add(10,'Visual Delete Must Affect Ledger',false,'ERROR: '+e.message); }
+  }
+
+  const passed = results.filter(r=>r.passed).length;
+  const failed  = results.filter(r=>!r.passed).length;
+  res.json({ summary: { total: results.length, passed, failed, all_pass: failed===0 }, qa_booking_id: QA_BID, results });
+});
+
+// ── FASE 29: POST /api/accounting/qa/void-reversal-hard-test ─────────────
+// 10 hard tests simulating the exact flows triggered by booking-wizard Anular buttons.
+// Tests wizard voidPayment, voidExpense, and voidCaptainPayment code paths end-to-end.
+app.post('/api/accounting/qa/void-reversal-hard-test', isAuthenticated, async (req, res) => {
+  const { nanoid } = await import('nanoid');
+  const pfx = 'qa_wz_' + Date.now();
+  const QD  = '2099-03-15';
+  const results = [];
+
+  const getA = async (code) => {
+    const { rows } = await pool.query(`SELECT id FROM chart_of_accounts WHERE account_code=$1 LIMIT 1`, [code]);
+    return rows[0]?.id || null;
+  };
+  const A = {
+    CASH: await getA('1015'), BANK: await getA('1010'),
+    AR:   await getA('1100'), DEF: await getA('2500'),
+    AP:   await getA('2000'), C5010: await getA('5010') || await getA('5090'),
+    C5020: await getA('5020') || await getA('5090'), C5030: await getA('5030') || await getA('5090'),
+  };
+
+  const add = (n, name, pass, details) => {
+    results.push({ test: n, name, status: pass ? 'PASS' : 'FAIL', passed: pass, details });
+    console.log(`[QA-WZ T${n}] ${pass ? '✅' : '❌'} ${name}: ${details}`);
+  };
+
+  const QA_BID = pfx + '_bk';
+  await pool.query(`INSERT INTO bookings (id,customer_name,customer_phone,booking_date,status,total_amount,payment_status,balance_pending,platform,boat_type) VALUES ($1,'QA Wizard Test','+1-000-000-0000','${QD}','confirmed',1000,'pending',1000,'qa_test','unknown') ON CONFLICT(id) DO NOTHING`, [QA_BID]);
+
+  // TEST 1: voidPayment cash — total_collected vuelve a 0, cash_1015 vuelve a 0
+  {
+    const txId = pfx + '_t1';
+    try {
+      await pool.query(`INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,description,reference_type,notes,booking_id,source_system) VALUES ($1,'${QD}',$2,'1015',1000,'income','WZ Cash $1000','cash_clearing','wz_test',$3,'qa_test')`, [txId, A.CASH, QA_BID]);
+      const r = await fetch(`http://localhost:5000/api/bookings/${QA_BID}/transactions/${txId}`, {
+        method:'DELETE', headers:{'Content-Type':'application/json', cookie: req.headers.cookie||''},
+        body: JSON.stringify({ reason: 'WZ test 1 cash void' })
+      }).then(r=>r.json()).catch(e=>({error:e.message}));
+      const { rows: tx } = await pool.query(`SELECT excluded_from_ledger FROM transactions WHERE id=$1`, [txId]);
+      const { rows: recn } = await pool.query(`
+        SELECT COALESCE(SUM(t.amount),0) as total FROM transactions t
+        WHERE t.booking_id=$1 AND t.transaction_type='income' AND COALESCE(t.excluded_from_ledger,false)=false AND t.account_code='1015'`, [QA_BID]);
+      const p = tx[0]?.excluded_from_ledger===true && parseFloat(recn[0]?.total)===0 && (r.success||r.voided_amount>0);
+      add(1,'voidPayment Cash → total_collected=0 cash_1015=0',p,`excl:${tx[0]?.excluded_from_ledger}, cc_active:${recn[0]?.total}, api:${JSON.stringify(r).slice(0,60)}`);
+    } catch(e) { add(1,'voidPayment Cash → total_collected=0 cash_1015=0',false,'ERROR:'+e.message); }
+  }
+
+  // TEST 2: voidPayment bank — bank_1010 vuelve a 0, cash_1015 no cambia
+  {
+    const txId = pfx + '_t2', txCash = pfx + '_t2cash';
+    try {
+      await pool.query(`INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,description,reference_type,notes,booking_id,source_system) VALUES ($1,'${QD}',$2,'1010',1000,'income','WZ Bank $1000','cash_clearing','wz_test',$3,'qa_test')`, [txId, A.BANK, QA_BID]);
+      await pool.query(`INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,description,reference_type,notes,booking_id,source_system) VALUES ($1,'${QD}',$2,'1015',200,'income','WZ Cash control','cash_clearing','wz_test',$3,'qa_test')`, [txCash, A.CASH, QA_BID]);
+      const r = await fetch(`http://localhost:5000/api/bookings/${QA_BID}/transactions/${txId}`, {
+        method:'DELETE', headers:{'Content-Type':'application/json', cookie: req.headers.cookie||''},
+        body: JSON.stringify({ reason: 'WZ test 2 bank void' })
+      }).then(r=>r.json()).catch(e=>({error:e.message}));
+      const { rows: bankTx }  = await pool.query(`SELECT excluded_from_ledger FROM transactions WHERE id=$1`, [txId]);
+      const { rows: cashTx }  = await pool.query(`SELECT excluded_from_ledger FROM transactions WHERE id=$1`, [txCash]);
+      const bankExcl = bankTx[0]?.excluded_from_ledger===true;
+      const cashUnchanged = cashTx[0]?.excluded_from_ledger!==true;
+      const p = bankExcl && cashUnchanged && (r.success||r.voided_amount>0);
+      add(2,'voidPayment Bank → bank=0, cash_1015 unchanged',p,`bank_excl:${bankExcl}, cash_unchanged:${cashUnchanged}, api:${JSON.stringify(r).slice(0,40)}`);
+    } catch(e) { add(2,'voidPayment Bank → bank=0, cash_1015 unchanged',false,'ERROR:'+e.message); }
+  }
+
+  // TEST 3: voidCaptainPayment cash — captain_paid=0, cash clearing reversed
+  {
+    const payId = pfx + '_cpay3', pmtId = pfx + '_cpmt3', txDr = pfx + '_t3dr', txCr = pfx + '_t3cr';
+    try {
+      await pool.query(`INSERT INTO booking_captain_payables (id,booking_id,captain_name,total_due,total_paid,balance_due,status) VALUES ($1,$2,'WZ Capt',250,144,106,'partially_paid') ON CONFLICT(id) DO NOTHING`, [payId, QA_BID]);
+      await pool.query(`INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,description,reference_id,reference_type,booking_id,notes,source_system) VALUES ($1,'${QD}',$2,'2000',144,'expense','WZ Dr AP',$3,'captain_payment',$4,'wz_test','qa_test')`, [txDr, A.AP, pmtId, QA_BID]);
+      await pool.query(`INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,description,reference_id,reference_type,booking_id,notes,source_system) VALUES ($1,'${QD}',$2,'1015',144,'expense','WZ Cr Cash',$3,'captain_payment',$4,'wz_test','qa_test')`, [txCr, A.CASH, pmtId, QA_BID]);
+      await pool.query(`INSERT INTO booking_captain_payments (id,booking_id,captain_payable_id,amount,payment_method,payment_date,transaction_id_dr,transaction_id_cr) VALUES ($1,$2,$3,144,'cash','${QD}',$4,$5) ON CONFLICT(id) DO NOTHING`, [pmtId, QA_BID, payId, txDr, txCr]);
+      const r = await fetch(`http://localhost:5000/api/bookings/${QA_BID}/captain-payable/${payId}/payments/${pmtId}`, {
+        method:'DELETE', headers:{'Content-Type':'application/json', cookie: req.headers.cookie||''},
+        body: JSON.stringify({ reason: 'WZ test 3 captain cash void' })
+      }).then(r=>r.json()).catch(e=>({error:e.message}));
+      const { rows: pv } = await pool.query(`SELECT total_paid,balance_due FROM booking_captain_payables WHERE id=$1`, [payId]);
+      const { rows: cr } = await pool.query(`SELECT excluded_from_ledger,account_code FROM transactions WHERE id=$1`, [txCr]);
+      const p = (r.success||r.voided) && parseFloat(pv[0]?.total_paid)===0 && cr[0]?.excluded_from_ledger===true && cr[0]?.account_code==='1015';
+      add(3,'voidCaptainPayment Cash → paid=0, cash clearing reversed',p,`api:${r.success||r.voided}, paid:${pv[0]?.total_paid}, cash_excl:${cr[0]?.excluded_from_ledger}, acct:${cr[0]?.account_code}`);
+    } catch(e) { add(3,'voidCaptainPayment Cash → paid=0, cash clearing reversed',false,'ERROR:'+e.message); }
+  }
+
+  // TEST 4: voidCaptainPayment zelle — captain_paid baja, bank reversed, cash clearing no cambia
+  {
+    const payId = pfx + '_cpay4', pmtId = pfx + '_cpmt4', txDr = pfx + '_t4dr', txCr = pfx + '_t4cr';
+    try {
+      await pool.query(`INSERT INTO booking_captain_payables (id,booking_id,captain_name,total_due,total_paid,balance_due,status) VALUES ($1,$2,'WZ Capt Z',106,106,0,'paid') ON CONFLICT(id) DO NOTHING`, [payId, QA_BID]);
+      await pool.query(`INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,description,reference_id,reference_type,booking_id,notes,source_system) VALUES ($1,'${QD}',$2,'2000',106,'expense','WZ Dr AP',$3,'captain_payment',$4,'wz_test','qa_test')`, [txDr, A.AP, pmtId, QA_BID]);
+      await pool.query(`INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,description,reference_id,reference_type,booking_id,notes,source_system) VALUES ($1,'${QD}',$2,'1010',106,'expense','WZ Cr Bank',$3,'captain_payment',$4,'wz_test','qa_test')`, [txCr, A.BANK, pmtId, QA_BID]);
+      await pool.query(`INSERT INTO booking_captain_payments (id,booking_id,captain_payable_id,amount,payment_method,payment_date,transaction_id_dr,transaction_id_cr) VALUES ($1,$2,$3,106,'zelle','${QD}',$4,$5) ON CONFLICT(id) DO NOTHING`, [pmtId, QA_BID, payId, txDr, txCr]);
+      const r = await fetch(`http://localhost:5000/api/bookings/${QA_BID}/captain-payable/${payId}/payments/${pmtId}`, {
+        method:'DELETE', headers:{'Content-Type':'application/json', cookie: req.headers.cookie||''},
+        body: JSON.stringify({ reason: 'WZ test 4 captain zelle void' })
+      }).then(r=>r.json()).catch(e=>({error:e.message}));
+      const { rows: cr } = await pool.query(`SELECT excluded_from_ledger,account_code FROM transactions WHERE id=$1`, [txCr]);
+      const p = (r.success||r.voided) && cr[0]?.excluded_from_ledger===true && cr[0]?.account_code==='1010';
+      add(4,'voidCaptainPayment Zelle → bank reversed, cash clearing unchanged',p,`api:${r.success||r.voided}, bank_excl:${cr[0]?.excluded_from_ledger}, is_bank:${cr[0]?.account_code==='1010'}`);
+    } catch(e) { add(4,'voidCaptainPayment Zelle → bank reversed, cash clearing unchanged',false,'ERROR:'+e.message); }
+  }
+
+  // TEST 5: voidExpense fuel cash — expenses baja, cash clearing reversed, profit sube
+  {
+    const expId = pfx + '_exp5', txDr = pfx + '_t5dr', txCr = pfx + '_t5cr';
+    try {
+      await pool.query(`INSERT INTO boat_expenses (id,booking_id,boat_id,expense_date,category,description,amount,payment_method,status) VALUES ($1,$2,'boat_searay500','${QD}','fuel','WZ fuel',300,'cash','active') ON CONFLICT(id) DO NOTHING`, [expId, QA_BID]);
+      await pool.query(`INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,description,reference_id,reference_type,booking_id,notes,source_system) VALUES ($1,'${QD}',$2,'5020',300,'expense','WZ Dr Fuel',$3,'booking_expense',$4,'wz_test','qa_test')`, [txDr, A.C5020, expId, QA_BID]);
+      await pool.query(`INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,description,reference_id,reference_type,booking_id,notes,source_system) VALUES ($1,'${QD}',$2,'1015',300,'expense','WZ Cr Cash',$3,'booking_expense',$4,'wz_test','qa_test')`, [txCr, A.CASH, expId, QA_BID]);
+      const r = await fetch(`http://localhost:5000/api/bookings/${QA_BID}/expenses/${expId}`, {
+        method:'DELETE', headers:{'Content-Type':'application/json', cookie: req.headers.cookie||''},
+        body: JSON.stringify({ reason: 'WZ test 5 fuel expense void' })
+      }).then(r=>r.json()).catch(e=>({error:e.message}));
+      const { rows: ex } = await pool.query(`SELECT status FROM boat_expenses WHERE id=$1`, [expId]);
+      const { rows: cr } = await pool.query(`SELECT excluded_from_ledger FROM transactions WHERE id=$1`, [txCr]);
+      const { rows: dr } = await pool.query(`SELECT excluded_from_ledger FROM transactions WHERE id=$1`, [txDr]);
+      const p = ex[0]?.status==='voided' && cr[0]?.excluded_from_ledger===true && dr[0]?.excluded_from_ledger===true && (r.success||r.voided_amount>0);
+      add(5,'voidExpense Fuel Cash → expense voided, cash cleared',p,`status:${ex[0]?.status}, cr_excl:${cr[0]?.excluded_from_ledger}, dr_excl:${dr[0]?.excluded_from_ledger}, api:${JSON.stringify(r).slice(0,50)}`);
+    } catch(e) { add(5,'voidExpense Fuel Cash → expense voided, cash cleared',false,'ERROR:'+e.message); }
+  }
+
+  // TEST 6: voidExpense ice cash — 5030 no cuenta, cash clearing correcto
+  {
+    const expId = pfx + '_exp6', txDr = pfx + '_t6dr', txCr = pfx + '_t6cr';
+    try {
+      await pool.query(`INSERT INTO boat_expenses (id,booking_id,boat_id,expense_date,category,description,amount,payment_method,status) VALUES ($1,$2,'boat_searay500','${QD}','operational','WZ ice',5.99,'cash','active') ON CONFLICT(id) DO NOTHING`, [expId, QA_BID]);
+      await pool.query(`INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,description,reference_id,reference_type,booking_id,notes,source_system) VALUES ($1,'${QD}',$2,'5030',5.99,'expense','WZ Dr Ice',$3,'booking_expense',$4,'wz_test','qa_test')`, [txDr, A.C5030, expId, QA_BID]);
+      await pool.query(`INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,description,reference_id,reference_type,booking_id,notes,source_system) VALUES ($1,'${QD}',$2,'1015',5.99,'expense','WZ Cr Ice Cash',$3,'booking_expense',$4,'wz_test','qa_test')`, [txCr, A.CASH, expId, QA_BID]);
+      const r = await fetch(`http://localhost:5000/api/bookings/${QA_BID}/expenses/${expId}`, {
+        method:'DELETE', headers:{'Content-Type':'application/json', cookie: req.headers.cookie||''},
+        body: JSON.stringify({ reason: 'WZ test 6 ice void' })
+      }).then(r=>r.json()).catch(e=>({error:e.message}));
+      const { rows: ex } = await pool.query(`SELECT status FROM boat_expenses WHERE id=$1`, [expId]);
+      const { rows: active5030 } = await pool.query(`
+        SELECT SUM(amount) as total FROM transactions WHERE booking_id=$1 AND account_code='5030' AND COALESCE(excluded_from_ledger,false)=false`, [QA_BID]);
+      const p = ex[0]?.status==='voided' && parseFloat(active5030[0]?.total||0)===0;
+      add(6,'voidExpense Ice → 5030 excluido, cash clearing correcto',p,`status:${ex[0]?.status}, active_5030:${active5030[0]?.total}`);
+    } catch(e) { add(6,'voidExpense Ice → 5030 excluido, cash clearing correcto',false,'ERROR:'+e.message); }
+  }
+
+  // TEST 7: double void must return 409 ALREADY_VOIDED
+  {
+    const txId = pfx + '_t7';
+    try {
+      await pool.query(`INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,description,reference_type,notes,booking_id,source_system) VALUES ($1,'${QD}',$2,'1015',50,'income','WZ T7 double','cash_clearing','wz_test',$3,'qa_test')`, [txId, A.CASH, QA_BID]);
+      const r1 = await fetch(`http://localhost:5000/api/bookings/${QA_BID}/transactions/${txId}`, {
+        method:'DELETE', headers:{'Content-Type':'application/json', cookie: req.headers.cookie||''},
+        body: JSON.stringify({ reason: 'WZ first void' })
+      }).then(r=>({status:r.status, body:r.json()}));
+      const r2 = await fetch(`http://localhost:5000/api/bookings/${QA_BID}/transactions/${txId}`, {
+        method:'DELETE', headers:{'Content-Type':'application/json', cookie: req.headers.cookie||''},
+        body: JSON.stringify({ reason: 'WZ double void attempt' })
+      });
+      const p = r2.status === 409;
+      add(7,'Double void returns 409',p,`second_call_status:${r2.status}`);
+    } catch(e) { add(7,'Double void returns 409',false,'ERROR:'+e.message); }
+  }
+
+  // TEST 8: POST /api/accounting/reverse without reason returns 400
+  {
+    const txId = pfx + '_t8';
+    try {
+      await pool.query(`INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,description,reference_type,notes,booking_id,source_system) VALUES ($1,'${QD}',$2,'1015',75,'income','WZ T8 noreason','cash_clearing','wz_test',$3,'qa_test')`, [txId, A.CASH, QA_BID]);
+      const r = await fetch(`http://localhost:5000/api/accounting/reverse`, {
+        method:'POST', headers:{'Content-Type':'application/json', cookie: req.headers.cookie||''},
+        body: JSON.stringify({ source_type: 'transaction', source_id: txId, booking_id: QA_BID, reason: '' })
+      });
+      const p = r.status === 400 || r.status === 422;
+      add(8,'POST /reverse without reason returns 4xx',p,`status:${r.status}`);
+    } catch(e) { add(8,'POST /reverse without reason returns 4xx',false,'ERROR:'+e.message); }
+  }
+
+  // TEST 9: After void, GET reconciliation no longer shows source as active
+  {
+    const txId = pfx + '_t9';
+    try {
+      await pool.query(`INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,description,reference_type,notes,booking_id,source_system) VALUES ($1,'${QD}',$2,'1015',125,'income','WZ T9 reconcil','cash_clearing','wz_test',$3,'qa_test')`, [txId, A.CASH, QA_BID]);
+      await fetch(`http://localhost:5000/api/bookings/${QA_BID}/transactions/${txId}`, {
+        method:'DELETE', headers:{'Content-Type':'application/json', cookie: req.headers.cookie||''},
+        body: JSON.stringify({ reason: 'WZ test 9 reconciliation verify' })
+      });
+      const reconcil = await fetch(`http://localhost:5000/api/bookings/${QA_BID}/reconciliation`, {
+        headers: { cookie: req.headers.cookie||'' }
+      }).then(r=>r.json()).catch(e=>({error:e.message}));
+      const txStillActive = (reconcil.transactions||[]).find(t=>t.id===txId);
+      const p = !txStillActive;
+      add(9,'After void, GET reconciliation excludes source',p,`still_active:${!!txStillActive}, reconcil_tx_count:${reconcil.transactions?.length}`);
+    } catch(e) { add(9,'After void, GET reconciliation excludes source',false,'ERROR:'+e.message); }
+  }
+
+  // TEST 10: delete-vs-ledger audit critical_issues = 0 for QA booking
+  {
+    try {
+      const state = await fetch(`http://localhost:5000/api/accounting/audit/reversal-state?booking_id=${QA_BID}`, {
+        headers: { cookie: req.headers.cookie||'' }
+      }).then(r=>r.json()).catch(e=>({error:e.message}));
+      const p = Array.isArray(state.inconsistencies) && state.inconsistencies.length === 0;
+      add(10,'Reversal-state audit → inconsistencies=0',p,`inconsistencies:${state.inconsistencies?.length}, summary:${JSON.stringify(state.summary||{})}`);
+    } catch(e) { add(10,'Reversal-state audit → inconsistencies=0',false,'ERROR:'+e.message); }
   }
 
   const passed = results.filter(r=>r.passed).length;
@@ -16462,6 +16668,7 @@ async function checkBookingIntegrity(bookingId) {
     `SELECT payment_method, COALESCE(SUM(amount),0) as total
      FROM boat_expenses
      WHERE booking_id = $1 AND category IN ('crew','captain','captain_labor','labor')
+       AND COALESCE(status,'active') NOT IN ('voided','cancelled','archived')
      GROUP BY payment_method`,
     [bookingId]
   ).catch(() => ({ rows: [] }));
@@ -18555,14 +18762,16 @@ app.get('/api/bookings/:id/reconciliation', isAuthenticated, async (req, res) =>
 
     // 2. Parallel fetch: transactions, deposits, expenses, excluded GL items
     const [txRes, depRes, expRes, revRes, expGLRes, exclRes] = await Promise.all([
-      // All transactions linked to this booking (for wizard payment list)
+      // All ACTIVE (non-voided) transactions linked to this booking (for wizard payment list)
       pool.query(
         `SELECT t.id, t.transaction_date, t.amount, t.transaction_type, t.description,
                 t.reference_type, t.notes, t.account_id,
                 c.account_code, c.account_name
          FROM transactions t
          LEFT JOIN chart_of_accounts c ON c.id = t.account_id
-         WHERE t.booking_id = $1 ORDER BY t.transaction_date DESC, t.id DESC LIMIT 150`,
+         WHERE t.booking_id = $1
+           AND COALESCE(t.excluded_from_ledger, false) = false
+         ORDER BY t.transaction_date DESC, t.id DESC LIMIT 150`,
         [bookingId]
       ).catch(() => ({ rows: [] })),
       // Deposits (via bookings_ledger join)
@@ -18573,10 +18782,11 @@ app.get('/api/bookings/:id/reconciliation', isAuthenticated, async (req, res) =>
          ORDER BY bd.deposit_date DESC`,
         [bookingId]
       ).catch(() => ({ rows: [] })),
-      // Boat expenses (for wizard expense list)
+      // Boat expenses (for wizard expense list) — exclude voided/cancelled
       pool.query(
         `SELECT * FROM boat_expenses
-         WHERE booking_id = $1 AND (status IS NULL OR status != 'cancelled')
+         WHERE booking_id = $1
+           AND COALESCE(status, 'active') NOT IN ('voided','cancelled')
          ORDER BY expense_date ASC`,
         [bookingId]
       ).catch(() => ({ rows: [] })),
@@ -18695,6 +18905,118 @@ app.get('/api/bookings/:id/reconciliation', isAuthenticated, async (req, res) =>
 });
 
 // ── END FASE 27 / FASE 28 Audit Endpoints ────────────────────────────────
+
+// ── FASE 29: GET /api/accounting/audit/reversal-state ─────────────────────
+// Audit endpoint: per-booking snapshot of active vs voided items + inconsistencies.
+app.get('/api/accounting/audit/reversal-state', isAuthenticated, async (req, res) => {
+  const bookingId = req.query.booking_id;
+  if (!bookingId) return res.status(400).json({ error: 'booking_id query param required' });
+  try {
+    const [txActive, txVoided, expActive, expVoided, cpActive, cpVoided] = await Promise.all([
+      // Active income transactions (client payments)
+      pool.query(`
+        SELECT t.id, t.amount, t.account_code, t.transaction_date, t.description
+        FROM transactions t
+        WHERE t.booking_id=$1 AND t.transaction_type='income'
+          AND COALESCE(t.excluded_from_ledger,false)=false
+        ORDER BY t.transaction_date DESC`, [bookingId]),
+      // Voided income transactions
+      pool.query(`
+        SELECT t.id, t.amount, t.account_code, t.transaction_date, t.voided_reason
+        FROM transactions t
+        WHERE t.booking_id=$1 AND t.transaction_type='income'
+          AND COALESCE(t.excluded_from_ledger,false)=true
+        ORDER BY t.transaction_date DESC`, [bookingId]),
+      // Active expenses
+      pool.query(`
+        SELECT id, amount, category, payment_method, expense_date, description
+        FROM boat_expenses
+        WHERE booking_id=$1 AND COALESCE(status,'active') NOT IN ('voided','cancelled')
+        ORDER BY expense_date ASC`, [bookingId]),
+      // Voided expenses
+      pool.query(`
+        SELECT id, amount, category, payment_method, expense_date, status, voided_reason
+        FROM boat_expenses
+        WHERE booking_id=$1 AND status IN ('voided','cancelled')
+        ORDER BY expense_date ASC`, [bookingId]),
+      // Active captain payments
+      pool.query(`
+        SELECT bcp.id, bcp.amount, bcp.payment_method, bcp.payment_date, bcp2.captain_name
+        FROM booking_captain_payments bcp
+        JOIN booking_captain_payables bcp2 ON bcp2.id=bcp.captain_payable_id
+        WHERE bcp.booking_id=$1 AND COALESCE(bcp.voided,false)=false
+        ORDER BY bcp.payment_date DESC`, [bookingId]).catch(()=>({rows:[]})),
+      // Voided captain payments
+      pool.query(`
+        SELECT bcp.id, bcp.amount, bcp.payment_method, bcp.payment_date, bcp.voided_reason, bcp2.captain_name
+        FROM booking_captain_payments bcp
+        JOIN booking_captain_payables bcp2 ON bcp2.id=bcp.captain_payable_id
+        WHERE bcp.booking_id=$1 AND COALESCE(bcp.voided,false)=true
+        ORDER BY bcp.payment_date DESC`, [bookingId]).catch(()=>({rows:[]})),
+    ]);
+
+    const ledgerActiveAmt  = txActive.rows.reduce((s,t)=>s+parseFloat(t.amount||0),0);
+    const reversedAmt      = txVoided.rows.reduce((s,t)=>s+parseFloat(t.amount||0),0);
+    const cashClearingAmt  = txActive.rows.filter(t=>t.account_code==='1015').reduce((s,t)=>s+parseFloat(t.amount||0),0);
+
+    // Detect inconsistencies
+    const inconsistencies = [];
+
+    // Source voided but linked tx still active
+    for (const exp of expVoided.rows) {
+      const { rows: activeTx } = await pool.query(
+        `SELECT id FROM transactions WHERE reference_id=$1 AND COALESCE(excluded_from_ledger,false)=false LIMIT 1`, [exp.id]
+      ).catch(()=>({rows:[]}));
+      if (activeTx.length) {
+        inconsistencies.push({
+          type: 'expense_voided_but_tx_active',
+          source_id: exp.id, source_type: 'boat_expense', amount: exp.amount,
+          message: `Expense ${exp.id} is voided but linked transaction is still active in ledger`,
+          fix: `POST /api/accounting/reverse {source_type:"booking_expense",source_id:"${exp.id}"}`
+        });
+      }
+    }
+
+    // Source active but reversal log exists (partially voided)
+    for (const tx of txActive.rows) {
+      const { rows: rvl } = await pool.query(
+        `SELECT id FROM accounting_reversal_log WHERE source_id=$1 LIMIT 1`, [tx.id]
+      ).catch(()=>({rows:[]}));
+      if (rvl.length) {
+        inconsistencies.push({
+          type: 'tx_active_but_reversal_log_exists',
+          source_id: tx.id, source_type: 'transaction', amount: tx.amount,
+          message: `Transaction ${tx.id} is still active but a reversal log entry exists`,
+        });
+      }
+    }
+
+    res.json({
+      booking_id:              bookingId,
+      active_payments:         txActive.rows,
+      voided_payments:         txVoided.rows,
+      active_expenses:         expActive.rows,
+      voided_expenses:         expVoided.rows,
+      active_captain_payments: cpActive.rows,
+      voided_captain_payments: cpVoided.rows,
+      ledger_active_amount:    ledgerActiveAmt,
+      reversed_amount:         reversedAmt,
+      cash_clearing_active:    cashClearingAmt,
+      inconsistencies,
+      summary: {
+        active_payment_count:  txActive.rows.length,
+        voided_payment_count:  txVoided.rows.length,
+        active_expense_count:  expActive.rows.length,
+        voided_expense_count:  expVoided.rows.length,
+        captain_paid_active:   cpActive.rows.reduce((s,p)=>s+parseFloat(p.amount||0),0),
+        captain_paid_voided:   cpVoided.rows.reduce((s,p)=>s+parseFloat(p.amount||0),0),
+        inconsistency_count:   inconsistencies.length,
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ── FASE 28: Regression Engine — GET /api/accounting/audit/regression-status
 // Runs a comprehensive regression audit across all accounting modules and returns

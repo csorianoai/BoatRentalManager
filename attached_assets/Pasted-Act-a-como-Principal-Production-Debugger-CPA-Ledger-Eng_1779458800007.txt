@@ -1,0 +1,403 @@
+Actúa como Principal Production Debugger, CPA Ledger Engineer y QA Automation Engineer.
+
+PROBLEMA REAL:
+En booking-wizard.html, al presionar “Anular” en pagos o pagos al capitán:
+1. Dice que fue borrado/anulado.
+2. Pero el pago sigue apareciendo en “Pagos Registrados”.
+3. El monto sigue afectando Cash Clearing 1015.
+4. El pago del capitán sigue afectando “Ya pagado” y “Exceso”.
+5. El booking no puede cerrarse.
+
+Esto significa que la UI está marcando algo visualmente, pero el backend/ledger no está reversando ni recalculando correctamente.
+
+MISIÓN:
+Corregir de raíz TODOS los botones “Anular” del wizard para que:
+- creen reverso contable real,
+- excluyan el registro original del ledger,
+- actualicen cash clearing,
+- actualicen pagos registrados,
+- actualicen pagos capitán,
+- actualicen AP,
+- actualicen profit,
+- refresquen la pantalla desde el backend,
+- y no permitan falsos “anulado”.
+
+==================================================
+1. IDENTIFICAR TODOS LOS BOTONES ANULAR
+==================================================
+
+Buscar en booking-wizard.html:
+- Anular
+- void
+- cancel
+- delete
+- remove
+- reverse
+- onclick relacionado a pagos
+- onclick relacionado a gastos
+- onclick relacionado a capitán
+
+Reportar cada botón:
+- sección: pagos / gastos / capitán / payable / revenue
+- función JS llamada
+- endpoint llamado
+- source_id enviado
+- si espera respuesta real del backend
+
+==================================================
+2. REGLA ÚNICA
+==================================================
+
+Ningún botón “Anular” puede eliminar solo visualmente.
+
+Debe llamar obligatoriamente:
+
+POST /api/accounting/reverse
+
+con:
+{
+  source_type,
+  source_id,
+  booking_id,
+  reason,
+  reversed_by
+}
+
+Si el backend no confirma:
+success=true
+reversal_created=true
+
+Entonces la UI NO puede quitar nada ni mostrar éxito.
+
+==================================================
+3. SOURCE TYPES OBLIGATORIOS
+==================================================
+
+Mapear correctamente:
+
+A) Pago recibido del cliente:
+source_type = booking_payment
+
+B) Gasto directo:
+source_type = booking_expense
+
+C) Pago parcial al capitán:
+source_type = captain_payment
+
+D) Obligación del capitán:
+source_type = captain_payable
+
+E) Payable general:
+source_type = booking_payable
+
+F) Pago de payable:
+source_type = booking_payable_payment
+
+G) Revenue recognition:
+source_type = revenue_recognition
+
+==================================================
+4. CORREGIR PAGO CASH DEL CLIENTE
+==================================================
+
+Caso visto en pantalla:
+Pago cash $1000 sigue apareciendo y sigue en Cash Clearing.
+
+Original:
+Dr 1015 Cash Clearing
+Cr 2500 Deferred / 1100 AR
+
+Reverso obligatorio:
+Dr 2500 Deferred / 1100 AR
+Cr 1015 Cash Clearing
+
+Después del reverso:
+- pago debe desaparecer de pagos activos o aparecer como VOIDED
+- total pagado debe bajar
+- Cash 1015 debe bajar
+- pendiente debe subir si aplica
+- AR/deferred debe recalcular
+- no debe seguir contando en “Total pagado”
+
+==================================================
+5. CORREGIR PAGO BANCO/ZELLE DEL CLIENTE
+==================================================
+
+Original:
+Dr 1010 Bank
+Cr 2500 Deferred / 1100 AR
+
+Reverso:
+Dr 2500 Deferred / 1100 AR
+Cr 1010 Bank
+
+Después:
+- Banco/Zelle debe bajar
+- Cash Clearing NO debe cambiar
+- Total pagado debe bajar
+
+==================================================
+6. CORREGIR PAGO CAPITÁN
+==================================================
+
+Caso visto:
+Total esperado $250
+Ya pagado $750
+Exceso -$500
+Aunque se anula, sigue apareciendo.
+
+Si el pago del capitán fue cash:
+Original:
+Dr 2010 Captain Payable
+Cr 1015 Cash Clearing
+
+Reverso:
+Dr 1015 Cash Clearing
+Cr 2010 Captain Payable
+
+Si fue zelle/bank:
+Original:
+Dr 2010 Captain Payable
+Cr 1010 Bank
+
+Reverso:
+Dr 1010 Bank
+Cr 2010 Captain Payable
+
+Después:
+- captain_total_paid debe bajar
+- excess debe bajar
+- pending debe recalcular
+- AP captain debe subir si el pago fue reversado
+- cash clearing solo cambia si el pago original fue cash
+- NO debe tocar 5010 si solo se reversa pago
+- NO debe duplicar gasto
+
+==================================================
+7. BACKEND: REVERSE DEBE ACTUALIZAR SOURCE
+==================================================
+
+Cuando se reversa, actualizar también la tabla fuente:
+
+booking_payments:
+status='voided'
+excluded_from_ledger=true
+reversed_at
+reversal_reason
+reversal_journal_entry_id
+
+booking_expenses / boat_expenses:
+status='voided'
+excluded_from_ledger=true
+
+booking_payable_payments / captain payments:
+status='voided'
+excluded_from_ledger=true
+
+journal_entries/transactions originales:
+status='reversed'
+excluded_from_ledger=true o is_reversed=true
+reversed_at
+reversed_by
+reversal_entry_id
+
+NO basta con crear reversal; también hay que excluir el original de cálculos activos.
+
+==================================================
+8. BACKEND: CÁLCULOS DEBEN EXCLUIR VOIDED/REVERSED
+==================================================
+
+Revisar todos los cálculos del wizard:
+
+- total_collected
+- cash_collected
+- bank_collected
+- payments list
+- total_expenses
+- cash expenses
+- bank expenses
+- captain_total_paid
+- captain_cash
+- captain_zelle
+- captain_pending
+- captain_excess
+- cash_clearing_balance
+- AP balance
+- profit
+
+Todos deben excluir:
+status IN ('voided','cancelled','reversed')
+excluded_from_ledger=true
+is_reversal=true cuando corresponda
+reversed_entry_id not null si corresponde
+
+==================================================
+9. UI: DESPUÉS DE ANULAR REFRESCAR DESDE BACKEND
+==================================================
+
+Después de anular:
+
+NO recalcular localmente.
+
+Debe llamar:
+GET /api/bookings/:id/reconciliation
+
+Luego refrescar:
+- resumen de pagos
+- pagos registrados
+- gastos registrados
+- capitán summary
+- cash clearing
+- AP
+- reconciliation alerts
+- botones de cierre
+
+Si el registro sigue apareciendo activo después del refresh:
+mostrar error:
+“Backend reversal failed: source still active.”
+
+==================================================
+10. CREAR ENDPOINT DE AUDITORÍA ESPECÍFICO
+==================================================
+
+Crear:
+
+GET /api/accounting/audit/reversal-state?booking_id={id}
+
+Debe devolver:
+- active_payments
+- voided_payments
+- active_expenses
+- voided_expenses
+- active_captain_payments
+- voided_captain_payments
+- ledger_active_amount
+- reversed_amount
+- cash_clearing_active
+- inconsistencies[]
+
+Detectar:
+- source voided pero sigue contando
+- source activo pero journal reversed
+- reversal creado pero source no actualizado
+- UI list mostrando source voided como activo
+- captain paid incluye voided
+- cash clearing incluye voided
+
+==================================================
+11. AUTOPRUEBAS OBLIGATORIAS — 10 TESTS
+==================================================
+
+Crear endpoint:
+
+POST /api/accounting/qa/void-reversal-hard-test
+
+Usar booking QA separado o crear datos QA.
+No tocar producción real salvo auditoría.
+
+TEST 1:
+Crear pago cash cliente $1000.
+Anularlo.
+Esperado:
+total_collected vuelve a 0
+cash_1015 vuelve a 0
+pago no aparece activo
+
+TEST 2:
+Crear pago bank cliente $1000.
+Anularlo.
+Esperado:
+bank_1010 vuelve a 0
+cash_1015 no cambia
+pago no aparece activo
+
+TEST 3:
+Crear captain payable $250.
+Pagar cash $144.
+Anular pago.
+Esperado:
+captain_paid vuelve a 0
+captain_pending vuelve a 250
+cash clearing se reversa
+
+TEST 4:
+Pagar captain zelle $106.
+Anular pago.
+Esperado:
+captain_paid baja
+bank se reversa
+cash clearing no cambia
+
+TEST 5:
+Crear fuel expense cash $300.
+Anular.
+Esperado:
+expenses baja 300
+cash clearing se reversa
+profit sube
+
+TEST 6:
+Crear ice expense cash $5.99.
+Anular.
+Esperado:
+5030 no cuenta
+cash clearing correcto
+
+TEST 7:
+Intentar anular dos veces el mismo pago.
+Esperado:
+HTTP 409 ALREADY_REVERSED
+
+TEST 8:
+Anular sin reason.
+Esperado:
+HTTP 400 reason required
+
+TEST 9:
+UI simulation:
+llamar mismo endpoint usado por botón “Anular”.
+Esperado:
+backend reversal success
+GET reconciliation ya no muestra source activo
+
+TEST 10:
+delete-vs-ledger audit.
+Esperado:
+critical_issues = 0
+
+==================================================
+12. PRUEBA CON BOOKING REAL
+==================================================
+
+Probar con el booking actual de las capturas.
+
+Debe poder:
+1. Anular pago cash incorrecto.
+2. Ver que desaparece de pagos activos.
+3. Ver Cash 1015 reducido.
+4. Anular pago capitán incorrecto.
+5. Ver captain paid reducido.
+6. Ver exceso eliminado o recalculado.
+7. Ver que el booking puede continuar el cuadre.
+
+==================================================
+13. NO DECLARAR TERMINADO SIN EVIDENCIA
+==================================================
+
+Reporte final obligatorio:
+
+1. Causa raíz exacta.
+2. Función UI que fallaba.
+3. Endpoint que no reversaba.
+4. Tablas fuente actualizadas.
+5. Fórmulas corregidas.
+6. Resultado de las 10 autopruebas.
+7. Resultado del booking real.
+8. JSON de GET /api/accounting/audit/reversal-state?booking_id=...
+9. Confirmación de que Cash Clearing ya no cuenta pagos anulados.
+10. Confirmación de que Captain Paid ya no cuenta pagos anulados.
+11. Confirmación de que pagos anulados no aparecen activos.
+12. Confirmación de Trial Balance.
+13. Riesgos pendientes.
+
+Si una prueba falla, NO decir terminado.
