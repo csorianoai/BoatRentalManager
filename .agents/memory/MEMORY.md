@@ -1,0 +1,2 @@
+- [ERP Audit Endpoints](erp-audit-endpoints.md) — 8 new audit/QA endpoints added in server.js; key DB quirks documented
+- [accounting-period-config keys](accounting-period-config.md) — exact key names for accounting_period_config table
