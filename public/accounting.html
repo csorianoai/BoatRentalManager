@@ -410,6 +410,9 @@
             <button class="tab" data-tab="pnl-completo" data-testid="tab-pnl-completo" onclick="loadPnLCompleto()">
                 P&amp;L Completo
             </button>
+            <button class="tab" data-tab="cfo-dashboard" data-testid="tab-cfo-dashboard" onclick="loadCFODashboard()">
+                CFO Dashboard
+            </button>
             <button class="tab" data-tab="onboarding-contable" data-testid="tab-onboarding-contable" onclick="initOnboarding()">
                 Guia Contable
             </button>
@@ -5632,6 +5635,241 @@ document.querySelectorAll('.tab[data-tab="period-control"]').forEach(btn => {
         </div>
     </div>
 </div>
+
+<!-- TAB: CFO Dashboard -->
+<div class="tab-content" id="cfo-dashboard" data-testid="tab-content-cfo-dashboard" style="display:none;padding:24px 30px;max-width:1400px;margin:0 auto;">
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px;">
+    <div>
+      <h2 style="margin:0 0 4px;font-size:20px;font-weight:800;color:#1a1a2e;">CFO Dashboard</h2>
+      <p style="margin:0;font-size:13px;color:#6b7280;">Todos los KPIs derivados exclusivamente del ledger contable — fuente única de verdad</p>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+      <select id="cfo-period-select" data-testid="select-cfo-period" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;" onchange="loadCFODashboard()">
+      </select>
+      <button onclick="loadCFODashboard()" data-testid="button-cfo-refresh" style="padding:6px 14px;background:#1a1a2e;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer;">Actualizar</button>
+      <button onclick="runRevenueRecognition()" data-testid="button-run-revenue-rec" style="padding:6px 14px;background:#059669;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer;">Ejecutar Reconocimiento</button>
+    </div>
+  </div>
+  <!-- KPI Cards Row -->
+  <div id="cfo-kpi-grid" data-testid="grid-cfo-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:24px;"></div>
+  <!-- Charts Row -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;">
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:18px;">
+      <h3 style="margin:0 0 12px;font-size:14px;font-weight:700;color:#1a1a2e;">Tendencia de Ingresos (30 días)</h3>
+      <canvas id="cfo-revenue-trend-chart" data-testid="chart-cfo-revenue-trend" height="160"></canvas>
+    </div>
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:18px;">
+      <h3 style="margin:0 0 12px;font-size:14px;font-weight:700;color:#1a1a2e;">Top Categorías de Gastos (MTD)</h3>
+      <canvas id="cfo-expenses-chart" data-testid="chart-cfo-expenses" height="160"></canvas>
+    </div>
+  </div>
+  <!-- Tables Row -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;">
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:18px;">
+      <h3 style="margin:0 0 12px;font-size:14px;font-weight:700;color:#1a1a2e;">Ingresos por Embarcación (MTD)</h3>
+      <div id="cfo-boat-table" data-testid="table-cfo-boats" style="overflow-x:auto;"></div>
+    </div>
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:18px;">
+      <h3 style="margin:0 0 12px;font-size:14px;font-weight:700;color:#1a1a2e;">Ingresos por Booking (Top 20)</h3>
+      <div id="cfo-booking-table" data-testid="table-cfo-bookings" style="overflow-x:auto;"></div>
+    </div>
+  </div>
+  <!-- Reconciliation + Audit Row -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:18px;">
+      <h3 style="margin:0 0 12px;font-size:14px;font-weight:700;color:#1a1a2e;">Auto Reconciliación — Foundation</h3>
+      <div id="cfo-reconciliation-status" data-testid="div-cfo-reconciliation"></div>
+    </div>
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:18px;">
+      <h3 style="margin:0 0 12px;font-size:14px;font-weight:700;color:#1a1a2e;">Reconocimiento de Ingresos Pendientes</h3>
+      <div id="cfo-revenue-rec-panel" data-testid="div-cfo-revenue-rec"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── CFO DASHBOARD ──────────────────────────────────────────────────────────
+(function() {
+  // Populate period select
+  const sel = document.getElementById('cfo-period-select');
+  if (sel && !sel.options.length) {
+    const now = new Date();
+    for (let i = 0; i < 6; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const val = d.toISOString().slice(0,7);
+      const opt = document.createElement('option');
+      opt.value = val;
+      opt.text = val;
+      if (i===0) opt.selected = true;
+      sel.appendChild(opt);
+    }
+  }
+})();
+
+function fmtCurrency(v) {
+  return '$' + parseFloat(v||0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+function fmtPct(v) { return parseFloat(v||0).toFixed(1) + '%'; }
+
+function kpiCard(label, value, sub, color) {
+  return `<div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px 18px;">
+    <div style="font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">${label}</div>
+    <div style="font-size:22px;font-weight:800;color:${color||'#1a1a2e'};">${value}</div>
+    ${sub ? `<div style="font-size:11px;color:#9ca3af;margin-top:3px;">${sub}</div>` : ''}
+  </div>`;
+}
+
+async function loadCFODashboard() {
+  const period = document.getElementById('cfo-period-select')?.value || new Date().toISOString().slice(0,7);
+  const kpiGrid = document.getElementById('cfo-kpi-grid');
+  if (kpiGrid) kpiGrid.innerHTML = '<div style="grid-column:1/-1;color:#6b7280;padding:20px 0;">Cargando KPIs del ledger...</div>';
+
+  try {
+    const [dashResp, reconResp, revRecResp] = await Promise.all([
+      fetch(`/api/accounting/cfo/dashboard?period=${period}`).then(r=>r.json()),
+      fetch('/api/accounting/reconciliation/foundation-status').then(r=>r.json()),
+      fetch('/api/accounting/revenue-recognition/pending').then(r=>r.json()),
+    ]);
+
+    if (dashResp.status !== 'pass') {
+      kpiGrid.innerHTML = `<div style="grid-column:1/-1;color:#dc2626;padding:20px 0;">Error cargando dashboard: ${dashResp.error||'unknown'}</div>`;
+      return;
+    }
+
+    const k = dashResp.kpis;
+    const netColor = k.net_profit_mtd >= 0 ? '#059669' : '#dc2626';
+
+    // KPI Cards
+    kpiGrid.innerHTML = [
+      kpiCard('Cash Position', fmtCurrency(k.cash_position), 'Cuentas 1010+1015', '#1a56db'),
+      kpiCard('AR Outstanding', fmtCurrency(k.ar_outstanding), 'Cuenta 1100', '#7c3aed'),
+      kpiCard('AP Outstanding', fmtCurrency(k.ap_outstanding), 'Cuentas 2010+2020', '#d97706'),
+      kpiCard('Revenue MTD', fmtCurrency(k.revenue_mtd), period, '#059669'),
+      kpiCard('Gastos MTD', fmtCurrency(k.expenses_mtd), 'Cuentas 5xxx', '#dc2626'),
+      kpiCard('Net Profit MTD', fmtCurrency(k.net_profit_mtd), 'Ingresos - Gastos', netColor),
+      kpiCard('Gross Margin', fmtPct(k.gross_margin_pct), 'Margen sobre ingresos', '#0891b2'),
+      kpiCard('EBITDA MTD', fmtCurrency(k.ebitda_mtd), 'Simplified', '#6366f1'),
+      kpiCard('Trial Balance', k.trial_balance_balanced ? 'BALANCEADO' : 'DESBALANCEADO', 'Dr = Cr check', k.trial_balance_balanced ? '#059669' : '#dc2626'),
+      kpiCard('Pendientes Reconoc.', k.pending_revenue_recognition + ' bookings', 'Sin postear al GL', k.pending_revenue_recognition > 0 ? '#d97706' : '#059669'),
+    ].join('');
+
+    // Revenue trend chart
+    const trendCtx = document.getElementById('cfo-revenue-trend-chart');
+    if (trendCtx && typeof Chart !== 'undefined') {
+      if (trendCtx._cfochart) trendCtx._cfochart.destroy();
+      const labels = dashResp.daily_revenue_trend.map(r => r.day);
+      const vals   = dashResp.daily_revenue_trend.map(r => parseFloat(r.revenue));
+      trendCtx._cfochart = new Chart(trendCtx, {
+        type: 'line',
+        data: { labels, datasets: [{ label:'Ingresos Diarios', data:vals, borderColor:'#1a56db', backgroundColor:'rgba(26,86,219,.08)', tension:.3, fill:true, pointRadius:3 }] },
+        options: { responsive:true, plugins:{ legend:{ display:false } }, scales:{ y:{ ticks:{ callback:v=>'$'+v.toLocaleString() } } } }
+      });
+    }
+
+    // Expenses chart
+    const expCtx = document.getElementById('cfo-expenses-chart');
+    if (expCtx && typeof Chart !== 'undefined') {
+      if (expCtx._cfochart) expCtx._cfochart.destroy();
+      const expLabels = dashResp.top_expense_categories.map(r => r.account_name);
+      const expVals   = dashResp.top_expense_categories.map(r => parseFloat(r.total));
+      expCtx._cfochart = new Chart(expCtx, {
+        type: 'bar',
+        data: { labels:expLabels, datasets:[{ label:'Gastos', data:expVals, backgroundColor:'rgba(220,38,38,.7)', borderRadius:4 }] },
+        options: { responsive:true, indexAxis:'y', plugins:{ legend:{ display:false } }, scales:{ x:{ ticks:{ callback:v=>'$'+v.toLocaleString() } } } }
+      });
+    }
+
+    // Boat table
+    const boatDiv = document.getElementById('cfo-boat-table');
+    if (boatDiv) {
+      if (!dashResp.revenue_per_boat.length) {
+        boatDiv.innerHTML = '<p style="color:#9ca3af;font-size:13px;">Sin datos de barco en cuentas de ingreso este período.</p>';
+      } else {
+        boatDiv.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:13px;">'
+          + '<thead><tr style="border-bottom:2px solid #e5e7eb;"><th style="text-align:left;padding:4px 8px;color:#6b7280;">Barco</th><th style="text-align:right;padding:4px 8px;color:#6b7280;">Ingresos</th></tr></thead>'
+          + '<tbody>'
+          + dashResp.revenue_per_boat.map(r=>`<tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:4px 8px;">${r.boat_name||r.boat_id||'N/A'}</td><td style="padding:4px 8px;text-align:right;font-weight:600;">${fmtCurrency(r.revenue)}</td></tr>`).join('')
+          + '</tbody></table>';
+      }
+    }
+
+    // Booking table
+    const bkDiv = document.getElementById('cfo-booking-table');
+    if (bkDiv) {
+      if (!dashResp.revenue_per_booking.length) {
+        bkDiv.innerHTML = '<p style="color:#9ca3af;font-size:13px;">Sin bookings con ingresos reconocidos en ledger este período.</p>';
+      } else {
+        bkDiv.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:13px;">'
+          + '<thead><tr style="border-bottom:2px solid #e5e7eb;"><th style="text-align:left;padding:4px 8px;color:#6b7280;">Booking</th><th style="text-align:right;padding:4px 8px;color:#6b7280;">Revenue</th></tr></thead>'
+          + '<tbody>'
+          + dashResp.revenue_per_booking.map(r=>`<tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:4px 8px;font-family:monospace;">${r.booking_id}</td><td style="padding:4px 8px;text-align:right;font-weight:600;">${fmtCurrency(r.revenue)}</td></tr>`).join('')
+          + '</tbody></table>';
+      }
+    }
+
+    // Reconciliation panel
+    const reconDiv = document.getElementById('cfo-reconciliation-status');
+    if (reconDiv && reconResp.status === 'ok') {
+      const f = reconResp.foundation;
+      reconDiv.innerHTML = `
+        <div style="display:flex;flex-direction:column;gap:8px;font-size:13px;">
+          <div style="display:flex;gap:8px;align-items:center;"><span style="background:#d1fae5;color:#065f46;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;">READY</span><span>Tabla bank_imports</span></div>
+          <div style="display:flex;gap:8px;align-items:center;"><span style="background:#d1fae5;color:#065f46;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;">READY</span><span>Motor de matching</span></div>
+          <div style="font-size:12px;color:#6b7280;margin-top:4px;">Bancos soportados: ${f.supported_banks.join(', ')}</div>
+          <div style="font-size:12px;color:#6b7280;">Total imports: ${reconResp.total_imports} | Matches: ${reconResp.total_matches}</div>
+          <button onclick="simulateBankImports()" data-testid="button-simulate-imports" style="margin-top:8px;padding:6px 12px;background:#1a1a2e;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;">Simular Imports QA</button>
+        </div>`;
+    }
+
+    // Revenue Recognition panel
+    const revDiv = document.getElementById('cfo-revenue-rec-panel');
+    if (revDiv && revRecResp.status === 'ok') {
+      const pending = revRecResp.pending_count;
+      const stats = revRecResp.queue_stats;
+      revDiv.innerHTML = `
+        <div style="font-size:13px;display:flex;flex-direction:column;gap:10px;">
+          <div style="display:flex;gap:12px;flex-wrap:wrap;">
+            <div style="text-align:center;padding:10px 16px;background:#fef3c7;border-radius:8px;">
+              <div style="font-size:20px;font-weight:800;color:#92400e;">${pending}</div>
+              <div style="font-size:11px;color:#92400e;">Pendientes</div>
+            </div>
+            <div style="text-align:center;padding:10px 16px;background:#d1fae5;border-radius:8px;">
+              <div style="font-size:20px;font-weight:800;color:#065f46;">${(stats.posted||{}).count||0}</div>
+              <div style="font-size:11px;color:#065f46;">Posteados</div>
+            </div>
+            <div style="text-align:center;padding:10px 16px;background:#fee2e2;border-radius:8px;">
+              <div style="font-size:20px;font-weight:800;color:#991b1b;">${(stats.failed||{}).count||0}</div>
+              <div style="font-size:11px;color:#991b1b;">Fallidos</div>
+            </div>
+          </div>
+          <div style="font-size:12px;color:#6b7280;">Posteados hoy: ${revRecResp.posted_today?.count||0}</div>
+        </div>`;
+    }
+
+  } catch(err) {
+    const kpiGrid = document.getElementById('cfo-kpi-grid');
+    if (kpiGrid) kpiGrid.innerHTML = `<div style="grid-column:1/-1;color:#dc2626;">Error: ${err.message}</div>`;
+  }
+}
+
+async function runRevenueRecognition() {
+  if (!confirm('Ejecutar reconocimiento de ingresos para todos los bookings elegibles?')) return;
+  try {
+    const resp = await fetch('/api/accounting/revenue-recognition/run', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({}) });
+    const data = await resp.json();
+    alert(`Reconocimiento completado:\n- Posteados: ${data.summary?.posted||0}\n- Fallidos: ${data.summary?.failed||0}\n- Omitidos: ${data.summary?.skipped||0}`);
+    loadCFODashboard();
+  } catch(err) { alert('Error: ' + err.message); }
+}
+
+async function simulateBankImports() {
+  try {
+    const resp = await fetch('/api/accounting/reconciliation/simulate-imports', { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' });
+    const data = await resp.json();
+    alert(`Imports simulados: ${data.simulated_imports} transacciones creadas.\nEjecutar matching ahora?`);
+  } catch(err) { alert('Error: ' + err.message); }
+}
+</script>
 
 <!-- TAB: Guia Contable / Onboarding -->
 <div class="tab-content" id="onboarding-contable" data-testid="tab-content-onboarding-contable" style="display:none;padding:24px 30px;max-width:1280px;margin:0 auto;">

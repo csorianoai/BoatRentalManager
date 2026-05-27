@@ -1,0 +1,426 @@
+Actúa como Principal ERP Hardening Architect, CPA Systems Auditor, Financial Controls Engineer, Ledger Reliability Engineer, QA Automation Engineer y Enterprise Operations Architect para gestion.nadakiexcursions.
+
+CONTEXTO:
+El sistema ya pasó una auditoría importante:
+- Full System Health PASS 12/12
+- Forensic Ledger Rebuild PASS
+- Booking Reconstruction PASS
+- Double-Reversal Safety PASS
+- Month-Close PASS
+- Concurrency PASS
+- Onboarding PASS
+- Enterprise Audit WARNING controlado
+- 0 critical issues
+
+Los warnings actuales NO son bugs estructurales:
+- bookings aún no journal-posted al GL
+- algunos legacy reversal tx_ids históricos
+- financial_periods vacío por configuración
+- algunos duplicados legacy históricos
+
+MISIÓN:
+1. Completar lo pendiente.
+2. Blindar operacionalmente el sistema.
+3. Ejecutar una auditoría final enterprise-grade completa.
+4. Validar que TODO lo construido realmente funciona en escenarios reales.
+5. Detectar edge cases ocultos antes de pasar a operación diaria intensiva.
+
+NO romper:
+- Booking Accounting
+- Corporate Accounting
+- AP
+- AR
+- Revenue Recognition
+- Reversals
+- Cash Clearing
+- Month Close
+- Legacy Lock
+- Cancelled Lock
+- KPI Dashboard
+- Financial Statements
+- Onboarding
+- Booking Wizard
+
+NO borrar data.
+NO declarar terminado sin pruebas reales.
+
+==================================================
+FASE 1 — REVENUE RECOGNITION AUTOMATION
+==================================================
+
+PROBLEMA PENDIENTE:
+Hay bookings operativos que aún no están journal-posted al GL.
+
+Implementar:
+
+1. Revenue Recognition Queue:
+revenue_recognition_queue
+
+Campos:
+- id
+- booking_id
+- booking_status
+- payment_status
+- recognition_status:
+  - pending
+  - ready
+  - posted
+  - skipped
+  - failed
+- recognition_reason
+- created_at
+- posted_at
+- journal_entry_id
+
+2. Regla automática:
+Si:
+booking_status='completed'
+AND payment_status IN ('paid','settled')
+AND not cancelled
+AND not legacy_locked
+AND revenue_not_already_posted
+
+→ auto crear revenue recognition.
+
+3. Prevent duplicate recognition:
+- unique constraint booking_id + revenue_type
+- idempotency key
+- check existing journal entries
+
+4. Revenue recognition debe:
+Dr Deferred Deposit / AR
+Cr Revenue 4010/4020
+
+5. Crear endpoint:
+GET /api/accounting/revenue-recognition/pending
+POST /api/accounting/revenue-recognition/run
+
+6. Dashboard:
+mostrar:
+- Pending Revenue Recognition
+- Failed Recognition
+- Posted Today
+
+==================================================
+FASE 2 — DAILY FINANCIAL SNAPSHOTS
+==================================================
+
+Crear:
+
+daily_financial_snapshots
+
+Campos:
+- snapshot_date
+- cash_balance
+- accounts_receivable
+- accounts_payable
+- deferred_revenue
+- booking_revenue
+- other_income
+- direct_costs
+- operating_expenses
+- gross_profit
+- net_profit
+- fleet_profitability
+- boats_active
+- bookings_completed
+- bookings_cancelled
+- created_at
+
+Crear job:
+runDailyFinancialSnapshot()
+
+Debe correr:
+- end of day
+- manual trigger
+
+Endpoint:
+GET /api/accounting/snapshots/daily
+POST /api/accounting/snapshots/run
+
+==================================================
+FASE 3 — CFO DASHBOARD
+==================================================
+
+Crear dashboard ejecutivo:
+
+Accounting → CFO Dashboard
+
+Widgets:
+
+1. Cash Position
+2. AP Outstanding
+3. AR Outstanding
+4. Net Profit
+5. Gross Margin
+6. Revenue per Boat
+7. Profit per Boat
+8. Profit per Captain
+9. Revenue per Booking
+10. Top Expense Categories
+11. Pending Revenue Recognition
+12. Month-to-Date EBITDA
+13. Booking Profitability
+14. Fleet Utilization
+15. Daily Revenue Trend
+
+Todos los KPIs deben derivarse:
+SOLO desde ledger/journal entries.
+
+NO usar tablas visuales como source of truth.
+
+==================================================
+FASE 4 — AUTO RECONCILIATION FOUNDATION
+==================================================
+
+Preparar estructura para:
+- Wells Fargo
+- Zelle
+- Stripe/Square
+- ACH
+
+Crear:
+
+bank_imports
+bank_reconciliation_matches
+
+Implementar matching engine básico:
+
+matching priority:
+1. exact amount + exact date
+2. exact amount + nearby date
+3. reference match
+4. customer/captain/vendor name match
+
+Estados:
+- matched
+- suggested
+- unmatched
+- duplicate
+
+NO hacer integración bancaria real todavía.
+Solo arquitectura y simulación QA.
+
+==================================================
+FASE 5 — IMMUTABLE AUDIT TRAIL HARDENING
+==================================================
+
+Implementar:
+
+1. journal_entries immutable after post.
+2. No UPDATE financial amount after post.
+3. Only reversal entries allowed.
+4. Track:
+- ip
+- user
+- session
+- timestamp
+- source
+- action_type
+
+5. monthly financial snapshots signed:
+- snapshot_hash
+- previous_snapshot_hash
+
+6. audit chain validation:
+GET /api/accounting/audit/audit-chain-validation
+
+Debe detectar:
+- modified snapshots
+- missing reversals
+- tampered entries
+- orphan journals
+
+==================================================
+FASE 6 — EDGE CASE AUDIT
+==================================================
+
+Ejecutar auditoría específica de edge cases:
+
+1. booking_total=0 while calendar>0
+2. partial payable + reversal
+3. cash payment reversed twice
+4. cancelled booking with active revenue
+5. legacy booking in current P&L
+6. voided payment still affecting cash
+7. voided captain payment still affecting captain_paid
+8. duplicate AP
+9. duplicate revenue recognition
+10. AP negative accidentally
+11. AR negative accidentally
+12. cash clearing negative anomaly
+13. month close + reversal attempt
+14. concurrent double payment
+15. concurrent close booking
+16. payment after booking cancelled
+17. payable after booking cancelled
+18. expense after month close
+19. manual entry unbalanced attempt
+20. reversal without reason
+
+Crear endpoint:
+GET /api/accounting/audit/edge-cases
+
+==================================================
+FASE 7 — REAL OPERATIONAL SIMULATION
+==================================================
+
+Crear QA simulation:
+
+POST /api/accounting/qa/real-operations-simulation
+
+Debe simular:
+
+DAY 1:
+- 5 bookings
+- deposits
+- fuel
+- captain partial payments
+- zelle + cash mixed
+- broker commission
+- cancellations
+
+DAY 2:
+- corporate expenses
+- payroll
+- utilities
+- AP payments
+- AR collections
+
+DAY 3:
+- reversals
+- month close
+- revenue recognition
+- dashboard rebuild
+
+Luego validar:
+- Trial Balance
+- P&L
+- Balance Sheet
+- Cash Flow
+- AP Aging
+- AR Aging
+- Booking profitability
+- Cash clearing
+
+==================================================
+FASE 8 — FORENSIC CROSS-CHECK
+==================================================
+
+Crear endpoint:
+GET /api/accounting/audit/forensic-crosscheck
+
+Debe comparar:
+
+Ledger
+vs
+Dashboard
+vs
+Booking Wizard
+vs
+P&L
+vs
+Balance Sheet
+vs
+Cash Flow
+vs
+AP Aging
+vs
+AR Aging
+
+Detectar:
+- mismatches
+- stale cache
+- orphan calculations
+- visual-only totals
+- duplicate aggregations
+
+==================================================
+FASE 9 — FINAL ENTERPRISE AUDIT V2
+==================================================
+
+Actualizar:
+
+POST /api/accounting/qa/final-enterprise-audit
+
+Debe incluir ahora:
+
+1. full-system-health
+2. ledger-integrity
+3. forensic-ledger-rebuild
+4. booking-reconstruction
+5. double-reversal-safety
+6. month-close
+7. concurrency
+8. ui-ledger-crosscheck
+9. onboarding-qa
+10. corporate-layer-test
+11. revenue-recognition
+12. daily-snapshots
+13. cfo-dashboard
+14. auto-reconciliation-foundation
+15. immutable-audit-trail
+16. edge-cases
+17. operational-simulation
+18. forensic-crosscheck
+
+==================================================
+FASE 10 — CRITERIO DE ÉXITO
+==================================================
+
+NO declarar terminado hasta que:
+
+1. Revenue Recognition automático funciona.
+2. No duplicate recognition.
+3. Daily snapshots PASS.
+4. CFO dashboard funciona.
+5. KPIs salen del ledger.
+6. Auto reconciliation foundation PASS.
+7. Audit trail immutable PASS.
+8. Edge cases no tienen critical issues.
+9. Operational simulation PASS.
+10. Forensic crosscheck no tiene mismatches críticos.
+11. Trial Balance PASS.
+12. Balance Sheet PASS.
+13. Cash Flow PASS.
+14. AP PASS.
+15. AR PASS.
+16. Cash Clearing PASS.
+17. Reversals PASS.
+18. Month close PASS.
+19. Concurrency PASS.
+20. Enterprise Audit V2 PASS/WARNING only.
+
+==================================================
+FASE 11 — REPORTE FINAL
+==================================================
+
+Entregar:
+
+1. Qué faltaba.
+2. Qué se implementó.
+3. Revenue Recognition status.
+4. Daily snapshots status.
+5. CFO dashboard status.
+6. Auto reconciliation status.
+7. Immutable audit trail status.
+8. Edge case audit results.
+9. Operational simulation results.
+10. Forensic crosscheck results.
+11. Final Enterprise Audit V2 results.
+12. Riesgos pendientes.
+13. Recomendaciones operativas.
+14. Recomendaciones para uso diario.
+15. Confirmación de que nada existente fue roto.
+
+IMPORTANTE:
+No decir:
+“todo está bien”
+sin:
+- QA real
+- JSON real
+- pruebas reales
+- PASS/FAIL reales
+- reconciliación real
+- cross-check real
+- operational simulation PASS

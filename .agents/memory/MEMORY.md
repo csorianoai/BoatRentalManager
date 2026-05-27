@@ -1,2 +1,2 @@
-- [ERP Audit Endpoints](erp-audit-endpoints.md) — 8 new audit/QA endpoints added in server.js; key DB quirks documented
-- [accounting-period-config keys](accounting-period-config.md) — exact key names for accounting_period_config table
+- [ERP Hardening V2](erp-hardening-v2.md) — runStep ok variable bug: use Object.assign instead of spread in forEach callbacks; never use shorthand {ok} in runStep return.
+- [DB Schema Notes](db-schema-notes.md) — boats.name (NOT boat_name), bookings.booking_date is TEXT YYYY-MM-DD, journal_entry_lines has no entry_type column.
