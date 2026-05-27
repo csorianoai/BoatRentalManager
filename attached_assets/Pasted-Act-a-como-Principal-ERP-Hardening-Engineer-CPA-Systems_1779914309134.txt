@@ -1,0 +1,386 @@
+Actúa como Principal ERP Hardening Engineer, CPA Systems Auditor, Ledger Reliability Engineer, QA Automation Engineer y Financial Controls Architect para gestion.nadakiexcursions.
+
+CONTEXTO:
+La auditoría reciente confirmó:
+- GET /api/accounting/audit/full-system-health funciona.
+- 11/12 módulos PASS.
+- El único warning restante es legacy_lock.
+- La Guía Contable / Onboarding ya fue agregada.
+- Los SQL críticos del health endpoint fueron corregidos.
+
+MISIÓN:
+Cerrar la fase faltante de hardening y validación final del sistema contable, asegurando que booking accounting, corporate accounting, payables, receivables, reversals, reports, dashboards, onboarding y period close funcionen correctamente bajo pruebas reales.
+
+NO crear features innecesarios.
+NO romper flujos existentes.
+NO borrar data.
+NO declarar terminado sin pruebas reales.
+
+==================================================
+FASE 1 — CORREGIR / RESOLVER LEGACY_LOCK WARNING
+==================================================
+
+1. Revisar por qué full-system-health muestra warning en legacy_lock.
+2. Si falta configuración de cutover:
+   - confirmar ACCOUNTING_CUTOVER_DATE = 2026-04-27
+   - confirmar legacy lock activo
+   - confirmar legacy bookings marcados correctamente
+3. Si es warning esperado, mostrarlo como INFO, no WARNING, cuando la configuración esté completa.
+4. Validar:
+   - bookings antes de 2026-04-27 = legacy_locked
+   - bookings desde 2026-04-27 = current
+   - Matej 2026-04-27 = current
+   - legacy no entra en current reports por defecto
+
+==================================================
+FASE 2 — FORENSIC LEDGER REBUILD TEST
+==================================================
+
+Crear endpoint:
+
+GET /api/accounting/audit/forensic-ledger-rebuild?period=YYYY-MM
+
+Debe reconstruir desde ledger:
+
+- Profit & Loss
+- Balance Sheet
+- Cash Flow
+- AP Aging
+- AR Aging
+- Trial Balance
+
+Comparar contra:
+- /api/accounting/reports/profit-loss
+- /api/accounting/reports/balance-sheet
+- /api/accounting/reports/cash-flow
+- /api/accounting/reports/trial-balance
+- /api/accounting/payables-aging
+- /api/accounting/reports/accounts-receivable
+- dashboard KPIs
+
+Debe devolver:
+{
+  "period": "YYYY-MM",
+  "status": "pass | warning | fail",
+  "mismatches": [],
+  "ledger_pl": {},
+  "reported_pl": {},
+  "ledger_balance_sheet": {},
+  "reported_balance_sheet": {},
+  "ledger_cash_flow": {},
+  "reported_cash_flow": {},
+  "trial_balance_pass": true/false
+}
+
+Criterio:
+Si dashboard/report != ledger, ledger gana.
+Reportar mismatch exacto.
+
+==================================================
+FASE 3 — BOOKING RECONSTRUCTION TEST
+==================================================
+
+Crear endpoint:
+
+GET /api/accounting/audit/booking-reconstruction-test?limit=10&period=YYYY-MM
+
+Debe tomar 10 bookings reales del periodo y reconstruir:
+
+- booking_total
+- total_collected
+- revenue_recognized
+- direct_costs
+- fuel
+- ice
+- captain
+- broker
+- marina
+- cleaning
+- other
+- payables_balance
+- cash_clearing
+- profit
+
+Comparar contra:
+- Booking Wizard
+- /api/bookings/:id/reconciliation
+- bookings.html KPIs
+- P&L
+
+Debe detectar:
+- duplicate expenses
+- voided still counted
+- payments visually deleted but ledger active
+- cash clearing mismatch
+- AP mismatch
+- revenue duplicate
+- booking_total = 0 problem
+
+Debe devolver PASS/FAIL por booking.
+
+==================================================
+FASE 4 — DOUBLE REVERSAL / VOID SAFETY TEST
+==================================================
+
+Crear endpoint:
+
+POST /api/accounting/qa/double-reversal-safety-test
+
+Debe probar:
+
+1. Crear pago QA.
+2. Reversar una vez.
+3. Intentar reversar segunda vez.
+Expected:
+HTTP 409 ALREADY_REVERSED
+
+4. Intentar borrar después de reversar.
+Expected:
+blocked
+
+5. Crear payable, pagar, reversar pago.
+6. Intentar pagar payable voided.
+Expected:
+blocked
+
+7. Reconocer revenue.
+8. Intentar reconocer revenue otra vez.
+Expected:
+blocked
+
+9. Crear expense, reversar, confirmar no cuenta.
+
+10. Trial balance sigue cuadrado.
+
+Entregar:
+- PASS/FAIL
+- reversal IDs
+- blocked operations
+- ledger after state
+
+==================================================
+FASE 5 — MONTH CLOSE TEST
+==================================================
+
+Crear endpoint:
+
+POST /api/accounting/qa/month-close-test
+
+Debe simular:
+
+1. Periodo QA abierto.
+2. Crear income, expenses, AP, AR.
+3. Generar P&L, Balance Sheet, Cash Flow.
+4. Cerrar periodo.
+5. Confirmar:
+   - entries locked
+   - no posting allowed
+   - financial snapshot creado
+   - next period abierto
+6. Intentar postear en periodo cerrado.
+Expected:
+blocked
+
+7. Crear adjustment en periodo abierto siguiente.
+Expected:
+allowed with reason
+
+Debe validar:
+- closed period immutable
+- monthly snapshots exist
+- retained/current earnings handled
+- no mutation after close
+
+==================================================
+FASE 6 — MULTIUSER / RACE CONDITION TEST
+==================================================
+
+Crear endpoint o script:
+
+POST /api/accounting/qa/concurrency-test
+
+Simular:
+
+1. Dos requests simultáneos registrando el mismo pago.
+2. Dos requests simultáneos reversando el mismo pago.
+3. Dos requests simultáneos cerrando el mismo booking.
+4. Dos requests simultáneos reconociendo revenue.
+5. Dos requests simultáneos pagando el mismo payable.
+
+Debe validar:
+- no duplicate journal entries
+- no duplicate revenue
+- no double reversal
+- no double close
+- no negative AP accidental
+- no cash clearing duplication
+
+Implementar protección si falta:
+- idempotency_key
+- unique constraints
+- optimistic locking version
+- transaction locks
+- source_id uniqueness
+
+==================================================
+FASE 7 — FULL UI ↔ LEDGER CROSSCHECK
+==================================================
+
+Crear endpoint:
+
+GET /api/accounting/audit/ui-ledger-crosscheck?period=YYYY-MM
+
+Comparar:
+- bookings.html KPIs vs ledger
+- booking-wizard summary vs ledger
+- accounting.html P&L vs ledger
+- AP UI vs AP ledger
+- AR UI vs AR ledger
+- Trial Balance UI vs journal lines
+- Cash Clearing UI vs actual 1015
+
+Debe devolver:
+- mismatches
+- source of truth
+- recommended fix
+
+Regla:
+Ledger is source of truth.
+
+==================================================
+FASE 8 — ONBOARDING QA VALIDATION
+==================================================
+
+Revisar Guía Contable:
+
+Debe incluir 13 guías:
+1. Cuadrar booking
+2. Pago cliente
+3. Gasto booking
+4. Cuenta por pagar capitán
+5. Pago parcial/total AP
+6. Cuenta por cobrar
+7. Gasto corporativo
+8. Ingreso no-booking
+9. Nómina
+10. Anular/Reversar
+11. Cierre mensual
+12. Leer P&L / BS / Cash Flow
+13. Qué NO hacer
+
+Para cada guía:
+- pasos claros
+- cuenta Dr/Cr correcta
+- ejemplo real
+- botón de prueba QA si aplica
+- botón “Ir al flujo”
+- estado guardado en localStorage
+
+Crear endpoint:
+GET /api/accounting/onboarding/qa-status
+
+Debe validar que cada guía existe y está enlazada a su flujo.
+
+==================================================
+FASE 9 — FULL SYSTEM HEALTH V2
+==================================================
+
+Actualizar:
+
+GET /api/accounting/audit/full-system-health
+
+Debe incluir módulos nuevos:
+
+- forensic_ledger_rebuild
+- booking_reconstruction
+- reversal_safety
+- month_close
+- concurrency
+- ui_ledger_crosscheck
+- onboarding
+
+Debe devolver:
+{
+  "overall_status": "pass | warning | fail",
+  "modules_passed": X,
+  "modules_total": Y,
+  "critical_issues": [],
+  "warnings": [],
+  "last_run": "timestamp"
+}
+
+No marcar PASS si:
+- hay critical issues
+- trial balance falla
+- ledger mismatch crítico
+- duplicate reversal permitido
+- posting allowed in closed period
+- booking_total = 0 donde calendar > 0
+
+==================================================
+FASE 10 — PRUEBA FINAL INTEGRADA
+==================================================
+
+Crear endpoint:
+
+POST /api/accounting/qa/final-enterprise-audit
+
+Debe ejecutar en orden:
+
+1. full-system-health
+2. ledger-integrity
+3. forensic-ledger-rebuild
+4. booking-reconstruction-test
+5. double-reversal-safety-test
+6. month-close-test
+7. concurrency-test
+8. ui-ledger-crosscheck
+9. onboarding-qa-status
+10. corporate-layer-test
+
+Debe devolver:
+{
+  "enterprise_audit_status": "pass | fail",
+  "tests_run": [],
+  "critical_issues": [],
+  "warnings": [],
+  "evidence": {}
+}
+
+==================================================
+FASE 11 — ENTREGABLE FINAL
+==================================================
+
+Al terminar reportar:
+
+1. Estado legacy_lock.
+2. Forensic ledger rebuild result.
+3. Booking reconstruction result.
+4. Double reversal safety result.
+5. Month close test result.
+6. Concurrency test result.
+7. UI-ledger crosscheck result.
+8. Onboarding QA result.
+9. Full-system-health V2 result.
+10. Final enterprise audit result.
+11. Bugs corregidos.
+12. Riesgos pendientes.
+13. Confirmación de que nada existente fue roto.
+
+CRITERIO DE ÉXITO:
+Solo declarar terminado si:
+
+- enterprise_audit_status = pass
+- critical_issues = 0
+- Trial Balance PASS
+- Balance Sheet PASS
+- Cash Flow PASS
+- P&L PASS
+- AP PASS
+- AR PASS
+- reversals PASS
+- month close PASS
+- concurrency PASS
+- onboarding PASS
+- no booking_total=0 cuando calendario tiene monto
+- no UI/ledger mismatch crítico
