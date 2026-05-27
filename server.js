@@ -23651,6 +23651,168 @@ const HOST = '0.0.0.0'; // Required for deployment
   const { registerBackfillRoutes } = require('./server/bookingBackfillAudit');
   registerBackfillRoutes(app, pool);
 
+  // ── FASE 30: GET /api/accounting/audit/full-system-health ────────────────────
+  app.get('/api/accounting/audit/full-system-health', isAuthenticated, async (req, res) => {
+    const t0 = Date.now();
+    const modules = {};
+    const critical_issues = [];
+    const warnings = [];
+    const qa_results = [];
+
+    const chk = async (name, fn) => {
+      try {
+        const r = await fn();
+        modules[name] = r.status;
+        if (r.status === 'fail')    critical_issues.push({ module: name, issue: r.issue });
+        if (r.status === 'warning') warnings.push({ module: name, issue: r.issue });
+        if (r.qa) qa_results.push({ module: name, ...r.qa });
+      } catch(e) {
+        modules[name] = 'fail';
+        critical_issues.push({ module: name, issue: e.message });
+        qa_results.push({ module: name, test: name, result: 'ERROR: ' + e.message });
+      }
+    };
+
+    // 1. Chart of Accounts
+    await chk('chart_of_accounts', async () => {
+      const r = await pool.query(`SELECT COUNT(*) as cnt FROM chart_of_accounts`);
+      const cnt = parseInt(r.rows[0].cnt);
+      if (cnt < 20) return { status: 'fail', issue: `Only ${cnt} accounts (need ≥20)`, qa: { test: 'COA count', result: `${cnt} accounts` } };
+      return { status: 'pass', qa: { test: 'COA count', result: `${cnt} active accounts` } };
+    });
+
+    // 2. General Ledger — all journal entries must be balanced (Dr = Cr)
+    await chk('general_ledger', async () => {
+      const r = await pool.query(`
+        SELECT COUNT(*) as total_entries,
+          SUM(CASE WHEN ABS(total_debits - total_credits) > 0.01 THEN 1 ELSE 0 END) as unbalanced
+        FROM (
+          SELECT je.id,
+            COALESCE(SUM(jel.debit_amount),0)  as total_debits,
+            COALESCE(SUM(jel.credit_amount),0) as total_credits
+          FROM journal_entries je
+          LEFT JOIN journal_entry_lines jel ON jel.journal_entry_id = je.id
+          WHERE COALESCE(je.excluded_from_reports, false) = false
+          GROUP BY je.id
+        ) sub
+      `);
+      const { total_entries, unbalanced } = r.rows[0];
+      const u = parseInt(unbalanced);
+      if (u > 0) return { status: 'fail', issue: `${u} unbalanced journal entries`, qa: { test: 'GL Balance', result: `${u} unbalanced of ${total_entries}` } };
+      return { status: 'pass', qa: { test: 'GL Balance', result: `${total_entries} entries, all balanced (Dr=Cr)` } };
+    });
+
+    // 3. Accounts Payable
+    await chk('accounts_payable', async () => {
+      const bp = await pool.query(`SELECT COUNT(*) as cnt, COALESCE(SUM(balance_due),0) as due FROM booking_payables WHERE status NOT IN ('voided','cancelled')`);
+      const cp = await pool.query(`SELECT COUNT(*) as cnt, COALESCE(SUM(balance_due),0) as due FROM corporate_payables WHERE status NOT IN ('voided','cancelled')`);
+      const neg = await pool.query(`SELECT COUNT(*) as cnt FROM booking_payables WHERE balance_due < -0.01 AND status NOT IN ('voided','cancelled')`);
+      const negCnt = parseInt(neg.rows[0].cnt);
+      if (negCnt > 0) return { status: 'warning', issue: `${negCnt} payables with negative balance (possible overpayment)`, qa: { test: 'AP Integrity', result: `${negCnt} negative balances` } };
+      return { status: 'pass', qa: { test: 'AP', result: `booking: ${bp.rows[0].cnt} open ($${parseFloat(bp.rows[0].due).toFixed(2)}), corporate: ${cp.rows[0].cnt} open ($${parseFloat(cp.rows[0].due).toFixed(2)})` } };
+    });
+
+    // 4. Accounts Receivable
+    await chk('accounts_receivable', async () => {
+      const r  = await pool.query(`SELECT COUNT(*) as cnt, COALESCE(SUM(amount),0) as total FROM booking_receivables WHERE status NOT IN ('voided','cancelled','written_off')`);
+      const dep = await pool.query(`SELECT COUNT(*) as cnt, COALESCE(SUM(amount),0) as total FROM booking_deposits WHERE status NOT IN ('voided','cancelled')`);
+      return { status: 'pass', qa: { test: 'AR', result: `${r.rows[0].cnt} receivables ($${parseFloat(r.rows[0].total).toFixed(2)}), ${dep.rows[0].cnt} deposits ($${parseFloat(dep.rows[0].total).toFixed(2)})` } };
+    });
+
+    // 5. Booking Accounting — check for orphan transactions
+    await chk('booking_accounting', async () => {
+      const orphan = await pool.query(`
+        SELECT COUNT(*) as cnt FROM transactions t
+        WHERE t.booking_id IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM bookings b WHERE b.id = t.booking_id)
+        AND COALESCE(t.excluded_from_ledger, false) = false
+      `);
+      const cnt = parseInt(orphan.rows[0].cnt);
+      if (cnt > 0) return { status: 'warning', issue: `${cnt} transactions reference non-existent bookings`, qa: { test: 'Orphan Tx', result: `${cnt} orphans` } };
+      const active = await pool.query(`SELECT COUNT(*) as cnt FROM transactions WHERE booking_id IS NOT NULL AND COALESCE(excluded_from_ledger,false)=false`);
+      return { status: 'pass', qa: { test: 'Booking Tx', result: `${active.rows[0].cnt} active booking transactions, no orphans` } };
+    });
+
+    // 6. Corporate Expenses
+    await chk('corporate_expenses', async () => {
+      const r = await pool.query(`SELECT COUNT(*) as cnt FROM journal_entries WHERE source_type='corporate_expense' AND COALESCE(excluded_from_reports,false)=false`);
+      return { status: 'pass', qa: { test: 'Corporate Expenses', result: `${r.rows[0].cnt} recorded` } };
+    });
+
+    // 7. Other Income
+    await chk('other_income', async () => {
+      const r = await pool.query(`SELECT COUNT(*) as cnt FROM journal_entries WHERE source_type='other_income' AND COALESCE(excluded_from_reports,false)=false`);
+      return { status: 'pass', qa: { test: 'Other Income', result: `${r.rows[0].cnt} recorded` } };
+    });
+
+    // 8. Payroll
+    await chk('payroll', async () => {
+      const r = await pool.query(`SELECT COUNT(*) as cnt FROM journal_entries WHERE source_type='payroll' AND COALESCE(excluded_from_reports,false)=false`);
+      return { status: 'pass', qa: { test: 'Payroll', result: `${r.rows[0].cnt} payroll entries` } };
+    });
+
+    // 9. Reversals — no double reversals
+    await chk('reversals', async () => {
+      const r = await pool.query(`SELECT COUNT(*) as cnt FROM accounting_reversal_log WHERE reversed_at IS NOT NULL`);
+      const double = await pool.query(`
+        SELECT COUNT(*) as cnt FROM (
+          SELECT source_id, source_type FROM accounting_reversal_log WHERE reversed_at IS NOT NULL
+          GROUP BY source_id, source_type HAVING COUNT(*) > 1
+        ) sub
+      `);
+      const doubleCnt = parseInt(double.rows[0].cnt);
+      if (doubleCnt > 0) return { status: 'warning', issue: `${doubleCnt} source records reversed more than once`, qa: { test: 'Reversals', result: `${doubleCnt} double reversals` } };
+      return { status: 'pass', qa: { test: 'Reversals', result: `${r.rows[0].cnt} completed reversals, no doubles` } };
+    });
+
+    // 10. Financial Statements — P&L query must run without error
+    await chk('financial_statements', async () => {
+      const period = new Date().toISOString().slice(0, 7);
+      const r = await pool.query(`
+        SELECT
+          COALESCE(SUM(CASE WHEN ja.account_type='revenue' THEN jel.credit_amount ELSE 0 END),0) as revenue,
+          COALESCE(SUM(CASE WHEN ja.account_type='expense' THEN jel.debit_amount  ELSE 0 END),0) as expenses
+        FROM journal_entries je
+        JOIN journal_entry_lines jel ON jel.journal_entry_id = je.id
+        JOIN chart_of_accounts ja ON ja.account_code = jel.account_code
+        WHERE je.accounting_period = $1 AND COALESCE(je.excluded_from_reports,false) = false
+      `, [period]);
+      return { status: 'pass', qa: { test: 'Financial Statements', result: `P&L ok — ${period}: revenue $${parseFloat(r.rows[0].revenue).toFixed(2)}, expenses $${parseFloat(r.rows[0].expenses).toFixed(2)}` } };
+    });
+
+    // 11. Legacy Lock
+    await chk('legacy_lock', async () => {
+      const r = await pool.query(`SELECT value FROM accounting_period_config WHERE key='legacy_cutover_date'`);
+      if (!r.rows.length || !r.rows[0].value) return { status: 'warning', issue: 'Legacy cutover date not configured in period-control', qa: { test: 'Legacy Lock', result: 'not configured' } };
+      return { status: 'pass', qa: { test: 'Legacy Lock', result: `Cutover: ${r.rows[0].value}` } };
+    });
+
+    // 12. Cancelled Lock — cancelled bookings must not have active ledger entries
+    await chk('cancelled_lock', async () => {
+      const r = await pool.query(`
+        SELECT COUNT(*) as cnt FROM transactions t
+        JOIN bookings b ON b.id = t.booking_id
+        WHERE b.status IN ('cancelled','canceled')
+        AND COALESCE(t.excluded_from_ledger, false) = false
+        AND COALESCE(t.is_reversal, false) = false
+      `);
+      const cnt = parseInt(r.rows[0].cnt);
+      if (cnt > 0) return { status: 'warning', issue: `${cnt} active ledger entries on cancelled bookings`, qa: { test: 'Cancelled Lock', result: `${cnt} contaminating entries` } };
+      return { status: 'pass', qa: { test: 'Cancelled Lock', result: 'No active transactions on cancelled bookings' } };
+    });
+
+    const overall = critical_issues.length > 0 ? 'fail' : warnings.length > 0 ? 'warning' : 'pass';
+    res.json({
+      status: overall,
+      modules,
+      critical_issues,
+      warnings,
+      qa_results,
+      last_checked_at: new Date().toISOString(),
+      check_duration_ms: Date.now() - t0
+    });
+  });
+
   // ── Fase V2.1: Bank reconciliation ───────────────────────
   const { registerBankReconcileRoutes } = require('./server/bankReconcile');
   registerBankReconcileRoutes(app, pool);

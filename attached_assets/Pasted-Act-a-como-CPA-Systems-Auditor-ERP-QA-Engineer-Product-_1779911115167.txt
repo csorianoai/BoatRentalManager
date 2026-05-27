@@ -1,0 +1,327 @@
+Actúa como CPA Systems Auditor, ERP QA Engineer, Product Onboarding Architect y Accounting Operations Designer para gestion.nadakiexcursions.
+
+MISIÓN:
+Verificar si el sistema contable completo fue construido correctamente:
+- General Ledger
+- Chart of Accounts
+- Booking Accounting
+- Accounts Payable
+- Accounts Receivable
+- Corporate Expenses
+- Other Income
+- Payroll
+- Cash Clearing
+- Revenue Recognition
+- Manual Adjustments
+- Reversals / Voids
+- Financial Statements
+- Legacy Lock
+- Cancelled Booking Lock
+
+Si todo existe y funciona, crear un sistema de onboarding dentro del dashboard para enseñar al usuario cómo usar cada flujo contable.
+
+NO romper nada existente.
+NO declarar terminado sin pruebas reales.
+
+==================================================
+FASE 1 — AUDITORÍA DE EXISTENCIA
+==================================================
+
+Verificar y reportar si existen:
+
+1. Chart of Accounts
+2. journal_entries
+3. journal_entry_lines
+4. transactions
+5. booking_payables
+6. booking_payable_payments
+7. corporate_payables
+8. corporate_payable_payments
+9. booking_receivables
+10. booking_deposits
+11. corporate_expenses
+12. other_income
+13. payroll_expenses
+14. accounting_reversal_log
+15. ledger_sanitization_log
+16. accounting_periods
+17. monthly_financial_snapshots
+
+Para cada uno reportar:
+- existe: sí/no
+- columnas críticas
+- endpoint relacionado
+- UI relacionada
+- estado: completo/parcial/faltante
+
+==================================================
+FASE 2 — AUDITORÍA DE FLUJOS CONTABLES
+==================================================
+
+Ejecutar pruebas reales QA con rollback o excluded_from_reports=true.
+
+A) Booking Revenue Flow
+- crear booking QA
+- registrar pago cash
+- registrar pago bank
+- completar servicio
+- reconocer revenue
+- validar AR/deferred/revenue
+
+B) Booking Expenses Flow
+- fuel
+- ice
+- captain
+- broker commission
+- cleaning
+- marina
+- other
+
+C) Booking Accounts Payable
+- crear payable capitán
+- pagar parcial cash
+- pagar parcial bank/zelle
+- validar saldo
+- validar AP aging
+
+D) Accounts Receivable
+- booking con balance pendiente
+- marcar pago parcial
+- marcar pago total
+- validar AR aging
+
+E) Corporate Expenses
+- rent
+- utilities
+- telephone
+- insurance
+- software
+- payroll
+- marketing
+
+F) Corporate AP
+- crear bill payable
+- pagar parcial
+- pagar total
+- validar AP aging
+
+G) Other Income
+- registrar income no-booking
+- validar P&L
+
+H) Reversals / Voids
+- reversar payment
+- reversar expense
+- reversar payable payment
+- reversar other income
+- validar que no quedan activos
+
+I) Manual Entries
+- crear balanced entry
+- rechazar unbalanced entry
+- reversal de manual entry
+
+J) Financial Statements
+- P&L
+- Balance Sheet
+- Cash Flow
+- Trial Balance
+
+==================================================
+FASE 3 — RESULTADOS ESPERADOS
+==================================================
+
+Validar:
+
+- Débitos = Créditos
+- Trial Balance cuadra
+- Balance Sheet cuadra
+- AP Aging correcto
+- AR Aging correcto
+- Cash Clearing correcto
+- No duplicate expenses
+- No duplicate revenue
+- No orphan transactions
+- No invalid account_id
+- Cancelled no afecta contabilidad
+- Legacy no contamina current
+- Booking totals no llegan en 0 al wizard
+
+==================================================
+FASE 4 — ENDPOINT DE AUDITORÍA FINAL
+==================================================
+
+Crear o verificar endpoint:
+
+GET /api/accounting/audit/full-system-health
+
+Debe devolver:
+
+{
+  "status": "pass | warning | fail",
+  "modules": {
+    "chart_of_accounts": "pass",
+    "general_ledger": "pass",
+    "accounts_payable": "pass",
+    "accounts_receivable": "pass",
+    "booking_accounting": "pass",
+    "corporate_expenses": "pass",
+    "other_income": "pass",
+    "payroll": "pass",
+    "reversals": "pass",
+    "financial_statements": "pass",
+    "legacy_lock": "pass",
+    "cancelled_lock": "pass"
+  },
+  "critical_issues": [],
+  "warnings": [],
+  "qa_results": [],
+  "last_checked_at": "timestamp"
+}
+
+No marcar pass si hay errores críticos.
+
+==================================================
+FASE 5 — ONBOARDING CONTABLE
+==================================================
+
+Si los módulos existen, crear en el dashboard:
+
+Accounting → Onboarding / Guía Contable
+
+Debe incluir secciones:
+
+1. Cómo cuadrar un booking
+2. Cómo registrar pago de cliente
+3. Cómo registrar gasto de booking
+4. Cómo registrar cuenta por pagar al capitán
+5. Cómo pagar parcial o total una cuenta por pagar
+6. Cómo registrar cuenta por cobrar
+7. Cómo registrar gasto corporativo
+8. Cómo registrar ingreso que no viene de booking
+9. Cómo registrar nómina/sueldo
+10. Cómo anular/reversar un pago o gasto
+11. Cómo cerrar un mes
+12. Cómo leer P&L, Balance Sheet y Cash Flow
+13. Qué NO hacer
+
+==================================================
+FASE 6 — ONBOARDING INTERACTIVO
+==================================================
+
+Crear componente tipo checklist:
+
+AccountingOnboardingGuide
+
+Cada flujo debe tener:
+- explicación simple
+- pasos numerados
+- cuentas afectadas
+- ejemplo contable
+- botón “Ir a este flujo”
+- botón “Probar con datos QA”
+- estado:
+  - not_started
+  - learned
+  - tested
+  - completed
+
+Ejemplo:
+
+Flujo: Registrar gasto de teléfono
+
+Pasos:
+1. Ir a Accounting → Corporate Expenses
+2. Seleccionar Telephone / Internet
+3. Cuenta: 6100
+4. Método de pago: Bank
+5. Sistema registra:
+   Dr 6100 Telephone Expense
+   Cr 1010 Wells Fargo
+
+==================================================
+FASE 7 — ONBOARDING SEGÚN ROL
+==================================================
+
+Agregar rutas por rol:
+
+A) Contabilidad básica:
+- registrar pagos
+- registrar gastos
+- revisar AP/AR
+
+B) Manager:
+- revisar profit
+- aprobar descuentos
+- cerrar bookings
+
+C) Admin/CFO:
+- manual entries
+- reversals
+- period close
+- financial statements
+
+==================================================
+FASE 8 — VALIDACIONES DENTRO DEL ONBOARDING
+==================================================
+
+Cada guía debe poder ejecutar una prueba QA:
+
+Ejemplo:
+“Probar registro de gasto corporativo”
+
+Debe crear entrada QA con rollback/excluded_from_reports y mostrar:
+PASS/FAIL
+
+==================================================
+FASE 9 — UI
+==================================================
+
+Agregar al menú:
+
+Finanzas → Onboarding Contable
+
+También agregar botón de ayuda contextual:
+
+En Booking Wizard:
+“¿Cómo cuadro este booking?”
+
+En Corporate Expenses:
+“¿Cómo registro este gasto?”
+
+En AP:
+“¿Cómo pago una cuenta por pagar?”
+
+En AR:
+“¿Cómo cobro una cuenta por cobrar?”
+
+En Reversals:
+“¿Cómo anulo correctamente?”
+
+==================================================
+FASE 10 — ENTREGABLE FINAL
+==================================================
+
+Reportar:
+
+1. Qué módulos existen.
+2. Qué módulos faltaban.
+3. Qué pruebas pasaron.
+4. Qué pruebas fallaron.
+5. Bugs corregidos.
+6. Endpoint full-system-health creado.
+7. Onboarding creado.
+8. Rutas del onboarding.
+9. Ejemplos contables incluidos.
+10. Confirmación de que cada guía tiene prueba QA.
+11. Riesgos pendientes.
+
+CRITERIO DE ÉXITO:
+No declarar terminado hasta que:
+- full-system-health no tenga critical issues
+- AP funcione
+- AR funcione
+- Reversals funcionen
+- Financial statements funcionen
+- Onboarding esté visible en el menú
+- cada flujo tenga pasos claros y cuentas contables correctas

@@ -410,6 +410,9 @@
             <button class="tab" data-tab="pnl-completo" data-testid="tab-pnl-completo" onclick="loadPnLCompleto()">
                 P&amp;L Completo
             </button>
+            <button class="tab" data-tab="onboarding-contable" data-testid="tab-onboarding-contable" onclick="initOnboarding()">
+                Guia Contable
+            </button>
         </div>
     </div>
 
@@ -5630,6 +5633,50 @@ document.querySelectorAll('.tab[data-tab="period-control"]').forEach(btn => {
     </div>
 </div>
 
+<!-- TAB: Guia Contable / Onboarding -->
+<div class="tab-content" id="onboarding-contable" data-testid="tab-content-onboarding-contable" style="display:none;padding:24px 30px;max-width:1280px;margin:0 auto;">
+  <!-- System Health Widget -->
+  <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px 24px;margin-bottom:20px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+      <div>
+        <h2 style="margin:0 0 4px;font-size:18px;font-weight:800;color:#1a1a2e;">Guia Contable — Onboarding</h2>
+        <p style="margin:0;font-size:13px;color:#64748b;">Aprende cada flujo contable paso a paso. El estado de salud del sistema se muestra abajo.</p>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <span id="ob-health-badge" style="padding:5px 14px;border-radius:20px;font-size:12px;font-weight:700;background:#f1f5f9;color:#64748b;">Verificando...</span>
+        <button onclick="runSystemHealth()" data-testid="button-ob-health" style="padding:8px 16px;background:#7c3aed;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;">Verificar Sistema</button>
+        <button onclick="resetOnboardingProgress()" data-testid="button-ob-reset" style="padding:8px 14px;background:#f1f5f9;color:#374151;border:1px solid #e5e7eb;border-radius:7px;font-size:12px;cursor:pointer;">Reiniciar Progreso</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Health Results -->
+  <div id="ob-health-results" style="display:none;margin-bottom:20px;"></div>
+
+  <!-- Progress Bar -->
+  <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:16px 20px;margin-bottom:20px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+      <span style="font-size:13px;font-weight:700;color:#1a1a2e;">Tu Progreso</span>
+      <span id="ob-progress-text" style="font-size:13px;color:#64748b;">0 / 13 completados</span>
+    </div>
+    <div style="background:#f1f5f9;border-radius:20px;height:8px;overflow:hidden;">
+      <div id="ob-progress-bar" style="background:linear-gradient(90deg,#7c3aed,#0ea5e9);height:100%;border-radius:20px;width:0%;transition:width .4s;"></div>
+    </div>
+  </div>
+
+  <!-- Role Filter -->
+  <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:12px 20px;margin-bottom:20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+    <span style="font-size:13px;font-weight:600;color:#374151;">Filtrar por rol:</span>
+    <button onclick="filterByRole('all')" data-role="all" class="ob-role-btn ob-role-active" data-testid="button-ob-role-all" style="padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;background:#7c3aed;color:#fff;border:none;">Todos</button>
+    <button onclick="filterByRole('basic')" data-role="basic" class="ob-role-btn" data-testid="button-ob-role-basic" style="padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;background:#f1f5f9;color:#374151;border:none;">Contabilidad Basica</button>
+    <button onclick="filterByRole('manager')" data-role="manager" class="ob-role-btn" data-testid="button-ob-role-manager" style="padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;background:#f1f5f9;color:#374151;border:none;">Manager</button>
+    <button onclick="filterByRole('admin')" data-role="admin" class="ob-role-btn" data-testid="button-ob-role-admin" style="padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;background:#f1f5f9;color:#374151;border:none;">Admin / CFO</button>
+  </div>
+
+  <!-- Guides Grid -->
+  <div id="ob-guides-container" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px;"></div>
+</div>
+
 <!-- TAB: P&L Completo -->
 <div class="tab-content" id="pnl-completo" data-testid="tab-content-pnl-completo" style="display:none;padding:24px 30px;max-width:1280px;margin:0 auto;">
     <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px 24px;margin-bottom:20px;">
@@ -6074,6 +6121,482 @@ document.querySelectorAll('[data-tab="corp-payables"]').forEach(btn=>btn.addEven
 document.querySelectorAll('[data-tab="other-income"]').forEach(btn=>btn.addEventListener('click',()=>setTimeout(loadOtherIncome,100)));
 document.querySelectorAll('[data-tab="payroll"]').forEach(btn=>btn.addEventListener('click',()=>setTimeout(loadPayroll,100)));
 document.querySelectorAll('[data-tab="general-ledger"]').forEach(btn=>btn.addEventListener('click',()=>setTimeout(loadGeneralLedger,100)));
+
+// ═══════════════════════════════════════════════════════════════
+// ONBOARDING CONTABLE — Guia de 13 Flujos
+// ═══════════════════════════════════════════════════════════════
+
+const OB_GUIDES = [
+  {
+    id: 'cuadre-booking',
+    num: 1,
+    title: 'Cuadrar un Booking',
+    icon: '📋',
+    roles: ['all','basic','manager','admin'],
+    desc: 'Un booking cuadrado significa que los pagos recibidos + balance pendiente = total del booking. Usa el Booking Wizard para ver el estado.',
+    steps: [
+      'Abre Bookings y selecciona el booking deseado.',
+      'Haz clic en "Wizard" para abrir el Booking Wizard.',
+      'Verifica la seccion "Cuadre de Pagos": Total Booking vs Total Cobrado.',
+      'Si hay diferencia, registra el pago faltante o crea un ajuste.',
+      'El semaforo en verde indica booking cuadrado.'
+    ],
+    accounts: [
+      { dr:'1100', drN:'Accounts Receivable', cr:'4010', crN:'Revenue - Tours', note:'Al crear booking' },
+      { dr:'1015', drN:'Cash Clearing', cr:'1100', crN:'Accounts Receivable', note:'Al registrar pago cash' },
+      { dr:'1010', drN:'Wells Fargo Operating', cr:'1015', crN:'Cash Clearing', note:'Al confirmar deposito' }
+    ],
+    example: 'Booking $500 tour:\n  Dr 1100 AR $500 / Cr 4010 Revenue $500\n  Pago cash:\n  Dr 1015 Cash Clearing $500 / Cr 1100 AR $500',
+    link: 'cuadre-booking',
+    qa: null
+  },
+  {
+    id: 'pago-cliente',
+    num: 2,
+    title: 'Registrar Pago de Cliente',
+    icon: '💳',
+    roles: ['all','basic'],
+    desc: 'Registra pagos de clientes en efectivo o por banco/Zelle directamente desde el Booking Wizard.',
+    steps: [
+      'Abre el Booking Wizard del booking correspondiente.',
+      'En la seccion "Pagos Recibidos", haz clic en "Agregar Pago".',
+      'Selecciona metodo: Cash o Bank/Zelle.',
+      'Ingresa el monto y la fecha.',
+      'El sistema registra automaticamente las entradas contables de doble partida.'
+    ],
+    accounts: [
+      { dr:'1015', drN:'Cash Clearing (1015)', cr:'1100', crN:'Accounts Receivable', note:'Cash recibido' },
+      { dr:'1010', drN:'Wells Fargo (1010)', cr:'1015', crN:'Cash Clearing', note:'Bank/Zelle recibido' }
+    ],
+    example: 'Cliente paga $300 cash:\n  Dr 1015 Cash Clearing $300\n  Cr 1100 AR $300',
+    link: 'cuadre-booking',
+    qa: null
+  },
+  {
+    id: 'gasto-booking',
+    num: 3,
+    title: 'Registrar Gasto de Booking',
+    icon: '⛽',
+    roles: ['all','basic'],
+    desc: 'Gastos directos del booking: combustible, hielo, limpieza, marina fees. Se registran en el Booking Wizard y reducen el profit del viaje.',
+    steps: [
+      'Abre el Booking Wizard del booking.',
+      'En la seccion "Gastos del Viaje", haz clic en "Agregar Gasto".',
+      'Selecciona el tipo: Fuel, Ice/Supplies, Cleaning, Marina Fees, etc.',
+      'Ingresa monto y metodo de pago (Cash o Bank).',
+      'El sistema debita la cuenta de gasto y acredita Cash Clearing o Bank.'
+    ],
+    accounts: [
+      { dr:'5020', drN:'Fuel Expense', cr:'1015', crN:'Cash Clearing', note:'Combustible pagado cash' },
+      { dr:'5030', drN:'Ice / Supplies', cr:'1015', crN:'Cash Clearing', note:'Hielo/suministros' },
+      { dr:'5040', drN:'Cleaning', cr:'1015', crN:'Cash Clearing', note:'Limpieza post-viaje' },
+      { dr:'5050', drN:'Dock / Marina Fees', cr:'1015', crN:'Cash Clearing', note:'Cargos de marina' }
+    ],
+    example: 'Fuel $80 cash:\n  Dr 5020 Fuel Expense $80\n  Cr 1015 Cash Clearing $80',
+    link: 'cuadre-booking',
+    qa: null
+  },
+  {
+    id: 'cuenta-pagar-capitan',
+    num: 4,
+    title: 'Cuenta por Pagar al Capitan',
+    icon: '⚓',
+    roles: ['all','basic','manager'],
+    desc: 'El capitan presta el servicio pero el pago se hace despues del viaje. Primero se crea la cuenta por pagar (AP) y luego se paga.',
+    steps: [
+      'Abre el Booking Wizard del booking.',
+      'En la seccion "Capitan", haz clic en "Crear Payable".',
+      'Ingresa el monto acordado con el capitan.',
+      'El sistema crea un AP a nombre del capitan en cuenta 2010.',
+      'El balance queda pendiente hasta que se ejecute el pago.'
+    ],
+    accounts: [
+      { dr:'5010', drN:'Captain Labor (5010)', cr:'2010', crN:'Captain Payable (2010)', note:'Al crear el AP del capitan' }
+    ],
+    example: 'Capitan cobra $150:\n  Dr 5010 Captain Labor $150\n  Cr 2010 Captain Payable $150',
+    link: 'booking-wizard.html',
+    qa: null
+  },
+  {
+    id: 'pagar-capitan',
+    num: 5,
+    title: 'Pagar Cuenta del Capitan (Parcial o Total)',
+    icon: '💰',
+    roles: ['all','basic','manager'],
+    desc: 'Una vez creado el AP del capitan, puedes pagar parcial o total en efectivo o Zelle. El sistema actualiza el saldo automaticamente.',
+    steps: [
+      'Abre el Booking Wizard y ve a la seccion de Capitan.',
+      'Haz clic en "Pagar" junto al AP del capitan.',
+      'Selecciona Cash o Zelle/Bank.',
+      'Ingresa el monto (puede ser parcial).',
+      'El saldo restante queda en AP hasta el proximo pago.'
+    ],
+    accounts: [
+      { dr:'2010', drN:'Captain Payable (2010)', cr:'1015', crN:'Cash Clearing (1015)', note:'Pago en efectivo' },
+      { dr:'2010', drN:'Captain Payable (2010)', cr:'1010', crN:'Wells Fargo (1010)', note:'Pago por Zelle/bank' }
+    ],
+    example: 'Pago parcial $100 cash al capitan:\n  Dr 2010 Captain Payable $100\n  Cr 1015 Cash Clearing $100\n  Saldo AP: $50 pendiente',
+    link: 'booking-wizard.html',
+    qa: null
+  },
+  {
+    id: 'cuenta-cobrar',
+    num: 6,
+    title: 'Registrar Cuenta por Cobrar (AR)',
+    icon: '📨',
+    roles: ['all','basic','manager'],
+    desc: 'Cuando un cliente paga despues del servicio (credito), se registra un AR que queda pendiente hasta recibir el pago.',
+    steps: [
+      'Ve a Contabilidad -> Depositos de Reservas o Booking Wizard.',
+      'Registra el booking con pago diferido.',
+      'El sistema crea automaticamente un AR en cuenta 1100.',
+      'Cuando el cliente pague, registra el pago en el Booking Wizard.',
+      'El AR se cancela contra el pago recibido.'
+    ],
+    accounts: [
+      { dr:'1100', drN:'Accounts Receivable (1100)', cr:'4010', crN:'Revenue - Tours (4010)', note:'Al reconocer el servicio' },
+      { dr:'1010', drN:'Wells Fargo (1010)', cr:'1100', crN:'Accounts Receivable (1100)', note:'Al recibir el pago' }
+    ],
+    example: 'Servicio $400 a credito:\n  Dr 1100 AR $400 / Cr 4010 Revenue $400\n  Pago posterior:\n  Dr 1010 Bank $400 / Cr 1100 AR $400',
+    link: 'deposits',
+    qa: null
+  },
+  {
+    id: 'gasto-corporativo',
+    num: 7,
+    title: 'Registrar Gasto Corporativo',
+    icon: '🏢',
+    roles: ['basic','manager','admin'],
+    desc: 'Gastos de operacion del negocio: renta, electricidad, telefono, internet, seguros, software. Se registran en Gastos Corp.',
+    steps: [
+      'Ve a la pestana "Gastos Corp." en Contabilidad.',
+      'Haz clic en "Nuevo Gasto Corporativo".',
+      'Selecciona la categoria (Renta, Utilities, Seguro, etc.).',
+      'Ingresa monto, fecha, metodo de pago y descripcion.',
+      'El sistema crea el journal entry de doble partida automaticamente.'
+    ],
+    accounts: [
+      { dr:'6080', drN:'Rent (6080)', cr:'1010', crN:'Wells Fargo (1010)', note:'Renta de oficina pagada' },
+      { dr:'6090', drN:'Utilities (6090)', cr:'1010', crN:'Wells Fargo (1010)', note:'Electricidad' },
+      { dr:'6100', drN:'Telephone / Internet (6100)', cr:'1010', crN:'Wells Fargo (1010)', note:'Telefono e internet' },
+      { dr:'6010', drN:'Insurance (6010)', cr:'1010', crN:'Wells Fargo (1010)', note:'Seguro anual' }
+    ],
+    example: 'Renta $800 mensual:\n  Dr 6080 Rent $800\n  Cr 1010 Wells Fargo $800',
+    link: 'corp-expenses',
+    qa: { label:'Probar Gasto Corp QA', endpoint:'/api/accounting/corporate-expenses', method:'POST', body:{ vendor_name:'QA Test Corp', category:'utilities', expense_account_code:'6090', amount:1.00, payment_account_code:'1010', bill_date:new Date().toISOString().slice(0,10), memo:'QA onboarding test', excluded_from_reports:true } }
+  },
+  {
+    id: 'otro-ingreso',
+    num: 8,
+    title: 'Registrar Otro Ingreso (No Booking)',
+    icon: '📈',
+    roles: ['basic','manager','admin'],
+    desc: 'Ingresos que no provienen de reservas: venta de merchandise, alquiler de equipo, patrocinios, etc. Se registran en Otros Ingresos.',
+    steps: [
+      'Ve a la pestana "Otros Ingresos" en Contabilidad.',
+      'Haz clic en "Nuevo Ingreso".',
+      'Ingresa descripcion, monto, cuenta de ingreso y metodo de cobro.',
+      'El sistema debita la cuenta de efectivo/banco y acredita la cuenta de ingreso.',
+      'Aparecera en el P&L bajo "Otros Ingresos".'
+    ],
+    accounts: [
+      { dr:'1010', drN:'Wells Fargo (1010)', cr:'4500', crN:'Non-Booking Income (4500)', note:'Ingreso no-booking recibido' },
+      { dr:'1015', drN:'Cash Clearing (1015)', cr:'4090', crN:'Other Income (4090)', note:'Si se cobra en cash' }
+    ],
+    example: 'Venta merchandise $50:\n  Dr 1010 Wells Fargo $50\n  Cr 4500 Non-Booking Income $50',
+    link: 'other-income',
+    qa: { label:'Probar Otro Ingreso QA', endpoint:'/api/accounting/other-income', method:'POST', body:{ description:'QA Test Other Income', amount:1.00, income_account_code:'4500', payment_account_code:'1010', income_date:new Date().toISOString().slice(0,10), memo:'QA onboarding test', excluded_from_reports:true } }
+  },
+  {
+    id: 'nomina',
+    num: 9,
+    title: 'Registrar Nomina / Sueldo',
+    icon: '👥',
+    roles: ['manager','admin'],
+    desc: 'Registra sueldos, salarios y impuestos de nomina. El sistema crea las entradas en cuentas de gastos de payroll y liabilities.',
+    steps: [
+      'Ve a la pestana "Nomina" en Contabilidad.',
+      'Haz clic en "Registrar Nomina".',
+      'Ingresa nombre del empleado, monto bruto, tipo y fecha.',
+      'Si el pago es inmediato, selecciona cuenta bancaria. Si es diferido, queda en Wages Payable.',
+      'Los impuestos de nomina van a Payroll Taxes Payable (2130).'
+    ],
+    accounts: [
+      { dr:'6110', drN:'Payroll Expense (6110)', cr:'2200', crN:'Wages Payable (2200)', note:'Al registrar salario diferido' },
+      { dr:'6120', drN:'Payroll Taxes (6120)', cr:'2130', crN:'Payroll Taxes Payable (2130)', note:'Impuestos de nomina' },
+      { dr:'2200', drN:'Wages Payable (2200)', cr:'1010', crN:'Wells Fargo (1010)', note:'Al pagar el salario' }
+    ],
+    example: 'Nomina $1,000 diferida:\n  Dr 6110 Payroll Expense $1,000\n  Cr 2200 Wages Payable $1,000\n  Al pagar:\n  Dr 2200 Wages Payable $1,000 / Cr 1010 Bank $1,000',
+    link: 'payroll',
+    qa: { label:'Probar Nomina QA', endpoint:'/api/accounting/payroll-expense', method:'POST', body:{ employee_name:'QA Test Employee', payroll_date:new Date().toISOString().slice(0,10), amount:1.00, payroll_type:'salary', payment_status:'payable', memo:'QA onboarding test', excluded_from_reports:true } }
+  },
+  {
+    id: 'anular-reversar',
+    num: 10,
+    title: 'Anular / Reversar un Pago o Gasto',
+    icon: '↩️',
+    roles: ['manager','admin'],
+    desc: 'Cuando se registra algo por error, se debe anular (void) para crear entradas compensatorias. NUNCA elimines directamente — siempre reversa.',
+    steps: [
+      'Localiza el pago o gasto en el Booking Wizard.',
+      'Haz clic en el boton "Anular" (X rojo) junto al registro.',
+      'Ingresa la razon de la anulacion (requerida para auditoria).',
+      'El sistema crea entradas espejo que cancelan el efecto original.',
+      'El registro queda marcado como ANULADO y excluido del ledger activo.'
+    ],
+    accounts: [
+      { dr:'1100', drN:'AR (reversal)', cr:'1015', crN:'Cash Clearing (reversal)', note:'Reversal de pago cash' },
+      { dr:'2010', drN:'Captain Payable', cr:'5010', crN:'Captain Labor', note:'Reversal de AP capitan' }
+    ],
+    example: 'Anular pago cash $300:\n  Original: Dr 1015 $300 / Cr 1100 $300\n  Reversal: Dr 1100 $300 / Cr 1015 $300\n  Efecto neto: $0',
+    link: 'ledger-contable',
+    qa: { label:'Probar Reversals QA', endpoint:'/api/accounting/qa/void-reversal-hard-test', method:'POST', body:{} }
+  },
+  {
+    id: 'cerrar-mes',
+    num: 11,
+    title: 'Cerrar un Mes Contable',
+    icon: '🔐',
+    roles: ['manager','admin'],
+    desc: 'Al cerrar un periodo, se bloquean nuevas entradas para ese mes. Antes de cerrar, verifica que el Trial Balance cuadra.',
+    steps: [
+      'Ve a "Control de Periodo" en Contabilidad.',
+      'Revisa el Trial Balance del mes: Dr Total = Cr Total.',
+      'Verifica que no hayan transacciones no conciliadas pendientes.',
+      'Ejecuta "Verificar Integridad del Periodo".',
+      'Confirma el cierre. Despues no se pueden agregar entradas al mes cerrado.'
+    ],
+    accounts: [
+      { dr:'4000', drN:'Revenue (cierre)', cr:'3200', crN:'Current Year Earnings', note:'Cierre de ingresos' },
+      { dr:'3200', drN:'Current Year Earnings', cr:'5000', crN:'Expenses (cierre)', note:'Cierre de gastos' }
+    ],
+    example: 'Cierre de Mayo:\n  1. Verificar Trial Balance cuadra (Dr = Cr)\n  2. Confirmar que no hay bookings abiertos con balance pendiente\n  3. Hacer clic en "Cerrar Periodo Mayo 2026"',
+    link: 'period-control',
+    qa: null
+  },
+  {
+    id: 'leer-estados',
+    num: 12,
+    title: 'Leer P&L, Balance Sheet y Cash Flow',
+    icon: '📊',
+    roles: ['manager','admin'],
+    desc: 'Los estados financieros muestran la salud del negocio. P&L = cuanto ganas, Balance Sheet = que tienes, Cash Flow = de donde viene el dinero.',
+    steps: [
+      'P&L (Estado de Resultados): ve a pestana "P&L Completo". Muestra Ingresos - Gastos = Utilidad Neta.',
+      'Balance Sheet: ve a "Reportes" -> Balance Sheet. Activos = Pasivos + Patrimonio.',
+      'Cash Flow: ve a "Reportes" -> Cash Flow. Muestra entradas y salidas de efectivo por categoria.',
+      'Trial Balance: ve a "Trial Balance". Suma total de Dr debe = suma total de Cr.',
+      'Si algo no cuadra, usa el Ledger Contable para rastrear el asiento desbalanceado.'
+    ],
+    accounts: [
+      { dr:'—', drN:'P&L: Revenue Accounts (4xxx)', cr:'—', crN:'Expense Accounts (5xxx-6xxx)', note:'Estado de Resultados' },
+      { dr:'—', drN:'BS: Assets (1xxx)', cr:'—', crN:'Liabilities (2xxx) + Equity (3xxx)', note:'Balance Sheet' }
+    ],
+    example: 'P&L Mayo 2026:\n  Revenue: $12,500 (4010-4090)\n  Expenses: $8,200 (5010-6xxx)\n  Net Income: $4,300\n\n  Balance Sheet check: Assets $45,000 = Liabilities $12,000 + Equity $33,000',
+    link: 'pnl-completo',
+    qa: null
+  },
+  {
+    id: 'que-no-hacer',
+    num: 13,
+    title: 'Que NO Hacer',
+    icon: '🚫',
+    roles: ['all','basic','manager','admin'],
+    desc: 'Errores comunes que contaminan la contabilidad y como evitarlos.',
+    steps: [
+      'NO ingreses el mismo pago dos veces — siempre revisa si ya existe en el Booking Wizard.',
+      'NO elimines transacciones directamente — siempre usa Anular/Reversar con razon.',
+      'NO cierres un booking sin cuadrar pagos — el balance pendiente debe ser $0.',
+      'NO uses cuentas legacy (1999/2999) para transacciones nuevas — esas son solo para correcciones del pasado.',
+      'NO registres gastos personales como gastos corporativos — contamina el P&L.',
+      'NO ignores las alertas del sistema — indican desbalances o duplicados.',
+      'NO modifiques periodos cerrados — crea un ajuste en el periodo actual.'
+    ],
+    accounts: [],
+    example: 'MAL: Registrar pago dos veces -> duplica ingresos\nMAL: Borrar transaccion -> rompe el trail de auditoria\nBIEN: Usar Anular con razon -> crea reversal trazable',
+    link: null,
+    qa: { label:'Verificar Salud del Sistema', endpoint:'/api/accounting/audit/full-system-health', method:'GET', body:null }
+  }
+];
+
+let obCurrentRole = 'all';
+let obInitialized = false;
+
+function getObProgress() {
+  try { return JSON.parse(localStorage.getItem('ob_progress_nadaki') || '{}'); } catch(e) { return {}; }
+}
+function setObStatus(id, status) {
+  const p = getObProgress(); p[id] = status;
+  localStorage.setItem('ob_progress_nadaki', JSON.stringify(p));
+  renderObGuides(obCurrentRole);
+  updateObProgressBar();
+}
+function resetOnboardingProgress() {
+  if (!confirm('¿Reiniciar todo el progreso del onboarding?')) return;
+  localStorage.removeItem('ob_progress_nadaki');
+  renderObGuides(obCurrentRole);
+  updateObProgressBar();
+}
+function updateObProgressBar() {
+  const p = getObProgress();
+  const done = OB_GUIDES.filter(g => p[g.id] === 'completed' || p[g.id] === 'tested').length;
+  const pct = Math.round((done / OB_GUIDES.length) * 100);
+  const bar = document.getElementById('ob-progress-bar');
+  const txt = document.getElementById('ob-progress-text');
+  if (bar) bar.style.width = pct + '%';
+  if (txt) txt.textContent = `${done} / ${OB_GUIDES.length} completados (${pct}%)`;
+}
+
+function filterByRole(role) {
+  obCurrentRole = role;
+  document.querySelectorAll('.ob-role-btn').forEach(btn => {
+    const isActive = btn.dataset.role === role;
+    btn.style.background = isActive ? '#7c3aed' : '#f1f5f9';
+    btn.style.color = isActive ? '#fff' : '#374151';
+  });
+  renderObGuides(role);
+}
+
+const STATUS_LABELS = { not_started:'No iniciado', learned:'Leido', tested:'Probado', completed:'Completado' };
+const STATUS_COLORS = { not_started:'#94a3b8', learned:'#0ea5e9', tested:'#f59e0b', completed:'#16a34a' };
+
+function renderObGuides(role) {
+  const container = document.getElementById('ob-guides-container');
+  if (!container) return;
+  const progress = getObProgress();
+  const visible = role === 'all' ? OB_GUIDES : OB_GUIDES.filter(g => g.roles.includes(role));
+
+  container.innerHTML = visible.map(g => {
+    const status = progress[g.id] || 'not_started';
+    const statusColor = STATUS_COLORS[status];
+    const accountsHtml = g.accounts.length ? `
+      <div style="margin:10px 0 6px;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;">Cuentas Afectadas</div>
+      <div style="background:#f8fafc;border-radius:8px;padding:8px 10px;font-size:11px;font-family:monospace;">
+        ${g.accounts.map(a => `<div style="margin:2px 0;color:#374151;"><span style="color:#dc2626;font-weight:700;">Dr ${a.dr}</span> ${a.drN} / <span style="color:#16a34a;font-weight:700;">Cr ${a.cr}</span> ${a.crN} <span style="color:#94a3b8;">— ${a.note}</span></div>`).join('')}
+      </div>` : '';
+    const exampleHtml = g.example ? `
+      <div style="margin:10px 0 6px;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;">Ejemplo Contable</div>
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px 10px;font-size:11px;font-family:monospace;white-space:pre-line;color:#166534;">${g.example}</div>` : '';
+    const stepsHtml = `
+      <ol style="margin:8px 0 0;padding-left:18px;font-size:12px;color:#374151;line-height:1.7;">
+        ${g.steps.map(s => `<li>${s}</li>`).join('')}
+      </ol>`;
+    const linkBtn = g.link ? `<button onclick="document.querySelector('[data-tab=\\"${g.link}\\"]')?.click()" style="padding:6px 12px;background:#0ea5e9;color:#fff;border:none;border-radius:7px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;" data-testid="button-ob-goto-${g.id}">Ir a este flujo</button>` : '';
+    const qaBtn = g.qa ? `<button onclick="runObQA('${g.id}')" style="padding:6px 12px;background:#7c3aed;color:#fff;border:none;border-radius:7px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;" data-testid="button-ob-qa-${g.id}">${g.qa.label}</button>` : '';
+    const markBtns = `
+      <button onclick="setObStatus('${g.id}','learned')" style="padding:5px 10px;background:#e0f2fe;color:#0369a1;border:none;border-radius:6px;font-size:10px;font-weight:600;cursor:pointer;" data-testid="button-ob-learned-${g.id}">Leido</button>
+      <button onclick="setObStatus('${g.id}','completed')" style="padding:5px 10px;background:#dcfce7;color:#15803d;border:none;border-radius:6px;font-size:10px;font-weight:600;cursor:pointer;" data-testid="button-ob-done-${g.id}">Completado</button>`;
+    const qaResultEl = `<div id="ob-qa-result-${g.id}" style="display:none;margin-top:8px;padding:8px;border-radius:7px;font-size:11px;font-weight:600;"></div>`;
+    return `
+    <div class="ob-guide-card" data-guide-id="${g.id}" style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
+      <div onclick="toggleObGuide('${g.id}')" style="padding:16px 18px;cursor:pointer;display:flex;align-items:flex-start;gap:12px;">
+        <div style="font-size:22px;line-height:1;flex-shrink:0;">${g.icon}</div>
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span style="font-size:13px;font-weight:800;color:#1a1a2e;">${g.num}. ${g.title}</span>
+            <span style="padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;background:${statusColor}22;color:${statusColor};">${STATUS_LABELS[status]}</span>
+          </div>
+          <p style="margin:4px 0 0;font-size:12px;color:#64748b;line-height:1.4;">${g.desc}</p>
+        </div>
+        <div style="font-size:12px;color:#94a3b8;flex-shrink:0;" id="ob-arrow-${g.id}">▼</div>
+      </div>
+      <div id="ob-detail-${g.id}" style="display:none;padding:0 18px 16px;border-top:1px solid #f1f5f9;">
+        <div style="padding-top:12px;">
+          <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Pasos</div>
+          ${stepsHtml}
+          ${accountsHtml}
+          ${exampleHtml}
+          ${qaResultEl}
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
+            ${linkBtn}${qaBtn}${markBtns}
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleObGuide(id) {
+  const detail = document.getElementById(`ob-detail-${id}`);
+  const arrow = document.getElementById(`ob-arrow-${id}`);
+  if (!detail) return;
+  const isOpen = detail.style.display !== 'none';
+  detail.style.display = isOpen ? 'none' : 'block';
+  if (arrow) arrow.textContent = isOpen ? '▼' : '▲';
+  if (!isOpen) {
+    const prog = getObProgress();
+    if (!prog[id] || prog[id] === 'not_started') setObStatus(id, 'learned');
+  }
+}
+
+async function runObQA(guideId) {
+  const g = OB_GUIDES.find(x => x.id === guideId);
+  if (!g || !g.qa) return;
+  const resultEl = document.getElementById(`ob-qa-result-${guideId}`);
+  if (!resultEl) return;
+  resultEl.style.display = 'block';
+  resultEl.style.background = '#f1f5f9';
+  resultEl.style.color = '#374151';
+  resultEl.textContent = 'Ejecutando prueba QA...';
+  try {
+    const opts = { method: g.qa.method, headers: { 'Content-Type': 'application/json' } };
+    if (g.qa.body && g.qa.method !== 'GET') opts.body = JSON.stringify(g.qa.body);
+    const r = await fetch(g.qa.endpoint, opts);
+    const data = await r.json();
+    if (r.ok && !data.error) {
+      resultEl.style.background = '#dcfce7';
+      resultEl.style.color = '#15803d';
+      const summary = data.summary ? `${data.summary.passed}/${data.summary.total} tests pasaron` : data.status ? `Estado: ${data.status.toUpperCase()}` : 'OK';
+      resultEl.textContent = 'PASS — ' + summary;
+      setObStatus(guideId, 'tested');
+    } else {
+      resultEl.style.background = '#fef2f2';
+      resultEl.style.color = '#dc2626';
+      resultEl.textContent = 'FAIL — ' + (data.error || JSON.stringify(data).slice(0,120));
+    }
+  } catch(e) {
+    resultEl.style.background = '#fef2f2';
+    resultEl.style.color = '#dc2626';
+    resultEl.textContent = 'ERROR — ' + e.message;
+  }
+}
+
+async function runSystemHealth() {
+  const badge = document.getElementById('ob-health-badge');
+  const resultsEl = document.getElementById('ob-health-results');
+  if (badge) { badge.style.background='#fef3c7'; badge.style.color='#92400e'; badge.textContent='Verificando...'; }
+  if (resultsEl) resultsEl.style.display = 'none';
+  try {
+    const r = await fetch('/api/accounting/audit/full-system-health');
+    const d = await r.json();
+    const statusConf = { pass:{ bg:'#dcfce7', color:'#15803d', label:'Sistema Saludable' }, warning:{ bg:'#fef3c7', color:'#92400e', label:'Advertencias' }, fail:{ bg:'#fef2f2', color:'#dc2626', label:'Errores Criticos' } };
+    const sc = statusConf[d.status] || statusConf.warning;
+    if (badge) { badge.style.background=sc.bg; badge.style.color=sc.color; badge.textContent=sc.label; }
+    if (resultsEl) {
+      const modHtml = Object.entries(d.modules||{}).map(([k,v]) => {
+        const ic = v==='pass'?'✓':v==='warning'?'⚠':' ✗';
+        const c = v==='pass'?'#15803d':v==='warning'?'#92400e':'#dc2626';
+        const bg = v==='pass'?'#f0fdf4':v==='warning'?'#fffbeb':'#fef2f2';
+        return `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:${bg};border-radius:7px;font-size:12px;"><span style="color:${c};font-weight:700;width:14px;text-align:center;">${ic}</span><span style="font-weight:600;color:#374151;">${k.replace(/_/g,' ')}</span></div>`;
+      }).join('');
+      const issues = [...(d.critical_issues||[]), ...(d.warnings||[])];
+      const issueHtml = issues.length ? `<div style="margin-top:12px;"><div style="font-size:11px;font-weight:700;color:#64748b;margin-bottom:6px;text-transform:uppercase;">Problemas encontrados</div>${issues.map(i=>`<div style="padding:6px 10px;background:#fef2f2;border-radius:7px;font-size:11px;color:#dc2626;margin-bottom:4px;">[${i.module}] ${i.issue}</div>`).join('')}</div>` : '';
+      const qaHtml = d.qa_results?.length ? `<div style="margin-top:12px;"><div style="font-size:11px;font-weight:700;color:#64748b;margin-bottom:6px;text-transform:uppercase;">Resultados QA</div>${d.qa_results.map(q=>`<div style="font-size:11px;color:#374151;padding:3px 0;"><span style="font-weight:600;">${q.test||q.module}:</span> ${q.result}</div>`).join('')}</div>` : '';
+      resultsEl.innerHTML = `<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:16px 20px;"><div style="font-size:13px;font-weight:700;color:#1a1a2e;margin-bottom:10px;">Estado del Sistema — verificado ${new Date(d.last_checked_at).toLocaleString('es-PR')}</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px;">${modHtml}</div>${issueHtml}${qaHtml}<div style="margin-top:8px;font-size:11px;color:#94a3b8;">Verificacion completada en ${d.check_duration_ms}ms</div></div>`;
+      resultsEl.style.display = 'block';
+    }
+  } catch(e) {
+    if (badge) { badge.style.background='#fef2f2'; badge.style.color='#dc2626'; badge.textContent='Error de conexion'; }
+  }
+}
+
+function initOnboarding() {
+  if (obInitialized) { updateObProgressBar(); return; }
+  obInitialized = true;
+  renderObGuides('all');
+  updateObProgressBar();
+  setTimeout(runSystemHealth, 300);
+}
 
 // Set default periods for filters
 (function initCorpPeriods(){
