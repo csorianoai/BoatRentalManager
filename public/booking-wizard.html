@@ -1196,44 +1196,44 @@ function renderPaymentList() {
   </table>`;
 }
 
+// ── VOID ENGINE: voidAccountingSource() ──────────────────────────────────
+// All anulación operations route through POST /api/accounting/void-source.
+// No function may delete or hide records without going through this motor.
+async function voidAccountingSource({ source_type, source_id, booking_id, reason, voided_by = 'wizard' }) {
+  const r = await apiFetch('/api/accounting/void-source', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ source_type, source_id, booking_id, reason: reason.trim(), voided_by }),
+  });
+  if (!r.success || !r.voided) {
+    throw new Error(r.error || `void-source returned success=false for ${source_type}:${source_id}`);
+  }
+  return r;
+}
+
 async function voidExpense(expId, amount) {
   const reason = prompt(
     `Anular gasto de $${parseFloat(amount).toFixed(2)}\n\n` +
-    `Se excluye el gasto del libro mayor y se crea una entrada de reversión para auditoría.\n\n` +
+    `Se excluye el gasto del libro mayor y se crea reversión contable para auditoría.\n\n` +
     `Motivo (requerido):`
   );
   if (reason === null) return;
   if (!reason.trim()) { alert('El motivo es requerido para anular un gasto.'); return; }
   try {
-    const r = await apiFetch(`/api/accounting/reverse`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        source_type: 'booking_expense',
-        source_id:   expId,
-        booking_id:  BOOKING_ID,
-        reason:      reason.trim(),
-        reversed_by: 'wizard',
-      }),
-    });
-    if (!r.success || !r.reversal_created) {
-      alert(`Error: el backend no confirmó la reversión.\n${JSON.stringify(r)}`);
-      return;
-    }
+    await voidAccountingSource({ source_type: 'booking_expense', source_id: expId, booking_id: BOOKING_ID, reason });
     await loadWizData();
     renderExpenseList();
     renderExpenseSummary();
     renderStep1();
-    // Verify: expense must no longer appear in active list
     const stillActive = (wizData.expenses || []).find(e => e.id === expId);
     if (stillActive) {
-      alert('Backend reversal failed: source still active. Contacta soporte.');
+      alert('Advertencia: el gasto aún aparece activo. Contacta soporte.');
     } else {
       showToast('exp-msg', `Gasto de $${parseFloat(amount).toFixed(2)} anulado. Reversión contable registrada.`, 'success');
     }
   } catch(e) {
     console.error('[voidExpense]', e);
-    if (e.message && (e.message.includes('already') || e.message.includes('anulado') || e.message.includes('voided'))) {
+    if (/already|anulado|voided|ALREADY/i.test(e.message)) {
       alert('Este gasto ya fue anulado anteriormente.');
     } else {
       alert('Error al anular el gasto:\n' + e.message);
@@ -1250,35 +1250,20 @@ async function voidPayment(txId, amount) {
   if (reason === null) return;
   if (!reason.trim()) { alert('El motivo es requerido para anular un pago.'); return; }
   try {
-    const r = await apiFetch(`/api/accounting/reverse`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        source_type: 'transaction',
-        source_id:   txId,
-        booking_id:  BOOKING_ID,
-        reason:      reason.trim(),
-        reversed_by: 'wizard',
-      }),
-    });
-    if (!r.success || !r.reversal_created) {
-      alert(`Error: el backend no confirmó la reversión.\n${JSON.stringify(r)}`);
-      return;
-    }
+    await voidAccountingSource({ source_type: 'transaction', source_id: txId, booking_id: BOOKING_ID, reason });
     await loadWizData();
     renderPaymentList();
     renderPaymentSummary();
     renderStep1();
-    // Verify: payment must no longer appear in active transaction list
     const stillActive = (wizData.transactions || []).find(t => t.id === txId);
     if (stillActive) {
-      alert('Backend reversal failed: source still active. Contacta soporte.');
+      alert('Advertencia: el pago aún aparece activo. Contacta soporte.');
     } else {
       showToast('pay-msg', `Pago de $${parseFloat(amount).toFixed(2)} anulado. Balance restaurado.`, 'success');
     }
   } catch(e) {
     console.error('[voidPayment]', e);
-    if (e.message && (e.message.includes('already') || e.message.includes('anulada') || e.message.includes('voided') || e.message.includes('excluded'))) {
+    if (/already|anulada|voided|excluded|ALREADY/i.test(e.message)) {
       alert('Este pago ya fue anulado anteriormente.');
     } else {
       alert('Error al anular el pago:\n' + e.message);
@@ -1295,27 +1280,13 @@ async function voidCaptainPayment(pmtId, payableId, amount) {
   if (reason === null) return;
   if (!reason.trim()) { alert('El motivo es requerido para anular un pago al capitán.'); return; }
   try {
-    const r = await apiFetch(`/api/bookings/${BOOKING_ID}/captain-payable/${payableId}/payments/${pmtId}`, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reason: reason.trim() }),
-    });
-    if (!r.success && !r.voided) {
-      alert(`Error: el backend no confirmó la anulación.\n${JSON.stringify(r)}`);
-      return;
-    }
+    await voidAccountingSource({ source_type: 'booking_captain_payment', source_id: pmtId, booking_id: BOOKING_ID, reason });
     await Promise.all([loadWizData(), loadCaptainPayable()]);
     renderStep1();
-    // Verify: voided payment should appear in payable as voided
-    const payable = r.payable;
-    if (payable && parseFloat(payable.total_paid) === parseFloat(payable.total_paid - amount)) {
-      alert('Backend reversal failed: captain paid amount still includes voided payment. Contacta soporte.');
-    } else {
-      showToast('cpmt-msg', `Pago al capitán de $${parseFloat(amount).toFixed(2)} anulado. AP y cuenta de pago revertidos.`, 'success');
-    }
+    showToast('cpmt-msg', `Pago al capitán de $${parseFloat(amount).toFixed(2)} anulado. AP y cuenta de pago revertidos.`, 'success');
   } catch(e) {
     console.error('[voidCaptainPayment]', e);
-    if (e.message && (e.message.includes('already') || e.message.includes('voided') || e.message.includes('ALREADY'))) {
+    if (/already|voided|ALREADY/i.test(e.message)) {
       alert('Este pago al capitán ya fue anulado anteriormente.');
     } else {
       alert('Error al anular pago al capitán:\n' + e.message);

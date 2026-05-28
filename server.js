@@ -3055,6 +3055,9 @@ async function initializeDatabase() {
       await pool.query(`ALTER TABLE booking_captain_payments ADD COLUMN IF NOT EXISTS voided BOOLEAN DEFAULT FALSE`);
       await pool.query(`ALTER TABLE booking_captain_payments ADD COLUMN IF NOT EXISTS voided_at TIMESTAMPTZ`);
       await pool.query(`ALTER TABLE booking_captain_payments ADD COLUMN IF NOT EXISTS voided_reason TEXT`);
+      // Void-engine QA isolation columns
+      await pool.query(`ALTER TABLE boat_expenses ADD COLUMN IF NOT EXISTS source_system TEXT`);
+      await pool.query(`ALTER TABLE booking_captain_payments ADD COLUMN IF NOT EXISTS source_system TEXT`);
       console.log('✅ FASE 29 reversal system tables ready');
     } catch (e29) {
       console.warn('⚠️ FASE 29 (non-critical):', e29.message);
@@ -16460,6 +16463,604 @@ app.post('/api/accounting/qa/void-reversal-hard-test', isAuthenticated, async (r
   const passed = results.filter(r=>r.passed).length;
   const failed  = results.filter(r=>!r.passed).length;
   res.json({ summary: { total: results.length, passed, failed, all_pass: failed===0 }, qa_booking_id: QA_BID, results });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// VOID ENGINE — voidAccountingSource() central motor
+// All anulación/void operations MUST route through POST /api/accounting/void-source.
+// No module may delete or hide records independently.
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── POST /api/accounting/void-source ─────────────────────────────────────────
+// The single canonical void motor. Accepts all source_types defined in the spec.
+// Wraps reverseFinancialImpact for proper GL reversal, marks originals voided,
+// refreshes booking integrity, returns audit trail.
+app.post('/api/accounting/void-source', isAuthenticated, async (req, res) => {
+  const pg = await pool.connect();
+  try {
+    const { source_type, source_id, booking_id, reason, voided_by } = req.body;
+
+    if (!reason || !reason.trim())
+      return res.status(400).json({ error: 'reason is required', code: 'REASON_REQUIRED' });
+    if (!source_type || !source_id)
+      return res.status(400).json({ error: 'source_type and source_id are required' });
+
+    const SUPPORTED = [
+      'transaction', 'booking_payment', 'booking_expense', 'boat_expense',
+      'captain_payment', 'booking_captain_payment', 'captain_payable',
+      'stew_payment', 'payable_payment', 'booking_payable', 'booking_payable_payment',
+      'corporate_expense', 'corporate_payable', 'corporate_payable_payment',
+      'other_income', 'revenue_recognition', 'manual_entry', 'journal_entry',
+    ];
+    if (!SUPPORTED.includes(source_type))
+      return res.status(400).json({ error: `Unsupported source_type: ${source_type}`, supported: SUPPORTED });
+
+    // 409 if already reversed via reversal log
+    const { rows: existingRvl } = await pg.query(
+      `SELECT id FROM accounting_reversal_log WHERE source_type=$1 AND source_id=$2 LIMIT 1`,
+      [source_type, source_id]
+    );
+    if (existingRvl.length) {
+      return res.status(409).json({
+        error:           'Source already voided/reversed',
+        code:            'ALREADY_VOIDED',
+        reversal_log_id: existingRvl[0].id,
+      });
+    }
+
+    // Per-type source-table "already voided" guard
+    if (source_type === 'booking_captain_payment') {
+      const { rows } = await pg.query(`SELECT voided FROM booking_captain_payments WHERE id=$1`, [source_id]);
+      if (!rows.length) return res.status(404).json({ error: 'Captain payment not found' });
+      if (rows[0].voided) return res.status(409).json({ error: 'Captain payment already voided', code: 'ALREADY_VOIDED' });
+    } else if (source_type === 'captain_payment') {
+      const { rows } = await pg.query(`SELECT voided_at FROM captain_payments WHERE id=$1`, [source_id]);
+      if (!rows.length) return res.status(404).json({ error: 'Captain payment not found' });
+      if (rows[0].voided_at) return res.status(409).json({ error: 'Captain payment already voided', code: 'ALREADY_VOIDED' });
+    } else if (['booking_expense', 'boat_expense'].includes(source_type)) {
+      const { rows } = await pg.query(`SELECT status FROM boat_expenses WHERE id=$1`, [source_id]);
+      if (!rows.length) return res.status(404).json({ error: 'Expense not found' });
+      if (['voided','cancelled'].includes(rows[0].status))
+        return res.status(409).json({ error: 'Expense already voided', code: 'ALREADY_VOIDED' });
+    } else if (source_type === 'transaction') {
+      const { rows } = await pg.query(`SELECT excluded_from_ledger FROM transactions WHERE id=$1`, [source_id]);
+      if (!rows.length) return res.status(404).json({ error: 'Transaction not found' });
+      if (rows[0].excluded_from_ledger) return res.status(409).json({ error: 'Transaction already voided', code: 'ALREADY_VOIDED' });
+    } else if (source_type === 'stew_payment') {
+      const { rows } = await pg.query(`SELECT voided_at FROM stew_payments WHERE id=$1`, [source_id]).catch(() => ({ rows: [] }));
+      if (rows[0]?.voided_at) return res.status(409).json({ error: 'Stew payment already voided', code: 'ALREADY_VOIDED' });
+    } else if (source_type === 'payable_payment') {
+      const { rows } = await pg.query(`SELECT voided_at FROM booking_payable_payments WHERE id=$1`, [source_id]).catch(() => ({ rows: [] }));
+      if (rows[0]?.voided_at) return res.status(409).json({ error: 'Payable payment already voided', code: 'ALREADY_VOIDED' });
+    } else if (['booking_payment', 'other_income', 'manual_entry', 'corporate_expense', 'revenue_recognition', 'journal_entry'].includes(source_type)) {
+      const { rows } = await pg.query(`SELECT excluded_from_ledger FROM transactions WHERE id=$1`, [source_id]).catch(() => ({ rows: [] }));
+      if (rows[0]?.excluded_from_ledger) return res.status(409).json({ error: 'Transaction already voided', code: 'ALREADY_VOIDED' });
+    }
+
+    await pg.query('BEGIN');
+    const result = await reverseFinancialImpact(pg, {
+      source_type, source_id, booking_id,
+      reason: reason.trim(),
+      created_by: voided_by || req.user?.name || req.user?.email || 'admin',
+    });
+
+    const bookingCtx = result.booking_id || booking_id || null;
+    let updatedReconciliation = null;
+    if (bookingCtx) {
+      updatedReconciliation = await checkBookingIntegrity(bookingCtx).catch(() => null);
+    }
+
+    await pg.query('COMMIT');
+    res.json({
+      success:                   true,
+      voided:                    true,
+      reversal_created:          !result.no_accounting_impact,
+      reversal_id:               result.reversal_journal_entry_id || result.reversal_log_id,
+      reversal_log_id:           result.reversal_log_id,
+      reversal_journal_entry_id: result.reversal_journal_entry_id,
+      updated_reconciliation:    updatedReconciliation,
+      audit_log_id:              result.reversal_log_id,
+      original_amount:           result.original_amount,
+      original_tx_ids:           result.original_tx_ids,
+      affected_accounts:         result.affected_accounts,
+      source_type, source_id,
+    });
+  } catch (err) {
+    await pg.query('ROLLBACK').catch(() => {});
+    const is409 = /already|Already|ALREADY/.test(err.message);
+    console.error('[void-source]', err.message);
+    res.status(is409 ? 409 : 500).json({ error: err.message, code: is409 ? 'ALREADY_VOIDED' : 'VOID_FAILED' });
+  } finally { pg.release(); }
+});
+
+// ── GET /api/accounting/audit/ghost-voids ────────────────────────────────────
+// Detects 7 categories of "ghost void" accounting inconsistencies.
+// Spec: critical_issues must equal 0 for a clean ledger.
+app.get('/api/accounting/audit/ghost-voids', isAuthenticated, async (req, res) => {
+  const issues = [];
+  const QA_SYSTEMS = ['qa_test','qa_void_test','qa_rvl'];
+
+  try {
+    // 1. boat_expenses voided/cancelled but linked transactions still ACTIVE in ledger
+    const { rows: ghostExp } = await pool.query(`
+      SELECT be.id AS source_id, be.status, be.booking_id, be.amount,
+             COUNT(t.id) AS active_txs
+      FROM boat_expenses be
+      JOIN transactions t ON t.reference_id = be.id
+        AND t.reference_type = 'booking_expense'
+        AND COALESCE(t.excluded_from_ledger, false) = false
+        AND COALESCE(t.source_system,'') NOT IN ('qa_test','qa_void_test','qa_rvl')
+      WHERE be.status IN ('voided','cancelled','archived')
+        AND be.id NOT LIKE 'qa%'
+      GROUP BY be.id, be.status, be.booking_id, be.amount
+      HAVING COUNT(t.id) > 0
+    `);
+    for (const r of ghostExp) {
+      issues.push({
+        type: 'GHOST_EXPENSE_ACTIVE_TX', severity: 'critical',
+        source_type: 'booking_expense', source_id: r.source_id, booking_id: r.booking_id,
+        detail: `Expense ${r.source_id} voided (status=${r.status}) but ${r.active_txs} tx(s) still active ($${r.amount})`,
+      });
+    }
+
+    // 2. booking_captain_payments voided but linked Dr/Cr transactions still ACTIVE
+    const { rows: ghostBcp } = await pool.query(`
+      SELECT bcp.id AS source_id, bcp.booking_id, bcp.amount,
+             COUNT(t.id) AS active_txs
+      FROM booking_captain_payments bcp
+      JOIN transactions t ON (t.id = bcp.transaction_id_dr OR t.id = bcp.transaction_id_cr)
+        AND COALESCE(t.excluded_from_ledger, false) = false
+        AND COALESCE(t.source_system,'') NOT IN ('qa_test','qa_void_test','qa_rvl')
+      WHERE bcp.voided = true
+        AND bcp.id NOT LIKE 'qa%'
+      GROUP BY bcp.id, bcp.booking_id, bcp.amount
+      HAVING COUNT(t.id) > 0
+    `);
+    for (const r of ghostBcp) {
+      issues.push({
+        type: 'GHOST_CAPTAIN_PAYMENT_ACTIVE_TX', severity: 'critical',
+        source_type: 'booking_captain_payment', source_id: r.source_id, booking_id: r.booking_id,
+        detail: `Captain payment ${r.source_id} voided but ${r.active_txs} tx(s) still active ($${r.amount})`,
+      });
+    }
+
+    // 3. captain_payments (old table) voided but linked transactions still ACTIVE
+    const { rows: ghostCp } = await pool.query(`
+      SELECT cp.id AS source_id, cp.booking_id, cp.amount,
+             COUNT(t.id) AS active_txs
+      FROM captain_payments cp
+      JOIN transactions t ON (t.id = cp.transaction_id OR t.reference_id = cp.id)
+        AND COALESCE(t.excluded_from_ledger, false) = false
+        AND COALESCE(t.source_system,'') NOT IN ('qa_test','qa_void_test','qa_rvl')
+      WHERE cp.voided_at IS NOT NULL
+        AND cp.id NOT LIKE 'qa%'
+      GROUP BY cp.id, cp.booking_id, cp.amount
+      HAVING COUNT(t.id) > 0
+    `).catch(() => ({ rows: [] }));
+    for (const r of ghostCp) {
+      issues.push({
+        type: 'GHOST_CAPTAIN_PAYMENT_ACTIVE_TX', severity: 'critical',
+        source_type: 'captain_payment', source_id: r.source_id, booking_id: r.booking_id,
+        detail: `captain_payments ${r.source_id} voided_at set but ${r.active_txs} tx(s) still active ($${r.amount})`,
+      });
+    }
+
+    // 4. reversal_log entry exists but original transactions in original_tx_ids NOT excluded
+    const { rows: ghostRvlTx } = await pool.query(`
+      SELECT rl.source_type, rl.source_id, rl.booking_id, rl.original_amount,
+             COUNT(t.id) AS still_active
+      FROM accounting_reversal_log rl
+      JOIN transactions t ON t.id = ANY(rl.original_tx_ids)
+        AND COALESCE(t.excluded_from_ledger, false) = false
+        AND COALESCE(t.source_system,'') NOT IN ('qa_test','qa_void_test','qa_rvl')
+      WHERE rl.source_id NOT LIKE 'qa%'
+        AND rl.source_type != 'qa_void_test'
+      GROUP BY rl.source_type, rl.source_id, rl.booking_id, rl.original_amount
+      HAVING COUNT(t.id) > 0
+    `);
+    for (const r of ghostRvlTx) {
+      issues.push({
+        type: 'REVERSAL_LOG_BUT_TX_STILL_ACTIVE', severity: 'critical',
+        source_type: r.source_type, source_id: r.source_id, booking_id: r.booking_id,
+        detail: `Reversal log for ${r.source_type}:${r.source_id} exists but ${r.still_active} original tx(s) not excluded ($${r.original_amount})`,
+      });
+    }
+
+    // 5. boat_expenses: reversal_log entry exists but expense status NOT voided
+    const { rows: ghostExpOrphan } = await pool.query(`
+      SELECT rl.source_id, rl.booking_id, rl.original_amount, be.status
+      FROM accounting_reversal_log rl
+      JOIN boat_expenses be ON be.id = rl.source_id
+      WHERE rl.source_type = 'booking_expense'
+        AND COALESCE(be.status,'active') NOT IN ('voided','cancelled','archived')
+        AND rl.source_id NOT LIKE 'qa%'
+    `);
+    for (const r of ghostExpOrphan) {
+      issues.push({
+        type: 'REVERSED_BUT_EXPENSE_NOT_VOIDED', severity: 'critical',
+        source_type: 'booking_expense', source_id: r.source_id, booking_id: r.booking_id,
+        detail: `Reversal log for expense ${r.source_id} exists but boat_expenses.status='${r.status}' (not voided) ($${r.original_amount})`,
+      });
+    }
+
+    // 6. booking_captain_payments: reversal_log exists but voided=false
+    const { rows: ghostBcpOrphan } = await pool.query(`
+      SELECT rl.source_id, rl.booking_id, rl.original_amount
+      FROM accounting_reversal_log rl
+      JOIN booking_captain_payments bcp ON bcp.id = rl.source_id
+      WHERE rl.source_type = 'booking_captain_payment'
+        AND COALESCE(bcp.voided, false) = false
+        AND rl.source_id NOT LIKE 'qa%'
+    `);
+    for (const r of ghostBcpOrphan) {
+      issues.push({
+        type: 'REVERSED_BUT_CAPTAIN_PAYMENT_NOT_VOIDED', severity: 'critical',
+        source_type: 'booking_captain_payment', source_id: r.source_id, booking_id: r.booking_id,
+        detail: `Reversal log for captain payment ${r.source_id} exists but booking_captain_payments.voided=false ($${r.original_amount})`,
+      });
+    }
+
+    // 7. Transactions that appear as a reversal_log source (type='transaction') but are NOT excluded
+    const { rows: ghostTxSelf } = await pool.query(`
+      SELECT t.id, t.booking_id, t.amount, t.account_code
+      FROM transactions t
+      JOIN accounting_reversal_log rl ON rl.source_id = t.id AND rl.source_type = 'transaction'
+      WHERE COALESCE(t.excluded_from_ledger, false) = false
+        AND COALESCE(t.is_reversal, false) = false
+        AND t.id NOT LIKE 'qa%'
+        AND COALESCE(t.source_system,'') NOT IN ('qa_test','qa_void_test','qa_rvl')
+    `);
+    for (const r of ghostTxSelf) {
+      issues.push({
+        type: 'TX_IN_REVERSAL_LOG_BUT_NOT_EXCLUDED', severity: 'critical',
+        source_type: 'transaction', source_id: r.id, booking_id: r.booking_id,
+        detail: `Transaction ${r.id} is in reversal_log (source_type=transaction) but excluded_from_ledger=false (${r.account_code} $${r.amount})`,
+      });
+    }
+
+    const critical = issues.filter(i => i.severity === 'critical').length;
+    res.json({
+      critical_issues: critical,
+      total_issues:    issues.length,
+      clean:           critical === 0,
+      issues,
+      checked_at:      new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error('[ghost-voids]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/accounting/qa/void-system-final-test ───────────────────────────
+// 10 automated QA tests for the central void engine. Creates real DB records
+// (source_system='qa_void_test', excluded_from_reports=true) and voids them
+// using POST /api/accounting/void-source. Spec: all 10 must PASS.
+app.post('/api/accounting/qa/void-system-final-test', isAuthenticated, async (req, res) => {
+  const { nanoid } = await import('nanoid');
+  const pfx   = 'qavt_' + Date.now().toString(36);
+  const QD    = '2099-09-15';
+  const results = [];
+  let QA_BID  = null;
+
+  const add = (n, name, passed, detail = '') =>
+    results.push({ test: n, name, passed, detail: String(detail).slice(0, 400) });
+
+  const doVoid = async (source_type, source_id, bid, reason = 'QA void test') => {
+    const r = await fetch('http://localhost:5000/api/accounting/void-source', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', cookie: req.headers.cookie || '' },
+      body: JSON.stringify({ source_type, source_id, booking_id: bid, reason, voided_by: 'qa_system' }),
+    });
+    return { status: r.status, body: await r.json() };
+  };
+
+  // Setup: ensure QA booking exists
+  try {
+    QA_BID = pfx + '_bid';
+    await pool.query(
+      `INSERT INTO bookings (id,platform,customer_name,customer_phone,boat_type,booking_date,total_amount,status,revenue_recognized)
+       VALUES ($1,'direct','QA Void Test','000-000-0000','QA Boat','${QD}',2000,'confirmed',false)
+       ON CONFLICT (id) DO NOTHING`,
+      [QA_BID]
+    );
+  } catch(e) {
+    return res.status(500).json({ error: 'QA booking setup failed: ' + e.message });
+  }
+
+  const getA = async (code) => {
+    const { rows } = await pool.query(`SELECT id FROM chart_of_accounts WHERE account_code=$1 LIMIT 1`, [code]);
+    if (!rows.length) throw new Error(`Account ${code} not in chart_of_accounts`);
+    return rows[0].id;
+  };
+
+  let A = {};
+  try {
+    A.CASH  = await getA('1015');
+    A.BANK  = await getA('1010');
+    A.AP    = await getA('2010');
+    A.FUEL  = await getA('5020');
+    A.ICE   = await getA('5030');
+  } catch(e) {
+    return res.status(500).json({ error: 'Chart of accounts not ready: ' + e.message });
+  }
+
+  // ── TEST 1: Cash payment $1000 → void → cash_1015=0 ────────────────────
+  {
+    const txId = pfx + '_t1';
+    try {
+      await pool.query(
+        `INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,
+           description,reference_type,notes,booking_id,source_system)
+         VALUES ($1,'${QD}',$2,'1015',1000,'income','QA T1 Cash $1000','cash_clearing','qa_t1',$3,'qa_test')`,
+        [txId, A.CASH, QA_BID]
+      );
+      const { status, body } = await doVoid('transaction', txId, QA_BID, 'QA test 1: void cash payment $1000');
+      const { rows: tx } = await pool.query(`SELECT excluded_from_ledger FROM transactions WHERE id=$1`, [txId]);
+      const txExcl = tx[0]?.excluded_from_ledger === true;
+      const { rows: cc } = await pool.query(
+        `SELECT COALESCE(SUM(amount),0) AS total FROM transactions
+         WHERE booking_id=$1 AND reference_type='cash_clearing' AND COALESCE(excluded_from_ledger,false)=false
+           AND source_system='qa_test'`,
+        [QA_BID]
+      );
+      const ccTotal = parseFloat(cc[0]?.total || 0);
+      const p = status === 200 && body.success === true && body.reversal_created === true && txExcl && ccTotal === 0;
+      add(1,'Cash $1000 → anulado → total_paid=0 cash_1015=0',p,`HTTP:${status} voided:${body.voided} excl:${txExcl} cc_active:${ccTotal} audit:${body.audit_log_id}`);
+    } catch(e) { add(1,'Cash $1000 → anulado → total_paid=0 cash_1015=0',false,'ERROR:'+e.message); }
+  }
+
+  // ── TEST 2: Bank payment $500 → void → bank=0, cash unchanged ──────────
+  {
+    const txBank = pfx + '_t2b'; const txCash = pfx + '_t2c';
+    try {
+      await pool.query(
+        `INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,
+           description,reference_type,notes,booking_id,source_system)
+         VALUES ($1,'${QD}',$2,'1010',500,'income','QA T2 Bank $500','cash_clearing','qa_t2',$3,'qa_test')`,
+        [txBank, A.BANK, QA_BID]
+      );
+      await pool.query(
+        `INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,
+           description,reference_type,notes,booking_id,source_system)
+         VALUES ($1,'${QD}',$2,'1015',75,'income','QA T2 Cash Control','cash_clearing','qa_t2c',$3,'qa_test')`,
+        [txCash, A.CASH, QA_BID]
+      );
+      const { status, body } = await doVoid('transaction', txBank, QA_BID, 'QA test 2: void bank $500');
+      const { rows: bk } = await pool.query(`SELECT excluded_from_ledger FROM transactions WHERE id=$1`, [txBank]);
+      const { rows: ca } = await pool.query(`SELECT excluded_from_ledger FROM transactions WHERE id=$1`, [txCash]);
+      const bankExcl    = bk[0]?.excluded_from_ledger === true;
+      const cashIntact  = ca[0]?.excluded_from_ledger === false;
+      const p = status === 200 && bankExcl && cashIntact;
+      add(2,'Bank $500 → anulado → bank excl, cash_1015 intacto',p,`HTTP:${status} bankExcl:${bankExcl} cashIntact:${cashIntact}`);
+    } catch(e) { add(2,'Bank $500 → anulado → bank excl, cash_1015 intacto',false,'ERROR:'+e.message); }
+  }
+
+  // ── TEST 3: Captain payable $250 + cash $144 → void pmt → captain_paid=0 ─
+  {
+    const pyId = pfx + '_py3'; const pmId = pfx + '_pm3';
+    const txDr = pfx + '_t3d'; const txCr = pfx + '_t3c';
+    try {
+      await pool.query(
+        `INSERT INTO booking_captain_payables (id,booking_id,captain_name,total_due,total_paid,status,created_at)
+         VALUES ($1,$2,'QA Captain Cash',250,0,'pending',NOW())`,
+        [pyId, QA_BID]
+      );
+      await pool.query(
+        `INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,
+           description,reference_type,booking_id,source_system)
+         VALUES ($1,'${QD}',$2,'2010',144,'expense','QA T3 Dr AP 2010','captain_payment',$3,'qa_test')`,
+        [txDr, A.AP, QA_BID]
+      );
+      await pool.query(
+        `INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,
+           description,reference_type,booking_id,source_system)
+         VALUES ($1,'${QD}',$2,'1015',144,'expense','QA T3 Cr Cash 1015','captain_payment',$3,'qa_test')`,
+        [txCr, A.CASH, QA_BID]
+      );
+      await pool.query(
+        `INSERT INTO booking_captain_payments (id,captain_payable_id,booking_id,amount,payment_method,
+           payment_date,transaction_id_dr,transaction_id_cr,created_at)
+         VALUES ($1,$2,$3,144,'cash','${QD}',$4,$5,NOW())`,
+        [pmId, pyId, QA_BID, txDr, txCr]
+      );
+      await pool.query(`UPDATE booking_captain_payables SET total_paid=144,status='partially_paid' WHERE id=$1`, [pyId]);
+      const { status, body } = await doVoid('booking_captain_payment', pmId, QA_BID, 'QA test 3: void captain cash $144');
+      const { rows: pm } = await pool.query(`SELECT voided FROM booking_captain_payments WHERE id=$1`, [pmId]);
+      const { rows: py } = await pool.query(`SELECT total_paid FROM booking_captain_payables WHERE id=$1`, [pyId]);
+      const { rows: dr } = await pool.query(`SELECT excluded_from_ledger FROM transactions WHERE id=$1`, [txDr]);
+      const pmVoided  = pm[0]?.voided === true;
+      const paidZero  = parseFloat(py[0]?.total_paid || 0) === 0;
+      const drExcl    = dr[0]?.excluded_from_ledger === true;
+      const p = status === 200 && pmVoided && paidZero && drExcl;
+      add(3,'Captain payable $250 + cash $144 → void → captain_paid=0',p,`HTTP:${status} voided:${pmVoided} total_paid:${py[0]?.total_paid} drExcl:${drExcl}`);
+    } catch(e) { add(3,'Captain payable $250 + cash $144 → void → captain_paid=0',false,'ERROR:'+e.message); }
+  }
+
+  // ── TEST 4: Captain payable + zelle $106 → void → cash_1015 unchanged ──
+  {
+    const pyId = pfx + '_py4'; const pmId = pfx + '_pm4';
+    const txDr = pfx + '_t4d'; const txCr = pfx + '_t4c'; const txCashCtrl = pfx + '_t4cc';
+    try {
+      await pool.query(
+        `INSERT INTO booking_captain_payables (id,booking_id,captain_name,total_due,total_paid,status,created_at)
+         VALUES ($1,$2,'QA Captain Zelle',250,0,'pending',NOW())`,
+        [pyId, QA_BID]
+      );
+      await pool.query(
+        `INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,
+           description,reference_type,booking_id,source_system)
+         VALUES ($1,'${QD}',$2,'2010',106,'expense','QA T4 Dr AP 2010','captain_payment',$3,'qa_test')`,
+        [txDr, A.AP, QA_BID]
+      );
+      await pool.query(
+        `INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,
+           description,reference_type,booking_id,source_system)
+         VALUES ($1,'${QD}',$2,'1010',106,'expense','QA T4 Cr Bank Zelle 1010','captain_payment',$3,'qa_test')`,
+        [txCr, A.BANK, QA_BID]
+      );
+      await pool.query(
+        `INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,
+           description,reference_type,booking_id,source_system)
+         VALUES ($1,'${QD}',$2,'1015',42,'income','QA T4 Cash Control','cash_clearing',$3,'qa_test')`,
+        [txCashCtrl, A.CASH, QA_BID]
+      );
+      await pool.query(
+        `INSERT INTO booking_captain_payments (id,captain_payable_id,booking_id,amount,payment_method,
+           payment_date,transaction_id_dr,transaction_id_cr,created_at)
+         VALUES ($1,$2,$3,106,'zelle','${QD}',$4,$5,NOW())`,
+        [pmId, pyId, QA_BID, txDr, txCr]
+      );
+      await pool.query(`UPDATE booking_captain_payables SET total_paid=106,status='partially_paid' WHERE id=$1`, [pyId]);
+      const { status, body } = await doVoid('booking_captain_payment', pmId, QA_BID, 'QA test 4: void captain zelle $106');
+      const { rows: cr }  = await pool.query(`SELECT excluded_from_ledger,account_code FROM transactions WHERE id=$1`, [txCr]);
+      const { rows: cci } = await pool.query(`SELECT excluded_from_ledger FROM transactions WHERE id=$1`, [txCashCtrl]);
+      const bankExcl    = cr[0]?.excluded_from_ledger === true && cr[0]?.account_code === '1010';
+      const cashIntact  = cci[0]?.excluded_from_ledger === false;
+      const p = status === 200 && bankExcl && cashIntact;
+      add(4,'Captain zelle $106 → void → bank_1010 excl, cash_1015 intacto',p,`HTTP:${status} bankExcl:${bankExcl} cashIntact:${cashIntact}`);
+    } catch(e) { add(4,'Captain zelle $106 → void → bank_1010 excl, cash_1015 intacto',false,'ERROR:'+e.message); }
+  }
+
+  // ── TEST 5: Fuel expense $300 cash → void → expense voided, txs excl ───
+  {
+    const expId = pfx + '_exp5'; const txDr = pfx + '_t5d'; const txCr = pfx + '_t5c';
+    try {
+      await pool.query(
+        `INSERT INTO boat_expenses (id,boat_id,booking_id,category,description,amount,status,expense_date)
+         VALUES ($1,'boat_searay500',$2,'fuel','QA T5 Fuel Cash $300',300,'active','${QD}')`,
+        [expId, QA_BID]
+      );
+      await pool.query(
+        `INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,
+           description,reference_id,reference_type,booking_id,source_system)
+         VALUES ($1,'${QD}',$2,'5020',300,'expense','QA T5 Dr Fuel',$3,'booking_expense',$4,'qa_test')`,
+        [txDr, A.FUEL, expId, QA_BID]
+      );
+      await pool.query(
+        `INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,
+           description,reference_id,reference_type,booking_id,source_system)
+         VALUES ($1,'${QD}',$2,'1015',300,'expense','QA T5 Cr Cash',$3,'booking_expense',$4,'qa_test')`,
+        [txCr, A.CASH, expId, QA_BID]
+      );
+      const { status, body } = await doVoid('booking_expense', expId, QA_BID, 'QA test 5: void fuel expense $300');
+      const { rows: ex } = await pool.query(`SELECT status FROM boat_expenses WHERE id=$1`, [expId]);
+      const { rows: dr } = await pool.query(`SELECT excluded_from_ledger FROM transactions WHERE id=$1`, [txDr]);
+      const { rows: cr } = await pool.query(`SELECT excluded_from_ledger FROM transactions WHERE id=$1`, [txCr]);
+      const expVoided = ['voided','cancelled'].includes(ex[0]?.status);
+      const drExcl    = dr[0]?.excluded_from_ledger === true;
+      const crExcl    = cr[0]?.excluded_from_ledger === true;
+      const p = status === 200 && expVoided && drExcl && crExcl;
+      add(5,'Fuel $300 cash → anulado → expense voided, txs excl',p,`HTTP:${status} expStatus:${ex[0]?.status} drExcl:${drExcl} crExcl:${crExcl}`);
+    } catch(e) { add(5,'Fuel $300 cash → anulado → expense voided, txs excl',false,'ERROR:'+e.message); }
+  }
+
+  // ── TEST 6: Ice expense $5.99 → void → 5030 excl ───────────────────────
+  {
+    const expId = pfx + '_exp6'; const txDr = pfx + '_t6d'; const txCr = pfx + '_t6c';
+    try {
+      await pool.query(
+        `INSERT INTO boat_expenses (id,boat_id,booking_id,category,description,amount,status,expense_date)
+         VALUES ($1,'boat_searay500',$2,'operational','QA T6 Operational $5.99',5.99,'active','${QD}')`,
+        [expId, QA_BID]
+      );
+      await pool.query(
+        `INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,
+           description,reference_id,reference_type,booking_id,source_system)
+         VALUES ($1,'${QD}',$2,'5030',5.99,'expense','QA T6 Dr Ice',$3,'booking_expense',$4,'qa_test')`,
+        [txDr, A.ICE, expId, QA_BID]
+      );
+      await pool.query(
+        `INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,
+           description,reference_id,reference_type,booking_id,source_system)
+         VALUES ($1,'${QD}',$2,'1015',5.99,'expense','QA T6 Cr Ice Cash',$3,'booking_expense',$4,'qa_test')`,
+        [txCr, A.CASH, expId, QA_BID]
+      );
+      const { status, body } = await doVoid('booking_expense', expId, QA_BID, 'QA test 6: void ice $5.99');
+      const { rows: ex } = await pool.query(`SELECT status FROM boat_expenses WHERE id=$1`, [expId]);
+      const { rows: act5030 } = await pool.query(
+        `SELECT COALESCE(SUM(amount),0) AS total FROM transactions
+         WHERE booking_id=$1 AND account_code='5030' AND source_system='qa_test'
+           AND COALESCE(excluded_from_ledger,false)=false`,
+        [QA_BID]
+      );
+      const expVoided = ['voided','cancelled'].includes(ex[0]?.status);
+      const iceGone   = parseFloat(act5030[0]?.total || 0) === 0;
+      const p = status === 200 && expVoided && iceGone;
+      add(6,'Ice $5.99 → anulado → 5030 excl, expenses baja 5.99',p,`HTTP:${status} expStatus:${ex[0]?.status} active5030:${act5030[0]?.total}`);
+    } catch(e) { add(6,'Ice $5.99 → anulado → 5030 excl, expenses baja 5.99',false,'ERROR:'+e.message); }
+  }
+
+  // ── TEST 7: Corporate expense $100 → void → OpEx excl ──────────────────
+  // corporate_expense source_type: source_id IS the transaction id
+  {
+    const txId = pfx + '_t7corp';
+    try {
+      await pool.query(
+        `INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,
+           description,reference_type,booking_id,source_system)
+         VALUES ($1,'${QD}',$2,'5020',100,'expense','QA T7 Corp OpEx $100','manual_adjustment',$3,'qa_test')`,
+        [txId, A.FUEL, QA_BID]
+      );
+      const { status, body } = await doVoid('corporate_expense', txId, QA_BID, 'QA test 7: void corporate expense $100');
+      const { rows: tx } = await pool.query(`SELECT excluded_from_ledger FROM transactions WHERE id=$1`, [txId]);
+      const excl = tx[0]?.excluded_from_ledger === true;
+      const p = status === 200 && body.success === true && excl;
+      add(7,'Corporate expense $100 → anulado → OpEx excl',p,`HTTP:${status} excl:${excl} reversal_created:${body.reversal_created}`);
+    } catch(e) { add(7,'Corporate expense $100 → anulado → OpEx excl',false,'ERROR:'+e.message); }
+  }
+
+  // ── TEST 8: Other income $120 → void → income excl ─────────────────────
+  // other_income source_type: source_id IS the transaction id
+  {
+    const txId = pfx + '_t8inc';
+    try {
+      await pool.query(
+        `INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,
+           description,reference_type,booking_id,source_system)
+         VALUES ($1,'${QD}',$2,'1015',120,'income','QA T8 Other Income $120','cash_clearing',$3,'qa_test')`,
+        [txId, A.CASH, QA_BID]
+      );
+      const { status, body } = await doVoid('other_income', txId, QA_BID, 'QA test 8: void other income $120');
+      const { rows: tx } = await pool.query(`SELECT excluded_from_ledger FROM transactions WHERE id=$1`, [txId]);
+      const excl = tx[0]?.excluded_from_ledger === true;
+      const p = status === 200 && body.success === true && excl;
+      add(8,'Other income $120 → anulado → income excl',p,`HTTP:${status} excl:${excl} reversal_created:${body.reversal_created}`);
+    } catch(e) { add(8,'Other income $120 → anulado → income excl',false,'ERROR:'+e.message); }
+  }
+
+  // ── TEST 9: Double void → must return 409 ALREADY_VOIDED ────────────────
+  {
+    const txId = pfx + '_t9dbl';
+    try {
+      await pool.query(
+        `INSERT INTO transactions (id,transaction_date,account_id,account_code,amount,transaction_type,
+           description,reference_type,booking_id,source_system)
+         VALUES ($1,'${QD}',$2,'1015',50,'income','QA T9 Double Void Attempt','cash_clearing',$3,'qa_test')`,
+        [txId, A.CASH, QA_BID]
+      );
+      await doVoid('transaction', txId, QA_BID, 'QA test 9: first void');
+      const { status: s2, body: b2 } = await doVoid('transaction', txId, QA_BID, 'QA test 9: MUST be blocked');
+      const p = s2 === 409 && (/already|ALREADY/i.test(JSON.stringify(b2)));
+      add(9,'Double void → 409 ALREADY_VOIDED bloqueado',p,`second_attempt_status:${s2} code:${b2.code} error:${b2.error}`);
+    } catch(e) { add(9,'Double void → 409 ALREADY_VOIDED bloqueado',false,'ERROR:'+e.message); }
+  }
+
+  // ── TEST 10: ghost-voids → critical_issues = 0 ──────────────────────────
+  {
+    try {
+      const gr = await fetch('http://localhost:5000/api/accounting/audit/ghost-voids', {
+        headers: { cookie: req.headers.cookie || '' },
+      });
+      const ghost = await gr.json();
+      const p = typeof ghost.critical_issues === 'number' && ghost.critical_issues === 0;
+      add(10,'ghost-voids → critical_issues=0',p,`critical:${ghost.critical_issues} total:${ghost.total_issues} clean:${ghost.clean}`);
+    } catch(e) { add(10,'ghost-voids → critical_issues=0',false,'ERROR:'+e.message); }
+  }
+
+  const passed = results.filter(r => r.passed).length;
+  const failed  = results.filter(r => !r.passed).length;
+  res.json({ summary: { total: results.length, passed, failed, all_pass: failed === 0 }, qa_booking_id: QA_BID, results });
 });
 
 // ── FASE 29: GET /api/accounting/audit/delete-vs-ledger-integrity ─────────

@@ -1,0 +1,372 @@
+Actúa como Principal Ledger Core Engineer y CPA Systems Auditor.
+
+PROBLEMA CRÍTICO:
+Por décima vez, cuando el usuario borra/anula un pago, gasto, cargo o asiento erróneo, la UI parece borrarlo, pero contablemente sigue vivo. Sigue afectando:
+- Cash Clearing
+- pagos registrados
+- pagos al capitán
+- cuentas por pagar
+- gastos
+- profit
+- reconciliation
+- reportes
+
+YA NO QUIERO MÁS PARCHES DE UI.
+
+SOLUCIÓN OBLIGATORIA:
+Crear un único motor central llamado:
+
+voidAccountingSource()
+
+Todos los botones de borrar/anular deben usar ese motor. Ningún módulo puede borrar o esconder registros por su cuenta.
+
+==================================================
+1. REGLA ABSOLUTA
+==================================================
+
+Prohibido:
+- DELETE físico contable
+- ocultar en frontend sin afectar ledger
+- cambiar status visual sin reverso
+- recalcular localmente en UI
+
+Obligatorio:
+- crear reversal contable
+- marcar source original como voided
+- marcar source original excluded_from_ledger=true
+- recalcular desde backend
+- refrescar UI desde GET /reconciliation
+- dejar audit trail
+
+==================================================
+2. CREAR FUNCIÓN CENTRAL
+==================================================
+
+Crear en backend:
+
+async function voidAccountingSource({
+  source_type,
+  source_id,
+  booking_id,
+  reason,
+  voided_by
+})
+
+Debe soportar:
+- booking_payment
+- booking_expense
+- captain_payment
+- captain_payable
+- booking_payable
+- booking_payable_payment
+- corporate_expense
+- corporate_payable
+- corporate_payable_payment
+- other_income
+- revenue_recognition
+- manual_entry
+- transaction
+- journal_entry
+
+==================================================
+3. QUÉ DEBE HACER
+==================================================
+
+La función debe:
+
+1. Validar reason obligatorio.
+2. Buscar el source real en su tabla.
+3. Verificar si ya está voided/reversed.
+   Si sí:
+   devolver HTTP 409 ALREADY_VOIDED.
+4. Buscar todas las transacciones/journal entries relacionadas.
+5. Crear asiento reverso exacto:
+   - debit original se vuelve credit
+   - credit original se vuelve debit
+6. Marcar registros originales:
+   status='voided'
+   excluded_from_ledger=true
+   voided_at
+   voided_by
+   void_reason
+   reversal_journal_entry_id
+7. Marcar journal/transactions originales:
+   status='reversed'
+   is_reversed=true
+   excluded_from_ledger=true
+8. Actualizar saldos derivados:
+   - total_collected
+   - total_expenses
+   - cash_clearing
+   - captain_paid
+   - payable_balance
+   - AR
+   - profit
+9. Guardar audit log before/after.
+10. Devolver ledger actualizado.
+
+==================================================
+4. ENDPOINT ÚNICO
+==================================================
+
+Crear o reemplazar:
+
+POST /api/accounting/void-source
+
+Body:
+{
+  "source_type": "booking_payment",
+  "source_id": "string",
+  "booking_id": "string",
+  "reason": "required",
+  "voided_by": "admin"
+}
+
+Response obligatorio:
+{
+  "success": true,
+  "voided": true,
+  "reversal_created": true,
+  "reversal_id": "...",
+  "updated_reconciliation": {},
+  "audit_log_id": "..."
+}
+
+Si no crea reversal real:
+success=false
+
+==================================================
+5. BLOQUEAR TODOS LOS DELETE VIEJOS
+==================================================
+
+Buscar y reemplazar todos los endpoints/botones:
+
+- deletePayment
+- removePayment
+- deleteExpense
+- removeExpense
+- deleteCaptainPayment
+- removeCaptainPayment
+- deletePayablePayment
+- cancelPayment
+- cancelExpense
+- voidPayment
+- voidExpense
+- DELETE /api/*payments*
+- DELETE /api/*expenses*
+
+Todos deben llamar a:
+
+POST /api/accounting/void-source
+
+No pueden tener lógica propia.
+
+==================================================
+6. CORREGIR CÁLCULOS
+==================================================
+
+Todos los cálculos deben excluir:
+
+status IN ('voided','cancelled','reversed')
+OR excluded_from_ledger=true
+OR is_reversed=true
+
+Aplicar en:
+- GET /api/bookings/:id/reconciliation
+- checkBookingIntegrity()
+- cash clearing calculation
+- captain paid calculation
+- expenses total
+- payments total
+- AP balance
+- AR balance
+- profit
+- dashboard KPIs
+- P&L
+- cash flow
+- trial balance
+
+==================================================
+7. CASOS ESPECÍFICOS
+==================================================
+
+A) Si anulo pago cash del cliente:
+
+Original:
+Dr 1015 Cash Clearing
+Cr 2500/1100
+
+Reversal:
+Dr 2500/1100
+Cr 1015
+
+Debe:
+- bajar total paid
+- bajar cash clearing
+- subir pendiente/AR si aplica
+- desaparecer de pagos activos
+
+B) Si anulo pago capitán cash:
+
+Original:
+Dr 2010 Captain Payable
+Cr 1015 Cash Clearing
+
+Reversal:
+Dr 1015
+Cr 2010
+
+Debe:
+- bajar captain_paid
+- subir captain_pending
+- ajustar cash clearing
+- NO tocar expense 5010
+
+C) Si anulo pago capitán zelle:
+
+Original:
+Dr 2010
+Cr 1010
+
+Reversal:
+Dr 1010
+Cr 2010
+
+Debe:
+- bajar captain_paid
+- subir captain_pending
+- NO tocar cash clearing
+
+D) Si anulo gasto fuel/ice/etc:
+
+Original:
+Dr expense
+Cr cash/bank
+
+Reversal:
+Dr cash/bank
+Cr expense
+
+Debe:
+- bajar expenses
+- recalcular profit
+- ajustar cash/bank
+
+==================================================
+8. UI OBLIGATORIA
+==================================================
+
+En booking-wizard.html:
+
+Botón “Borrar” debe desaparecer.
+Usar solo:
+“Anular”
+
+Al hacer click:
+- abrir modal
+- pedir razón obligatoria
+- llamar POST /api/accounting/void-source
+- esperar success=true
+- luego llamar GET /api/bookings/:id/reconciliation
+- redibujar TODO desde backend
+
+NO actualizar localmente.
+NO mostrar éxito si backend no devuelve reversal_created=true.
+
+==================================================
+9. AUDITORÍA DE MEMORIA FANTASMA
+==================================================
+
+Crear endpoint:
+
+GET /api/accounting/audit/ghost-voids
+
+Debe detectar:
+
+1. Source voided pero sigue contando en totals.
+2. Source visualmente eliminado pero transaction activa.
+3. Payment voided pero cash clearing lo incluye.
+4. Captain payment voided pero captain_paid lo incluye.
+5. Expense voided pero total_expenses lo incluye.
+6. Reversal creado pero original no excluded.
+7. Source activo pero journal reversed.
+
+Debe devolver:
+critical_issues
+
+Criterio:
+critical_issues debe ser 0.
+
+==================================================
+10. AUTOPRUEBA OBLIGATORIA CON 10 CASOS
+==================================================
+
+Crear endpoint:
+
+POST /api/accounting/qa/void-system-final-test
+
+Debe ejecutar:
+
+1. Crear pago cash cliente $1000 → anular → total_paid 0, cash 0.
+2. Crear pago banco cliente $500 → anular → bank 0, cash no cambia.
+3. Crear captain payable $250 + pago cash $144 → anular pago → captain_paid 0, pending 250.
+4. Crear captain payable $250 + pago zelle $106 → anular pago → cash no cambia.
+5. Crear fuel cash $300 → anular → expenses baja 300.
+6. Crear ice cash $5.99 → anular → expenses baja 5.99.
+7. Crear corporate expense $100 → anular → OpEx baja 100.
+8. Crear other income $120 → anular → income baja 120.
+9. Intentar anular dos veces → debe bloquear 409.
+10. Ejecutar ghost-voids → critical_issues=0.
+
+No usar mocks falsos.
+Debe crear datos QA reales con source_type='qa_void_test' y excluded_from_reports=true.
+
+==================================================
+11. PRUEBA CON BOOKING REAL
+==================================================
+
+Tomar el booking donde falla actualmente.
+
+Ejecutar:
+1. Anular pago cash incorrecto.
+2. Confirmar que desaparece de pagos activos.
+3. Confirmar que Cash Clearing cambia.
+4. Anular pago capitán incorrecto.
+5. Confirmar que captain_paid baja.
+6. Confirmar que exceso desaparece.
+7. Confirmar que GET /reconciliation ya no lo incluye.
+
+==================================================
+12. CRITERIO DE ÉXITO
+==================================================
+
+No declarar terminado hasta que:
+
+- Todos los botones “Anular” usen voidAccountingSource.
+- No exista delete visual directo.
+- 10 autopruebas PASS.
+- ghost-voids critical_issues=0.
+- booking real corregido.
+- cash clearing ya no cuenta pagos anulados.
+- captain_paid ya no cuenta pagos anulados.
+- expenses ya no cuenta gastos anulados.
+- Trial Balance sigue cuadrado.
+
+==================================================
+13. REPORTE FINAL
+==================================================
+
+Entregar:
+
+1. Causa raíz exacta.
+2. Lista de botones/endpoints viejos reemplazados.
+3. Código central creado.
+4. Resultado de las 10 pruebas.
+5. Resultado ghost-voids.
+6. Resultado booking real.
+7. Reversal IDs creados.
+8. Confirmación Trial Balance.
+9. Confirmación Cash Clearing.
+10. Riesgos pendientes.
+
+NO digas “listo” si cualquier prueba falla.
