@@ -1,2 +1,3 @@
 - [ERP Hardening V2](erp-hardening-v2.md) — runStep ok variable bug: use Object.assign instead of spread in forEach callbacks; never use shorthand {ok} in runStep return.
 - [DB Schema Notes](db-schema-notes.md) — boats.name (NOT boat_name), bookings.booking_date is TEXT YYYY-MM-DD, journal_entry_lines has no entry_type column.
+- [Platform Access Gate](platform-access-gate.md) — whole management portal is locked behind one shared code (PLATFORM_ACCESS_CODE); webhooks/public chat stay open; gate must stay in sync if new public integration endpoints are added.

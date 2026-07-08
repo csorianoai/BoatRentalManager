@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Acceso — Nadaki Excursions</title>
+<meta name="robots" content="noindex, nofollow">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: linear-gradient(135deg, #0b2545 0%, #0f3460 55%, #133e6e 100%);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .card {
+    background: #ffffff;
+    border-radius: 12px;
+    padding: 40px 32px;
+    width: 100%;
+    max-width: 380px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.35);
+    text-align: center;
+  }
+  .icon {
+    width: 52px;
+    height: 52px;
+    margin: 0 auto 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: #eef4ff;
+    color: #0f3460;
+  }
+  h1 {
+    font-size: 19px;
+    color: #0b1f3a;
+    margin-bottom: 4px;
+  }
+  p.subtitle {
+    font-size: 13px;
+    color: #6b7280;
+    margin-bottom: 24px;
+  }
+  input[type="password"] {
+    width: 100%;
+    padding: 12px 14px;
+    font-size: 16px;
+    letter-spacing: 2px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    outline: none;
+    text-align: center;
+    transition: border-color 0.15s ease;
+  }
+  input[type="password"]:focus {
+    border-color: #0f3460;
+  }
+  button {
+    width: 100%;
+    margin-top: 14px;
+    padding: 12px 14px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #ffffff;
+    background: #0f3460;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s ease, opacity 0.15s ease;
+  }
+  button:hover { background: #0b2545; }
+  button:disabled { opacity: 0.6; cursor: default; }
+  .error {
+    margin-top: 14px;
+    font-size: 13px;
+    color: #b91c1c;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    padding: 10px 12px;
+    display: none;
+  }
+  .footer {
+    margin-top: 26px;
+    font-size: 11px;
+    color: #9ca3af;
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+      </svg>
+    </div>
+    <h1>Nadaki Excursions</h1>
+    <p class="subtitle">Ingresa el código de acceso para continuar</p>
+    <form id="access-form">
+      <input type="password" id="access-code" data-testid="input-access-code" placeholder="Código de acceso" autocomplete="off" autofocus required>
+      <button type="submit" id="access-submit" data-testid="button-access-submit">Entrar</button>
+    </form>
+    <div class="error" id="access-error" data-testid="text-access-error"></div>
+    <div class="footer">Panel de gestión — acceso restringido</div>
+  </div>
+
+<script>
+  const form = document.getElementById('access-form');
+  const input = document.getElementById('access-code');
+  const submitBtn = document.getElementById('access-submit');
+  const errorBox = document.getElementById('access-error');
+
+  function showError(msg) {
+    errorBox.textContent = msg;
+    errorBox.style.display = 'block';
+  }
+
+  function hideError() {
+    errorBox.style.display = 'none';
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    hideError();
+    const code = input.value.trim();
+    if (!code) return;
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Verificando…';
+    try {
+      const res = await fetch('/api/access/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) {
+        const params = new URLSearchParams(window.location.search);
+        const next = params.get('next');
+        window.location.href = (next && next.startsWith('/')) ? next : '/dashboard.html';
+      } else {
+        showError(data.error || 'Código incorrecto.');
+        input.value = '';
+        input.focus();
+      }
+    } catch (err) {
+      showError('Error de conexión. Intenta de nuevo.');
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Entrar';
+    }
+  });
+</script>
+</body>
+</html>

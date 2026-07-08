@@ -3277,6 +3277,157 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// ========================================
+// ACCESS GATE — código único para toda la plataforma de gestión
+// ========================================
+const crypto = require('crypto');
+const ACCESS_COOKIE_NAME = 'nadaki_access';
+const ACCESS_COOKIE_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000; // 90 días
+
+function getAccessSecret() {
+  return crypto.createHash('sha256')
+    .update((process.env.PLATFORM_ACCESS_CODE || '') + ':nadaki-gate-v1')
+    .digest();
+}
+
+function signAccessToken() {
+  const expiry = Date.now() + ACCESS_COOKIE_MAX_AGE_MS;
+  const hmac = crypto.createHmac('sha256', getAccessSecret()).update(String(expiry)).digest('hex');
+  return `${expiry}.${hmac}`;
+}
+
+function verifyAccessToken(token) {
+  if (!token || typeof token !== 'string') return false;
+  const parts = token.split('.');
+  if (parts.length !== 2) return false;
+  const [expiryStr, hmac] = parts;
+  const expiry = parseInt(expiryStr, 10);
+  if (!expiry || Number.isNaN(expiry) || expiry < Date.now()) return false;
+  const expected = crypto.createHmac('sha256', getAccessSecret()).update(expiryStr).digest('hex');
+  try {
+    const a = Buffer.from(hmac);
+    const b = Buffer.from(expected);
+    if (a.length !== b.length) return false;
+    return crypto.timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
+}
+
+function parseCookies(req) {
+  const header = req.headers.cookie;
+  const out = {};
+  if (!header) return out;
+  header.split(';').forEach(pair => {
+    const idx = pair.indexOf('=');
+    if (idx === -1) return;
+    const k = pair.slice(0, idx).trim();
+    const v = decodeURIComponent(pair.slice(idx + 1).trim());
+    out[k] = v;
+  });
+  return out;
+}
+
+function setAccessCookie(res, token) {
+  res.setHeader('Set-Cookie',
+    `${ACCESS_COOKIE_NAME}=${token}; Max-Age=${Math.floor(ACCESS_COOKIE_MAX_AGE_MS / 1000)}; Path=/; HttpOnly; Secure; SameSite=Lax`
+  );
+}
+
+function clearAccessCookie(res) {
+  res.setHeader('Set-Cookie', `${ACCESS_COOKIE_NAME}=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax`);
+}
+
+// Rutas públicas que NUNCA requieren el código (integraciones externas + la propia pantalla de acceso)
+const ACCESS_GATE_WHITELIST = [
+  '/access.html',
+  '/api/access/verify',
+  '/api/access/status',
+  '/webhook/',
+  '/api/webhooks/',
+  '/api/chat/send',
+  '/favicon.ico',
+];
+
+// Rate limit de intentos de código (por IP)
+const accessAttempts = new Map();
+const ACCESS_MAX_ATTEMPTS = 5;
+const ACCESS_LOCK_MS = 15 * 60 * 1000;
+
+function checkAccessAttempt(ip) {
+  const now = Date.now();
+  const rec = accessAttempts.get(ip);
+  if (rec && rec.lockUntil > now) {
+    return { blocked: true, retryAfterMs: rec.lockUntil - now };
+  }
+  return { blocked: false };
+}
+
+function registerFailedAccessAttempt(ip) {
+  const now = Date.now();
+  const rec = accessAttempts.get(ip) || { count: 0, lockUntil: 0 };
+  rec.count += 1;
+  if (rec.count >= ACCESS_MAX_ATTEMPTS) {
+    rec.lockUntil = now + ACCESS_LOCK_MS;
+    rec.count = 0;
+  }
+  accessAttempts.set(ip, rec);
+}
+
+function clearAccessAttempts(ip) {
+  accessAttempts.delete(ip);
+}
+
+app.use((req, res, next) => {
+  const p = req.path;
+  const isWhitelisted = ACCESS_GATE_WHITELIST.some(prefix => p === prefix || p.startsWith(prefix));
+  if (isWhitelisted) return next();
+
+  const cookies = parseCookies(req);
+  if (verifyAccessToken(cookies[ACCESS_COOKIE_NAME])) return next();
+
+  const acceptsHtml = (req.headers.accept || '').includes('text/html');
+  const looksLikeApi = p.startsWith('/api/');
+  if (acceptsHtml && !looksLikeApi) {
+    const next_param = p !== '/' ? `?next=${encodeURIComponent(p)}` : '';
+    return res.redirect(`/access.html${next_param}`);
+  }
+  return res.status(401).json({ error: 'Acceso restringido. Se requiere código de acceso.', code: 'ACCESS_LOCKED' });
+});
+
+app.post('/api/access/verify', (req, res) => {
+  const ip = req.ip || req.connection.remoteAddress || 'unknown';
+  const check = checkAccessAttempt(ip);
+  if (check.blocked) {
+    return res.status(429).json({ error: `Demasiados intentos. Intenta de nuevo en ${Math.ceil(check.retryAfterMs / 60000)} minuto(s).` });
+  }
+  const expected = process.env.PLATFORM_ACCESS_CODE;
+  if (!expected) {
+    return res.status(500).json({ error: 'El código de acceso no está configurado en el servidor.' });
+  }
+  const { code } = req.body || {};
+  const codeBuf = Buffer.from(typeof code === 'string' ? code : '');
+  const expectedBuf = Buffer.from(expected);
+  const ok = codeBuf.length === expectedBuf.length && crypto.timingSafeEqual(codeBuf, expectedBuf);
+  if (!ok) {
+    registerFailedAccessAttempt(ip);
+    return res.status(401).json({ error: 'Código incorrecto.' });
+  }
+  clearAccessAttempts(ip);
+  setAccessCookie(res, signAccessToken());
+  res.json({ success: true });
+});
+
+app.get('/api/access/status', (req, res) => {
+  const cookies = parseCookies(req);
+  res.json({ authorized: verifyAccessToken(cookies[ACCESS_COOKIE_NAME]) });
+});
+
+app.post('/api/access/logout', (req, res) => {
+  clearAccessCookie(res);
+  res.json({ success: true });
+});
+
 // ── Cache-busting: assets con ?v= se cachean 1 año; HTML nunca ───────────────
 app.use((req, res, next) => {
   if (req.query.v) {
